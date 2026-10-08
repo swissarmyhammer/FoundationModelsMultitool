@@ -25,6 +25,13 @@ public struct ArgumentMarshalerError: Error, Sendable, Equatable, CustomStringCo
         /// JSON) — kept as a defensive, reportable failure rather than a
         /// trap, mirroring `ToolAPIRenderer`'s "throw rather than crash" posture.
         case malformedOutputJSON
+
+        /// The `generationSchema` of a `Generable` `Output` did not give a
+        /// declared shape, thus `renderOutput` cannot find its optional
+        /// properties. A real `@Generable` type does not cause this: the
+        /// render of each tool reads the same schema in the same way, and
+        /// stops the registration of a tool whose schema it cannot read.
+        case unreadableOutputSchema
     }
 
     /// What kind of failure this was.
@@ -245,6 +252,16 @@ public enum ArgumentMarshaler {
     /// does. A `String` that is not a JSON object or array renders as a
     /// string, as before.
     ///
+    /// A `nil` optional property of a `Generable` `Output` renders as `null`,
+    /// not as a missing key. `GeneratedContent.jsonString` writes no key for
+    /// a `nil` property, thus the snippet would read `undefined`, but each
+    /// `@Guide` text tells the model to compare such a field with `null`. The
+    /// optional properties come from the `generationSchema` of the `Output`
+    /// type, at each level of nested objects and arrays, thus the rule
+    /// applies to each capability and to each tool with a `@Generable`
+    /// result. A schema that declares no properties, such as the one of
+    /// `GeneratedContent`, adds no `null`.
+    ///
     /// - Parameter output: the tool's `Output` value to render.
     /// - Returns: the JS-ready `InterpreterValue` a snippet's call
     ///   expression should evaluate to.
@@ -252,7 +269,9 @@ public enum ArgumentMarshaler {
     ///   `output` is `PromptRepresentable` but not also
     ///   `ConvertibleToGeneratedContent`; kind `.malformedOutputJSON` in the
     ///   unreachable-in-practice case that a `Generable` value's own
-    ///   `jsonString` fails to decode.
+    ///   `jsonString` fails to decode; kind `.unreadableOutputSchema` in the
+    ///   unreachable-in-practice case that its `generationSchema` gives no
+    ///   declared shape.
     public static func renderOutput<Output: PromptRepresentable>(_ output: Output) throws -> InterpreterValue {
         if let text = output as? String, let parsed = jsonContainer(in: text) {
             return parsed
@@ -268,8 +287,9 @@ public enum ArgumentMarshaler {
             )
         }
         let jsonString = sanitizingNonFiniteNumbers(in: generatedContentOutput.generatedContent).jsonString
+        let value: InterpreterValue
         do {
-            return try JSONDecoder().decode(InterpreterValue.self, from: Data(jsonString.utf8))
+            value = try JSONDecoder().decode(InterpreterValue.self, from: Data(jsonString.utf8))
         } catch {
             throw ArgumentMarshalerError(
                 kind: .malformedOutputJSON,
@@ -277,6 +297,76 @@ public enum ArgumentMarshaler {
                     + "valid JSON: \(error)."
             )
         }
+        guard let generableType = type(of: output) as? any Generable.Type else {
+            return value
+        }
+        return nullingMissingOptionals(in: value, declaredAs: try declaredShape(of: generableType))
+    }
+
+    /// The declared shape of a `Generable` `Output` type, read from its
+    /// `generationSchema`.
+    ///
+    /// - Parameter outputType: the type of the tool's `Output` value.
+    /// - Returns: the declared shape of a value of `outputType`.
+    /// - Throws: `ArgumentMarshalerError` with kind `.unreadableOutputSchema`
+    ///   when the schema gives no declared shape.
+    private static func declaredShape(of outputType: any Generable.Type) throws -> ToolValueShape {
+        do {
+            return try ToolAPIRenderer.declaredShape(of: outputType.generationSchema)
+        } catch {
+            throw ArgumentMarshalerError(
+                kind: .unreadableOutputSchema,
+                message: "Output type \(outputType)'s generationSchema gave no declared shape: \(error)."
+            )
+        }
+    }
+
+    /// `value` with a `null` for each optional property that `shape` declares
+    /// and that `value` does not hold, at each level of nested objects and
+    /// arrays.
+    ///
+    /// A property that `value` holds keeps its value. A required property
+    /// that `value` does not hold stays missing, because no `nil` caused the
+    /// gap. A part of `value` that does not agree with `shape`, or that
+    /// `shape` declares as `.any`, stays as it is.
+    ///
+    /// - Parameters:
+    ///   - value: the decoded output.
+    ///   - shape: the declared shape of the output.
+    /// - Returns: `value` with the `null` properties added.
+    private static func nullingMissingOptionals(
+        in value: InterpreterValue, declaredAs shape: ToolValueShape
+    ) -> InterpreterValue {
+        switch shape {
+        case .object(let objectShape):
+            guard case .object(let fields) = value else { return value }
+            return .object(nullingMissingOptionals(in: fields, declaredAs: objectShape))
+        case .array(let element):
+            guard case .array(let items) = value else { return value }
+            return .array(items.map { nullingMissingOptionals(in: $0, declaredAs: element) })
+        case .string, .number, .boolean, .json, .any:
+            return value
+        }
+    }
+
+    /// The fields of one object with a `null` for each optional property that
+    /// `shape` declares and that `fields` does not hold. Each declared
+    /// property that `fields` holds gets the same treatment at its own level.
+    ///
+    /// - Parameters:
+    ///   - fields: the fields of the decoded object.
+    ///   - shape: the declared shape of the object.
+    /// - Returns: `fields` with the `null` properties added.
+    private static func nullingMissingOptionals(
+        in fields: [String: InterpreterValue], declaredAs shape: ToolObjectShape
+    ) -> [String: InterpreterValue] {
+        let declaredFields = shape.properties.compactMap { property -> (String, InterpreterValue)? in
+            if let field = fields[property.name] {
+                return (property.name, nullingMissingOptionals(in: field, declaredAs: property.shape))
+            }
+            return property.isRequired ? nil : (property.name, .null)
+        }
+        return fields.merging(declaredFields) { _, declaredField in declaredField }
     }
 
     /// The parsed value of `text` when the whole text is one JSON object or

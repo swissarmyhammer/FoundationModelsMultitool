@@ -18,8 +18,24 @@ comments:
     - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift (removed `correctionField`, `runCodeOutputs(of:)`, and the inline check; `checks(turn:)` calls `ScenarioCheck.noCorrection(named:in:)`). `swift build --package-path IntegrationTests --build-tests` OK, no source warning (only the SwiftPM "missing creator for mutated node" note about the mlx-swift_Cmlx bundle, which is not in a test file). NoCorrectionCheckTests 3/3 pass. GitScenarioTests live 1/1 pass (Qwen3.8-27B, 21.4 s, calledTheVerbs=pass noCorrection=pass). Root `swift build --build-tests` OK; root `swift test` 2324 tests in 205 suites pass.
     - next: /review
   timestamp: 2026-10-08T21:50:43.499811+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4erdcfqp2jqm6f1tg8qrtkv
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (2b9a655): 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed. Reviewed file: IntegrationTests/.../GitScenarioTests.swift. The .kanban files are not in scope (.reviewignore).
+    - next: none. The task moved to done.
+  timestamp: 2026-10-08T21:58:49.079430+00:00
+- actor: claude-code
+  id: 01m4erds5j7a942eaamn5s0bj2
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — GitScenarioTests.swift
+    - test: green — root swift test 2324 passed; IntegrationTests 4 passed (live)
+    - commit: 2b9a655
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-08T21:59:02.066261+00:00
+position_column: done
+position_ordinal: ffffcf80
 title: Move GitScenarioTests onto the shared ScenarioCheck.noCorrection check
 ---
 ## What

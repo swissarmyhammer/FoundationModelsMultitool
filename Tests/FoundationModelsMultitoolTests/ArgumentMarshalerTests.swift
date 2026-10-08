@@ -241,6 +241,30 @@ struct ArgumentMarshalerTests {
         let rendered = try ArgumentMarshaler.renderOutput(MeasurementOutput(value: .nan))
         #expect(rendered == .object(["value": .null]))
     }
+
+    // MARK: - Out: a nil optional field
+
+    @Test("a nil optional field of a structured Output renders as null, not as a missing key")
+    func nilOptionalFieldRendersAsNull() throws {
+        let rendered = try ArgumentMarshaler.renderOutput(CorrectableOutput(summary: "done", correction: nil))
+        #expect(rendered == .object(["summary": .string("done"), "correction": .null]))
+    }
+
+    @Test("a nil optional field in a nested object and in an array element renders as null")
+    func nilOptionalFieldInNestedObjectAndArrayElementRendersAsNull() throws {
+        let item = CorrectableOutput(summary: "item", correction: nil)
+        let rendered = try ArgumentMarshaler.renderOutput(
+            CorrectableBatchOutput(items: [item], detail: item, lastItem: nil)
+        )
+        let renderedItem = InterpreterValue.object(["summary": .string("item"), "correction": .null])
+        #expect(
+            rendered == .object([
+                "items": .array([renderedItem]),
+                "detail": renderedItem,
+                "lastItem": .null,
+            ])
+        )
+    }
 }
 
 /// A structured `Output` with a `Double` field, used only to exercise
@@ -250,4 +274,30 @@ struct ArgumentMarshalerTests {
 @Generable
 struct MeasurementOutput {
     var value: Double
+}
+
+/// A structured `Output` with an optional field. A test sets the field to
+/// `nil` to show that the snippet gets `null` for it.
+@Generable
+struct CorrectableOutput {
+    /// A text that is always set.
+    var summary: String
+
+    /// A text that can be `nil`.
+    var correction: String?
+}
+
+/// A structured `Output` that holds ``CorrectableOutput`` values in an array,
+/// in a nested object, and in an optional nested object. A test uses it to
+/// show that the `null` rule applies at each level, not only at the top.
+@Generable
+struct CorrectableBatchOutput {
+    /// The values in an array.
+    var items: [CorrectableOutput]
+
+    /// One value as a nested object.
+    var detail: CorrectableOutput
+
+    /// One value as an optional nested object.
+    var lastItem: CorrectableOutput?
 }

@@ -439,13 +439,42 @@ public enum ToolAPIRenderer {
         switch returns {
         case .schema(let schema):
             let node = try decode(schema, subject: "\"\(name)\"'s return")
-            var context = RenderContext(root: node, defs: node.defs ?? [:])
-            return (try shape(for: node, context: &context, path: "returns", onWiden: onWiden), node.description)
+            return (try returnShape(of: node, onWiden: onWiden), node.description)
         case .text:
             return (.string(choices: []), "plain text result.")
         case .json:
             return (.json, "JSON result, parsed.")
         }
+    }
+
+    /// The declared shape of the value that `schema` describes. It is the
+    /// same shape that the `@returns` type of a tool with this `Output`
+    /// schema declares.
+    ///
+    /// `ArgumentMarshaler.renderOutput(_:)` reads the optional properties of
+    /// a tool `Output` from this shape. This function does not report a
+    /// widening to `.any`: a widening is a property of the schema, not of one
+    /// call.
+    ///
+    /// - Parameter schema: the schema of a `Generable` type.
+    /// - Returns: the declared shape of the value.
+    /// - Throws: `ToolAPIRendererError` when the schema cannot be read, for
+    ///   the same causes as `render(name:description:parameters:returns:onWiden:)`.
+    static func declaredShape(of schema: GenerationSchema) throws -> ToolValueShape {
+        let node = try decode(schema, subject: "an output")
+        return try returnShape(of: node, onWiden: { _ in })
+    }
+
+    /// The declared shape of a decoded return schema, read from its root.
+    ///
+    /// - Parameters:
+    ///   - node: the root node of the decoded schema.
+    ///   - onWiden: called when an element widens to `.any`.
+    /// - Returns: the declared shape.
+    /// - Throws: what `shape(for:context:path:onWiden:)` throws.
+    private static func returnShape(of node: SchemaNode, onWiden: (String) -> Void) throws -> ToolValueShape {
+        var context = RenderContext(root: node, defs: node.defs ?? [:])
+        return try shape(for: node, context: &context, path: "returns", onWiden: onWiden)
     }
 
     // MARK: - Raw JSON Schema text

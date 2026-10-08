@@ -21,7 +21,7 @@ struct EnvironmentGoalSnippetTests {
     /// The key of the correction in the object that the snippet returns.
     private static let correctionKey = "correction"
 
-    /// The key of the result of `vars.correction == null` in the object
+    /// The key of the result of `vars.correction === null` in the object
     /// that the snippet returns.
     private static let correctionIsNullKey = "correctionIsNull"
 
@@ -34,7 +34,7 @@ struct EnvironmentGoalSnippetTests {
           names: vars.variables.map(v => v.name),
           variables: vars.variables,
           \(correctionKey): vars.correction,
-          \(correctionIsNullKey): vars.correction == null,
+          \(correctionIsNullKey): vars.correction === null,
           os: os.name,
           date: now.date,
           weekday: now.weekday
@@ -82,23 +82,22 @@ struct EnvironmentGoalSnippetTests {
     }
 
     /// The `nil` correction of `tools.environment.variables` reaches the
-    /// snippet as a missing value, and `== null` in JavaScript is true for
-    /// it.
+    /// snippet as `null`, as its `@Guide` text says, and `=== null` in
+    /// JavaScript is true for it (task `^efqdpfn`).
     ///
-    /// This is the same for each `nil` field of each capability:
-    /// `ArgumentMarshaler.renderOutput(_:)` reads `GeneratedContent.jsonString`,
-    /// and that text has no key for a `nil` property. Thus the snippet reads
-    /// `undefined`, and `JSON.stringify` writes no `correction` key. A decode
-    /// into `String?` gives `nil` for `null` and for a missing key, thus this
-    /// test reads the JSON object itself.
-    @Test("the nil correction reaches the snippet as a missing value")
-    func theNilCorrectionReachesTheSnippetAsAMissingValue() async throws {
+    /// `ArgumentMarshaler.renderOutput(_:)` gives `null` for each `nil`
+    /// optional field that the schema of a result declares. Thus
+    /// `JSON.stringify` writes a `correction` key with the value `null`. A
+    /// decode into `String?` gives `nil` for `null` and for a missing key,
+    /// thus this test reads the JSON object itself.
+    @Test("the nil correction reaches the snippet as null")
+    func theNilCorrectionReachesTheSnippetAsNull() async throws {
         let output = try await Self.runGoalSnippet()
 
         let object = try #require(
             try JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
             "the output was \(output)")
-        #expect(object[Self.correctionKey] == nil, "the output was \(output)")
+        #expect(object[Self.correctionKey] is NSNull, "the output was \(output)")
         #expect(object[Self.correctionIsNullKey] as? Bool == true, "the output was \(output)")
     }
 }
