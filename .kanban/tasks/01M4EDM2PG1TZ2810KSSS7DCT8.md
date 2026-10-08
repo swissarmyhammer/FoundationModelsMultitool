@@ -27,8 +27,24 @@ comments:
     - evidence: 3 files — Sources/FoundationModelsMultitool/Surface/MultiToolBuilder+Capabilities.swift, Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPCapability.swift. `swift build --build-tests` OK; `swift test`: 2324 tests in 205 suites passed, 0 failures.
     - next: /review
   timestamp: 2026-10-08T21:40:25.604629+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4eqkr6d8ycckq7tjak8qwm8
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (1137b0c). 0 findings, 0 confirmed, 0 refuted. 3 files reviewed. 4 .kanban files not reviewed because of .reviewignore.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-08T21:44:49.101366+00:00
+- actor: claude-code
+  id: 01m4eqm3xp2bqrt1s2aze033fc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 source files (doc comments)
+    - test: green — swift test, 2324 passed
+    - commit: 1137b0c
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-08T21:45:01.110680+00:00
+position_column: done
+position_ordinal: ffffce80
 title: Correct the withGit(root:) doc comment about a second call
 ---
 ## What

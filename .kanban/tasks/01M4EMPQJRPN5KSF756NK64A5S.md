@@ -1,8 +1,25 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8880'
+comments:
+- actor: claude-code
+  id: 01m4eqyfg3701ph16pbadp1j95
+  text: |-
+    Research: the only users of `correctionField` and `runCodeOutputs(of:)` in GitScenarioTests.swift were `checks(turn:)`. The shared `ScenarioCheck.noCorrection(named:in:)` uses the same regex and the same runCode filter, thus the `held` value is the same. One difference: the failure message now joins the corrected outputs with " | " (the shared form) and does not print a Swift array. No test pins that message.
+
+    Note: the `dump validators` file for one .swift path is approximately 750 KB. I read the rule headings, not the full body.
+
+    Note: the kanban `move task` and `update task` results are approximately 100 KB each and overflow the tool output limit. The operations completed.
+  timestamp: 2026-10-08T21:50:40.643994+00:00
+- actor: claude-code
+  id: 01m4eqyj9ba6jk1gp92vn5f97f
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift (removed `correctionField`, `runCodeOutputs(of:)`, and the inline check; `checks(turn:)` calls `ScenarioCheck.noCorrection(named:in:)`). `swift build --package-path IntegrationTests --build-tests` OK, no source warning (only the SwiftPM "missing creator for mutated node" note about the mlx-swift_Cmlx bundle, which is not in a test file). NoCorrectionCheckTests 3/3 pass. GitScenarioTests live 1/1 pass (Qwen3.8-27B, 21.4 s, calledTheVerbs=pass noCorrection=pass). Root `swift build --build-tests` OK; root `swift test` 2324 tests in 205 suites pass.
+    - next: /review
+  timestamp: 2026-10-08T21:50:43.499811+00:00
+position_column: doing
+position_ordinal: '80'
 title: Move GitScenarioTests onto the shared ScenarioCheck.noCorrection check
 ---
 ## What
@@ -12,9 +29,9 @@ Task `^w2kryyf` added `ScenarioCheck.noCorrection(named:in:)` to `IntegrationTes
 - Remove `correctionField` and `runCodeOutputs(of:)` from `GitScenarioTests.swift`.
 
 ## Acceptance Criteria
-- [ ] `GitScenarioTests.swift` holds no copy of the correction check.
-- [ ] `NoCorrectionCheckTests` stays green.
+- [x] `GitScenarioTests.swift` holds no copy of the correction check.
+- [x] `NoCorrectionCheckTests` stays green.
 
 ## Tests
-- [ ] `swift build --package-path IntegrationTests --build-tests` builds with no warning in the test files.
-- [ ] Run `swift test --package-path IntegrationTests --no-parallel --filter GitScenarioTests` — the scenario passes. #environment
+- [x] `swift build --package-path IntegrationTests --build-tests` builds with no warning in the test files.
+- [x] Run `swift test --package-path IntegrationTests --no-parallel --filter GitScenarioTests` — the scenario passes. #environment

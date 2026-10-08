@@ -79,12 +79,6 @@ struct GitScenarioTests {
     /// The label of the check that no `runCode` output holds a correction.
     private static let noCorrectionCheckName = "noCorrection"
 
-    /// The text of a `correction` field with a value, in a JSON output.
-    ///
-    /// Computed, because `Regex` is not `Sendable` and a stored static value
-    /// must be.
-    private static var correctionField: Regex<Substring> { #/"correction"\s*:\s*"/# }
-
     @Test("the model diffs the renamed function from a snippet, and no verb answers a correction")
     func theModelDiffsTheRenamedFunction() async throws {
         let repository = try GitScenarioHistory.make()
@@ -114,24 +108,10 @@ struct GitScenarioTests {
     ///   made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
     private static func checks(turn: StreamedTurn) -> [ScenarioCheck] {
-        let correctedOutputs = runCodeOutputs(of: turn).filter { $0.contains(correctionField) }
-        return [
+        [
             calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: verbPaths, in: turn),
-            ScenarioCheck(
-                name: noCorrectionCheckName,
-                held: correctedOutputs.isEmpty,
-                failureMessage:
-                    "expected no correction in a \(MultiTool.runCodePath) output, but got \(correctedOutputs)"
-            ),
+            ScenarioCheck.noCorrection(named: noCorrectionCheckName, in: turn),
         ]
-    }
-
-    /// The output of each `runCode` call of the turn that completed.
-    ///
-    /// - Parameter turn: The streamed turn.
-    /// - Returns: The outputs, in call order.
-    private static func runCodeOutputs(of turn: StreamedTurn) -> [String] {
-        turn.calls.filter { $0.name == MultiTool.runCodePath }.compactMap(\.output)
     }
 
     /// The fields of the `RESULT` line that this scenario gives to
