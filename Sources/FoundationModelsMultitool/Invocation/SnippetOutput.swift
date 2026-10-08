@@ -5,21 +5,18 @@ import FoundationModelsExtras
 // MARK: - The value an inner `tools.*` call gives a snippet
 //
 // A tool whose output is a `@Generable` value crosses into a snippet as an
-// object, through `ArgumentMarshaler.renderOutput`. A tool whose output is
-// `String` crosses as text. That is the correct default for prose, but it is
-// wrong for two kinds of text:
+// object, through `ArgumentMarshaler.renderOutput`. Before task ^38j4bbn, the
+// pending envelope of `tools.shell.execute` crossed as text, and a snippet that
+// read `r.completionToken` got `undefined` (SWE-bench run
+// `preds.code-context-1008`, instance `django__django-14016`: five `getLines`
+// calls failed with a missing `commandID`).
 //
-// - The pending envelope of a background tool. A snippet that read
-//   `r.completionToken` from the text got `undefined` (SWE-bench run
-//   `preds.code-context-1008`, instance `django__django-14016`: five
-//   `getLines` calls failed with a missing `commandID`).
-// - A report that a tool renders as JSON text because the engine of
-//   FoundationModelsExtras runs only a `String` tool in the background —
-//   `tools.shell.execute` is the one such tool. Its snippet must read
-//   `r.exitCode` and `r.commandID`.
-//
-// So this file turns those two kinds of text into objects, and passes every
-// other text through unchanged.
+// `ArgumentMarshaler.renderOutput` parses a text that is one whole JSON object
+// or array, and a rendered pending envelope is one. So a pending envelope
+// already crosses as `{pending: true, completionToken, next}`. What this file
+// adds is the step for a tool that knows more about its own text than a
+// parse does: `tools.shell.execute` adds `commandID` to a pending result, and
+// reads its report again from its store when the cap cut the text.
 
 /// A tool whose `String` output has a structured value for a snippet.
 ///
@@ -61,9 +58,8 @@ extension PendingRunEnvelope {
 enum SnippetOutput {
     /// The value that a snippet gets for the output of `tool`.
     ///
-    /// A ``SnippetOutputShaping`` tool decides for itself. For any other tool,
-    /// a rendered pending envelope becomes its object, and every other output
-    /// goes through `ArgumentMarshaler.renderOutput` unchanged.
+    /// A ``SnippetOutputShaping`` tool decides for itself. Every other output
+    /// goes through `ArgumentMarshaler.renderOutput`.
     ///
     /// - Parameters:
     ///   - output: The output of the call.
@@ -73,14 +69,8 @@ enum SnippetOutput {
     static func value<Output: PromptRepresentable>(
         of output: Output, from tool: any Tool
     ) async throws -> InterpreterValue {
-        guard let text = output as? String else {
-            return try ArgumentMarshaler.renderOutput(output)
-        }
-        if let shaping = tool as? any SnippetOutputShaping {
+        if let text = output as? String, let shaping = tool as? any SnippetOutputShaping {
             return await shaping.snippetValue(ofOutput: text)
-        }
-        if let envelope = PendingRunEnvelope.makeDecoded(fromRendered: text) {
-            return .object(envelope.snippetFields)
         }
         return try ArgumentMarshaler.renderOutput(output)
     }
