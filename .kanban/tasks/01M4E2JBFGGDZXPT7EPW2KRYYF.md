@@ -51,11 +51,27 @@ comments:
     - Finding flipped to `- [x]`. Task stays in `doing`. Not committed.
     - next: /review
   timestamp: 2026-10-08T21:07:55.918293+00:00
+- actor: claude-code
+  id: 01m4envds73qe16bektag5828r
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (cbdf1dd) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 1 file reviewed. 2 .kanban files excluded by .reviewignore. The prior finding (EnvironmentScenarioTests.swift magic-numbers-swift) is checked.
+    - next: none. The task is in done.
+  timestamp: 2026-10-08T21:14:03.431386+00:00
+- actor: claude-code
+  id: 01m4envwg1wj3rpgavnqk4wag3
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — EnvironmentScenarioTests.swift (named constant InjectedDate.secondsSince1970)
+    - test: green — root swift test 2321 passed; IntegrationTests 8 passed (live, 24 s)
+    - commit: cbdf1dd
+    - review: clean — 0 findings, 1 prior finding checked; task in done
+  timestamp: 2026-10-08T21:14:18.497136+00:00
 depends_on:
 - 01M4E1XR9RGN1BNPYHWDKT9H63
 - 01M4E2HPENAVR0VT8MWC73RK0S
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffcc80
 title: Add a gated scenario where a real model reads the date through tools.environment
 ---
 ## What
