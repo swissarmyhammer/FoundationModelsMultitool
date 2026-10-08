@@ -3,7 +3,6 @@ import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import Synchronization
 import Testing
-import os
 
 @testable import FoundationModelsMultitool
 
@@ -21,21 +20,27 @@ struct SearchToolsToolTests {
     /// ``throwingSelectionFactoryStopsTheBuild()``.
     struct SelectionFactoryFailure: Error {}
 
-    @Test("a scripted selection's matched standalone entry splices SearchToolsTool's output verbatim, via a fork() of the prefix-rooted session")
+    @Test("a scripted selection's matched standalone entry splices SearchToolsTool's output verbatim, via one new session with the catalog prefix as its instructions")
     func standaloneSelectionSplicesVerbatimBlockAndExample() async throws {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
+        let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: model, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
         let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
 
-        #expect(root.forkCount == 1)
+        let call = try #require(model.calls.first)
+        #expect(model.calls.count == 1)
+        // A new session: the prefix is its instructions, and the search is its
+        // only prompt.
+        #expect(call.instructions?.contains("getTrip") == true)
+        #expect(call.prompts.count == 1)
+        #expect(call.prompt?.contains("list the trip cities") == true)
         #expect(feedback.contains("searchTools(\"list the trip cities\") found:"))
         // The verbatim block — banner plus doc/declaration — and its example
         // both land unmodified, never re-derived.
@@ -50,11 +55,11 @@ struct SearchToolsToolTests {
             .build()
         let entry = try #require(surface.entries.first)
         #expect(entry.path == "github.createIssue")
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["github.createIssue"]}"#])
+        let model = ScriptedLanguageModel([#"{"ids":["github.createIssue"]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: model, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -78,11 +83,11 @@ struct SearchToolsToolTests {
     @Test("an empty selection formats as a clear \"no matching functions\" message, not an empty string")
     func emptySelectionFormatsAsNoMatchMessage() async throws {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":[]}"#])
+        let model = ScriptedLanguageModel([#"{"ids":[]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: model, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -96,7 +101,7 @@ struct SearchToolsToolTests {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
         // No `selection:` configured at all — `.auto` degrades to `.retrieval`
-        // (plan.md §7), so this searcher never needs a session/grammar.
+        // (plan.md §7), so this searcher never needs a model.
         let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -196,43 +201,42 @@ struct SearchToolsToolTests {
 
     // MARK: - The registry seams drive selection with no Router (^kzaefgz)
 
-    @Test("a host's SelectionConfig over a stub AgentSession drives selection end to end, with the catalog ids handed to its factory")
+    @Test("a host's SelectionConfig over a scripted model drives selection end to end, with the catalog ids handed to its factory")
     func hostSelectionConfigDrivesSelectionEndToEnd() async throws {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
+        let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
         let receivedIds = Mutex<[[String]]>([])
 
         let searchToolsTool = try SearchToolsTool(
             registry: registry,
             selection: { ids in
                 receivedIds.withLock { $0.append(ids) }
-                return SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+                return SelectionConfig(model: model, capacityCharacterLimit: .max)
             })
         let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
 
         // The factory ran one time, for the ids of the whole catalog.
         #expect(receivedIds.withLock { $0 } == [registry.surface.entries.map(\.path)])
-        // The traced wrapper forwards `fork()`, so the tier's cached-root
-        // path still reaches the host's session.
-        #expect(root.forkCount == 1)
+        // The selection prompt reached the model of the host.
+        #expect(model.calls.count == 1)
         #expect(feedback.contains(entry.block))
         #expect(!feedback.contains("tools.getTemperature"))
     }
 
-    @Test("a host's SelectionConfig over one fixed AgentSession drives selection through the mounted searchTools")
-    func hostSelectionSessionDrivesTheMountedSearchTools() async throws {
+    @Test("a host's SelectionConfig drives selection through the mounted searchTools")
+    func hostSelectionConfigDrivesTheMountedSearchTools() async throws {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
+        let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
 
         let mounted = try registry.makeSessionTools(selection: { _ in
-            SelectionConfig(session: root, capacityCharacterLimit: .max)
+            SelectionConfig(model: model, capacityCharacterLimit: .max)
         })
         let searchToolsTool = try #require(mounted.first as? SearchToolsTool)
         let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
 
-        #expect(root.forkCount == 1)
+        #expect(model.calls.count == 1)
         #expect(feedback.contains(entry.block))
         #expect(!feedback.contains("tools.getTemperature"))
     }
@@ -246,15 +250,15 @@ struct SearchToolsToolTests {
         }
     }
 
-    @Test("a host's sample session factory backs the sample the registry initializer generates")
-    func hostSampleSessionBacksTheSample() async throws {
+    @Test("a host's sample model backs the sample the registry initializer generates")
+    func hostSampleModelBacksTheSample() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
-        let session = ScriptedAgentSession([Self.sampleReply])
+        let model = ScriptedLanguageModel([Self.sampleReply])
 
-        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: { _ in session })
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: model)
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "how warm is the trip"))
 
-        #expect(session.callCount == 1)
+        #expect(model.calls.count == 1)
         #expect(feedback.contains("const trip = await tools.getCities({});"))
         #expect(!feedback.contains(SearchToolsTool.writeSnippetInstruction))
     }
@@ -275,7 +279,7 @@ struct SearchToolsToolTests {
     /// scripted sample generator whose turns are `replies`.
     ///
     /// - Parameter replies: one canned generator reply per expected turn, or
-    ///   an empty array to configure no generator at all.
+    ///   `nil` to configure no generator at all.
     /// - Returns: the catalog and the tool over it.
     static func toolWithScriptedGenerator(
         replies: [String]?
@@ -283,11 +287,7 @@ struct SearchToolsToolTests {
         let surface = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).build()
         let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
         let sample = replies.map { replies in
-            let session = ScriptedAgentSession(replies)
-            return SampleSnippetConfig(
-                makeSession: { _ in session },
-                interpreter: JSCInterpreter()
-            )
+            SampleSnippetConfig(model: ScriptedLanguageModel(replies), interpreter: JSCInterpreter())
         }
         return (surface, SearchToolsTool(searcher: searcher, limit: surface.entries.count, sample: sample))
     }
@@ -330,30 +330,30 @@ struct SearchToolsToolTests {
     @Test("a generator is never asked for a sample when nothing matched")
     func noMatchesNeverAsksTheGenerator() async throws {
         let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":[]}"#])
+        let selectionModel = ScriptedLanguageModel([#"{"ids":[]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: selectionModel, capacityCharacterLimit: .max)
         )
-        let session = ScriptedAgentSession([Self.sampleReply])
+        let sampleModel = ScriptedLanguageModel([Self.sampleReply])
         let tool = SearchToolsTool(
             searcher: searcher,
             limit: surface.entries.count,
-            sample: SampleSnippetConfig(makeSession: { _ in session }, interpreter: JSCInterpreter())
+            sample: SampleSnippetConfig(model: sampleModel, interpreter: JSCInterpreter())
         )
 
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "something no tool does"))
 
         #expect(feedback == "searchTools(\"something no tool does\") found no matching functions.")
-        #expect(session.callCount == 0)
+        #expect(sampleModel.calls.isEmpty)
     }
 
     @Test("the production initializer leaves sample generation unconfigured unless a generator is supplied")
     func productionInitializerLeavesSampleGenerationOff() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
 
-        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: nil)
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: nil)
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "trip cities"))
 
         #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))
@@ -369,8 +369,9 @@ struct SearchToolsToolTests {
     func refusedLibrarianGivesTheRefusalAsTheToolError() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let tool = try SearchToolsTool(registry: registry, selection: { _ in
-            SelectionConfig(model: { _ in FailingSelectionRootSession(error: Self.sameModelRefusal) },
-                            capacityCharacterLimit: .max)
+            SelectionConfig(
+                model: ScriptedLanguageModel(answers: [.failure(Self.sameModelRefusal)]),
+                capacityCharacterLimit: .max)
         })
 
         // Not an empty selection, and not the signatures alone: the call
@@ -384,8 +385,8 @@ struct SearchToolsToolTests {
     func throwingSampleSessionGivesAVisibleNote() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
-        let failing = FailingSelectionRootSession(error: Self.sameModelRefusal)
-        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: { _ in failing })
+        let failing = ScriptedLanguageModel(answers: [.failure(Self.sameModelRefusal)])
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: failing)
         let withoutGenerator = try SearchToolsTool(registry: registry, selection: nil)
         let arguments = SearchToolsArguments(task: "how warm is the trip")
 
@@ -405,13 +406,14 @@ struct SearchToolsToolTests {
     @Test("a slow discovery call returns its catalog inline, even mounted by a site that backgrounds")
     func discoveryNeverReturnsAPendingEnvelope() async throws {
         let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
-        let root = SlowSelectionRootSession(
-            delay: .milliseconds(300), response: #"{"ids":["getCities"]}"#
-        )
+        // Slow, not broken: the model answers a genuine selection in the end.
+        // The delay is what gives a background mount its chance to background
+        // the call, which is exactly what `searchTools` must not allow.
+        let slow = ScriptedLanguageModel(answers: [.delayed(#"{"ids":["getCities"]}"#, by: .milliseconds(300))])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: slow, capacityCharacterLimit: .max)
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -439,7 +441,8 @@ struct SearchToolsToolTests {
             items: surface.entries,
             mode: .auto,
             selection: SelectionConfig(
-                model: { _ in FailingSelectionRootSession() }, capacityCharacterLimit: .max
+                model: ScriptedLanguageModel(answers: [.failure(SelectionSearchFailure())]),
+                capacityCharacterLimit: .max
             )
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
@@ -459,62 +462,6 @@ struct SearchToolsToolTests {
     }
 }
 
-// MARK: - Selection roots that are slow, and that fail
-
-/// Thrown by ``FailingSelectionRootSession`` — a real searcher failure, the one
-/// thing that should reach the model from a discovery call.
+/// A real searcher failure, the one thing that should reach the model from a
+/// discovery call.
 struct SelectionSearchFailure: Error, Equatable {}
-
-/// A selection root whose `fork()` takes its time before answering.
-///
-/// Slow, not broken: it returns a genuine selection in the end. The delay is
-/// what gives a background mount its chance to background the call, which is exactly
-/// what `searchTools` must not allow.
-final class SlowSelectionRootSession: AgentSession, Sendable {
-    /// How long `fork()` takes before it answers.
-    private let delay: Duration
-
-    /// The selection JSON the forked session returns.
-    private let response: String
-
-    /// Creates a slow selection root.
-    ///
-    /// - Parameters:
-    ///   - delay: how long `fork()` takes.
-    ///   - response: the selection JSON to answer with.
-    init(delay: Duration, response: String) {
-        self.delay = delay
-        self.response = response
-    }
-
-    func respond(to prompt: String) async throws -> String {
-        throw RootSessionRespondCalledDirectlyError()
-    }
-
-    func fork() async throws -> any AgentSession {
-        try await Task.sleep(for: delay)
-        return ScriptedAgentSession([response])
-    }
-}
-
-/// A session that fails outright: a selection root, or a sample session.
-final class FailingSelectionRootSession: AgentSession, Sendable {
-    /// The error each call throws.
-    private let error: any Error
-
-    /// Creates a session that fails with `error`.
-    ///
-    /// - Parameter error: the error each call throws. Defaults to a
-    ///   ``SelectionSearchFailure``.
-    init(error: any Error = SelectionSearchFailure()) {
-        self.error = error
-    }
-
-    func respond(to prompt: String) async throws -> String {
-        throw error
-    }
-
-    func fork() async throws -> any AgentSession {
-        throw error
-    }
-}

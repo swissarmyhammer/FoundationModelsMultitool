@@ -112,8 +112,7 @@ struct OperationToolLiveTests {
         try await withLiveRouterFixture(name: operationDiscoveryScenarioName) { fixture in
             let notes = try IntegrationNotesTool.make(store: IntegrationNotesStore())
             try await makeFilesAndShellSurface(over: fixture, adding: [notes])
-                .driveGradedGroup(
-                    of: operationToolQueries, recordedBy: fixture, reportedAs: operationDiscoveryScenarioName)
+                .driveGradedGroup(of: operationToolQueries, reportedAs: operationDiscoveryScenarioName)
         }
     }
 

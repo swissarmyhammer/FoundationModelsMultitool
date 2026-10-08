@@ -64,7 +64,7 @@ func runGatedTurnScenario(
 /// Makes the session tools of `registry` with the discovery seams of
 /// `fixture`: the same call that a Router host makes.
 ///
-/// No `sampleSession:` value comes from this harness. The seams carry none,
+/// No `sampleModel:` value comes from this harness. The seams carry none,
 /// thus the product ships without one and this harness must also.
 ///
 /// - Parameters:
@@ -73,12 +73,12 @@ func runGatedTurnScenario(
 ///     selection tier.
 /// - Returns: The tools to register with the session.
 /// - Throws: What
-///   `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`
+///   `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`
 ///   throws.
 func makeSessionTools(of registry: MultiTool.Registry, on fixture: LiveRouterFixture) throws -> [any Tool] {
     let seams = fixture.discoverySeams
     return try registry.makeSessionTools(
-        selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession)
+        selection: seams.selection, embedder: seams.embedder, sampleModel: seams.sampleModel)
 }
 
 /// The condition that the `runCode` snippets of a turn called each verb of

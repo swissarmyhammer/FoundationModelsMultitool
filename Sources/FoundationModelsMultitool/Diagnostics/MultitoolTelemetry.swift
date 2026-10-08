@@ -82,19 +82,11 @@ enum MultitoolTelemetry {
         /// context.
         case toolsDispatch = "FoundationModelsMultitool.tools.dispatch"
 
-        /// One call of a session factory of a host:
-        /// `SearchToolsTool.tracedSession`. The call is synchronous. Thus
-        /// this span writes no enter record: a synchronous call that blocks
-        /// holds its thread, and `sample` shows that thread.
-        case agentSessionMake = "FoundationModelsMultitool.agent_session.make"
-
-        /// One `respond(to:)` call of a selection session:
-        /// `TracedAgentSession.respond(to:)`.
+        /// One `respond(to:)` call of a sample-snippet session:
+        /// `SampleSnippet.respond(to:in:)`. The selection tier makes and
+        /// prompts its own sessions inside FoundationModelsRanker, thus
+        /// ``searchToolsSearch`` is the span of a selection.
         case agentSessionRespond = "FoundationModelsMultitool.agent_session.respond"
-
-        /// One `fork()` call of a selection session:
-        /// `TracedAgentSession.fork()`.
-        case agentSessionFork = "FoundationModelsMultitool.agent_session.fork"
 
         /// One client call to a tool of an MCP server:
         /// `MCPServer.call(name:arguments:)`.
@@ -143,14 +135,11 @@ enum MultitoolTelemetry {
         /// The count of matches that a search gave.
         case matchCount = "FoundationModelsMultitool.search.match_count"
 
-        /// The role of a selection session.
+        /// The role of a session: what the library uses it for.
         case sessionRole = "FoundationModelsMultitool.agent_session.role"
 
         /// The size of a prompt, in characters.
         case promptCharacters = "FoundationModelsMultitool.agent_session.prompt_characters"
-
-        /// The size of the instructions of a session, in characters.
-        case instructionCharacters = "FoundationModelsMultitool.agent_session.instruction_characters"
 
         /// The size of the output of a tool call, in characters.
         case outputCharacters = "FoundationModelsMultitool.tool.output_characters"

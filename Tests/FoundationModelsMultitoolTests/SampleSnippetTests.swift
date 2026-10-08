@@ -1,14 +1,13 @@
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import Testing
-import os
 
 @testable import FoundationModelsMultitool
 
 /// Coverage for `SampleSnippet` — the generation-and-repair loop `searchTools`
 /// runs to come back with code rather than only signatures.
 ///
-/// Every case drives a `ScriptedAgentSession`, so the loop is exercised with
+/// Every case drives a `ScriptedLanguageModel`, so the loop is exercised with
 /// zero GPU: the fixture decides exactly what the generator "writes", and the
 /// assertions are about which failure the gate detected, what it fed back, and
 /// when it gave up.
@@ -32,24 +31,12 @@ struct SampleSnippetTests {
             .entries
     }
 
-    /// Builds a config over `session`, recording every instruction string the
-    /// loop opened a session with.
+    /// Builds a config over `model`.
     ///
-    /// - Parameters:
-    ///   - session: the scripted session every call is routed to.
-    ///   - instructions: receives the instructions the loop passed.
+    /// - Parameter model: the scripted model every turn goes to.
     /// - Returns: the config to hand `SampleSnippet.generate`.
-    static func config(
-        over session: any AgentSession,
-        recordingInstructionsTo instructions: OSAllocatedUnfairLock<[String]>
-    ) -> SampleSnippetConfig {
-        SampleSnippetConfig(
-            makeSession: { opened in
-                instructions.withLock { $0.append(opened) }
-                return session
-            },
-            interpreter: JSCInterpreter()
-        )
+    static func config(over model: ScriptedLanguageModel) -> SampleSnippetConfig {
+        SampleSnippetConfig(model: model, interpreter: JSCInterpreter())
     }
 
     /// `reply` once for each attempt the loop makes by default, so a reply the
@@ -62,47 +49,41 @@ struct SampleSnippetTests {
         Array(repeating: reply, count: SampleSnippetConfig.defaultAttemptLimit)
     }
 
-    /// Runs the loop over a session scripted with `replies`.
+    /// Runs the loop over a model scripted with `replies`.
     ///
     /// - Parameter replies: one canned generator reply per expected turn.
-    /// - Returns: the accepted snippet (or `nil`) and the prompts the session
+    /// - Returns: the accepted snippet (or `nil`) and the calls the model
     ///   received, in turn order.
-    static func generate(replies: [String]) async throws -> (sample: String?, prompts: [String]) {
-        let session = ScriptedAgentSession(replies)
-        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
+    static func generate(replies: [String]) async throws -> (sample: String?, calls: [ScriptedModelCall]) {
+        let model = ScriptedLanguageModel(replies)
         let sample = try await SampleSnippet.generate(
             forTask: "the current temperature where the trip goes",
             over: try entries(),
-            using: config(over: session, recordingInstructionsTo: instructions)
+            using: config(over: model)
         )
-        return (sample, session.receivedPrompts)
+        return (sample, model.calls)
     }
 
     // MARK: - The accepting path
 
     @Test("a snippet that clears every gate is returned as written, on the first turn")
     func validatedSampleIsReturnedOnTheFirstTurn() async throws {
-        let (sample, prompts) = try await Self.generate(replies: [Self.goodSnippet])
+        let (sample, calls) = try await Self.generate(replies: [Self.goodSnippet])
 
-        #expect(prompts.count == 1)
+        #expect(calls.count == 1)
         #expect(sample?.contains("await tools.getCities({})") == true)
         #expect(sample?.contains("```") == false)
-        #expect(prompts[0].contains("the current temperature where the trip goes"))
+        #expect(calls[0].prompt?.contains("the current temperature where the trip goes") == true)
     }
 
     @Test("the generation session is opened with the matched signature blocks and the one-fenced-block envelope")
     func instructionsCarryTheMatchedBlocksAndTheEnvelope() async throws {
         let entries = try Self.entries()
-        let session = ScriptedAgentSession([Self.goodSnippet])
-        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
+        let model = ScriptedLanguageModel([Self.goodSnippet])
 
-        _ = try await SampleSnippet.generate(
-            forTask: "a temperature",
-            over: entries,
-            using: Self.config(over: session, recordingInstructionsTo: instructions)
-        )
+        _ = try await SampleSnippet.generate(forTask: "a temperature", over: entries, using: Self.config(over: model))
 
-        let opened = try #require(instructions.withLock { $0.first })
+        let opened = try #require(model.calls.first?.instructions)
         for entry in entries {
             #expect(opened.contains(entry.block))
         }
@@ -125,41 +106,47 @@ struct SampleSnippetTests {
 
     // MARK: - The four failure kinds, each fed back into the same session
 
-    @Test("a reply with no fenced code block feeds back a fence demand and retries")
+    @Test("a reply with no fenced code block feeds back a fence demand and retries in the same session")
     func missingFenceFeedsBackAndRetries() async throws {
-        let (sample, prompts) = try await Self.generate(
+        let (sample, calls) = try await Self.generate(
             replies: ["Sure! I will call getCities and then getTemperature.", Self.goodSnippet]
         )
 
-        #expect(prompts.count == 2)
-        #expect(prompts[1].contains("no fenced code block"))
+        #expect(calls.count == 2)
+        #expect(calls[1].prompt?.contains("no fenced code block") == true)
+        // The repair turn goes to the same session: its transcript holds the
+        // opening prompt before the feedback.
+        #expect(calls[1].prompts.count == 2)
+        #expect(calls[1].prompts.first == calls[0].prompt)
         #expect(sample?.contains("await tools.getTemperature") == true)
     }
 
     @Test("a snippet that does not parse feeds back the engine's own message and retries")
     func syntaxErrorFeedsBackTheEngineMessage() async throws {
-        let (sample, prompts) = try await Self.generate(
+        let (sample, calls) = try await Self.generate(
             replies: ["```js\nconst x = await tools.getCities({});\nreturn x +;\n```", Self.goodSnippet]
         )
 
-        #expect(prompts.count == 2)
-        #expect(prompts[1].contains("does not parse"))
+        #expect(calls.count == 2)
+        let feedback = try #require(calls[1].prompt)
+        #expect(feedback.contains("does not parse"))
         // The engine's message, not a paraphrase of it.
-        #expect(prompts[1].contains("Unexpected token"))
+        #expect(feedback.contains("Unexpected token"))
         #expect(sample?.contains("await tools.getTemperature") == true)
     }
 
     @Test("a snippet naming an invented path feeds back the paths that do exist and retries")
     func unknownPathFeedsBackTheRealPaths() async throws {
-        let (sample, prompts) = try await Self.generate(
+        let (sample, calls) = try await Self.generate(
             replies: ["```js\nreturn await tools.getItinerary({});\n```", Self.goodSnippet]
         )
 
-        #expect(prompts.count == 2)
-        #expect(prompts[1].contains("tools.getItinerary"))
-        #expect(prompts[1].contains(UnknownToolHint.missingPathPhrase))
-        #expect(prompts[1].contains("tools.getCities"))
-        #expect(prompts[1].contains("tools.getTemperature"))
+        #expect(calls.count == 2)
+        let feedback = try #require(calls[1].prompt)
+        #expect(feedback.contains("tools.getItinerary"))
+        #expect(feedback.contains(UnknownToolHint.missingPathPhrase))
+        #expect(feedback.contains("tools.getCities"))
+        #expect(feedback.contains("tools.getTemperature"))
         #expect(sample != nil)
     }
 
@@ -170,32 +157,29 @@ struct SampleSnippetTests {
         let matched = try #require(try Self.entries().first { $0.path == "getCities" })
         // One rejected reply for each attempt: an exhausted script throws, and
         // a session error now propagates instead of yielding `nil`.
-        let session = ScriptedAgentSession(Self.everyAttempt(
+        let model = ScriptedLanguageModel(Self.everyAttempt(
             "```js\nreturn await tools.getTemperature({ city: \"PDX\" });\n```"))
-        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
 
         let sample = try await SampleSnippet.generate(
-            forTask: "a temperature",
-            over: [matched],
-            using: Self.config(over: session, recordingInstructionsTo: instructions)
-        )
+            forTask: "a temperature", over: [matched], using: Self.config(over: model))
 
         #expect(sample == nil)
-        let feedback = try #require(session.receivedPrompts.last)
+        let feedback = try #require(model.calls.last?.prompt)
         #expect(feedback.contains("tools.getTemperature"))
         #expect(feedback.contains("tools.getCities"))
     }
 
     @Test("a snippet that throws against the typed mocks feeds back the thrown message and retries")
     func dryRunFailureFeedsBackTheThrownMessage() async throws {
-        let (sample, prompts) = try await Self.generate(
+        let (sample, calls) = try await Self.generate(
             replies: ["```js\nconst trip = await tools.getCities({});\nreturn trip.itinerary;\n```", Self.goodSnippet]
         )
 
-        #expect(prompts.count == 2)
-        #expect(prompts[1].contains("declared signatures"))
-        #expect(prompts[1].contains("itinerary"))
-        #expect(prompts[1].contains("{ cities: string[] }"))
+        #expect(calls.count == 2)
+        let feedback = try #require(calls[1].prompt)
+        #expect(feedback.contains("declared signatures"))
+        #expect(feedback.contains("itinerary"))
+        #expect(feedback.contains("{ cities: string[] }"))
         #expect(sample?.contains("await tools.getTemperature") == true)
     }
 
@@ -209,8 +193,8 @@ struct SampleSnippetTests {
         ]
         var leads: Set<String> = []
         for reply in failing {
-            let (_, prompts) = try await Self.generate(replies: Self.everyAttempt(reply))
-            let feedback = try #require(prompts.last)
+            let (_, calls) = try await Self.generate(replies: Self.everyAttempt(reply))
+            let feedback = try #require(calls.last?.prompt)
             leads.insert(String(feedback.prefix(while: { $0 != "." })))
         }
         #expect(leads.count == 4)
@@ -221,16 +205,16 @@ struct SampleSnippetTests {
     @Test("an always-failing generator gives up at the attempt limit instead of looping")
     func alwaysFailingGeneratorGivesUpAtTheAttemptLimit() async throws {
         let noFence = "I cannot write that."
-        let (sample, prompts) = try await Self.generate(replies: [noFence, noFence, noFence, noFence, noFence])
+        let (sample, calls) = try await Self.generate(replies: [noFence, noFence, noFence, noFence, noFence])
 
         #expect(sample == nil)
-        #expect(prompts.count == 3)
+        #expect(calls.count == 3)
     }
 
     @Test("a generator that throws propagates its error, so the caller can show it")
     func throwingGeneratorPropagatesItsError() async throws {
-        // An empty script throws on the very first `respond(to:)`.
-        await #expect(throws: ScriptedAgentSessionError(scriptedResponseCount: 0)) {
+        // An empty script throws on the very first turn.
+        await #expect(throws: ScriptedLanguageModelError.unscripted(answerCount: 0)) {
             try await Self.generate(replies: [])
         }
     }
@@ -238,31 +222,21 @@ struct SampleSnippetTests {
     @Test("a generator that Router refuses on the model of the calling session propagates that refusal")
     func refusedGeneratorPropagatesTheRefusal() async throws {
         let refusal = GenerationQueueError.waitInsideOpenSubmission(model: "stub/standard")
-        let session = FailingSelectionRootSession(error: refusal)
-        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
+        let model = ScriptedLanguageModel(answers: [.failure(refusal)])
 
         await #expect(throws: refusal) {
             try await SampleSnippet.generate(
-                forTask: "a temperature",
-                over: try Self.entries(),
-                using: Self.config(over: session, recordingInstructionsTo: instructions)
-            )
+                forTask: "a temperature", over: try Self.entries(), using: Self.config(over: model))
         }
     }
 
-    @Test("no matched entries means no sample, and no session is opened at all")
-    func noMatchedEntriesOpensNoSession() async throws {
-        let session = ScriptedAgentSession([Self.goodSnippet])
-        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
+    @Test("no matched entries means no sample, and the model gets no call at all")
+    func noMatchedEntriesPromptsNoModel() async throws {
+        let model = ScriptedLanguageModel([Self.goodSnippet])
 
-        let sample = try await SampleSnippet.generate(
-            forTask: "anything",
-            over: [],
-            using: Self.config(over: session, recordingInstructionsTo: instructions)
-        )
+        let sample = try await SampleSnippet.generate(forTask: "anything", over: [], using: Self.config(over: model))
 
         #expect(sample == nil)
-        #expect(instructions.withLock { $0.isEmpty })
-        #expect(session.callCount == 0)
+        #expect(model.calls.isEmpty)
     }
 }

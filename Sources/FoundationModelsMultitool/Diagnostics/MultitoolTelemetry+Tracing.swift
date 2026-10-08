@@ -74,30 +74,6 @@ extension MultitoolTelemetry {
         }
     }
 
-    /// Runs one synchronous call in a span.
-    ///
-    /// `TracedCall.run` is asynchronous, thus a synchronous call cannot use
-    /// it, and this span writes no "enter" record. A synchronous call that
-    /// blocks holds its thread, thus `sample` and `spindump` show it.
-    ///
-    /// - Parameters:
-    ///   - spanName: The name of the span.
-    ///   - attributes: The attributes of the span. Ids, names, counts and
-    ///     sizes only. A `nil` value sets no attribute.
-    ///   - body: The call.
-    /// - Returns: The value of `body`.
-    /// - Throws: The error of `body`. The span records it first.
-    static func tracedSynchronously<Output>(
-        _ spanName: SpanName,
-        attributes: [AttributeKey: (any SpanAttributeConvertible)?] = [:],
-        _ body: () throws -> Output
-    ) rethrows -> Output {
-        try InstrumentationSystem.tracer.withSpan(spanName.rawValue, ofKind: .internal) { span in
-            span.updateAttributes { $0.set(attributes) }
-            return try body()
-        }
-    }
-
     /// The span attributes of the journal op of an inner `tools.*` call.
     ///
     /// - Parameter journalOp: The `"verb noun"` op of the call (see

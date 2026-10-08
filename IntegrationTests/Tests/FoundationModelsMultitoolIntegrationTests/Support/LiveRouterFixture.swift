@@ -336,6 +336,11 @@ import TestConcurrency
 /// slower, which is all it can see. Cite `mlx-swift-lm`'s `f85fc50`, or
 /// measure it again there.
 ///
+/// `SelectionForkPerCallTests` is gone. FoundationModelsRanker `1c4cf12`
+/// removed `fork()` and the cached root: the selection tier makes a new
+/// `LanguageModelSession` for each prompt, on the pooled model of
+/// `profile.flash`, and the Router records no such session.
+///
 /// **Measured again on Qwen3.8-27B-mxfp4, 2026-10-01 (card `^3vtvrzg`).** The
 /// fork's executor now carries a prompt cache for each session, and it logs
 /// each plan under `com.apple.FoundationModels-MLX:ExecutorPromptCache`. The
@@ -433,10 +438,8 @@ let multitoolTinyProfile = ProfileDefinition(
 /// back is making a capability claim, and a small model would fail it for
 /// reasons that say nothing about this package —
 /// `SearchThenCallTests` and `InBandCollectionCanaryTests` are of that kind,
-/// and `^wnfzwxg` turned on exactly which model produced which answer.
-/// `SelectionForkPerCallTests` is excluded for a third reason: cache behaviour
-/// is architecture-specific, so a different model there measures a different
-/// thing. None of them may take this constant.
+/// and `^wnfzwxg` turned on exactly which model produced which answer. None of
+/// them may take this constant.
 ///
 /// Three suites pass the test today. `NestedGenerationProbeTests` asks whether
 /// a nested generation on the held model is refused at once — a question about
@@ -603,11 +606,11 @@ let liveProfileTurnstile = ConcurrencyGate()
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
 /// everything an integration scenario needs to vend a `RoutedSession` over
-/// `profile.standard` (the wiring a host makes), to back
-/// `searchToolsTool`'s own selection tier with `profile.flash`, and then to
-/// read back the selection tier's own recorded trace
-/// (`NativeTranscript.selections(in:slot:)`). Both sessions are Router-vended,
-/// so both are recorded here.
+/// `profile.standard` (the wiring a host makes), and to back
+/// `searchToolsTool`'s own selection tier with the pooled model of
+/// `profile.flash`. The session on `profile.standard` is Router-vended, so it
+/// is recorded here. The selection sessions are FoundationModels sessions on
+/// the pooled model, so the recording does not hold them.
 struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording
     /// tree `transcriptEvents()` reads back.

@@ -216,9 +216,7 @@ func runNativeIntegrationScenario(
         let searchedToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
-        // diagnostics (see also `SelectionForkPerCallTests`, which reads the
-        // selection tier's own recorded fork trace the same way), they just no
-        // longer gate.
+        // diagnostics, they just no longer gate.
         //
         // All three path signals are printed, not just the graded one: a run
         // where `typed` names paths `invoked` does not is precisely the shape
@@ -529,8 +527,8 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // the chance to shrink its context is not read as a clean turn.
             turn.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
-            .elicitationRequested, .runSettled, .generationCall, .submissionQueued, .submissionStarted,
-            .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
+            .elicitationRequested, .runMessage, .runSettled, .generationCall, .submissionQueued,
+            .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -540,7 +538,9 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // — the file-change set of a mutating `tools.files` call — which
             // `FileChangeAttachmentTests` grades with no model at all.
             // `.elicitationRequested` announces a question a run raised, and no
-            // tool of these scenarios raises one. `.runSettled` announces a
+            // tool of these scenarios raises one. `.runMessage` carries a
+            // message that an open background run sent to the session, and no
+            // tool of these scenarios sends one. `.runSettled` announces a
             // background run's terminal event, which the journal readings below
             // already grade. `.generationCall` reports the usage of one
             // generation call; the `answered` event gives the sum of the
@@ -635,7 +635,7 @@ struct ScenarioSurface {
 }
 
 /// Builds the model-facing tool surface every scenario drives, by asking the
-/// registry for it — `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
+/// registry for it — `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`,
 /// with the seams of `LiveRouterFixture.discoverySeams`: the same call a
 /// Router host makes, with the selection tier on the resolved `.flash` slot
 /// (the "librarian on flash" split).
@@ -646,7 +646,7 @@ struct ScenarioSurface {
 /// would let the suite measure an order the product does not recommend.
 ///
 /// **No sample-snippet generator, because the product ships without one.**
-/// `makeSessionTools`'s `sampleSession:` defaults to `nil`, and
+/// `makeSessionTools`'s `sampleModel:` defaults to `nil`, and
 /// `LiveRouterFixture.discoverySeams` carries none, so an arm that wires one
 /// measures a configuration no host runs.
 ///
@@ -676,7 +676,7 @@ struct ScenarioSurface {
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
-///   `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`
+///   `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`
 ///   throws.
 func makeScenarioSurface(
     over tools: [any Tool],
@@ -689,7 +689,7 @@ func makeScenarioSurface(
     }
     return ScenarioSurface(
         // The selection and embedder seams, exactly as a Router host
-        // mounts them. No `sampleSession:` — the seams carry none, so the
+        // mounts them. No `sampleModel:` — the seams carry none, so the
         // product ships without one and this harness must too.
         tools: try makeSessionTools(of: registry, on: fixture),
         // Unioned with the sibling paths the sandbox binds itself, so a
@@ -1057,7 +1057,7 @@ extension RoutedLLM {
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
-/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends, so no discovery
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)` vends, so no discovery
 /// call, no selection tier and no `MetadataSearcher` is in the picture — every
 /// one of them generates under a grammar on a slot of its own, and none of
 /// them is the question.

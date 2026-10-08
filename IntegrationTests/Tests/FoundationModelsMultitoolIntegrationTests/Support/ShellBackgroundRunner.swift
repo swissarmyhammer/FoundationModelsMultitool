@@ -139,7 +139,7 @@ private let terminalEventsPerRun = 1
 /// profile, on the shipped configuration.
 ///
 /// The surface is `MultiTool.Builder().withShell(...)` vended through
-/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`,
 /// with the seams of `LiveRouterFixture.discoverySeams`, and mounted on a
 /// `RoutedSession` the resolved `.standard` slot vends — the same wiring a
 /// Router host makes, with `searchTools` backed by the resolved `.flash`

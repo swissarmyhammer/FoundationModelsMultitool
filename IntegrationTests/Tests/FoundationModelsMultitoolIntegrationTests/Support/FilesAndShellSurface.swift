@@ -50,18 +50,13 @@ extension FilesAndShellSurface {
     ///
     /// - Parameters:
     ///   - queries: the group to drive, in the order it is listed.
-    ///   - fixture: the resolved fixture whose recording the raw ids are read
-    ///     off.
     ///   - scenario: the label the printed lines carry.
-    /// - Throws: whatever the tool call or the transcript read throws.
-    func driveGradedGroup(
-        of queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String
-    ) async throws {
+    /// - Throws: whatever the tool call throws.
+    func driveGradedGroup(of queries: [GradedDiscoveryQuery], reportedAs scenario: String) async throws {
         reportCatalogSize(of: registry, reportedAs: scenario)
         let check = DiscoveryAnswerCheck(surfaceOf: registry)
         check.expectEveryDeclaredPathIsInTheCatalog(of: queries)
-        let group = try await gradeDiscoveryGroup(
-            of: queries, through: searchTools, recordedBy: fixture, reportedAs: scenario)
+        let group = try await gradeDiscoveryGroup(of: queries, through: searchTools, reportedAs: scenario)
         check.expectNoFault(in: group, answering: queries)
     }
 }

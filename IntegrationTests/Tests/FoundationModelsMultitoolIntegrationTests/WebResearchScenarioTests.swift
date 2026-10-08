@@ -33,7 +33,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// capability: `web.md` § "Testing", Level 3.
 ///
 /// **The mount.** `MultiTool.Builder().withWeb(configuration: .keyless)`,
-/// vended through `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` and
+/// vended through `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)` and
 /// mounted on the `RoutedSession` that the resolved `.standard` slot vends.
 /// This is the wiring that a Router host makes. `.keyless` reads no
 /// environment, thus this scenario needs no API key, and it always runs, as

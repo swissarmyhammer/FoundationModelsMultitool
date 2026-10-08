@@ -19,8 +19,8 @@ import os
 /// lowers the budget: a test that lowered it would measure the test.
 ///
 /// **The model is scripted, and the slicing is not.** The selection tier is
-/// driven through a `.factory` session source that answers each slice from
-/// the ids of that slice, so the slice count, the slice contents and the
+/// driven through a scripted model that answers each slice from the ids of
+/// that slice, so the slice count, the slice contents and the
 /// merge order are the tier's own work over the real prefix, while the
 /// answer is deterministic and costs no GPU. The live half of this ground —
 /// a real model over the same size of surface — is
@@ -196,11 +196,12 @@ struct OverBudgetSelectionOrderTests {
         let searcher = MetadataSearcher(
             items: entries,
             mode: .auto,
-            selection: SelectionConfig(model: { instructions in
-                let ids = candidateIDs(in: instructions)
-                recorder.record(slice: ids)
-                return ScriptedAgentSession([selectionReply(ids: answer(ids))])
-            })
+            selection: SelectionConfig(
+                model: ScriptedLanguageModel(answering: { call in
+                    let ids = candidateIDs(in: call.instructions ?? "")
+                    recorder.record(slice: ids)
+                    return .text(selectionReply(ids: answer(ids)))
+                }))
         )
         let tool = SearchToolsTool(searcher: searcher, limit: limit ?? entries.count)
         return try await tool.call(arguments: SearchToolsArguments(task: searchTask))
@@ -246,11 +247,11 @@ struct OverBudgetSelectionOrderTests {
 /// Records the ids of each slice an over-budget selection prompted, in
 /// prompt order.
 ///
-/// The tier makes one session per slice and seeds it with that slice's
-/// prefix, so the factory closure sees each slice as it is prompted. The
-/// closure runs inside the tier's actor and the test reads the record after
-/// the call returns, so the state stands behind a lock — the pattern
-/// `ScriptedAgentSession` uses for the same reason.
+/// The tier makes one session per slice and gives it that slice's prefix as
+/// its instructions, so the scripted model sees each slice as it is prompted.
+/// The model answers inside the executor of FoundationModels and the test
+/// reads the record after the call returns, so the state stands behind a
+/// lock — the pattern `ScriptedLanguageModelScript` uses for the same reason.
 final class SliceRecorder: Sendable {
     /// The ids of each prompted slice, in prompt order.
     private let slicesBox = OSAllocatedUnfairLock<[[String]]>(initialState: [])

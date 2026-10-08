@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Testing
 
@@ -30,7 +31,7 @@ private let meanBestRankPlacesAfterThePoint = 2
 /// Which text each half of the retrieval tier reads.
 ///
 /// The suite presents each setting to the registry through
-/// ``RetrievalTextEntry`` and ``SubstitutingTextEmbedding``, and never
+/// ``RetrievalTextEntry`` and ``SubstitutingEmbedding``, and never
 /// through the conformance of `APISurface.Entry`. Thus every setting reads
 /// the same way whatever the package ships. Card `^kvefc5z` names these
 /// three and no others.
@@ -106,10 +107,10 @@ private struct RetrievalTextEntry: SearchableMetadata {
 /// ships this setting through `renderEmbeddedText(from:)`, not through this
 /// type. A text with no entry in ``substitutions`` — every query is one —
 /// travels unchanged.
-private struct SubstitutingTextEmbedding: TextEmbedding {
+private struct SubstitutingEmbedding: PooledEmbedding {
 
     /// The embedder every call travels to.
-    let base: any TextEmbedding
+    let base: any PooledEmbedding
 
     /// What to embed instead, keyed by the text the registry hands over.
     let substitutions: [String: String]
@@ -119,8 +120,8 @@ private struct SubstitutingTextEmbedding: TextEmbedding {
     /// - Parameter texts: the texts the registry asks for.
     /// - Returns: one vector for each text, in the same order.
     /// - Throws: whatever ``base`` throws.
-    func embed(_ texts: [String]) async throws -> [[Float]] {
-        try await base.embed(texts.map { substitutions[$0] ?? $0 })
+    func embed(texts: [String]) async throws -> [[Float]] {
+        try await base.embed(texts: texts.map { substitutions[$0] ?? $0 })
     }
 }
 
@@ -343,7 +344,7 @@ struct RetrievalTextSurfaceDiscoveryTests {
 private func makeRetrievalSearcher(
     for setting: RetrievalTextSetting,
     over entries: [APISurface.Entry],
-    embedder: any TextEmbedding
+    embedder: any PooledEmbedding
 ) -> MetadataSearcher<RetrievalTextEntry> {
     let items = entries.map {
         RetrievalTextEntry(entry: $0, keywordText: setting.keywordText(of: $0))
@@ -351,10 +352,10 @@ private func makeRetrievalSearcher(
     let swapped = entries
         .filter { setting.keywordText(of: $0) != setting.embeddingText(of: $0) }
         .map { (setting.keywordText(of: $0), setting.embeddingText(of: $0)) }
-    let indexEmbedder: any TextEmbedding =
+    let indexEmbedder: any PooledEmbedding =
         swapped.isEmpty
         ? embedder
-        : SubstitutingTextEmbedding(
+        : SubstitutingEmbedding(
             base: embedder, substitutions: Dictionary(uniqueKeysWithValues: swapped))
     return MetadataSearcher(
         index: MetadataIndex(items: items), mode: .retrieval, embedder: indexEmbedder, selection: nil)

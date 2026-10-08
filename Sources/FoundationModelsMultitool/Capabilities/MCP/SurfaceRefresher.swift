@@ -109,7 +109,7 @@ public final class SurfaceRefresher: Sendable, Stoppable {
     ///     `MultiTool.Builder.registrySource` of the build that made the
     ///     mounted registry.
     ///   - staging: Where each rebuilt registry is staged. The
-    ///     `makeSessionToolsAndStaging(selection:embedder:sampleSession:)`
+    ///     `makeSessionToolsAndStaging(selection:embedder:sampleModel:)`
     ///     call that mounted the session vends it.
     ///   - servers: The servers to watch, which the host connected before the
     ///     build.

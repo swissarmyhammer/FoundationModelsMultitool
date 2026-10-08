@@ -128,11 +128,11 @@ struct MCPCapabilityTests {
     /// - Parameter surface: The rendered surface to search.
     /// - Returns: The discovery tool.
     private static func makeSearchTools(over surface: APISurface) -> SearchToolsTool {
-        let selection = RootSessionRespondCalledDirectlySession(forkResponses: [selectionReply])
+        let selection = ScriptedLanguageModel([selectionReply])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: selection, capacityCharacterLimit: .max)
         )
         return SearchToolsTool(searcher: searcher, limit: surface.entries.count)
     }

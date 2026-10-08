@@ -297,12 +297,11 @@ struct FilesCapabilityTests {
         let surface = try MultiTool.Builder()
             .withFiles(root: makeRoot())
             .build()
-        let selection = RootSessionRespondCalledDirectlySession(
-            forkResponses: [Self.selectionReply])
+        let selection = ScriptedLanguageModel([Self.selectionReply])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: selection, capacityCharacterLimit: .max)
         )
         let searchTools = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 

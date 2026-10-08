@@ -247,24 +247,41 @@ its end inside the call, and no mail comes.
 
 ## Discovery and the librarian model
 
-`registry.makeSessionTools(selection:embedder:sampleSession:)` mounts
+`registry.makeSessionTools(selection:embedder:sampleModel:)` mounts
 `searchTools` before `runCode`. `searchTools` asks a second model, the
 librarian, which tool-functions fit the task. It can also ask a model to
 write a sample snippet.
 
+The seams are plain FoundationModels and FoundationModelsExtras types:
+
+- `selection` makes a `SelectionConfig` for the catalog ids. Its `model` is
+  the librarian, an `any LanguageModel`.
+- `embedder` is an `any PooledEmbedding`, for example a `PooledEmbedder`.
+- `sampleModel` is an `any LanguageModel` that writes the sample snippet.
+
+```swift
+let librarian = PooledModel(ref: profile.flash.chosen)
+let tools = try registry.makeSessionTools(
+    selection: { _ in SelectionConfig(model: librarian) },
+    embedder: PooledEmbedder(ref: profile.embedding.chosen))
+```
+
+The library makes a new `LanguageModelSession` on each model for each
+prompt. A sample session gets no tools.
+
 The librarian model must be different from the model of the calling session.
 The same rule applies to the model of the sample snippet. `searchTools` is
 synchronous, so its sessions run inside the open submission of the calling
-session. Router runs the work of each model in order, and it refuses at once
-a wait on the model of that open submission. With Router, give the `flash`
-slot a model that is different from the `standard` slot, and give
-`profile.flash` to the librarian.
+session. The model pool runs the work of each model in order, and it refuses
+at once a wait on the model of that open submission. With Router, give the
+`flash` slot a model that is different from the `standard` slot, and give a
+pooled model of `profile.flash` to the librarian.
 
 `searchTools` does not hide a failed session. An error of the librarian is the
 error of the `searchTools` call. An error of the sample session is a note
 beside the signatures. When the librarian and the calling session use the
-same model, the `searchTools` call fails with the refusal of Router. Use a
-different flash model.
+same model, the `searchTools` call fails with the refusal of the generation
+queue. Use a different flash model.
 
 ## Operation tools
 

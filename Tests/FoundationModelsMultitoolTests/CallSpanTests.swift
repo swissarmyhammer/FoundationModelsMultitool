@@ -1,3 +1,4 @@
+import FoundationModels
 import FoundationModelsMetadataRegistry
 import InMemoryTracing
 import TelemetryTestSupport
@@ -31,7 +32,8 @@ struct CallSpanTests {
     /// it.
     private static let argumentMarker = "qzvSpanArgumentMarker"
 
-    /// The prompt of a selection session. No span and no record may carry it.
+    /// The prompt of a sample-snippet session. No span and no record may
+    /// carry it.
     private static let promptMarker = "qzvSpanPromptMarker"
 
     /// The task of a `searchTools` call. No span and no record may carry it.
@@ -230,16 +232,16 @@ struct CallSpanTests {
         }
     }
 
-    // MARK: - The selection session
+    // MARK: - The sample-snippet session
 
-    @Test("a traced session call gives one respond span and one enter record, and a thrown error sets the error status")
+    @Test("a sample session turn gives one respond span and one enter record, and a thrown error sets the error status")
     func agentSessionRespondSpanRecordsTheError() async throws {
-        // No scripted response, thus the first call throws.
-        let session = TracedAgentSession(wrapped: ScriptedAgentSession([]), role: TracedAgentSession.selectionRole)
+        // No scripted answer, thus the first turn throws.
+        let session = LanguageModelSession(model: ScriptedLanguageModel([]))
         try await TelemetryCapture.run(forbidding: [Self.promptMarker]) { context in
-            await #expect(throws: ScriptedAgentSessionError.self) {
+            await #expect(throws: ScriptedLanguageModelError.self) {
                 try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
-                    try await session.respond(to: Self.promptMarker)
+                    try await SampleSnippet.respond(to: Self.promptMarker, in: session)
                 }
             }
 
@@ -247,82 +249,34 @@ struct CallSpanTests {
             #expect(Self.spans(.agentSessionRespond, in: context).count == 1)
             #expect(Self.enterLabels(.agentSessionRespond, in: context) == Self.oneBoundEnterLabel)
             #expect(respond.status?.code == .error)
-            #expect(Self.attribute(.sessionRole, of: respond) == .string(TracedAgentSession.selectionRole))
+            #expect(Self.attribute(.sessionRole, of: respond) == .string(SampleSnippet.sessionRole))
             #expect(Self.attribute(.promptCharacters, of: respond) == .int64(Int64(Self.promptMarker.count)))
             #expect(Self.attribute(.outcome, of: respond) == Self.outcomeAttribute(.threw))
         }
     }
 
-    // MARK: - The selection factory
+    /// A sample reply with no fenced code block. The gate rejects it, so each
+    /// attempt of a generation sends one more turn.
+    private static let unfencedSampleReply = "I will not write a snippet."
 
-    /// The instructions that the cases give the selection factory. No span
-    /// and no record may carry them.
-    private static let factoryInstructions = "qzvSpanFactoryInstructions"
-
-    /// The name of the span that the fixture selection factory opens after it
-    /// suspends. The parent of this span tells if the factory ran inside the
-    /// make span.
-    private static let factoryProbeSpanName = "CallSpanTests.selectionFactoryProbe"
-
-    /// The error that the throwing fixture selection factory throws.
-    private struct SelectionFactoryFailure: Error {}
-
-    /// The session factory that `SearchToolsTool.makeSelection` gives the
-    /// selection tier when the host makes each session with `makeSession`.
-    ///
-    /// - Parameter makeSession: the session factory of the host.
-    /// - Returns: the traced session factory of the selection tier.
-    /// - Throws: ``NotASessionFactory`` when the traced source is not a
-    ///   factory.
-    private static func tracedSelectionFactory(
-        _ makeSession: @escaping @Sendable (String) async throws -> any AgentSession
-    ) throws -> @Sendable (String) async throws -> any AgentSession {
-        let selection = try SearchToolsTool.makeSelection({ _ in SelectionConfig(model: makeSession) }, ids: [])
-        return try #require(selection).sessionSource.sessionFactory()
-    }
-
-    @Test("an async selection factory is awaited inside the make span, which gives one enter record")
-    func asyncSelectionFactoryIsAwaitedInsideTheMakeSpan() async throws {
-        let makeSession = try Self.tracedSelectionFactory { _ in
-            // Suspend first, so that the probe span starts after an await.
-            await Task.yield()
-            return InstrumentationSystem.tracer.withSpan(Self.factoryProbeSpanName) { _ in ScriptedAgentSession([]) }
-        }
-        try await TelemetryCapture.run(forbidding: [Self.factoryInstructions]) { context in
-            let session = try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
-                try await makeSession(Self.factoryInstructions)
+    @Test("each turn of the sample session of a searchTools call gives one respond span inside the sample span")
+    func sampleTurnsAreRespondSpansInsideTheSampleSpan() async throws {
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let attempts = SampleSnippetConfig.defaultAttemptLimit
+        let model = ScriptedLanguageModel(Array(repeating: Self.unfencedSampleReply, count: attempts))
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil, sampleModel: model)
+        try await TelemetryCapture.run(forbidding: [Self.taskMarker]) { context in
+            _ = try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
+                try await searchTools.call(arguments: SearchToolsArguments(task: "temperature \(Self.taskMarker)"))
             }
 
-            let make = try #require(Self.spans(.agentSessionMake, in: context).first)
-            let probe = try #require(context.spans.first { $0.operationName == Self.factoryProbeSpanName })
-            #expect(Self.spans(.agentSessionMake, in: context).count == 1)
-            #expect(Self.enterLabels(.agentSessionMake, in: context) == Self.oneBoundEnterLabel)
-            #expect(probe.parentSpanID == make.spanID)
-            #expect(session is TracedAgentSession)
-            #expect(Self.attribute(.sessionRole, of: make) == .string(TracedAgentSession.selectionRole))
-            #expect(
-                Self.attribute(.instructionCharacters, of: make) == .int64(Int64(Self.factoryInstructions.count)))
-            #expect(Self.attribute(.outcome, of: make) == Self.outcomeAttribute(.succeeded))
-        }
-    }
-
-    @Test("a throwing selection factory surfaces its error, and the make span records it")
-    func throwingSelectionFactorySurfacesItsError() async throws {
-        let makeSession = try Self.tracedSelectionFactory { _ in
-            await Task.yield()
-            throw SelectionFactoryFailure()
-        }
-        try await TelemetryCapture.run(forbidding: [Self.factoryInstructions]) { context in
-            await #expect(throws: SelectionFactoryFailure.self) {
-                try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
-                    try await makeSession(Self.factoryInstructions)
-                }
-            }
-
-            let make = try #require(Self.spans(.agentSessionMake, in: context).first)
-            #expect(Self.spans(.agentSessionMake, in: context).count == 1)
-            #expect(make.status?.code == .error)
-            #expect(Self.attribute(.outcome, of: make) == Self.outcomeAttribute(.threw))
+            let sample = try #require(Self.spans(.searchToolsSample, in: context).first)
+            let turns = Self.spans(.agentSessionRespond, in: context)
+            #expect(model.calls.count == attempts)
+            #expect(turns.count == attempts)
+            #expect(turns.allSatisfy { $0.parentSpanID == sample.spanID })
+            #expect(turns.allSatisfy { Self.attribute(.outcome, of: $0) == Self.outcomeAttribute(.succeeded) })
+            #expect(Self.enterRecords(.agentSessionRespond, in: context).count == attempts)
         }
     }
 }

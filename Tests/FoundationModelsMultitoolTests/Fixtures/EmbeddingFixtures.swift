@@ -1,7 +1,7 @@
-import FoundationModelsMetadataRegistry
+import FoundationModelsExtras
 import os
 
-/// A `TextEmbedding` double that records every batch it is asked to embed
+/// A `PooledEmbedding` double that records every batch it is asked to embed
 /// and answers one constant vector per text.
 ///
 /// The batches are the reading: the registry's first-search catch-up embeds
@@ -10,12 +10,11 @@ import os
 /// embedded, in what grouping, and how many times — which is what a test of
 /// the embed catch-up asserts on.
 ///
-/// `final class ... Sendable` for the same reason as `ScriptedAgentSession`:
-/// `embed(_:)` records across `await` boundaries, behind an
-/// `OSAllocatedUnfairLock`.
-final class RecordingEmbedder: TextEmbedding, Sendable {
+/// `final class ... Sendable` because `embed(texts:)` records across `await`
+/// boundaries, behind an `OSAllocatedUnfairLock`.
+final class RecordingEmbedder: PooledEmbedding, Sendable {
     /// The error a failing `RecordingEmbedder` throws out of every
-    /// `embed(_:)` call — the transient model failure a host sees when the
+    /// `embed(texts:)` call — the transient model failure a host sees when the
     /// embedding model is resident but the call did not complete.
     struct Failure: Error {}
 
@@ -26,10 +25,10 @@ final class RecordingEmbedder: TextEmbedding, Sendable {
     /// The value every component of every answered vector carries.
     private static let component: Float = 1
 
-    /// Every batch `embed(_:)` was handed, in call order.
+    /// Every batch `embed(texts:)` was handed, in call order.
     private let batchesBox = OSAllocatedUnfairLock<[[String]]>(initialState: [])
 
-    /// Whether `embed(_:)` records its batch and then throws ``Failure``.
+    /// Whether `embed(texts:)` records its batch and then throws ``Failure``.
     private let alwaysFails: Bool
 
     /// Creates an embedder that has embedded nothing yet.
@@ -41,10 +40,10 @@ final class RecordingEmbedder: TextEmbedding, Sendable {
         self.alwaysFails = alwaysFails
     }
 
-    /// Every batch `embed(_:)` was handed, in call order.
+    /// Every batch `embed(texts:)` was handed, in call order.
     var batches: [[String]] { batchesBox.withLock { $0 } }
 
-    func embed(_ texts: [String]) async throws -> [[Float]] {
+    func embed(texts: [String]) async throws -> [[Float]] {
         batchesBox.withLock { $0.append(texts) }
         if alwaysFails { throw Failure() }
         return texts.map { _ in [Float](repeating: Self.component, count: Self.vectorLength) }

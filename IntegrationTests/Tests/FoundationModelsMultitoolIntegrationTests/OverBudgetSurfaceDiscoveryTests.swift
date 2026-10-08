@@ -73,11 +73,11 @@ private let overBudgetQueries = [
 ///
 /// **What it prints.** The entry count and the prefix size of the surface
 /// against the budget, then one line per call with its match count, its
-/// slice count, its elapsed time, its matched paths and the raw ids each
-/// slice's model answered. Nothing asserts on the time or on the counts: the
-/// time is there because an over-budget search costs one model call for each
-/// slice, and nothing else reports that; the raw ids are there so that a
-/// reader can tell an empty model answer from an answer the code lost.
+/// elapsed time and its matched paths. Nothing asserts on the time or on the
+/// counts: the time is there because an over-budget search costs one model
+/// call for each slice, and nothing else reports that. The selection tier
+/// makes its sessions on a pooled model and not on a Router session, so the
+/// Router recording holds no slice answer, and the line shows no raw ids.
 ///
 /// Packaged like every gated suite: in the nested `IntegrationTests`
 /// package, out of reach of the root `swift test`, run under
@@ -117,20 +117,15 @@ struct OverBudgetSurfaceDiscoveryTests {
             )
 
             let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
-            var countedSelections = 0
             let clock = ContinuousClock()
             for query in overBudgetQueries {
                 let start = clock.now
                 let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query))
                 let elapsed = clock.now - start
-                let selections = try NativeTranscript.selections(in: fixture.transcriptEvents(), slot: .flash)
-                let sliceSelections = selections.dropFirst(countedSelections)
-                countedSelections = selections.count
 
                 let paths = catalogPaths(in: feedback)
                 report(
-                    overBudgetLine: "matches=\(paths.count) slices=\(sliceSelections.count) elapsed=\(elapsed) "
-                        + "paths=\(paths) selection=\(sliceSelections.map(\.ids)) query=\"\(query)\""
+                    overBudgetLine: "matches=\(paths.count) elapsed=\(elapsed) paths=\(paths) query=\"\(query)\""
                 )
                 check.expectNoFault(in: paths, answering: query)
             }

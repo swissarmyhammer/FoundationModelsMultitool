@@ -81,36 +81,29 @@ struct DiscoveryGroupGrade: Sendable {
 /// every answer, printing one line for each query and one line for the whole
 /// group.
 ///
-/// The raw ids of each call are read off the Router recording the same way
-/// `SelectionForkPerCallTests` reads its fork trace. Each call adds its own
-/// selections to the end of that recording, so the ids of one call are the
-/// selections that stand past the ones already read.
+/// The paths of each answer are read off the text that `searchTools` gave:
+/// the selection tier makes its sessions on a pooled model, not on a Router
+/// session, so the Router recording holds no selection answer.
 ///
 /// - Parameters:
 ///   - queries: the group to drive, in the order it is listed.
 ///   - searchTools: the mounted production tool the queries go through.
-///   - fixture: the resolved fixture whose recording the raw ids are read off.
 ///   - scenario: the label the printed lines carry.
 /// - Returns: the grade of the group.
-/// - Throws: whatever the tool call or the transcript read throws.
+/// - Throws: whatever the tool call throws.
 func gradeDiscoveryGroup(
     of queries: [GradedDiscoveryQuery],
     through searchTools: SearchToolsTool,
-    recordedBy fixture: LiveRouterFixture,
     reportedAs scenario: String
 ) async throws -> DiscoveryGroupGrade {
     var grades: [DiscoveryGrade] = []
-    var readSelections = 0
     for (index, query) in queries.enumerated() {
         let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query.task))
         let grade = DiscoveryGrade(query: query, matchedPaths: catalogPaths(in: feedback))
-        let selections = try NativeTranscript.selections(in: fixture.transcriptEvents(), slot: .flash)
-        let rawIDs = selections.dropFirst(readSelections).flatMap(\.ids)
-        readSelections = selections.count
         grades.append(grade)
         reportGatedResult(
             scenario: scenario,
-            line: gradeLine(number: index + 1, query: query, grade: grade, rawIDs: rawIDs)
+            line: gradeLine(number: index + 1, query: query, grade: grade)
         )
     }
     let group = DiscoveryGroupGrade(grades: grades)
@@ -127,10 +120,9 @@ func gradeDiscoveryGroup(
 ///   - number: the one-based position of the query in its group.
 ///   - query: the query that was driven.
 ///   - grade: what the answer scored.
-///   - rawIDs: the ids the selection model answered for this call.
 /// - Returns: the line to print.
 private func gradeLine(
-    number: Int, query: GradedDiscoveryQuery, grade: DiscoveryGrade, rawIDs: [String]
+    number: Int, query: GradedDiscoveryQuery, grade: DiscoveryGrade
 ) -> String {
     let counts =
         "q\(number) matches=\(grade.matchedPaths.count) "
@@ -138,7 +130,7 @@ private func gradeLine(
     let paths =
         "paths=\(grade.matchedPaths) correctPaths=\(grade.correctPaths) "
         + "wrongPaths=\(grade.wrongPaths) declared=\(query.correctPaths.sorted())"
-    return "\(counts) \(paths) selection=\(rawIDs) query=\"\(query.task)\""
+    return "\(counts) \(paths) query=\"\(query.task)\""
 }
 
 /// The printed line that closes one group.

@@ -28,11 +28,11 @@ public struct SearchToolsArguments: Sendable {
 /// The discovery tool a session searches for its mounted functions.
 ///
 /// A host mounts this tool with
-/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`,
 /// which presents it before `runCode`.
 ///
 /// The selection tier, when one is configured, answers only *what* is
-/// relevant — ids, held to the current candidate set by a grammar.
+/// relevant — ids, which the tier holds to the current candidate set.
 /// `SearchToolsTool` owns how that answer reaches the caller: each selected
 /// entry's `Match.item.block` spliced **verbatim**, never re-derived or
 /// re-rendered, plus its runnable, namespace-qualified example.
@@ -94,7 +94,7 @@ public struct SearchToolsTool: Tool {
     /// whatever mode that searcher was assembled in.
     ///
     /// The searcher `makeSearcher(over:selection:embedder:)` builds for
-    /// `init(registry:selection:embedder:limit:sampleSession:)` comes
+    /// `init(registry:selection:embedder:limit:sampleModel:)` comes
     /// through here as well, and a test's scripted or keyword-only searcher
     /// comes through here too.
     ///
@@ -167,7 +167,7 @@ public struct SearchToolsTool: Tool {
     ///     search on, or `nil` for keyword-only ranking.
     /// - Returns: the searcher.
     static func makeSearcher(
-        over entries: [APISurface.Entry], selection: SelectionConfig?, embedder: (any TextEmbedding)?
+        over entries: [APISurface.Entry], selection: SelectionConfig?, embedder: (any PooledEmbedding)?
     ) -> MetadataSearcher<APISurface.Entry> {
         MetadataSearcher(
             index: MetadataIndex(items: entries), mode: .auto, embedder: embedder, selection: selection)
@@ -199,14 +199,10 @@ public struct SearchToolsTool: Tool {
     /// a second model call by construction.
     ///
     /// The selection tier is made here, one time, for the ids of the whole
-    /// catalog. The tier's session factory takes the instructions alone as of
-    /// the ranker's `34fe8d4`, so a host that limits the output with a
-    /// grammar builds one grammar over the whole catalog. Over budget, the
-    /// tier prompts one slice of the catalog at a time while that grammar
-    /// still permits every id in the catalog. That is safe: the tier's own
-    /// `.unknownSelectedId` filter drops an id outside the slice the prompt
-    /// carried. Under `capacityCharacterLimit` the over-budget path never
-    /// runs.
+    /// catalog. Over budget, the tier prompts one slice of the catalog at a
+    /// time, and each prompt names only the ids of its slice. The tier's own
+    /// `.unknownSelectedId` filter drops an id that the catalog does not
+    /// hold. Under `capacityCharacterLimit` the over-budget path never runs.
     ///
     /// - Parameters:
     ///   - registry: the catalog whose entries become the searcher's
@@ -222,20 +218,18 @@ public struct SearchToolsTool: Tool {
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
-    ///   - sampleSession: makes the session the sample snippet is generated
-    ///     on, or `nil` (the default) to leave sample generation unconfigured
-    ///     — this tool then answers with the signatures alone, exactly as it
-    ///     always has. Back it with a model that is not the model of the
-    ///     session that calls `searchTools` — see ``SessionFactory``. The
-    ///     session must mount no tools: it writes a snippet, it does not
-    ///     execute one.
+    ///   - sampleModel: the model that writes the sample snippet, or `nil`
+    ///     (the default) to leave sample generation unconfigured — this tool
+    ///     then answers with the signatures alone, exactly as it always has.
+    ///     Use a model that is not the model of the session that calls
+    ///     `searchTools` — see ``SampleSnippetConfig/model``.
     /// - Throws: what `selection` throws while it builds the selection tier.
     public init(
         registry: MultiTool.Registry,
         selection: SelectionFactory?,
-        embedder: (any TextEmbedding)? = nil,
+        embedder: (any PooledEmbedding)? = nil,
         limit: Int? = nil,
-        sampleSession: SessionFactory? = nil
+        sampleModel: (any LanguageModel)? = nil
     ) throws {
         self.init(
             searcher: Self.makeSearcher(
@@ -243,7 +237,7 @@ public struct SearchToolsTool: Tool {
                 selection: try Self.makeSelection(selection, ids: registry.surface.entries.map(\.path)),
                 embedder: embedder),
             limit: limit ?? registry.surface.entries.count,
-            sample: Self.makeSample(sessionFactory: sampleSession)
+            sample: Self.makeSample(model: sampleModel)
         )
     }
 

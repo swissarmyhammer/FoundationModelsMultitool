@@ -30,12 +30,11 @@ enum CapabilityDiscoveryProbe {
     static func searchToolsFeedback(
         over surface: APISurface, selecting paths: [String], task: String
     ) async throws -> String {
-        let selection = RootSessionRespondCalledDirectlySession(
-            forkResponses: [selectionReply(selecting: paths)])
+        let selection = ScriptedLanguageModel([selectionReply(selecting: paths)])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: selection, capacityCharacterLimit: .max)
         )
         let searchTools = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
         return try await searchTools.call(arguments: SearchToolsArguments(task: task))

@@ -218,9 +218,8 @@ struct ExamplesTests {
             instructions: "Use runCode to answer questions about the trip."
         )
 
-        // Explicitly typed to pin the native FoundationModels API over
-        // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`
-        // `AgentSession` extension.
+        // Explicitly typed to pin the `String` response of the native
+        // FoundationModels API.
         let response: LanguageModelSession.Response<String> = try await session.respond(to: "List the cities on my trip.")
 
         #expect(response.content == "Your itinerary: ATX, then SFO.")
@@ -244,15 +243,16 @@ struct ExamplesTests {
 
         // searchTools's own selection tier is scripted to pick
         // "github.getIssueCount" by id — see SearchToolsToolTests for the same
-        // RootSessionRespondCalledDirectlySession pattern driving a real
-        // MetadataSearcher/SelectionConfig.
-        let selectionRoot = RootSessionRespondCalledDirectlySession(
-            forkResponses: [#"{"ids":["github.getIssueCount"]}"#]
+        // scripted selection model driving a real MetadataSearcher and
+        // SelectionConfig. The name is qualified with the module, because the
+        // tool-calling double of this suite has the same name.
+        let selectionModel = FoundationModelsMultitoolTests.ScriptedLanguageModel(
+            [#"{"ids":["github.getIssueCount"]}"#]
         )
         let searcher = MetadataSearcher(
             items: registry.surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in selectionRoot }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: selectionModel, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: registry.surface.entries.count)
 

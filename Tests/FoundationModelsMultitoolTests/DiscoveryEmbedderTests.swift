@@ -1,3 +1,4 @@
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Testing
 
@@ -15,8 +16,8 @@ import Testing
 /// 1. A bundle built with an embedder embeds its catalog ONE time, at the
 ///    first search, and every query once — through the discovery searcher
 ///    and through the hint searcher alike.
-/// 2. The host-facing factories take the host's embedder through the
-///    registry's `TextEmbedding` seam. The Router adapter has its own suite,
+/// 2. The host-facing factories take the host's embedder as a
+///    FoundationModelsExtras `PooledEmbedding`. The Router adapter has its own suite,
 ///    `RouterDiscoverySeamsTests`, in the nested `IntegrationTests` package.
 /// 3. A catalog embed that fails leaves the searcher answering keyword-only
 ///    for the life of its bundle, and the next bundle embeds again.
@@ -34,7 +35,7 @@ struct DiscoveryEmbedderTests {
 
     /// The shape `makeSessionToolsAndStaging` builds, with `embedder` in it and
     /// no selection tier, so every search is retrieval alone.
-    private static func makeShape(embedder: (any TextEmbedding)?) -> MultiTool.RegistryBundleShape {
+    private static func makeShape(embedder: (any PooledEmbedding)?) -> MultiTool.RegistryBundleShape {
         MultiTool.RegistryBundleShape(bindsSearchTools: true, discovery: .configured(selection: nil), embedder: embedder)
     }
 

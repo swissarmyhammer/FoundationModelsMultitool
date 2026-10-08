@@ -133,11 +133,9 @@ let agentSurfaceQueries = [
 /// local constant is gone and the tier takes the default.
 ///
 /// **What it prints.** One line per query with the matched paths, the correct
-/// and wrong halves of them, the declared correct set and the raw ids the
-/// selection model answered, read off the Router recording the same way
-/// `SelectionForkPerCallTests` reads its fork trace; one line closing the
-/// group with its totals; and one line with the size of the catalog the model
-/// held. Those lines are what the card asks to be pasted; nothing asserts on
+/// and wrong halves of them, and the declared correct set; one line closing
+/// the group with its totals; and one line with the size of the catalog the
+/// model held. Those lines are what the card asks to be pasted; nothing asserts on
 /// the correct or the wrong counts.
 ///
 /// Packaged like every gated suite: in the nested `IntegrationTests` package,
@@ -155,7 +153,7 @@ struct AgentSurfaceDiscoveryTests {
     func agentQueriesAnswerOnlyRealCatalogPaths() async throws {
         try await withLiveRouterFixture(name: agentSurfaceScenarioName, profile: agentDiscoveryProfile) { fixture in
             try await makeFilesAndShellSurface(over: fixture)
-                .driveGradedGroup(of: agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)
+                .driveGradedGroup(of: agentSurfaceQueries, reportedAs: agentSurfaceScenarioName)
         }
     }
 }

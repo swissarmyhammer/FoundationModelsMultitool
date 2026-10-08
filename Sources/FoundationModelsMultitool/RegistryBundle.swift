@@ -8,6 +8,7 @@
 // run see a preamble from one registry and live tools from another. One
 // value, built by one initializer, is what makes the swap atomic.
 
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 
 extension MultiTool {
@@ -87,9 +88,9 @@ extension MultiTool {
 
         /// The embedder both searchers of the bundle rank with, or `nil` for
         /// keyword-only ranking. The host's resolved profile carries one, and
-        /// `makeSessionToolsAndStaging(selection:embedder:sampleSession:)`
+        /// `makeSessionToolsAndStaging(selection:embedder:sampleModel:)`
         /// is where the host hands it over.
-        let embedder: (any TextEmbedding)?
+        let embedder: (any PooledEmbedding)?
     }
 
     /// The catalog, the live tools, and every value `runCode` precomputes

@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 import FoundationModelsMetadataRegistry
 
 /// How `searchTools` generates and validates the runnable sample snippet it leads
@@ -7,7 +8,7 @@ import FoundationModelsMetadataRegistry
 /// Injectable and absent by default, exactly like the searcher's selection
 /// tier: a host that supplies no config gets the signatures-only result
 /// `searchTools` has always returned, byte for byte, and a test supplies a
-/// scripted session instead of a model.
+/// scripted model instead of a real one.
 public struct SampleSnippetConfig: Sendable {
     /// How many turns the generation session gets in total, the first attempt
     /// included — two retries after the opening try.
@@ -18,21 +19,23 @@ public struct SampleSnippetConfig: Sendable {
     /// signatures alone.
     public static let defaultAttemptLimit = 3
 
-    /// Opens the generation session, given the instructions to run it under.
+    /// The model that writes the snippet.
     ///
-    /// The session must mount **no tools** — it writes a snippet, it does not
-    /// execute one, and a session holding `searchTools` could call `searchTools`
-    /// from inside a `searchTools` call. The host supplies the session
-    /// factory. The factory of the integration suite (`RouterDiscoverySeams`
-    /// in `IntegrationTests/`) mounts no tools.
+    /// For each generation, the library makes one new `LanguageModelSession`
+    /// on this model, with the generation instructions and **no tools**. The
+    /// session writes a snippet, it does not execute one, and a session that
+    /// holds `searchTools` could call `searchTools` from inside a
+    /// `searchTools` call.
     ///
-    /// The session must also not run on the model of the session that calls
-    /// `searchTools` — see ``SearchToolsTool/SessionFactory``.
+    /// The model must not be the model of the session that calls
+    /// `searchTools`, for the reason that ``SearchToolsTool/SelectionFactory``
+    /// gives. When the session fails, `searchTools` shows the error as a note
+    /// beside the signatures.
     ///
-    /// Every turn of one generation attempt — the opening task and each
-    /// repair — goes to the same returned session, so a failure it is told
-    /// about is a failure it can see its own previous snippet for.
-    public let makeSession: @Sendable (String) -> any AgentSession
+    /// Every turn of one generation — the opening task and each repair — goes
+    /// to the same session, so a failure it is told about is a failure it can
+    /// see its own previous snippet for.
+    public let model: any LanguageModel
 
     /// The sandbox a candidate's syntax check and typed-mock dry run run in.
     public let interpreter: any Interpreter
@@ -44,19 +47,18 @@ public struct SampleSnippetConfig: Sendable {
     /// Creates a sample-generation config.
     ///
     /// - Parameters:
-    ///   - makeSession: opens the generation session for a set of
-    ///     instructions. Must mount no tools.
+    ///   - model: the model that writes the snippet.
     ///   - interpreter: the sandbox a candidate is parsed and dry-run in.
     ///     Defaults to a `JSCInterpreter`. The check has no timeout: it is
     ///     simple and runs in process.
     ///   - attemptLimit: how many turns one generation gets in total.
     ///     Defaults to ``defaultAttemptLimit``.
     public init(
-        makeSession: @escaping @Sendable (String) -> any AgentSession,
+        model: any LanguageModel,
         interpreter: any Interpreter = JSCInterpreter(),
         attemptLimit: Int = SampleSnippetConfig.defaultAttemptLimit
     ) {
-        self.makeSession = makeSession
+        self.model = model
         self.interpreter = interpreter
         self.attemptLimit = attemptLimit
     }
@@ -116,7 +118,7 @@ enum SampleSnippet {
     ///   - task: the plain-language goal the caller passed to `searchTools`.
     ///   - entries: the matched catalog entries the snippet may use — the only
     ///     `tools.*` paths it is allowed to name.
-    ///   - config: how to open the generation session, and what to check with.
+    ///   - config: the model that writes the snippet, and what to check with.
     /// - Returns: the validated snippet, or `nil` when no candidate passed the
     ///   gate.
     /// - Throws: what the generation session throws. The error is not
@@ -127,10 +129,10 @@ enum SampleSnippet {
         using config: SampleSnippetConfig
     ) async throws -> String? {
         guard !entries.isEmpty else { return nil }
-        let session = config.makeSession(instructions(over: entries))
+        let session = LanguageModelSession(model: config.model, instructions: instructions(over: entries))
         var prompt = openingPrompt(forTask: task)
         for _ in 0..<max(1, config.attemptLimit) {
-            let reply = try await session.respond(to: prompt)
+            let reply = try await respond(to: prompt, in: session)
             switch await verdict(on: reply, over: entries, using: config) {
             case .accepted(let snippet):
                 return snippet
@@ -139,6 +141,33 @@ enum SampleSnippet {
             }
         }
         return nil
+    }
+
+    /// The role that the span of each turn of a generation session carries.
+    static let sessionRole = "sampleSnippet"
+
+    /// Sends one turn to the generation session, inside a span.
+    ///
+    /// The turn can wait a long time, for example while the model loads at
+    /// the first request, and a suspended call shows in no stack. The enter
+    /// record of the span shows a turn that never ends (see
+    /// ``MultitoolTelemetry/SpanName``). The span records the length of the
+    /// prompt and of the reply, never their text: a prompt carries the task
+    /// of the caller.
+    ///
+    /// - Parameters:
+    ///   - prompt: the text of the turn.
+    ///   - session: the generation session.
+    /// - Returns: the text of the reply.
+    /// - Throws: what the session throws. The span records it first.
+    static func respond(to prompt: String, in session: LanguageModelSession) async throws -> String {
+        try await MultitoolTelemetry.traced(
+            .agentSessionRespond, attributes: [.sessionRole: sessionRole, .promptCharacters: prompt.count]
+        ) { span in
+            let reply = try await session.respond(to: prompt).content
+            span.attributes[MultitoolTelemetry.AttributeKey.outputCharacters.rawValue] = reply.count
+            return reply
+        }
     }
 
     /// What one checked generator reply earned.
@@ -161,7 +190,7 @@ enum SampleSnippet {
     /// - Parameters:
     ///   - reply: the generator's raw reply text.
     ///   - entries: the matched catalog entries the snippet may use.
-    ///   - config: the checking sandbox and session factory.
+    ///   - config: the checking sandbox.
     /// - Returns: the accepted snippet, or the feedback to send back.
     private static func verdict(
         on reply: String,
