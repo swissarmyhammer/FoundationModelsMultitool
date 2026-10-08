@@ -133,6 +133,18 @@ struct ToolAPIRendererTests {
         )
     }
 
+    @Test("an optional result field is declared as T | null at each level, and an optional argument keeps name?: T")
+    func optionalResultFieldIsDeclaredNullable() throws {
+        let descriptor = try ToolAPIRenderer.render(OutlookTool())
+        let resultType = "{ summary: string; alert: string | null; days: { day: string; note: string | null }[] }"
+        #expect(
+            descriptor.declaration
+                == "declare function getOutlook(args: { city: string; units?: \"c\" | \"f\" }): Promise<\(resultType)>;"
+        )
+        #expect(descriptor.doc.contains("@returns Promise<\(resultType)>"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.signature.result.declaredResultType == resultType)
+    }
+
     @Test("the rendered example awaits the call, in both the @example line and the runnable example field")
     func renderedExampleAwaitsTheCall() throws {
         let descriptor = try ToolAPIRenderer.render(WeatherTool())
@@ -734,7 +746,7 @@ struct ToolAPIRendererTests {
         #expect(
             descriptor.declaration == "declare function getWeather("
                 + "args: \(descriptor.signature.arguments.declaredType)): "
-                + "Promise<\(descriptor.signature.result.declaredType)>;"
+                + "Promise<\(descriptor.signature.result.declaredResultType)>;"
         )
     }
 

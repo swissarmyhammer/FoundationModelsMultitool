@@ -338,7 +338,7 @@ public enum ToolAPIRenderer {
         // `declare function` signature and the `@returns` line (which derives
         // from this same string, via `docReturnsType` below) from ever
         // disagreeing about what a call actually returns.
-        let returnsType = "Promise<\(result.shape.declaredType)>"
+        let returnsType = "Promise<\(result.shape.declaredResultType)>"
         // `returnsType` also backs the real `declare function` return type
         // in `declaration` below, so it's escaped here into a doc-only
         // copy rather than in place — a schema-derived enum choice
@@ -741,17 +741,34 @@ public enum ToolAPIRenderer {
     private static let typeBoolean = "boolean"
     private static let typeArray = "array"
 
+    /// The side of a signature that a declared value is on. It sets how an
+    /// optional property of an object renders, at each level of nesting.
+    enum DeclaredSide {
+        /// A value that a snippet sends, such as the `args` object. An
+        /// optional property renders as `name?: T`, because a snippet can
+        /// leave it out.
+        case argument
+
+        /// A value that awaiting a call gives. An optional property renders
+        /// as `name: T | null`, because `ArgumentMarshaler.renderOutput(_:)`
+        /// sends `null` for a `nil` field and never leaves the key out.
+        case result
+    }
+
     /// Renders `shape`'s TypeScript type — the one place a `ToolValueShape`
     /// becomes the text a `declare function` line carries.
     ///
-    /// Backs `ToolValueShape.declaredType`. Rendering from the shape rather
+    /// Backs `ToolValueShape.declaredType` and
+    /// `ToolValueShape.declaredResultType`. Rendering from the shape rather
     /// than from the schema a second time is what makes the advertised
     /// signature and the structural signature one description of a tool
     /// instead of two: there is no second traversal to fall out of step.
     ///
-    /// - Parameter shape: the declared shape to render.
+    /// - Parameters:
+    ///   - shape: the declared shape to render.
+    ///   - side: the side of the signature that `shape` is on.
     /// - Returns: the rendered TypeScript type.
-    static func declaredType(of shape: ToolValueShape) -> String {
+    static func declaredType(of shape: ToolValueShape, on side: DeclaredSide = .argument) -> String {
         switch shape {
         case .string(let choices):
             return choices.isEmpty ? typeString : enumUnion(choices)
@@ -760,9 +777,9 @@ public enum ToolAPIRenderer {
         case .boolean:
             return typeBoolean
         case .array(let element):
-            return "\(declaredType(of: element))[]"
+            return "\(declaredType(of: element, on: side))[]"
         case .object(let object):
-            return declaredType(ofObject: object)
+            return declaredType(ofObject: object, on: side)
         case .json:
             return typeObject
         case .any:
@@ -770,8 +787,9 @@ public enum ToolAPIRenderer {
         }
     }
 
-    /// Renders an object shape as an inline TS object type, `{ a: T; b?: U }`,
-    /// in declared order.
+    /// Renders an object shape as an inline TS object type in declared
+    /// order: `{ a: T; b?: U }` on the argument side, and
+    /// `{ a: T; b: U | null }` on the result side.
     ///
     /// Keys go through `objectKeyLiteral`, same as the example-literal
     /// builders — this is the *real* declared type (embedded in `declare
@@ -781,15 +799,33 @@ public enum ToolAPIRenderer {
     ///
     /// Backs `ToolObjectShape.declaredType`.
     ///
-    /// - Parameter object: the declared object shape to render.
+    /// - Parameters:
+    ///   - object: the declared object shape to render.
+    ///   - side: the side of the signature that `object` is on.
     /// - Returns: the rendered inline TS object type.
-    static func declaredType(ofObject object: ToolObjectShape) -> String {
+    static func declaredType(ofObject object: ToolObjectShape, on side: DeclaredSide = .argument) -> String {
         guard !object.properties.isEmpty else { return "{}" }
-        let parts = object.properties.map { property in
-            let optionalMark = property.isRequired ? "" : "?"
-            return "\(objectKeyLiteral(property.name))\(optionalMark): \(declaredType(of: property.shape))"
-        }
+        let parts = object.properties.map { declaredMember(for: $0, on: side) }
         return "{ \(parts.joined(separator: "; ")) }"
+    }
+
+    /// Renders one property of an object type as a TS member.
+    ///
+    /// - Parameters:
+    ///   - property: the declared property to render.
+    ///   - side: the side of the signature that the property is on.
+    /// - Returns: `name: T` for a required property; `name?: T` or
+    ///   `name: T | null` for an optional one, as `side` sets.
+    private static func declaredMember(for property: ToolObjectShape.Property, on side: DeclaredSide) -> String {
+        let key = objectKeyLiteral(property.name)
+        let type = declaredType(of: property.shape, on: side)
+        guard !property.isRequired else { return "\(key): \(type)" }
+        switch side {
+        case .argument:
+            return "\(key)?: \(type)"
+        case .result:
+            return "\(key): \(type) | null"
+        }
     }
 
     /// Reads `node`'s declared shape, resolving `$ref`s and recursing into

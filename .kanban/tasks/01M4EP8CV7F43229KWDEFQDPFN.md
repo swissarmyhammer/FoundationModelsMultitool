@@ -20,8 +20,24 @@ comments:
     - evidence: 4 files — Sources/FoundationModelsMultitool/Invocation/ArgumentMarshaler.swift, Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift, Tests/FoundationModelsMultitoolTests/ArgumentMarshalerTests.swift, Tests/FoundationModelsMultitoolTests/EnvironmentGoalSnippetTests.swift. RED: 2 new tests failed (missing `correction` key). GREEN: 2 passed. `swift build --build-tests` complete; `swift test`: 2326 tests in 205 suites passed, 0 failures. The one build warning is the SwiftPM "missing creator for mutated node" line for the mlx-swift_Cmlx bundle, which is not from this change.
     - next: /review
   timestamp: 2026-10-08T22:09:11.594950+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4esb818a255an3ksrycx9n1
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (e84e026). 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. 4 source files reviewed. 6 .kanban files not reviewed (.reviewignore).
+    - next: none. The task is in done.
+  timestamp: 2026-10-08T22:15:07.560030+00:00
+- actor: claude-code
+  id: 01m4esbkpxeegsq6rg4sv82g56
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ArgumentMarshaler.swift, ToolAPIRenderer.swift, 2 test files; new task ^fbses6j
+    - test: green — swift test, 2326 passed
+    - commit: e84e026
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-08T22:15:19.517474+00:00
+position_column: done
+position_ordinal: ffffd080
 title: Give a nil optional field of a verb result to a runCode snippet as null, not as a missing key
 ---
 ## What

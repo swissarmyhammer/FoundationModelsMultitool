@@ -38,6 +38,33 @@ struct WeatherTool: Tool {
     }
 }
 
+/// One day of `OutlookResult`: a required `day` and an optional `note`.
+@Generable
+struct OutlookDay {
+    var day: String
+    var note: String?
+}
+
+/// The `Output` of `OutlookTool`: a required `summary`, an optional `alert`,
+/// and an array of objects that each have an optional field.
+@Generable
+struct OutlookResult {
+    var summary: String
+    var alert: String?
+    var days: [OutlookDay]
+}
+
+/// A tool with an optional argument and a result with optional fields, at
+/// the top level and in a nested object.
+struct OutlookTool: Tool {
+    let name = "getOutlook"
+    let description = "The outlook for a city."
+
+    func call(arguments: WeatherArguments) async throws -> OutlookResult {
+        OutlookResult(summary: "Sunny", alert: nil, days: [])
+    }
+}
+
 // MARK: - Type-mapping / doc-mapping table corpus
 //
 // One small `@Generable` fixture per row (or row-pair) of plan.md's

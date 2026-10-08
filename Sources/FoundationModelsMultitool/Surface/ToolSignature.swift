@@ -41,14 +41,23 @@ public indirect enum ToolValueShape: Sendable, Equatable {
     /// declared as `any` and left unconstrained.
     case any
 
-    /// This shape's TypeScript type, exactly as it appears in the rendered
-    /// `declare function` signature.
+    /// This shape's TypeScript type as an argument, exactly as it appears in
+    /// the `args` type of the rendered `declare function` signature. An
+    /// optional property renders as `name?: T`.
     ///
     /// Delegates to `ToolAPIRenderer`, which owns every rule about splicing
     /// schema-derived text into generated TypeScript safely, so the escaping
     /// and the key-quoting are not restated here.
     public var declaredType: String {
         ToolAPIRenderer.declaredType(of: self)
+    }
+
+    /// This shape's TypeScript type as the result of a call, exactly as it
+    /// appears inside `Promise<…>` in the rendered `declare function`
+    /// signature. An optional property renders as `name: T | null` at each
+    /// level, because a snippet reads `null` for a `nil` field.
+    public var declaredResultType: String {
+        ToolAPIRenderer.declaredType(of: self, on: .result)
     }
 }
 
@@ -92,8 +101,9 @@ public struct ToolObjectShape: Sendable, Equatable {
         self.properties = properties
     }
 
-    /// This object's TypeScript type, exactly as it appears in the rendered
-    /// `declare function` signature — `{}` when it declares no property.
+    /// This object's TypeScript type as an argument, exactly as the `args`
+    /// type of the rendered `declare function` signature has it — `{}` when
+    /// it declares no property.
     public var declaredType: String {
         ToolAPIRenderer.declaredType(ofObject: self)
     }
@@ -117,7 +127,7 @@ public struct ToolSignature: Sendable, Equatable {
     public let arguments: ToolObjectShape
 
     /// What awaiting the call resolves to. The declared return type is
-    /// `Promise<…>` around this shape.
+    /// `Promise<…>` around this shape's `declaredResultType`.
     public let result: ToolValueShape
 
     /// Creates a signature over an argument object and a result shape.
