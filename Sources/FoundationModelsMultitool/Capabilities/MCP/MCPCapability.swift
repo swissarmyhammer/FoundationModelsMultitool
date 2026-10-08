@@ -14,8 +14,10 @@
 // builds one of these for each server, in order, and registers each through
 // `withCapability(_:)`. Thus a server claims its own noun, and a second
 // registration under that noun — a server named `files` beside the files
-// capability — is the `.duplicateNoun` failure of `buildRegistry()`, as for
-// any other capability. No code here decides that.
+// capability — makes `buildRegistry()` fail, as for any other capability.
+// When a tool of the server has the name of a verb under that noun, the two
+// paths collide first, and the failure is `.duplicateName`. Otherwise the
+// failure is `.duplicateNoun`. No code here decides that.
 //
 // **The capability awaits readiness, and it does not connect.** eventplan.md:
 // "Servers connect before `buildRegistry()`." The host connects the server;

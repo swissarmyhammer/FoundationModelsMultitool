@@ -49,7 +49,10 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// render at one path. This case reports ownership, so it is raised
         /// even when every path differs: `tools.demo.first` and
         /// `tools.demo.second` collide nowhere, and a second owner of `demo`
-        /// is the failure all the same.
+        /// is the failure all the same. But `buildRegistry()` examines the
+        /// paths first: when a verb of the second owner has the name of a
+        /// verb already under the noun, the failure is `duplicateName`, and
+        /// not this case. A second identical capability is that failure.
         case duplicateNoun
     }
 
@@ -202,8 +205,12 @@ extension MultiTool {
         /// is owned: the capability holds the whole `tools.<noun>` namespace,
         /// and a second registration under it — another capability, an
         /// `addGroup(named:_:)` call, a `register(noun:tool:)` call, or a
-        /// standalone tool of that name — is a `.duplicateNoun` failure at
-        /// `buildRegistry()`, however the verbs fall.
+        /// standalone tool of that name — is a failure at `buildRegistry()`.
+        /// `buildRegistry()` examines the verb paths before the nouns. Thus
+        /// when a verb of the second registration has the name of a verb
+        /// already under the noun, the failure is `.duplicateName`, and it
+        /// names that verb. Otherwise the failure is `.duplicateNoun`, also
+        /// when every path differs.
         ///
         /// - Parameter capability: the capability to register.
         @discardableResult

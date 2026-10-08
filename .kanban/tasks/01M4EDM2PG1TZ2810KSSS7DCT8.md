@@ -1,8 +1,34 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8780'
+comments:
+- actor: claude-code
+  id: 01m4eqbmx6awqmc3j1vth60fqq
+  text: |-
+    Research: the same wrong claim (a second owner of a noun is always `.duplicateNoun`) stood in more doc comments than `withGit(root:)`. The tests show the real order: `buildRegistry()` examines the verb paths before the nouns. A verb that has the name of a verb already under the noun gives `.duplicateName` (GitCapabilityTests, EnvironmentCapabilityTests, FilesCapabilityTests, CapabilityRegistrationTests.duplicateNounAndVerbThrows). Only an owner whose verbs differ gives `.duplicateNoun` (WebCapabilityTests, MCPCapabilityTests, EnvironmentCapabilityTests with WeatherTool).
+
+    Corrected comments:
+    - `withGit(root:)`: a second call fails with `.duplicateName`, which names the first verb.
+    - `withEnvironment()`: states `.duplicateName` explicitly, not only "the same as for git".
+    - `withWeb(...)` and `withMCP(servers:)`: `.duplicateName` when a verb name collides, else `.duplicateNoun`.
+    - `MultiTool.Builder.withCapability(_:)`: removed "however the verbs fall", which was false.
+    - `MultiToolBuilderError.Kind.duplicateNoun`: added that a path collision is reported first as `duplicateName`.
+    - `MCPCapability.swift` file header: the same correction.
+    `withShell` and `withFiles` doc comments make no claim about a second call; no change.
+
+    Not changed: `web.md` (a design document, not a doc comment) also says `.duplicateNoun` for a different owner of `web`. This is correct for the cases it names when the verbs differ.
+
+    Build: `swift build --build-tests` passes. One SwiftPM build-graph warning stays: "missing creator for mutated node: .../mlx-swift_Cmlx.bundle/Contents/MacOS". It comes from the mlx-swift dependency bundle, not from this change.
+  timestamp: 2026-10-08T21:40:23.590448+00:00
+- actor: claude-code
+  id: 01m4eqbpw4az69yanw0n5n1dnn
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Surface/MultiToolBuilder+Capabilities.swift, Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPCapability.swift. `swift build --build-tests` OK; `swift test`: 2324 tests in 205 suites passed, 0 failures.
+    - next: /review
+  timestamp: 2026-10-08T21:40:25.604629+00:00
+position_column: doing
+position_ordinal: '80'
 title: Correct the withGit(root:) doc comment about a second call
 ---
 ## What
@@ -11,8 +37,8 @@ The doc comment of `MultiTool.Builder.withGit(root:)` in `Sources/FoundationMode
 Found during task ^9p3e1nh. Kanban cards copied the wrong text (the environment card asked for `.duplicateNoun`).
 
 ## Acceptance Criteria
-- [ ] The `withGit(root:)` doc comment states that a second call fails `buildRegistry()` with `.duplicateName`, which names the first verb.
-- [ ] Comments use ASD-STE100 Simplified Technical English.
+- [x] The `withGit(root:)` doc comment states that a second call fails `buildRegistry()` with `.duplicateName`, which names the first verb.
+- [x] Comments use ASD-STE100 Simplified Technical English.
 
 ## Tests
-- [ ] No behavior change. `swift test` stays green.
+- [x] No behavior change. `swift test` stays green.

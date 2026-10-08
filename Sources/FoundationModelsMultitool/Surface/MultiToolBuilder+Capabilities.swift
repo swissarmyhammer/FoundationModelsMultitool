@@ -117,8 +117,11 @@ extension MultiTool.Builder {
     /// root in no repository is not an error here, and each verb answers it
     /// as a correction in its own result.
     ///
-    /// A second call is a second claim on the noun `git`, and it is the
-    /// `.duplicateNoun` failure of `buildRegistry()`.
+    /// A second call is a second claim on the noun `git`, and
+    /// `buildRegistry()` fails. `buildRegistry()` examines the verb paths
+    /// before the nouns, and the verbs of the second call collide path by
+    /// path. Thus the failure is `.duplicateName`, and it names the first
+    /// verb.
     ///
     /// - Parameter root: the session working directory: the boundary every
     ///   path is confined to, and the base a relative path resolves against.
@@ -140,7 +143,9 @@ extension MultiTool.Builder {
     /// time of each call.
     ///
     /// A second call is a second claim on the noun `environment`, and
-    /// `buildRegistry()` fails, the same as for a second `withGit(root:)`.
+    /// `buildRegistry()` fails, the same as for a second `withGit(root:)`:
+    /// the verbs collide path by path first, thus the failure is
+    /// `.duplicateName`, and it names the first verb.
     @discardableResult
     public func withEnvironment() -> Self {
         withCapability(EnvironmentCapability())
@@ -172,8 +177,10 @@ extension MultiTool.Builder {
     /// capability. A second call replaces the earlier web capability at
     /// its position, and gives no error. A different owner of the noun
     /// `web` — `register(noun:tool:)`, `addGroup(named:_:)`, or an MCP
-    /// server named `web` — is still `.duplicateNoun` at
-    /// `buildRegistry()`.
+    /// server named `web` — still makes `buildRegistry()` fail. When a verb
+    /// of that owner has the name of a web verb, the two paths collide
+    /// first, and the failure is `.duplicateName`. Otherwise the failure is
+    /// `.duplicateNoun`.
     ///
     /// - Parameters:
     ///   - configuration: the search providers in the order to try, the
@@ -231,8 +238,11 @@ extension MultiTool.Builder {
     /// `MCPServer.waitUntilReady()` and reads its catalog.
     ///
     /// A server whose name is a noun another registration owns — a server
-    /// named `files` beside `withFiles(root:)` — is the `.duplicateNoun`
-    /// failure of `buildRegistry()`, as for any other capability.
+    /// named `files` beside `withFiles(root:)` — makes `buildRegistry()`
+    /// fail, as for any other capability. When a tool of the server has the
+    /// name of a verb under that noun, the two paths collide first, and the
+    /// failure is `.duplicateName`. Otherwise the failure is
+    /// `.duplicateNoun`.
     ///
     /// Each server is also recorded into ``serverPool``, so the host's
     /// `MCPServerPool.shutdownAll()` after the session sweep reaches it.
