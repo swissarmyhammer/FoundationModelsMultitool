@@ -371,6 +371,11 @@ enum MultitoolTelemetry {
         /// branch, and its lists stand. Level: `error`.
         case gitBranchReadFailed = "git branch read failed"
 
+        /// The `os` verb of the environment capability could not read the
+        /// name of the host. The result gives an empty host name, and its
+        /// other facts stand. Level: `error`.
+        case hostNameReadFailed = "host name read failed"
+
         /// A rebuild of the surface after a change of an MCP server failed,
         /// and the old surface stays. Level: `warning`.
         case surfaceRebuildFailed = "surfaceRebuildFailed"

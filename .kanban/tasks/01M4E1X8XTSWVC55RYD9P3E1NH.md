@@ -53,8 +53,24 @@ comments:
     - open: acceptance item 6 ("A second `withEnvironment()` fails `buildRegistry()` with `.duplicateNoun`") stays unticked. The code gives `.duplicateName` (name `variables`), the same as a second `withGit(root:)`, from the user decision "make it work like other tools". A person must change the text of that item, or ask for `.duplicateNoun`.
     - next: /review
   timestamp: 2026-10-08T19:50:56.223351+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4ehkynf48gx0fj6tvpmd661
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 306d367). 0 findings (attempted 7, failed 0, confirmed 0, refuted 0). 1 file reviewed; 2 `.kanban/` files not reviewed (`.reviewignore`). The 2 prior findings (2026-10-08 14:38) are checked.
+    - next: none. The task is in `done`.
+  timestamp: 2026-10-08T20:00:04.271579+00:00
+- actor: claude-code
+  id: 01m4ehmcavecfk2y1j0p55kq7z
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — EnvironmentContext.swift (2 periphery markers removed); acceptance item 6 text corrected to .duplicateName, the same as withGit
+    - test: green — swift test, 2306 passed
+    - commit: 306d367
+    - review: clean — 0 findings, 2 prior findings checked; task in done
+  timestamp: 2026-10-08T20:00:18.267215+00:00
+position_column: done
+position_ordinal: ffffc880
 title: Add the environment capability and the tools.environment.variables verb
 ---
 ## What
