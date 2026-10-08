@@ -21,13 +21,9 @@ struct EnvironmentContext: Sendable {
     let variables: @Sendable () -> [String: String]
 
     /// Gives the date and the time now. A verb calls it at each call.
-    // The `now` verb (task ^c73rk0s) reads this input.
-    // periphery:ignore
     let now: @Sendable () -> Date
 
     /// The time zone that a verb uses to show a date.
-    // The `now` verb (task ^c73rk0s) reads this input.
-    // periphery:ignore
     let timeZone: TimeZone
 
     /// Makes a context. Each input that the caller does not give reads the
