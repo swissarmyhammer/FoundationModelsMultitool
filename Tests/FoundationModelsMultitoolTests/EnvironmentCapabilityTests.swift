@@ -28,7 +28,7 @@ struct EnvironmentCapabilityTests {
     private static let environmentPathPrefix = "\(environmentNoun)."
 
     /// The verbs of the capability, in render order.
-    private static let verbNames = ["variables", "os"]
+    private static let verbNames = ["variables", "os", "now"]
 
     /// The rendered call path of the one tool the off-by-default test
     /// registers instead, which proves that test reads a surface that was

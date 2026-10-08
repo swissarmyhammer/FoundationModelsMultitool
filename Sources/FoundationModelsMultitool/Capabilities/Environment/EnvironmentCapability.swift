@@ -7,7 +7,8 @@
 // context.
 //
 // **Each verb task adds its verb.** The verbs so far are `variables`
-// (`Variables.swift`) and `os` (`OperatingSystem.swift`).
+// (`Variables.swift`), `os` (`OperatingSystem.swift`), and `now`
+// (`Now.swift`).
 //
 // **The capability is off by default**, and nothing here makes it otherwise.
 // eventplan.md § "The capability contract": "The modules are opt-in ... They
@@ -67,6 +68,6 @@ public struct EnvironmentCapability: Capability {
     /// - Parameter context: The inputs that each verb reads.
     init(context: EnvironmentContext) {
         self.context = context
-        tools = [Variables(context: context), OperatingSystem(context: context)]
+        tools = [Variables(context: context), OperatingSystem(context: context), Now(context: context)]
     }
 }
