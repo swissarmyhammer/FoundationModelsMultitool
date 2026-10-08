@@ -41,6 +41,12 @@ enum InjectedEnvironment {
         "HOME": homeDirectory,
     ]
 
+    /// The number of processors of the injected host.
+    static let processorCount = 6
+
+    /// The bytes of physical memory of the injected host.
+    static let physicalMemoryBytes = 1_234_567_890
+
     /// The facts of the operating system. Each value is different from the
     /// real value of a host, thus a test sees if a verb reads the host
     /// instead of the context.
@@ -52,8 +58,8 @@ enum InjectedEnvironment {
         hostName: "test-host.example",
         userName: "tester",
         homeDirectory: homeDirectory,
-        processorCount: 6,
-        physicalMemoryBytes: 1_234_567_890,
+        processorCount: processorCount,
+        physicalMemoryBytes: physicalMemoryBytes,
         locale: "de_CH")
 
     /// The whole seconds since 1970 of ``instant``: 2026-10-08T21:03:27Z, a

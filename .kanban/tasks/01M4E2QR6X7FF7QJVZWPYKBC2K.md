@@ -27,6 +27,29 @@ comments:
     - evidence: 3 files — Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift, Tests/FoundationModelsMultitoolTests/EnvironmentGoalSnippetTests.swift, Tests/FoundationModelsMultitoolTests/EnvironmentSearchTests.swift. `swift build --build-tests` exit 0; `swift test`: 2324 tests in 205 suites passed, 0 failures. The only build warning is the SwiftPM note "missing creator for mutated node" on the mlx-swift_Cmlx.bundle dependency, not from these files.
     - next: /review
   timestamp: 2026-10-08T21:21:31.036248+00:00
+- actor: claude-code
+  id: 01m4epk0f38t84kfcccm2k69da
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (b10e1d2); 2 findings, 2 confirmed, 1 refuted — Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:55, Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:56 (code-hygiene/magic-numbers-swift)
+    - next: replace the magic numbers in EnvironmentFixtures.swift with named constants. Remove the cause from the full file, not only the two lines. Then review again.
+  timestamp: 2026-10-08T21:26:56.227733+00:00
+- actor: claude-code
+  id: 01m4epkf93324d5yk3aywb5544
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 3 test files; new task ^efqdpfn for the nil→undefined finding
+    - test: green — swift test, 2324 passed
+    - commit: b10e1d2
+    - review: findings — Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:55, Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:56
+  timestamp: 2026-10-08T21:27:11.395227+00:00
+- actor: claude-code
+  id: 01m4eptk9q2p9pvcxa1sj8qq2w
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift. New named constants `InjectedEnvironment.processorCount` and `InjectedEnvironment.physicalMemoryBytes` replace the two literals in `operatingSystem`. swiftlint `no_magic_numbers` (only_rules, allowed_numbers [0, 1, -1, 100], --no-cache --force-exclude; the project has no .swiftlint.yml) over EnvironmentFixtures.swift, EnvironmentGoalSnippetTests.swift, EnvironmentSearchTests.swift: 2 violations before, 0 after. The two suites had 0 before. `swift build --build-tests` exit 0. `swift test`: 2324 tests in 205 suites passed, 0 failures. The only build warning is the SwiftPM note "missing creator for mutated node" on the mlx-swift_Cmlx.bundle dependency. Both findings are checked.
+    - next: /review
+  timestamp: 2026-10-08T21:31:04.887060+00:00
 depends_on:
 - 01M4E1XR9RGN1BNPYHWDKT9H63
 - 01M4E2HPENAVR0VT8MWC73RK0S
@@ -65,4 +88,14 @@ Write comments in ASD-STE100 Simplified Technical English.
 - [x] Run `swift test` — all tests pass.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #environment
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-08 16:23)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:55` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/EnvironmentFixtures.swift:56` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #environment
