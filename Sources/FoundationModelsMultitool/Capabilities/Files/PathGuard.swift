@@ -238,16 +238,22 @@ struct PathGuard: Sendable {
 
     /// Validate a path and, on success, check permissions for an operation.
     ///
-    /// Runs ``validatePath(_:)`` then ``checkPermission(_:for:)``, and
-    /// returns the first violation found or the resolved absolute URL.
+    /// Runs ``validatePath(_:absentFolders:)`` then ``checkPermission(_:for:)``,
+    /// and returns the first violation found or the resolved absolute URL.
     ///
     /// - Parameters:
     ///   - path: the raw path string (absolute or relative to ``root``).
     ///   - operation: the operation whose permission rule to apply.
+    ///   - absentFolders: what to do with a target whose parent folder is
+    ///     absent; ``AbsentFolderRule/refused`` (the default) refuses it.
     /// - Returns: `.success` with the resolved absolute URL, or `.failure`
     ///   with a corrective ``PathViolation``.
-    func validate(_ path: String, for operation: FileOperation) -> Result<URL, PathViolation> {
-        validatePath(path).flatMap { url in
+    func validate(
+        _ path: String,
+        for operation: FileOperation,
+        absentFolders: AbsentFolderRule = .refused
+    ) -> Result<URL, PathViolation> {
+        validatePath(path, absentFolders: absentFolders).flatMap { url in
             checkPermission(url, for: operation).map { url }
         }
     }

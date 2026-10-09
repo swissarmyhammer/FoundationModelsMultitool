@@ -13,12 +13,12 @@ import Testing
 /// Three properties carry this suite, and each one is a sentence of
 /// eventplan.md § "The capability contract":
 ///
-/// 1. The capability owns ONE noun and renders exactly six verbs under it.
+/// 1. The capability owns ONE noun and renders exactly seven verbs under it.
 /// 2. Files is OFF by default: a builder that never calls `withFiles(root:)`
 ///    renders no entry under that noun at all, and a second registration of
 ///    the noun fails loudly at `buildRegistry()`.
-/// 3. The six verbs reach every discovery surface alike — `searchTools`,
-///    `help()` and `docs(name)` — because all six read the one `APISurface`
+/// 3. The seven verbs reach every discovery surface alike — `searchTools`,
+///    `help()` and `docs(name)` — because all seven read the one `APISurface`
 ///    the builder rendered.
 ///
 /// Each test that touches the disk roots its context in a temporary directory
@@ -39,16 +39,16 @@ struct FilesCapabilityTests {
 
     /// The verbs the capability holds, in the order they render. Each one is a
     /// `Tool.name`, which is the second segment of `tools.<noun>.<verb>`.
-    private static let filesVerbs = ["read", "write", "edit", "patch", "glob", "grep"]
+    private static let filesVerbs = ["read", "write", "makeDirectory", "edit", "patch", "glob", "grep"]
 
     /// The rendered call path of each verb, built from the two segments rather
     /// than written out again, thus the noun and the verbs have one home here.
     private static let filesPaths = filesVerbs.map { "\(filesNoun).\($0)" }
 
-    /// How many verbs the capability renders. The card ^3gzc6an fixes the
-    /// count at six: the two content reads, the three mutations, and the two
-    /// searches make read, write, edit, patch, glob, and grep.
-    private static let verbCount = 6
+    /// How many verbs the capability renders. The card ^3gzc6an fixed the
+    /// count at six: read, write, edit, patch, glob, and grep. The card
+    /// ^es7p0fd adds makeDirectory, thus the count is seven.
+    private static let verbCount = 7
 
     /// The first segment of every path the capability claims, with its
     /// separator. A builder that never registered the capability renders no
@@ -146,8 +146,8 @@ struct FilesCapabilityTests {
     /// eventplan.md § "Registration of capabilities: noun/verb": a capability
     /// is a noun plus its tools, and nothing else. The capability supplies the
     /// first segment one time, and each verb supplies the second.
-    @Test("the capability owns the files noun and holds exactly its six verbs")
-    func theCapabilityOwnsTheFilesNounAndHoldsItsSixVerbs() throws {
+    @Test("the capability owns the files noun and holds exactly its seven verbs")
+    func theCapabilityOwnsTheFilesNounAndHoldsItsSevenVerbs() throws {
         let capability = makeCapability()
 
         #expect(capability.noun == Self.filesNoun)
@@ -155,24 +155,26 @@ struct FilesCapabilityTests {
         #expect(capability.tools.map { $0.name } == Self.filesVerbs)
     }
 
-    /// The six verbs answer for one session, because each one holds the one
+    /// The seven verbs answer for one session, because each one holds the one
     /// `FileContext` the capability made — the promise each verb's own doc
     /// comment makes: "the context it reads against is the context the files
     /// capability owns". A context for each verb would make `read` blind to
     /// what `write` just wrote.
-    @Test("the six verbs hold one session context")
-    func theSixVerbsHoldOneSessionContext() throws {
+    @Test("the seven verbs hold one session context")
+    func theSevenVerbsHoldOneSessionContext() throws {
         let capability = makeCapability()
 
         let read = try Self.verb(Read.self, in: capability)
         let write = try Self.verb(Write.self, in: capability)
+        let makeDirectory = try Self.verb(MakeDirectory.self, in: capability)
         let edit = try Self.verb(Edit.self, in: capability)
         let patch = try Self.verb(Patch.self, in: capability)
         let glob = try Self.verb(Glob.self, in: capability)
         let grep = try Self.verb(Grep.self, in: capability)
 
         #expect(read.context === write.context)
-        #expect(write.context === edit.context)
+        #expect(write.context === makeDirectory.context)
+        #expect(makeDirectory.context === edit.context)
         #expect(edit.context === patch.context)
         #expect(patch.context === glob.context)
         #expect(glob.context === grep.context)
@@ -220,10 +222,10 @@ struct FilesCapabilityTests {
     /// eventplan.md § "Registration of capabilities: noun/verb": each entry is
     /// `tools.<noun>.<verb>`, and it has two segments. `withFiles(root:)` is
     /// the short form of `withCapability(FilesCapability(...))`, so it renders
-    /// the same six paths that capability holds — and nothing else under the
+    /// the same seven paths that capability holds — and nothing else under the
     /// noun.
-    @Test("withFiles renders exactly the six files verbs")
-    func withFilesRendersExactlyTheSixVerbs() throws {
+    @Test("withFiles renders exactly the seven files verbs")
+    func withFilesRendersExactlyTheSevenVerbs() throws {
         let registry = try makeFilesRegistry()
 
         let paths = registry.surface.entries.map(\.path)
@@ -318,8 +320,8 @@ struct FilesCapabilityTests {
 
     /// `help()` reads the same rendered surface, so it names each verb by its
     /// qualified path.
-    @Test("help() renders the six files verbs")
-    func helpRendersTheSixFilesVerbs() async throws {
+    @Test("help() renders the seven files verbs")
+    func helpRendersTheSevenFilesVerbs() async throws {
         let multiTool = MultiTool(registry: try makeFilesRegistry())
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return help();"))

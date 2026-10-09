@@ -46,9 +46,9 @@ extension MultiTool.Builder {
         return withCapability(capability)
     }
 
-    /// Queues the six verbs of the files capability — `tools.files.read`,
-    /// `tools.files.write`, `tools.files.edit`, `tools.files.patch`,
-    /// `tools.files.glob` and `tools.files.grep` — under the noun `files`,
+    /// Queues the seven verbs of the files capability — `tools.files.read`,
+    /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.edit`,
+    /// `tools.files.patch`, `tools.files.glob` and `tools.files.grep` — under the noun `files`,
     /// through `withCapability(_:)`.
     ///
     /// **Files is OFF by default.** A builder that never calls this

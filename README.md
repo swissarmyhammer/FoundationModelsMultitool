@@ -67,9 +67,9 @@ mounting the shell capability or the web capability.
 ### Files
 
 The files capability is off by default. Call `withFiles(root:)` on the
-builder to mount it. The capability adds six verbs under `tools.files`:
-`read`, `write`, `edit`, `patch`, `glob`, and `grep`. Each path stays in
-`root` (and in the `additionalRoots` that you give).
+builder to mount it. The capability adds seven verbs under `tools.files`:
+`read`, `write`, `makeDirectory`, `edit`, `patch`, `glob`, and `grep`. Each
+path stays in `root` (and in the `additionalRoots` that you give).
 
 Give `excludePatterns` to hide files from the search verbs. The patterns use
 the gitignore syntax, and they are relative to `root`:
