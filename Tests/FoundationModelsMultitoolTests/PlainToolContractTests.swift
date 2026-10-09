@@ -1,8 +1,8 @@
 // `PlainToolContractTests` — the plain-`Tool` contract of the six files verbs.
 //
 // Each files verb (`Read`, `Write`, `Edit`, `Patch`, `Glob`, `Grep`) takes a
-// `FileContext` at construction and answers from it. The three mutating
-// verbs read the ambient `ToolContext` ONE time, at the top of
+// `FileContext` at construction and answers from it. The four verbs that
+// record changes read the ambient `ToolContext` ONE time, at the top of
 // `call(arguments:)`, to deliver their change set (UPSTREAM_ASKS.md, ask 4),
 // and they treat a `nil` read as the bare session it is. Thus the verbs work
 // on a bare `LanguageModelSession` that mounts no Router. Before this suite,
@@ -48,9 +48,9 @@ import Testing
     private static let ambientContextCapture = "let toolContext = ToolContext.current"
 
     /// The files that carry exactly one ``ambientContextCapture`` each: the
-    /// three mutating verbs, which deliver their change set through it. No
-    /// other file of the capability reads the ambient context at all.
-    private static let capturingVerbFiles = ["Edit.swift", "Patch.swift", "Write.swift"]
+    /// four verbs that record changes, which deliver their change set through
+    /// it. No other file of the capability reads the ambient context at all.
+    private static let capturingVerbFiles = ["Edit.swift", "Patch.swift", "RemoveDirectory.swift", "Write.swift"]
         .map { "\(filesCapabilityDirectory)/\($0)" }
 
     /// The separator `RepositoryFile.sightings` writes between the location

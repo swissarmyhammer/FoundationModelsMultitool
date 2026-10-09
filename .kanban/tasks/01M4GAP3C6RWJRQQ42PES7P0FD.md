@@ -51,8 +51,24 @@ comments:
     - evidence: `swift build --build-tests` passed (no compiler warning; only the known mlx bundle build-system warning); `swift test` 2345 tests in 207 suites passed. Files: Tests/FoundationModelsMultitoolTests/FilesMakeDirectoryTests.swift, Sources/FoundationModelsMultitool/Capabilities/Files/MakeDirectory.swift
     - next: /test, then /review
   timestamp: 2026-10-09T13:54:20.766007+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4gfb9reest7sg2z36gq1tss
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (c4c97a6) — 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed. 2 files reviewed; 2 .kanban/ files not reviewed (.reviewignore). The commit renames no file. The prior finding (FilesMakeDirectoryTests.swift reuse/reuse) is checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-09T13:58:52.430328+00:00
+- actor: claude-code
+  id: 01m4gfbny3n3aprepxe1z9sqqf
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — FilesMakeDirectoryTests.swift, MakeDirectory.swift (shared FileWalker.isDirectory)
+    - test: green — swift test, 2345 passed
+    - commit: c4c97a6
+    - review: clean — 0 findings, 1 prior finding checked; task in done
+  timestamp: 2026-10-09T13:59:04.899886+00:00
+position_column: done
+position_ordinal: ffffd480
 title: Add the tools.files.makeDirectory verb
 ---
 ## What

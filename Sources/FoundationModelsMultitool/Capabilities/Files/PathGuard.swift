@@ -283,7 +283,7 @@ struct PathGuard: Sendable {
         if let violation = Self.lengthViolation(path) { return .failure(violation) }
         if let violation = Self.blockedPatternViolation(path) { return .failure(violation) }
 
-        let resolvedPath = path.hasPrefix("/") ? path : Self.join(root.path, path)
+        let resolvedPath = absolutePath(of: path)
 
         // Re-check the length of the resolved path: a short relative input
         // can exceed the limit once joined to the session root. Mirrors the
@@ -294,6 +294,60 @@ struct PathGuard: Sendable {
         return handleCanonicalizeResult(resolvedPath, absentFolders: absentFolders).flatMap { validatedPath in
             finishValidation(originalPath: resolvedPath, validatedPath: validatedPath)
         }
+    }
+
+    /// Validate the location of a symlink itself, never its target, or
+    /// answer `nil` when the path is not a symlink.
+    ///
+    /// ``validatePath(_:absentFolders:)`` resolves a symlink to its target,
+    /// and it bounds that target. A verb that removes the link itself needs
+    /// the location of the link, and that location must also stay in the
+    /// boundary: a link in a folder outside the root can point at a target
+    /// inside the root. Thus this method runs ``validatePath(_:absentFolders:)``
+    /// on the path, then validates the parent folder of the link for a
+    /// ``FileOperation/directory``, and puts the name of the link after the
+    /// canonical parent. The check uses `lstat` on the path without its
+    /// trailing slashes, thus `link/` names the link and not its target.
+    ///
+    /// - Parameter path: the raw path string (absolute or relative to ``root``).
+    /// - Returns: `nil` when the path is not a symlink; otherwise `.success`
+    ///   with the location of the link, or `.failure` with a corrective
+    ///   ``PathViolation``.
+    func validateSymlinkLocation(_ path: String) -> Result<URL, PathViolation>? {
+        let linkPath = Self.trimmingTrailingSlashes(absolutePath(of: path))
+        guard isSymlink(linkPath), let parent = Self.parentPath(linkPath) else { return nil }
+        let name = URL(fileURLWithPath: linkPath).lastPathComponent
+        return validatePath(path)
+            .flatMap { _ in validate(parent, for: .directory) }
+            .map { $0.appendingPathComponent(name, isDirectory: false) }
+    }
+
+    /// Whether a URL names the session root or a workspace root.
+    ///
+    /// A verb that removes a folder must not remove ``root``,
+    /// ``workspaceRoot``, or a member of ``additionalWorkspaceRoots``: each
+    /// one is a boundary that the guard confines the paths to. The URL and
+    /// each root resolve through `realpath` before the comparison, thus a
+    /// firmlink (`/var`) or a symlink in a root does not hide a match. A
+    /// root that does not resolve matches nothing.
+    ///
+    /// - Parameter url: the URL to compare with the roots.
+    /// - Returns: `true` when the URL resolves to a root.
+    func isRoot(_ url: URL) -> Bool {
+        guard case .resolved(let path) = Self.canonicalize(url.path) else { return false }
+        return ([root] + allWorkspaceRoots).contains { candidate in
+            guard case .resolved(let canonicalRoot) = Self.canonicalize(candidate.path) else { return false }
+            return canonicalRoot == path
+        }
+    }
+
+    /// The absolute form of a raw path: an absolute path stays as it is, and
+    /// a relative path joins ``root``.
+    ///
+    /// - Parameter path: the raw path string (absolute or relative to ``root``).
+    /// - Returns: the absolute path, not canonicalized.
+    private func absolutePath(of path: String) -> String {
+        path.hasPrefix("/") ? path : Self.join(root.path, path)
     }
 
     /// A `.success` with the canonical path, or the errno-mapped canonicalization violation.
@@ -961,12 +1015,24 @@ struct PathGuard: Sendable {
     /// Trailing slashes trim first (the root stays). Mirrors the Rust
     /// `Path::parent` for the absolute paths this stack operates on.
     private static func parentPath(_ path: String) -> String? {
-        var trimmed = path
-        while trimmed.count > 1 && trimmed.hasSuffix("/") { trimmed.removeLast() }
+        let trimmed = trimmingTrailingSlashes(path)
         guard trimmed != "/" else { return nil }
         guard let lastSlash = trimmed.lastIndex(of: "/") else { return nil }
         if lastSlash == trimmed.startIndex { return "/" }
         return String(trimmed[trimmed.startIndex..<lastSlash])
+    }
+
+    /// A path without its trailing slashes. The filesystem root stays `/`.
+    ///
+    /// ``parentPath(_:)`` and ``validateSymlinkLocation(_:)`` both read a
+    /// path without its trailing slashes, thus the rule lives in one place.
+    ///
+    /// - Parameter path: the path to trim.
+    /// - Returns: the path without its trailing slashes.
+    private static func trimmingTrailingSlashes(_ path: String) -> String {
+        var trimmed = path
+        while trimmed.count > 1 && trimmed.hasSuffix("/") { trimmed.removeLast() }
+        return trimmed
     }
 
     /// A "control characters" violation when a path holds a disallowed control character, else `nil`.

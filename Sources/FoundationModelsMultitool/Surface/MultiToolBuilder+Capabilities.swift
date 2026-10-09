@@ -46,9 +46,10 @@ extension MultiTool.Builder {
         return withCapability(capability)
     }
 
-    /// Queues the seven verbs of the files capability — `tools.files.read`,
-    /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.edit`,
-    /// `tools.files.patch`, `tools.files.glob` and `tools.files.grep` — under the noun `files`,
+    /// Queues the eight verbs of the files capability — `tools.files.read`,
+    /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.removeDirectory`,
+    /// `tools.files.edit`, `tools.files.patch`, `tools.files.glob` and
+    /// `tools.files.grep` — under the noun `files`,
     /// through `withCapability(_:)`.
     ///
     /// **Files is OFF by default.** A builder that never calls this
@@ -69,8 +70,8 @@ extension MultiTool.Builder {
     ///   - allowSymlinks: whether the path guard resolves symlinks rather
     ///     than rejecting them. Defaults to rejecting them.
     ///   - recordsChanges: whether the mutating verbs record what they
-    ///     changed. When `true`, each `write`, `edit` and `patch` call
-    ///     that lands delivers its changes to the session as one
+    ///     changed. When `true`, each `write`, `removeDirectory`, `edit` and
+    ///     `patch` call that lands delivers its changes to the session as one
     ///     `.progress` `OperationEvent` whose `detail` is the
     ///     `fileChanges` envelope; a host reads it with
     ///     `FileChangeSet.init(operationEventDetail:)`. A verb called
