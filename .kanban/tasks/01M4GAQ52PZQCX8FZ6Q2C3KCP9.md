@@ -24,11 +24,27 @@ comments:
     - evidence: same 4 files; `swift build --build-tests` complete; `swift test` 2361 tests in 208 suites pass
     - next: review
   timestamp: 2026-10-09T14:37:38.116481+00:00
+- actor: claude-code
+  id: 01m4gjy6t51y57dp4hgm5ey885
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (923aee7). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 4 source and test files reviewed. 4 .kanban files not reviewed (.reviewignore). No file renames.
+    - next: none. The task is in done.
+  timestamp: 2026-10-09T15:01:37.733235+00:00
+- actor: claude-code
+  id: 01m4gjyq01knnwm0gfzef158sf
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — UnknownToolHint.swift, Write.swift, 2 test files; the wording test theDescriptionNamesTheDirectoryVerbs was removed (user rule)
+    - test: green — full swift test, 2361 passed
+    - commit: 923aee7
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-09T15:01:54.305102+00:00
 depends_on:
 - 01M4GAP3C6RWJRQQ42PES7P0FD
 - 01M4GAPSDMT0G451RZ5Y4FBFYY
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffd680
 title: 'Point the model at the directory verbs: mkdir and rmdir alias hints, and the Write description'
 ---
 ## What
