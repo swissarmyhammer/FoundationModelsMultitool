@@ -148,12 +148,12 @@ mount it. The capability adds eight verbs under `tools.git`:
 |---|---|---|
 | `tools.git.status` | none | `staged`, `unstaged`, `untracked`, and `renamed` paths, `isClean`, and the current `branch` (null for a detached HEAD, for a repository with no commit, and for a HEAD that could not be read) |
 | `tools.git.branches` | none | the local `branches`, the `current` branch, and the `main` branch |
-| `tools.git.changes` | `branch?`, `range?` | `branch`, `parentBranch`, `range`, and the changed `files` |
+| `tools.git.changes` | `branch?`, `range?` | `branch` (`HEAD` for a detached HEAD), `parentBranch`, `range`, and the changed `files` |
 | `tools.git.show` | `path`, `ref?` | the `content` of the file at the ref (HEAD when you omit it) |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | `commits`, newest first: `sha`, `shortSha`, `author`, `date`, and `subject` |
 | `tools.git.commit` | `ref?` | one commit (HEAD when you omit `ref`): `sha`, `shortSha`, `author`, `date`, the full `message`, the `parents`, and the changed `files`, each with `status`, `additions`, and `deletions` |
 | `tools.git.blame` | `path`, `startLine?`, `endLine?`, `rev?` | one row for each line: `line`, `text`, `state`, and the `sha`, `author`, and `date` of the commit (the work folder when you omit `rev`) |
-| `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | a semantic diff: a `summary` of the counts and the `changes`, one for each entity |
+| `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | a semantic diff: a `summary` of the counts and the `changes`, one for each entity and one for each changed run of lines that no entity holds |
 
 A snippet reads the changed files, and then diffs each file against HEAD, in
 parallel:
@@ -194,7 +194,12 @@ languages: Rust, TypeScript, TSX, JavaScript, JSX, Python, Go, Java, C, C++,
 C#, Ruby, PHP, Swift, Elixir, and Bash. It reads these data formats: JSON,
 YAML, TOML, CSV, and Markdown. A Vue file gives its `<script>` block to the
 TypeScript or JavaScript parser. A file of each other type goes to the
-fallback plugin, which compares chunks of lines.
+fallback plugin, which compares chunks of lines. A changed line that no
+entity holds (a comment, an import, or other text at the top level) is a
+change too, with the `entityType` `lines` and a name such as `lines 12-14`.
+
+On a detached HEAD (a checkout of one commit), `tools.git.changes` reads
+HEAD itself, with no parent branch, and needs no `branch` argument.
 
 ### Environment
 

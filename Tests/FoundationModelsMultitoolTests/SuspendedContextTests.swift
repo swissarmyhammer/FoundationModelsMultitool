@@ -155,6 +155,12 @@ struct SuspendedContextTests {
         )
         let token = try Self.completionToken(of: rendered)
 
+        // The envelope returns before JSC starts the first snippet. A cancel
+        // that lands before the gated call starts leaves nothing to unwind,
+        // so `wasCancelled` would never be written. Wait for the call to
+        // start, then cancel.
+        try await TestPoll.waitUntil("the gated call started") { harness.gated.hasStarted }
+
         // A second snippet, in the same session and through the same mounted
         // tool, cancels the first through the sandbox's own `cancel()` global.
         //

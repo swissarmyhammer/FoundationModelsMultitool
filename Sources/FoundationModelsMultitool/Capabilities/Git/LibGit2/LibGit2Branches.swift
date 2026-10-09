@@ -67,6 +67,18 @@ extension LibGit2Repository {
         return try Self.name(ofBranch: head)
     }
 
+    /// Whether HEAD names a commit directly and no branch: a detached HEAD,
+    /// the state that `git checkout <sha>` makes.
+    ///
+    /// - Returns: `true` for a detached HEAD. `false` for a HEAD that names a
+    ///   branch, also a branch with no commit (a new repository).
+    /// - Throws: ``LibGit2Error`` when HEAD cannot be read.
+    func isHeadDetached() throws(LibGit2Error) -> Bool {
+        let detached = git_repository_head_detached(handle)
+        try LibGit2.check(detached)
+        return detached == LibGit2.trueValue
+    }
+
     /// Whether a local branch has the name `name`.
     ///
     /// - Parameter name: The branch name, without `refs/heads/`.

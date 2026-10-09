@@ -31,6 +31,12 @@ struct GitChangesTests {
     /// The issue branch of the parent tests.
     private static let issueBranch = "issue/test-feature"
 
+    /// The name that the verb gives as the branch of a detached HEAD.
+    private static let detachedHeadName = "HEAD"
+
+    /// The untracked file of the detached HEAD tests.
+    private static let detachedDirtyFile = "dirty.txt"
+
     /// A branch on `main` with one commit only: no parent, and the range of
     /// the last commit names no commit, thus there is no file and no range.
     /// A port of `test_git_changes_tool_execute_main_branch`.
@@ -233,18 +239,67 @@ struct GitChangesTests {
         #expect(result.files.isEmpty)
     }
 
-    /// A detached HEAD with no branch argument is a correction: there is no
-    /// current branch to read.
-    @Test("a detached HEAD with no branch argument is a correction")
-    func aDetachedHeadWithNoBranchArgumentIsACorrection() async throws {
-        let (repository, _) = try GitTestHistory.makeThreeCommits()
-        try repository.detachHead()
+    /// A repository with no commit and no branch argument is a correction:
+    /// HEAD names no commit to read.
+    @Test("a repository with no commit and no branch argument is a correction")
+    func aRepositoryWithNoCommitAndNoBranchArgumentIsACorrection() async throws {
+        let repository = try TemporaryGitRepository()
 
         let result = try await Self.changes(in: repository.workDirectory)
 
-        let correction = try #require(result.correction)
-        #expect(correction.contains("branch"), "correction was: \(correction)")
+        #expect(result.correction != nil)
         #expect(result.files.isEmpty)
+    }
+
+    /// A detached HEAD with no argument reads HEAD (task `^8fd3kgk`): it has
+    /// no parent, thus a dirty tree gives the uncommitted files only, with no
+    /// correction.
+    @Test("a detached HEAD with no argument reads the changes from HEAD")
+    func aDetachedHeadWithNoArgumentReadsTheChangesFromHead() async throws {
+        let repository = try Self.makeDetachedHead()
+        try repository.write("dirty\n", to: Self.detachedDirtyFile)
+
+        let result = try await Self.changes(in: repository.workDirectory)
+
+        #expect(result.correction == nil)
+        #expect(result.branch == Self.detachedHeadName)
+        #expect(result.parentBranch == nil)
+        #expect(result.range == nil)
+        #expect(result.files == [Self.detachedDirtyFile])
+    }
+
+    /// A detached HEAD with a clean tree and no argument gives the files of
+    /// the last commit, the same as a clean branch with no parent.
+    @Test("a detached HEAD with a clean tree gives the files of the last commit")
+    func aDetachedHeadWithACleanTreeGivesTheFilesOfTheLastCommit() async throws {
+        let repository = try Self.makeDetachedHead()
+
+        let result = try await Self.changes(in: repository.workDirectory)
+
+        #expect(result.correction == nil)
+        #expect(result.range == Self.lastCommitRange)
+        #expect(result.files == ["a.txt"])
+    }
+
+    /// A detached HEAD with a range reads that range and needs no branch
+    /// argument (task `^8fd3kgk`). Each uncommitted file is added.
+    @Test(
+        "a detached HEAD with a range reads that range",
+        arguments: [
+            ("HEAD", [detachedDirtyFile]),
+            (lastCommitRange, ["a.txt", detachedDirtyFile]),
+            ("HEAD~2", ["a.txt", detachedDirtyFile, "src/b.txt"]),
+        ])
+    func aDetachedHeadWithARangeReadsThatRange(range: String, files: [String]) async throws {
+        let repository = try Self.makeDetachedHead()
+        try repository.write("dirty\n", to: Self.detachedDirtyFile)
+
+        let result = try await Self.changes(in: repository.workDirectory, range: range)
+
+        #expect(result.correction == nil)
+        #expect(result.branch == Self.detachedHeadName)
+        #expect(result.range == range)
+        #expect(result.files == files)
     }
 
     /// A root in no repository is a correction, not a thrown error. A port of
@@ -306,6 +361,17 @@ struct GitChangesTests {
             try repository.write("\(file)\n", to: file)
         }
         try repository.commit(message: "Add features")
+        return repository
+    }
+
+    /// Makes the three commits of ``GitTestHistory/makeThreeCommits()`` and
+    /// detaches HEAD at the last commit, the way `git checkout <sha>` does.
+    ///
+    /// - Returns: The repository.
+    /// - Throws: When a write, a commit, or the detach fails.
+    private static func makeDetachedHead() throws -> TemporaryGitRepository {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        try repository.detachHead()
         return repository
     }
 

@@ -18,7 +18,8 @@
 //
 // 1. The branch is the `branch` argument, else the branch that HEAD names.
 //    The parent is the merge target of the branch; a target that is the
-//    branch itself, or no target, is no parent.
+//    branch itself, or no target, is no parent. A detached HEAD names no
+//    branch: the verb then reads `HEAD` itself, with no parent.
 // 2. `range` is set: the files of that range.
 // 3. The branch has a parent: the files that the branch changed since the
 //    merge-base with the parent.
@@ -33,11 +34,14 @@
 // status as `tools.git.status`, thus a file outside the root does not make the
 // tree dirty.
 //
-// Two steps differ from the source on purpose (task `^zdb38q4`): a
-// `branch` that is not a local branch is a correction, where the source falls
-// back to the uncommitted files; and a HEAD that names no branch (a detached
-// HEAD, or a repository with no commit) with no `branch` argument is a
-// correction, where the source gives an error.
+// Three steps differ from the source on purpose. A `branch` that is not a
+// local branch is a correction, where the source falls back to the
+// uncommitted files (task `^zdb38q4`). A repository with no commit and no
+// `branch` argument is a correction, where the source gives an error (task
+// `^zdb38q4`). A detached HEAD with no `branch` argument reads `HEAD` itself
+// with no parent (task `^8fd3kgk`), where the source takes the short name
+// `HEAD` as the name of a branch: a checkout of one commit, as a benchmark
+// clone makes, has no branch, and the changes from HEAD are still the answer.
 //
 // A changes call the verb cannot answer stays IN BAND, as a `correction`
 // beside no file. It is never thrown: a bad range, an unknown branch, a root
@@ -52,8 +56,12 @@ import FoundationModels
 @Generable
 struct ChangesArguments {
 
-    /// The local branch to read, or `nil` for the branch that HEAD names.
-    @Guide(description: "The local branch to read. Omit it to read the branch that HEAD names.")
+    /// The local branch to read, or `nil` for the branch that HEAD names
+    /// (`HEAD` itself for a detached HEAD).
+    @Guide(
+        description:
+            "The local branch to read. Omit it to read the branch that HEAD names, or HEAD itself when HEAD is "
+            + "detached.")
     var branch: String?
 
     /// The range to read in place of the parent rule, or `nil` for the
@@ -74,8 +82,11 @@ struct ChangesArguments {
 @Generable(description: "the files that changed on a branch, or the correction that says why there is no list.")
 struct ChangesResult {
 
-    /// The branch that the verb read.
-    @Guide(description: "The branch that the verb read; empty when the correction came before a branch was known.")
+    /// The branch that the verb read, `HEAD` for a detached HEAD.
+    @Guide(
+        description:
+            "The branch that the verb read; HEAD when HEAD is detached; empty when the correction came before a "
+            + "branch was known.")
     var branch: String
 
     /// The branch that `branch` merges back to, or `nil` when it has none.
@@ -119,6 +130,17 @@ extension CommittedChanges {
     static let empty = CommittedChanges(paths: [], range: nil)
 }
 
+/// The branch that a changes call reads, and the parent of that branch.
+private struct BranchTarget {
+
+    /// The branch that the verb reads: a local branch, or `HEAD` for a
+    /// detached HEAD.
+    let branch: String
+
+    /// The branch that ``branch`` merges back to, or `nil` when it has none.
+    let parent: String?
+}
+
 extension Changes {
 
     // MARK: Ranges
@@ -134,10 +156,10 @@ extension Changes {
     private static let failedChangesDescription = "git changes failed"
 
     /// The correction for a call with no `branch` argument when HEAD names no
-    /// branch.
-    private static let noCurrentBranchMessage =
-        "HEAD names no branch: HEAD is detached, or the git repository has no commit. Give branch to name the "
-        + "local branch to read."
+    /// commit: the repository has no commit yet.
+    private static let noCommitMessage =
+        "HEAD names no commit: the git repository has no commit yet. Commit a file first, or give branch to "
+        + "name a local branch to read."
 
     // MARK: Execution
 
@@ -170,37 +192,71 @@ extension Changes {
     ///   - arguments: The branch and the range.
     ///   - status: The uncommitted files below the root.
     ///   - location: The repository of the root.
-    /// - Returns: The result with its files, or the correction for no
-    ///   current branch, an unknown branch, a bad range, or a failed read.
+    /// - Returns: The result with its files, or the correction for a
+    ///   repository with no commit, an unknown branch, a bad range, or a
+    ///   failed read.
     private static func changes(
         for arguments: ChangesArguments,
         status: GitStatus,
         in location: GitRepositoryLocation
     ) -> Result<ChangesResult, CorrectiveRejection> {
         let repository: LibGit2Repository
-        let branch: String
-        let parent: String?
+        let target: BranchTarget
         do {
             repository = try LibGit2Repository(discoveringFrom: location.workDirectory)
-            guard let named = try arguments.branch ?? repository.currentBranchName() else {
-                return .failure(CorrectiveRejection(correctiveMessage: noCurrentBranchMessage))
+            switch try branchTarget(named: arguments.branch, in: repository) {
+            case .success(let found):
+                target = found
+            case .failure(let rejection):
+                return .failure(rejection)
             }
-            guard try repository.hasLocalBranch(named: named) else {
-                return .failure(CorrectiveRejection(correctiveMessage: unknownBranchMessage(named)))
-            }
-            branch = named
-            parent = try repository.mergeTarget(forBranch: named)
         } catch {
             return .failure(failedReadRejection(error))
         }
         return committedChanges(
-            onBranch: branch, parent: parent, range: arguments.range, isClean: status.isClean, in: repository
+            onBranch: target.branch, parent: target.parent, range: arguments.range, isClean: status.isClean,
+            in: repository
         ).map { committed in
             let committedFiles = committed.paths.compactMap(location.rootRelativePath(fromRepositoryPath:))
             return ChangesResult(
-                branch: branch, parentBranch: parent, range: committed.range,
+                branch: target.branch, parentBranch: target.parent, range: committed.range,
                 files: Set(committedFiles + status.allFiles).sorted(), correction: nil)
         }
+    }
+
+    /// The branch to read and its parent: rule 1.
+    ///
+    /// The `branch` argument, else the branch that HEAD names. A detached
+    /// HEAD names no branch, thus the verb reads HEAD itself, with no parent
+    /// (task `^8fd3kgk`).
+    ///
+    /// - Parameters:
+    ///   - argument: The `branch` argument, or `nil`.
+    ///   - repository: The open repository.
+    /// - Returns: The branch and its parent, or the correction for an unknown
+    ///   branch and for a HEAD that names no commit.
+    /// - Throws: ``LibGit2Error`` when HEAD, the branch, or the merge target
+    ///   cannot be read.
+    private static func branchTarget(
+        named argument: String?,
+        in repository: LibGit2Repository
+    ) throws(LibGit2Error) -> Result<BranchTarget, CorrectiveRejection> {
+        // `??` takes an autoclosure that drops the typed error, thus the
+        // current branch is read in a plain `if`.
+        var name = argument
+        if name == nil {
+            name = try repository.currentBranchName()
+        }
+        guard let named = name else {
+            guard try repository.isHeadDetached() else {
+                return .failure(CorrectiveRejection(correctiveMessage: noCommitMessage))
+            }
+            return .success(BranchTarget(branch: GitContext.defaultRef, parent: nil))
+        }
+        guard try repository.hasLocalBranch(named: named) else {
+            return .failure(CorrectiveRejection(correctiveMessage: unknownBranchMessage(named)))
+        }
+        return .success(BranchTarget(branch: named, parent: try repository.mergeTarget(forBranch: named)))
     }
 
     /// The committed files of rules 2 to 5.
@@ -313,15 +369,15 @@ extension Changes {
 /// //   const { parentBranch, files } = await tools.git.changes({});
 /// ```
 ///
-/// The contract: the branch (the `branch` argument, else the branch of HEAD),
-/// its parent branch, and the files that changed, relative to the root, in
-/// path order. A `range` gives the files of that range. With no range, a
-/// branch with a parent gives the files since the merge-base with the parent;
-/// a clean branch with no parent gives the files of the last commit
-/// (``lastCommitRange``); a dirty branch with no parent gives no committed
-/// file. Each uncommitted file is added in every case. A bad range, an unknown
-/// branch, a HEAD that names no branch, and a root in no repository each come
-/// back as a `correction`, not as an error.
+/// The contract: the branch (the `branch` argument, else the branch of HEAD,
+/// else `HEAD` itself for a detached HEAD), its parent branch, and the files
+/// that changed, relative to the root, in path order. A `range` gives the
+/// files of that range. With no range, a branch with a parent gives the files
+/// since the merge-base with the parent; a clean branch with no parent gives
+/// the files of the last commit (``lastCommitRange``); a dirty branch with no
+/// parent gives no committed file. Each uncommitted file is added in every
+/// case. A bad range, an unknown branch, a repository with no commit, and a
+/// root in no repository each come back as a `correction`, not as an error.
 struct Changes: Tool {
 
     /// The verb this tool renders as, which the git noun stands in front of:
@@ -331,16 +387,17 @@ struct Changes: Tool {
     /// The usage instructions, as the model reads them.
     let description = """
         changes gives the files that changed on a branch, relative to the session root, in path \
-        order. branch is the local branch to read; omit it to read the branch that HEAD names. \
+        order. branch is the local branch to read; omit it to read the branch that HEAD names, \
+        or HEAD itself when HEAD is detached (a checkout of one commit), which has no parent. \
         parentBranch is the branch that it merges back to. With range (from..to, for example \
         HEAD~1..HEAD, or one ref such as HEAD~3, which reads up to HEAD), files are the files of \
         that range. With no range: a branch with a parent gives the files changed since the \
         merge-base with the parent; a clean branch with no parent gives the files of the last \
         commit (range is then \(Changes.lastCommitRange)); a branch with no parent and uncommitted \
         files gives no committed file. Each uncommitted file (staged, unstaged, renamed, or \
-        untracked) is in files in every case. A bad range, an unknown branch, a HEAD that names \
-        no branch, and a root in no git repository each come back as a correction rather than \
-        as an error — read it, correct the call, and ask again.
+        untracked) is in files in every case. A bad range, an unknown branch, a git repository \
+        with no commit, and a root in no git repository each come back as a correction rather \
+        than as an error — read it, correct the call, and ask again.
         """
 
     /// The session context this verb reads against, which the git capability

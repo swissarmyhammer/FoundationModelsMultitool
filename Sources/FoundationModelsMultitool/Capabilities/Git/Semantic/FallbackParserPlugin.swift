@@ -38,7 +38,7 @@ struct FallbackParserPlugin: SemanticParserPlugin {
         return stride(from: 0, to: lines.count, by: Self.chunkLineCount).map { start in
             let end = min(start + Self.chunkLineCount, lines.count)
             let chunk = lines[start..<end].joined(separator: "\n")
-            let name = "lines \(start + 1)-\(end)"
+            let name = SemanticEntity.lineSpanName(firstLine: start + 1, lastLine: end)
             return SemanticEntity(
                 filePath: filePath, entityType: Self.chunkEntityType, name: name, content: chunk,
                 contentHash: CodeEntities.contentHash(chunk), startLine: start + 1, endLine: end)

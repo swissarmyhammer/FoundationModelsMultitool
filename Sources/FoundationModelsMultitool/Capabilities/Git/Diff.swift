@@ -5,7 +5,10 @@
 // `../swissarmyhammer/crates/swissarmyhammer-tools/src/mcp/tools/git/`, and
 // the dispatch `execute_diff` in `changes/mod.rs`). The diff is at the entity
 // level (function, class, and other entities), through the semantic engine
-// (`Semantic/SemanticDiffer.swift`, git.md § "Decisions", item 6).
+// (`Semantic/SemanticDiffer.swift`, git.md § "Decisions", item 6). Each mode
+// also reports the changed lines that no entity holds
+// (`Semantic/UncoveredLines.swift`, task `^8fd3kgk`), which the Rust source
+// does not: there, a comment added at the end of a file gives no change.
 //
 // git.md § "Decisions", item 9: `diff` is one verb with three modes, the same
 // as the source, and each argument and each result field is `camelCase`. The
@@ -144,8 +147,12 @@ internal struct DiffChange {
     @Guide(description: "What happened to the entity: added, modified, deleted, moved, or renamed.")
     var changeType: String
 
-    /// The kind of the entity, for example `function`.
-    @Guide(description: "The kind of the entity, for example function, class, or property.")
+    /// The kind of the entity, for example `function`, or `lines` for
+    /// changed lines that no entity holds.
+    @Guide(
+        description:
+            "The kind of the entity, for example function, class, or property; lines for changed lines that no "
+            + "entity holds.")
     var entityType: String
 
     /// The name of the entity.
@@ -437,11 +444,16 @@ extension Diff {
     /// The entity-level diff of some changed files, with the default
     /// plugins, and no commit sha and no author, as in Rust.
     ///
+    /// Each mode also reports the changed lines that no entity holds (task
+    /// `^8fd3kgk`): a comment, an import, or another line at the top level
+    /// is in no entity, and a diff that drops its change hides an edit.
+    ///
     /// - Parameter files: The changed files.
     /// - Returns: The diff of the engine.
     private static func semanticDiff(of files: [SemanticFileChange]) -> DiffResult {
         SemanticDiffer.computeSemanticDiff(
-            fileChanges: files, registry: ParserRegistry.makeDefault(), commitSHA: nil, author: nil)
+            fileChanges: files, registry: ParserRegistry.makeDefault(), commitSHA: nil, author: nil,
+            reportsUncoveredLines: true)
     }
 
     /// The result of a diff: `diff_result_to_response` in `diff/mod.rs`.
@@ -555,8 +567,9 @@ private enum DiffMode {
 /// ```
 ///
 /// The contract: the counts of the changes and one row for each changed
-/// entity (function, class, key, or other entity), with its kind, its name,
-/// its file, and its text before and after, each text cut to
+/// entity (function, class, key, or other entity) and for each run of
+/// changed lines that no entity holds (``UncoveredLines``), with its kind,
+/// its name, its file, and its text before and after, each text cut to
 /// ``contentCharacterCap`` characters with an honest `isContentCapped` flag.
 /// Each path is relative to the root and bounded through the session's
 /// ``PathGuard``. A missing argument, a path outside the root, an unknown
@@ -571,7 +584,9 @@ internal struct Diff: Tool {
     /// The usage instructions, as the model reads them.
     let description = """
         diff gives a semantic diff at the entity level (functions, classes, keys, and other \
-        entities), not a line diff, in one of three modes. Inline: give leftText, rightText, and \
+        entities), not a line diff, in one of three modes. A changed line that no entity holds \
+        (a comment, an import, or other text at the top level) is a change of the entityType \
+        \(UncoveredLines.entityType), named by its line numbers. Inline: give leftText, rightText, and \
         language to compare two texts. File: give left and right, each a path or path@ref (for \
         example 'a.swift@HEAD~1'); a path with no ref reads the work folder. Automatic: give no \
         argument to diff each changed file of the work folder against HEAD. summary counts the \

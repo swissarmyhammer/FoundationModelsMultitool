@@ -212,6 +212,11 @@ All the open questions have a decision. The first run of the spike
    functions that the verbs need. See "Spike result".
 6. Semantic diff (question 4). `tools.git.diff` ports the entity-level diff
    of `swissarmyhammer-sem` now. It does not give a line diff only.
+   - Addition (task `^8fd3kgk`): the verb also reports each changed run of
+     lines that no entity holds (`Semantic/UncoveredLines.swift`), with the
+     entity type `lines`. The Rust source does not: a comment added at the
+     end of a file gives no change there. The engine keeps the Rust result by
+     default, thus the golden tests still compare with Rust.
    - The source crate `swissarmyhammer-sem` has about 13400 lines. The diff
      path needs only a part of it: `model/` (entity, change, identity match,
      about 800 lines), `parser/differ.rs`, `parser/registry.rs`,

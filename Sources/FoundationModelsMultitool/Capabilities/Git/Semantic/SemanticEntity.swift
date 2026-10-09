@@ -72,6 +72,17 @@ extension SemanticEntity {
         "\(filePath)::\(parentID ?? entityType)::\(name)"
     }
 
+    /// The name of an entity that is a span of lines: `lines <first>-<last>`,
+    /// the form of a chunk name in `parser/plugins/fallback.rs`.
+    ///
+    /// - Parameters:
+    ///   - firstLine: The 1-based first line of the span.
+    ///   - lastLine: The 1-based last line of the span.
+    /// - Returns: The name.
+    static func lineSpanName(firstLine: Int, lastLine: Int) -> String {
+        "lines \(firstLine)-\(lastLine)"
+    }
+
     /// An entity of a plugin that parses no tree: its id is
     /// ``makeID(filePath:entityType:name:parentID:)`` of its own path, type,
     /// and name with no parent (each data plugin in Rust calls

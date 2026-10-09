@@ -45,6 +45,21 @@ struct LibGit2BranchesTests {
         #expect(Set(try opened.localBranchNames()) == [TemporaryGitRepository.defaultBranch, GitTestHistory.featureBranch])
     }
 
+    /// Only a HEAD that names a commit directly is detached: a HEAD on a
+    /// branch is not, and the HEAD of a repository with no commit is not.
+    @Test("only a HEAD that names a commit directly is detached")
+    func onlyAHeadThatNamesACommitDirectlyIsDetached() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+        let empty = try TemporaryGitRepository()
+        let openedEmpty = try LibGit2Repository(discoveringFrom: empty.workDirectory)
+
+        #expect(try !opened.isHeadDetached())
+        #expect(try !openedEmpty.isHeadDetached())
+        try repository.detachHead()
+        #expect(try opened.isHeadDetached())
+    }
+
     /// A repository with no commit has no branch, and its HEAD names no
     /// branch that exists.
     @Test("a repository with no commit has no branch")

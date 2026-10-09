@@ -66,6 +66,46 @@ struct GitDiffTests {
     /// The name of the function of ``sumSwift`` and ``doubledSumSwift``.
     private static let sumFunctionName = "total"
 
+    /// The Python file of the comment and blank-line tests.
+    private static let pythonFile = "sites.py"
+
+    /// One source file of a trailing-comment test: its path, its text, and
+    /// the comment line that the test adds at its end or removes from it.
+    struct TrailingCommentCase: CustomTestStringConvertible, Sendable {
+
+        /// The path of the file, relative to the work folder.
+        let path: String
+
+        /// The text of the file with no trailing comment.
+        let source: String
+
+        /// The text of the comment line, with no line end.
+        let comment: String
+
+        var testDescription: String { path }
+
+        /// The text of the file with the comment line at its end.
+        var commentedSource: String { source + comment + "\n" }
+    }
+
+    /// The trailing-comment cases: Python, the language of the report of
+    /// task `^8fd3kgk`, and three other languages of the code plugin.
+    static let trailingCommentCases: [TrailingCommentCase] = [
+        TrailingCommentCase(
+            path: pythonFile,
+            source: "import os\n\n\ndef greet():\n    return \"hello\"\n\n\nsite = greet()\n",
+            comment: "# a note at the end of the file"),
+        TrailingCommentCase(
+            path: swiftFile, source: "func greet() -> String {\n    return \"hello\"\n}\n",
+            comment: "// a note at the end of the file"),
+        TrailingCommentCase(
+            path: "greet.ts", source: "export function greet(): string {\n    return \"hello\";\n}\n",
+            comment: "// a note at the end of the file"),
+        TrailingCommentCase(
+            path: "greet.rs", source: "fn greet() -> String {\n    String::from(\"hello\")\n}\n",
+            comment: "// a note at the end of the file"),
+    ]
+
     // MARK: - parse_file_ref
 
     /// A spec with no `@` is the whole path, with no ref
@@ -315,6 +355,66 @@ struct GitDiffTests {
         #expect(result.correction == nil)
         #expect(result.changes.isEmpty)
         #expect(result.summary.files == 0)
+    }
+
+    /// A comment line added at the end of a tracked file is a change against
+    /// `@HEAD` (task `^8fd3kgk`), in each language: no entity holds the
+    /// line, and the diff still reports it.
+    @Test("file mode reports a comment line added at the end of a file", arguments: trailingCommentCases)
+    func fileModeReportsACommentLineAddedAtTheEndOfAFile(_ sample: TrailingCommentCase) async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(sample.source, to: sample.path)
+        try repository.commit(message: "first")
+        try repository.write(sample.commentedSource, to: sample.path)
+
+        let result = try await Self.diff(
+            Self.arguments(left: "\(sample.path)@HEAD", right: sample.path),
+            in: GitContext(root: repository.workDirectory))
+
+        #expect(result.correction == nil)
+        #expect(result.summary.files == 1)
+        let change = try #require(result.changes.first { $0.afterContent?.contains(sample.comment) == true })
+        #expect(change.filePath == sample.path)
+        #expect(change.beforeContent?.contains(sample.comment) != true)
+    }
+
+    /// A comment line removed from the end of a tracked file is a change
+    /// against `@HEAD`: the old text holds the line, and the new text does
+    /// not.
+    @Test("file mode reports a comment line removed from the end of a file", arguments: trailingCommentCases)
+    func fileModeReportsACommentLineRemovedFromTheEndOfAFile(_ sample: TrailingCommentCase) async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(sample.commentedSource, to: sample.path)
+        try repository.commit(message: "first")
+        try repository.write(sample.source, to: sample.path)
+
+        let result = try await Self.diff(
+            Self.arguments(left: "\(sample.path)@HEAD", right: sample.path),
+            in: GitContext(root: repository.workDirectory))
+
+        #expect(result.correction == nil)
+        #expect(result.summary.files == 1)
+        let change = try #require(result.changes.first { $0.beforeContent?.contains(sample.comment) == true })
+        #expect(change.afterContent?.contains(sample.comment) != true)
+    }
+
+    /// A blank line added between two functions changes no entity and no
+    /// text: the diff reports no change for it.
+    @Test("file mode gives no change for a blank line between two functions")
+    func fileModeGivesNoChangeForABlankLineBetweenTwoFunctions() async throws {
+        let functions = "def first():\n    return 1\n\n\ndef second():\n    return 2\n"
+        let spaced = "def first():\n    return 1\n\n\n\ndef second():\n    return 2\n"
+        let repository = try TemporaryGitRepository()
+        try repository.write(functions, to: Self.pythonFile)
+        try repository.commit(message: "first")
+        try repository.write(spaced, to: Self.pythonFile)
+
+        let result = try await Self.diff(
+            Self.arguments(left: "\(Self.pythonFile)@HEAD", right: Self.pythonFile),
+            in: GitContext(root: repository.workDirectory))
+
+        #expect(result.correction == nil)
+        #expect(result.changes.isEmpty)
     }
 
     /// A path outside the root goes through the path guard of the context,
