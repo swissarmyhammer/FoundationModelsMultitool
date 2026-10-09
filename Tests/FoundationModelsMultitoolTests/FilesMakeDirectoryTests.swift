@@ -53,15 +53,6 @@ import Testing
             .call(arguments: MakeDirectoryArguments(path: path, parents: parents))
     }
 
-    /// Whether a directory is at a path.
-    ///
-    /// - Parameter path: the absolute path to examine.
-    /// - Returns: `true` when a directory is at `path`.
-    private static func isDirectory(at path: String) -> Bool {
-        var isDirectory: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-    }
-
     // MARK: Create
 
     /// A nested path makes each of its three folders under the root, and the
@@ -74,7 +65,7 @@ import Testing
 
         #expect(result.correction == nil)
         #expect(result.created)
-        #expect(Self.isDirectory(at: TestSupport.path(Self.nestedPath, in: root)))
+        #expect(FileWalker.isDirectory(TestSupport.path(Self.nestedPath, in: root)))
         #expect(result.path.hasSuffix(Self.nestedPath))
     }
 
@@ -103,7 +94,7 @@ import Testing
 
         #expect(result.correction == nil)
         #expect(!result.created)
-        #expect(Self.isDirectory(at: TestSupport.path(Self.nestedPath, in: root)))
+        #expect(FileWalker.isDirectory(TestSupport.path(Self.nestedPath, in: root)))
     }
 
     // MARK: Corrections

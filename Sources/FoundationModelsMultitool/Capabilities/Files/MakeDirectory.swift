@@ -100,8 +100,7 @@ extension MakeDirectory {
     ///   - path: the requested path, echoed in a correction.
     /// - Returns: the envelope, or the correction.
     private static func makeDirectory(at url: URL, parents: Bool, path: String) -> MakeDirectoryResult {
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+        if FileWalker.isDirectory(url.path) {
             return MakeDirectoryResult(path: url.path, created: false, correction: nil)
         }
         do {

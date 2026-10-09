@@ -26,6 +26,31 @@ comments:
     - evidence: `swift build --build-tests` clean (no compiler warning); `swift test --filter "FilesMakeDirectoryTests|FilesCapabilityTests"` 18 tests in 2 suites passed; `swift test` 2345 tests in 207 suites passed. Files: Sources/.../Files/MakeDirectory.swift (new), Sources/.../Files/PathGuard.swift, Sources/.../Files/FilesCapability.swift, Sources/.../Surface/MultiToolBuilder+Capabilities.swift, README.md, Tests/.../FilesMakeDirectoryTests.swift (new), Tests/.../FilesCapabilityTests.swift, Tests/.../Fixtures/FilesRunFixtures.swift
     - next: /review
   timestamp: 2026-10-09T13:43:49.074337+00:00
+- actor: claude-code
+  id: 01m4gev8mg4c6g16yzdc9024qh
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (d70205c); 1 finding (1 confirmed, 1 refuted) — Tests/FoundationModelsMultitoolTests/FilesMakeDirectoryTests.swift:60 (reuse/reuse)
+    - next: implement the open item in "Review Findings (2026-10-09 08:46)". The task stays in review.
+  timestamp: 2026-10-09T13:50:06.992665+00:00
+- actor: claude-code
+  id: 01m4gevmbbhvr73eze5bf07wjc
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 8 files (new MakeDirectory.swift, PathGuard absentFolders, tests)
+    - test: green — swift test, 2345 passed
+    - commit: d70205c
+    - review: findings — Tests/FoundationModelsMultitoolTests/FilesMakeDirectoryTests.swift:60
+  timestamp: 2026-10-09T13:50:18.987588+00:00
+- actor: claude-code
+  id: 01m4gf30eyvfzfw15bbmpnywge
+  text: |-
+    Finding reuse/reuse worked. `FileWalker.isDirectory(_:)` already has internal access, so the test reaches it through `@testable import`. I removed the private `isDirectory(at:)` helper from FilesMakeDirectoryTests.swift and changed its two call sites to `FileWalker.isDirectory(_:)`. The same cause was in the production verb: `MakeDirectory.makeDirectory(at:parents:path:)` repeated the `fileExists(atPath:isDirectory:)` check inline. It now calls `FileWalker.isDirectory(url.path)`. FilesCapabilityTests.swift and Fixtures/FilesRunFixtures.swift do not have this cause. `FilesWriteTests.swift` has an inline check that is older than this task, so I did not change it. The behavior is the same; `existingDirectoryIsNotCreatedAgain` and `nestedPathMakesEachFolder` cover the shared check.
+
+    ### implement — changed
+    - evidence: `swift build --build-tests` passed (no compiler warning; only the known mlx bundle build-system warning); `swift test` 2345 tests in 207 suites passed. Files: Tests/FoundationModelsMultitoolTests/FilesMakeDirectoryTests.swift, Sources/FoundationModelsMultitool/Capabilities/Files/MakeDirectory.swift
+    - next: /test, then /review
+  timestamp: 2026-10-09T13:54:20.766007+00:00
 position_column: doing
 position_ordinal: '80'
 title: Add the tools.files.makeDirectory verb
@@ -65,3 +90,15 @@ Add a verb that makes a directory. At this time, the files capability cannot mak
 ## Workflow
 
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-09 08:46)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 3 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/FilesMakeDirectoryTests.swift:60` `reuse/reuse` — The test helper `isDirectory(at:)` repeats the production check of whether a directory exists at a path. `FileWalker` already has that check, so the test copy can drift from the production one. Call the shared directory check from the test, or give the production helper an internal access level so the test can use it with `@testable import`. Keep the helper only if the shared one cannot be reached from tests.
