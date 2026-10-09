@@ -6,10 +6,13 @@ import Testing
 ///
 /// One live turn on the shipped configuration: `MultiTool.Builder().withShell()`
 /// vended through `makeSessionTools(selection:embedder:sampleModel:)` and mounted on a
-/// `RoutedSession`. The model discovers `tools.shell.execute`, starts a
-/// never-ending command from a `runCode` snippet, and the outer run goes to the
-/// background and hands back a pending envelope. The harness then reads the run
-/// plane while the command is still running, ends it, and closes the session.
+/// `RoutedSession`. The model discovers `tools.shell.execute` and starts a
+/// never-ending command from a `runCode` snippet. Under the settle-period rule
+/// (card `^38j4bbn`) the inner execute run goes to the background and gives the
+/// snippet its pending object, and the outer `runCode` call answers with its
+/// own result. The harness takes the execute run's completion token from the
+/// run's own context, reads the run plane while the command is still running,
+/// ends it, and closes the session.
 ///
 /// What each condition proves, and where the reading comes from, is stated on
 /// `shellBackgroundChecks(for:)` and on the runner in

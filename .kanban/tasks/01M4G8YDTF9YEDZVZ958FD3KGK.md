@@ -28,8 +28,25 @@ comments:
     - evidence: `swift build --build-tests` clean (only the pre-existing mlx build-system warning); `swift test` 2339 tests in 206 suites passed. Files: Sources/.../Git/Changes.swift, Git/Diff.swift, Git/LibGit2/LibGit2Branches.swift, Git/Semantic/UncoveredLines.swift (new), Git/Semantic/SemanticDiffer.swift, Git/Semantic/SemanticEntity.swift, Git/Semantic/FallbackParserPlugin.swift; Tests/.../GitChangesTests.swift, GitDiffTests.swift, LibGit2BranchesTests.swift, UncoveredLinesTests.swift (new); README.md, git.md.
     - next: /review. After the commit is on origin/main, send the commit to the session foundationmodelsacpagent-fd (card Workflow).
   timestamp: 2026-10-09T12:39:50.338230+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4gc0g4eqmxd1t9k5f9wqp64
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (ea0d60f): 0 findings, 0 confirmed, 1 refuted; 12 files reviewed. The .kanban files are excluded by .reviewignore. No validator matches README.md and git.md. The commit renames no file.
+    - next: none. The task is in done.
+  timestamp: 2026-10-09T13:00:32.782302+00:00
+- actor: claude-code
+  id: 01m4gc0wsq3f1dsmdm5kgxbk36
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 13 files (Changes.swift, Diff.swift, LibGit2Branches.swift, new UncoveredLines.swift, semantic differ files, tests, README.md, git.md)
+    - test: green — swift test, 2339 passed (race fix in SuspendedContextTests)
+    - commit: ea0d60f
+    - review: clean — 0 findings; task in done
+    - next: after the push to origin/main, send the commit to the session foundationmodelsacpagent-fd
+  timestamp: 2026-10-09T13:00:45.751355+00:00
+position_column: done
+position_ordinal: ffffd280
 title: tools.git.changes fails on a detached HEAD, and tools.git.diff misses a change against HEAD
 ---
 ## What

@@ -17,9 +17,15 @@ import ScenarioGrading
 //
 // - The MODEL owns discovery and the start. It finds `tools.shell.execute`
 //   through `searchTools` and starts the command from a `runCode` snippet.
-//   `MultiTool` declares a background mount for itself, and a declared mount
-//   wins over the composition site, so that outer run goes to the background
-//   and hands back a pending envelope on every turn.
+//   The settle-period rule (card `^38j4bbn`) decides which run goes to the
+//   background. `Execute` declares a background mount for itself, so the inner
+//   `tools.shell.execute` call waits for its settle period. That wait ends
+//   before the settle period of the outer `runCode` call ends. The command
+//   never ends, so the execute run goes to the background and gives the
+//   snippet `{pending: true, commandID, completionToken, next}`. The snippet
+//   then ends inside the outer period, and the outer call answers with its own
+//   result. Thus the background run of this scenario is the EXECUTE run, and
+//   no outer pending envelope is expected.
 // - The HARNESS owns the readings that follow, because a live model cannot be
 //   asked to make them reliably and a scenario that asked would be grading the
 //   model rather than the background path. Each reading is taken through the
@@ -39,11 +45,12 @@ import ScenarioGrading
 // CANCELER's own answer, and the journal carries what the sink saw.
 //
 // The defect is visible in this scenario's own recorded journal, and the reading
-// below steps around it rather than over it. Measured on 2026-08-25, one run:
-// the outer `runCode` run's terminal is journaled `outcome: succeeded` with the
-// shell run's pending envelope as its detail, while the shell run swept at
-// `close()` is journaled `outcome: stopped` under its own completion token. The
-// second is what this scenario grades.
+// below steps around it rather than over it. Measured on 2026-08-25, one run,
+// before the settle-period rule: the outer `runCode` run's terminal was
+// journaled `outcome: succeeded` with the shell run's pending envelope as its
+// detail, while the shell run swept at `close()` was journaled
+// `outcome: stopped` under its own completion token. The second is what this
+// scenario grades.
 
 /// The command the scenario asks the model to start.
 ///
@@ -80,7 +87,8 @@ private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; slee
 /// description uses ("start a long command in the background and get its
 /// completion token back at once"). The wording does not decide the outcome:
 /// `Execute` declares a background mount for itself, so every `execute` call
-/// goes to the background whatever the model asked for.
+/// that runs longer than its settle period goes to the background whatever the
+/// model asked for, and this command never ends.
 ///
 /// "Reply in one short sentence" keeps the reply as long as the scenario needs
 /// and no longer: no check reads the reply (see `shellBackgroundChecks(for:)`),
@@ -150,7 +158,7 @@ private let terminalEventsPerRun = 1
 /// The turn is streamed rather than driven through `respond(to:)`, for the
 /// reason `runNativeIntegrationScenario` states at length: `respond` blocks and
 /// drains, so a backgrounded run is collected before the caller sees it and the
-/// pending envelope this scenario grades would never surface.
+/// background run this scenario reads would not stand on the run plane.
 ///
 /// **Skip, not failure.** Identical to every other runner here: a
 /// `GenerationError.notWiredForLiveInference` prints a note and records no
@@ -190,12 +198,10 @@ func runShellBackgroundScenario(name: String) async throws {
         // half needs a loaded model to drive, which is why it stands here.
         await session.close()
 
-        let backgroundToken = backgroundRunToken(in: turn.toolOutputs)
         let journal = await journaledRunEvents(
             awaiting: plane.sweptRunToken, in: fixture)
         let evidence = ShellBackgroundEvidence(
-            backgroundRunToken: backgroundToken,
-            backgroundReports: backgroundReportCount(in: journal, of: backgroundToken),
+            backgroundReports: backgroundReportCount(in: journal, of: plane.executeRunToken),
             declaredJournalOp: registry.surface.entries
                 .first { $0.path == shellExecutePath }?.journalOp,
             plane: plane,
@@ -206,7 +212,7 @@ func runShellBackgroundScenario(name: String) async throws {
         reportGatedResult(
             scenario: name,
             line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
-                + "backgroundToken=\(evidence.backgroundRunToken ?? "none") "
+                + "executeToken=\(plane.executeRunToken ?? "none") "
                 + "backgroundReports=\(evidence.backgroundReports) "
                 + "background=\(plane.backgroundRun?.description ?? "none") "
                 + "declaredOp=\(evidence.declaredJournalOp ?? "none") "
@@ -268,6 +274,16 @@ struct BackgroundShellRun: Sendable, CustomStringConvertible {
 /// plus what it left standing for the session-end sweep.
 struct ShellRunPlaneObservation: Sendable {
 
+    /// The completion token of the model's own `tools.shell.execute` run, or
+    /// `nil` when no execute run started.
+    ///
+    /// It is read off the run's own ambient context, which the probe sandbox
+    /// keeps. The snippet gets the same token as the `commandID` and the
+    /// `completionToken` of its pending object, and the run plane lists the run
+    /// under it. Thus the harness finds the background run with no outer
+    /// pending envelope and with no reading of the model's reply.
+    var executeRunToken: String?
+
     /// The model's own shell run, as the run plane reported it, or `nil` when it
     /// never reached the plane.
     var backgroundRun: BackgroundShellRun?
@@ -321,6 +337,7 @@ private func observeShellRunPlane(
     }
     guard let context else { return observation }
     let token = context.completionToken
+    observation.executeRunToken = token
 
     // The run plane `status()` reports. `MultiTool`'s `status()` global is
     // `ToolContext.backgroundRuns()` rendered as JS objects — see
@@ -421,7 +438,8 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 /// which is the path an inner `tools.*` call always takes (`RunBinding`): the
 /// unmounted `MultiTool` runs the snippet inline, and the inner
 /// `tools.shell.execute` call goes to the background on the session's mailbox
-/// because `Execute.mount` declares a background mount. The root package's `RegisteredJournalOpTests`
+/// because `Execute.mount` declares a background mount and the `sleep` runs
+/// longer than the settle period. The root package's `RegisteredJournalOpTests`
 /// drives a snippet the same way.
 ///
 /// It exists for one reading: `close()` has to have a background shell run to
@@ -542,66 +560,37 @@ private func terminals(in events: [OperationEvent], of token: String?) -> [Opera
     return events.filter { $0.correlationID == token && $0.kind == .completed }
 }
 
-// MARK: - The background run
-
-/// The completion token of the run that went to the background, read off the
-/// pending envelope it handed back.
-///
-/// Router's own byte-shape recognizer decides which output is an envelope, and
-/// the token is decoded through the envelope's own `Codable` conformance rather
-/// than parsed out of the rendered text: the frame is private to Router, so a
-/// hand-written parse would be a second spelling of it.
-///
-/// The FIRST envelope, because that is the outer `runCode` run of the turn — the
-/// one background point per snippet (`MultiTool+Background`).
-///
-/// - Parameter outputs: each completed tool call's own output text, in
-///   completion order.
-/// - Returns: the background run's completion token, or `nil` when no call went
-///   to the background.
-private func backgroundRunToken(in outputs: [String]) -> String? {
-    guard let rendered = outputs.first(where: PendingRunEnvelope.isRendered) else { return nil }
-    return try? JSONDecoder()
-        .decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        .completionToken
-}
+// MARK: - The background report
 
 /// How many background reports the session journaled for one run.
 ///
-/// `BackgroundToolRunner` posts one synthesized `progress` event as it sends a
-/// run to the background, and that event's `detail` is the rendered pending
-/// envelope OF THAT RUN. Both halves are needed to count it, and this is why:
+/// `BackgroundToolRunner` posts one synthesized `progress` event as it starts a
+/// background run, and that event's `detail` is the rendered pending envelope
+/// OF THAT RUN. The envelope's own token is the only key that names the run,
+/// and the `correlationID` of the event is not:
 ///
-/// - The `correlationID` alone is not enough. An inner `tools.*` run's events
-///   reach the session re-stamped with the OUTER run's correlation
-///   (`AmbientUpstreamSink`, `ToolContext.post(_:)`), so the shell run's own
-///   background report is journaled under the `runCode` run's token too, and so
-///   is every output chunk it reports.
-/// - The envelope's own token tells them apart, because each report carries the
-///   envelope of the run it is about.
+/// - The execute run is an inner `tools.*` run. Its events reach the session
+///   re-stamped with the OUTER `runCode` run's correlation
+///   (`AmbientUpstreamSink`, `ToolContext.post(_:)`), so its background report
+///   is journaled under the token of the `runCode` run, and not under its own.
+/// - The swept run is an inner run of a second snippet, and its report can
+///   stand under any correlation. Its envelope names the swept run, and thus
+///   it is not counted for the execute run.
 ///
-/// Measured on 2026-08-25, one recorded run: four `progress` events stand under
-/// the background run's correlation — its own background report, the shell
-/// run's, one line of shell output, and the swept run's background report — and
-/// exactly one of them carries an envelope naming the background run.
+/// Router's own byte-shape recognizer decides which detail is an envelope, and
+/// it decodes the token through the envelope's own `Codable` conformance. The
+/// frame is Router's, so a hand-written parse would be a second spelling of it.
 ///
 /// - Parameters:
 ///   - events: the journaled operation events.
-///   - token: the background run's completion token, or `nil` when nothing went
-///     to the background.
+///   - token: the completion token of the run, or `nil` when the harness saw
+///     no run.
 /// - Returns: how many journaled events are this run's background report.
-private func backgroundReportCount(in events: [OperationEvent], of token: String?) -> Int {
+func backgroundReportCount(in events: [OperationEvent], of token: String?) -> Int {
     guard let token else { return 0 }
     return events.filter { event in
-        guard event.kind == .progress,
-            event.correlationID == token,
-            PendingRunEnvelope.isRendered(text: event.detail)
-        else {
-            return false
-        }
-        let envelope = try? JSONDecoder()
-            .decode(PendingRunEnvelope.self, from: Data(event.detail.utf8))
-        return envelope?.completionToken == token
+        event.kind == .progress
+            && PendingRunEnvelope.makeDecoded(fromRendered: event.detail)?.completionToken == token
     }
     .count
 }
@@ -611,10 +600,8 @@ private func backgroundReportCount(in events: [OperationEvent], of token: String
 /// Everything one shell background run produced that its verdict is graded on.
 struct ShellBackgroundEvidence: Sendable {
 
-    /// The completion token the background `runCode` call handed back.
-    let backgroundRunToken: String?
-
-    /// How many background reports the session journaled for that run.
+    /// How many background reports the session journaled for the execute run,
+    /// counted by the token of `ShellRunPlaneObservation.executeRunToken`.
     let backgroundReports: Int
 
     /// The `"verb noun"` pair the registration site declared for
@@ -632,9 +619,9 @@ struct ShellBackgroundEvidence: Sendable {
     let sweptRunTerminals: [OperationEvent]
 }
 
-/// The label of the check that grades the background call as having handed a
-/// pending envelope back.
-private let shellPendingEnvelopeCheckName = "pendingEnvelope"
+/// The label of the check that grades the model as having started a
+/// `tools.shell.execute` run under a completion token of its own.
+private let shellExecuteRunStartedCheckName = "executeRunStarted"
 
 /// The label of the check that grades the background handoff as having reported
 /// itself exactly once.
@@ -679,18 +666,19 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
     let plane = evidence.plane
     return [
         ScenarioCheck(
-            name: shellPendingEnvelopeCheckName,
-            held: evidence.backgroundRunToken?.isEmpty == false,
+            name: shellExecuteRunStartedCheckName,
+            held: plane.executeRunToken?.isEmpty == false,
             failureMessage:
-                "expected a runCode call to go to the background and hand back a pending envelope "
-                + "carrying a completion token, but no tool output was one"
+                "expected the model to start a tools.shell.execute run under a completion token "
+                + "of its own, but no execute run reached the shell sandbox"
         ),
         ScenarioCheck(
             name: shellBackgroundReportCheckName,
             held: evidence.backgroundReports == backgroundReportsPerRun,
             failureMessage:
                 "expected the journal to hold exactly \(backgroundReportsPerRun) progress event "
-                + "carrying the background run's own pending envelope, and it held "
+                + "carrying the pending envelope of the execute run "
+                + "\(plane.executeRunToken ?? "(never started)"), and it held "
                 + "\(evidence.backgroundReports)"
         ),
         ScenarioCheck(
