@@ -417,4 +417,30 @@ import Testing
         let changes = await context.changes.drain().changes
         #expect(changes.isEmpty)
     }
+
+    // MARK: Description
+
+    /// The `tools.*` paths that the description of the verb names, without
+    /// their `tools.` prefix.
+    ///
+    /// - Parameter context: the session context of the verb.
+    /// - Returns: the set of the named paths.
+    private static func pathsNamedByTheDescription(in context: FileContext) -> Set<String> {
+        Set(UnknownToolHint.referencedToolPaths(in: Write(context: context).description))
+    }
+
+    /// Each `tools.*` path that the description names is a verb of the files
+    /// capability. Thus the description sends no files work to another
+    /// capability, such as the shell.
+    @Test func everyPathTheDescriptionNamesIsAFilesVerb() {
+        let root = TestSupport.makeTemporaryDirectory(named: "FilesWriteTests")
+        let capability = FilesCapability(root: root)
+        let filesPaths = Set(capability.tools.map { "\(capability.noun).\($0.name)" })
+
+        let named = Self.pathsNamedByTheDescription(in: FileContext(root: root))
+
+        #expect(
+            named.isSubset(of: filesPaths),
+            "the paths that are not files verbs: \(named.subtracting(filesPaths).sorted())")
+    }
 }

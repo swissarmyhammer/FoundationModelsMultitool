@@ -35,10 +35,26 @@ comments:
     - evidence: `swift build --build-tests` clean (only the SwiftPM "missing creator ... mlx-swift_Cmlx.bundle" build-system note, not from the code). `swift test --filter "FilesRemoveDirectoryTests|FilesCapabilityTests"`: 24 of 24 pass. Full `swift test`: 2357 tests in 208 suites, 1 failure (PlainToolContractTests.filesVerbsReadTheAmbientContextOneTimeAtTheStart, the capture list); after the fix `swift test --filter PlainToolContractTests`: 13 of 13 pass. Files: RemoveDirectory.swift (new), FilesRemoveDirectoryTests.swift (new), PathGuard.swift, FilesCapability.swift, MultiToolBuilder+Capabilities.swift, README.md, FilesCapabilityTests.swift, FilesRunFixtures.swift, PlainToolContractTests.swift.
     - next: /review. The task stays in doing.
   timestamp: 2026-10-09T14:12:53.372014+00:00
+- actor: claude-code
+  id: 01m4gghpz3fnh8gq4g8nmmdsx4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (5d58fd4). 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. 8 files reviewed. README.md had no matching validator. The .kanban/ files are excluded by .reviewignore. No prior review findings were on the task.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-09T14:19:51.139056+00:00
+- actor: claude-code
+  id: 01m4ggj4dgs6rtzahrgg13rfmc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 9 files (new RemoveDirectory.swift, PathGuard.isRoot / validateSymlinkLocation, tests)
+    - test: green — full swift test, 2357 passed
+    - commit: 5d58fd4
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-09T14:20:04.912372+00:00
 depends_on:
 - 01M4GAP3C6RWJRQQ42PES7P0FD
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffd580
 title: Add the tools.files.removeDirectory verb
 ---
 ## What

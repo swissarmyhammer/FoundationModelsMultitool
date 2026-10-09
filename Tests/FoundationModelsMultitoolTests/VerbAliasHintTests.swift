@@ -40,6 +40,12 @@ struct VerbAliasHintTests {
     /// The path that runs one command.
     private static let executePath = "shell.execute"
 
+    /// The path that makes a directory.
+    private static let makeDirectoryPath = "files.makeDirectory"
+
+    /// The path that removes a directory.
+    private static let removeDirectoryPath = "files.removeDirectory"
+
     /// The code-intelligence verbs of the SWE-bench agent, in a short form.
     ///
     /// `listSymbols` is the verb that tier 1 named for `listFiles`, because the
@@ -122,6 +128,32 @@ struct VerbAliasHintTests {
 
         #expect(resolution.tier == .verbAlias)
         #expect(resolution.suggestedPaths == [Self.executePath])
+    }
+
+    @Test("files.mkdir is answered with files.makeDirectory alone")
+    func filesMkdirIsAnsweredWithMakeDirectory() async throws {
+        let resolution = try await resolve("files.mkdir")
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == [Self.makeDirectoryPath])
+        #expect(resolution.text.contains("tools.\(Self.makeDirectoryPath)"), "text was: \(resolution.text)")
+    }
+
+    @Test("files.rmdir is answered with files.removeDirectory alone")
+    func filesRmdirIsAnsweredWithRemoveDirectory() async throws {
+        let resolution = try await resolve("files.rmdir")
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == [Self.removeDirectoryPath])
+        #expect(resolution.text.contains("tools.\(Self.removeDirectoryPath)"), "text was: \(resolution.text)")
+    }
+
+    @Test("files.MkDir gets the same answer as files.mkdir")
+    func filesMkDirInMixedCaseIsAnsweredWithMakeDirectory() async throws {
+        let resolution = try await resolve("files.MkDir")
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == [Self.makeDirectoryPath])
     }
 
     @Test("an alias matches the verb in any letter case")

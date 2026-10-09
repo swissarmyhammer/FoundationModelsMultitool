@@ -243,11 +243,19 @@ enum UnknownToolHint {
     ///
     /// The SWE-bench run of 2026-10-05 is the evidence for the first rows:
     /// the model called `listFiles` and `find` for `files.glob`, and `run`
-    /// for `shell.execute`. The other names are the same intent in the words
-    /// of a shell.
+    /// for `shell.execute`. The other names of those rows are the same intent
+    /// in the words of a shell.
+    ///
+    /// The `files.makeDirectory` and `files.removeDirectory` rows have no run
+    /// as evidence. Their source is the same intent in the words of a shell:
+    /// `mkdir` and `rmdir`, and the spelled-out forms of those two commands.
     private static let verbAliases = [
         VerbAlias(path: "files.glob", verbs: ["find", "findfiles", "listfiles", "ls"]),
         VerbAlias(path: "shell.execute", verbs: ["run", "exec", "runcommand"]),
+        VerbAlias(
+            path: "files.makeDirectory",
+            verbs: ["mkdir", "makedir", "createdirectory", "createdir", "newdirectory"]),
+        VerbAlias(path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"]),
     ]
 
     /// Resolves one failed snippet's unknown `tools.*` path, or nil when the
