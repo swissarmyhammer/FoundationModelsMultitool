@@ -23,8 +23,24 @@ comments:
     - Files: IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellBackgroundRunner.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ShellBackgroundTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ShellBackgroundReportTests.swift (new).
     - next: /review
   timestamp: 2026-10-09T13:18:34.769127+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4gdnggftw9jhapzsp1byt95
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (a1098a5). 0 findings, 0 confirmed, 2 refuted. 3 files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: none. The task is in done.
+  timestamp: 2026-10-09T13:29:29.871312+00:00
+- actor: claude-code
+  id: 01m4gdnv86pnrz1hhfhsmkcvdn
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ShellBackgroundRunner.swift, ShellBackgroundTests.swift, new ShellBackgroundReportTests.swift
+    - test: green — root swift test 2339 passed; IntegrationTests 3 passed (live scenario 7/7 checks)
+    - commit: a1098a5
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-09T13:29:40.870204+00:00
+position_column: done
+position_ordinal: ffffd380
 title: Make the background shell scenario follow the settle-period rule (CI integration failure)
 ---
 ## What
