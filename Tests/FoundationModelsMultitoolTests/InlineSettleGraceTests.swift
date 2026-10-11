@@ -143,7 +143,7 @@ struct InlineSettleGraceTests {
         let sentence = MultiTool(registry: try Self.registry())
             .collectInstruction(forCompletionToken: completionToken)
 
-        #expect(sentence.contains(PendingWorkInstruction.text))
+        #expect(sentence.contains(PendingRunEnvelope.pendingWorkInstruction))
         #expect(sentence.contains(completionToken))
     }
 

@@ -183,7 +183,7 @@ extension Execute: BackgroundTool {
     ///
     /// It names the commandID of the run, because the mail that the settled
     /// run becomes names the run by the same string. The rest is the shared
-    /// ``PendingWorkInstruction/text`` (task `^1dzf1za`).
+    /// ``PendingRunEnvelope/pendingWorkInstruction`` (task `^1dzf1za`).
     ///
     /// It does not send the model to `tools.shell.getLines`. The shared text
     /// says "Do not call a tool to wait or to check", and a pointer to a
@@ -198,7 +198,7 @@ extension Execute: BackgroundTool {
     /// - Returns: The collect directive, as plain prose.
     func collectInstruction(forCompletionToken completionToken: String) -> String {
         "The command is running in the background, with commandID \"\(completionToken)\". "
-            + PendingWorkInstruction.text
+            + PendingRunEnvelope.pendingWorkInstruction
     }
 }
 
@@ -850,7 +850,7 @@ struct Execute: Tool {
         changed in them. Use it as well to delete a file or a whole directory, to move one, and \
         to copy one. A command that ends within a few seconds answers with its report at once: \
         the tail of its output, its status and its exit code. A command that runs longer \
-        continues in the background, and the answer is pending. \(PendingWorkInstruction.text) \
+        continues in the background, and the answer is pending. \(PendingRunEnvelope.pendingWorkInstruction) \
         In a snippet the report is an object, so read \
         r.exitCode, r.output and r.commandID; a pending result is {pending: true, commandID}. \
         commandID is the run's completion token: \

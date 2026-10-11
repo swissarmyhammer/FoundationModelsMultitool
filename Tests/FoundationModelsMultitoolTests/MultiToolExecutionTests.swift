@@ -283,7 +283,7 @@ struct MultiToolExecutionTests {
         #expect(description.contains("Awaiting a call is the whole of how a snippet coordinates its work"))
         #expect(description.contains("do not wait()"))
         #expect(description.contains("never time a call or poll for one"))
-        #expect(description.contains(PendingWorkInstruction.text))
+        #expect(description.contains(PendingRunEnvelope.pendingWorkInstruction))
         #expect(!description.contains("wait tool"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.

@@ -252,7 +252,7 @@ extension MultiTool {
 /// - A snippet that is still running answers with a pending envelope and a
 ///   completion token. Its `next` sentence
 ///   (`MultiTool.collectInstruction(forCompletionToken:)`) carries the shared
-///   `PendingWorkInstruction.text`: the settled run comes back to the session
+///   `PendingRunEnvelope.pendingWorkInstruction`: the settled run comes back to the session
 ///   as mail, and until then the model does other work or does nothing. A
 ///   model that does not need the result lets the snippet run (task
 ///   `^cv98vff`).

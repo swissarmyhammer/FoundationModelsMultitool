@@ -710,7 +710,7 @@ struct ShellExecuteTests {
 
         let sentence = makeVerb(over: try makeState()).collectInstruction(forCompletionToken: completionToken)
 
-        #expect(sentence.contains(PendingWorkInstruction.text))
+        #expect(sentence.contains(PendingRunEnvelope.pendingWorkInstruction))
         #expect(sentence.contains("commandID \"\(completionToken)\""))
     }
 
@@ -720,7 +720,7 @@ struct ShellExecuteTests {
     func theDescriptionCarriesTheSharedPendingText() throws {
         let description = makeVerb(over: try makeState()).description
 
-        #expect(description.contains(PendingWorkInstruction.text))
+        #expect(description.contains(PendingRunEnvelope.pendingWorkInstruction))
     }
 
     /// The verb never blocks on its command past its settle period: the call

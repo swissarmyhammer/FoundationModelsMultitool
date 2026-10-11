@@ -25,7 +25,7 @@ import FoundationModelsExtras
 extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
     /// call hands the model: the completion token of the snippet, and then
-    /// the shared ``PendingWorkInstruction/text``.
+    /// the shared ``PendingRunEnvelope/pendingWorkInstruction``.
     ///
     /// **The session delivers a settled run as mail.** Router puts the
     /// terminal event of a background run into the session outbox, and that
@@ -51,7 +51,7 @@ extension MultiTool: BackgroundTool {
     /// the run by the same token.
     public func collectInstruction(forCompletionToken completionToken: String) -> String {
         "The snippet is still running in the background, with completionToken "
-            + "\"\(completionToken)\". \(PendingWorkInstruction.text)"
+            + "\"\(completionToken)\". \(PendingRunEnvelope.pendingWorkInstruction)"
     }
 
     /// How long a `runCode` call waits for its own snippet before it answers

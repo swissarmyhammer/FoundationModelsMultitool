@@ -1,3 +1,5 @@
+import FoundationModelsExtras
+
 // MARK: - The runCode description, in each mode
 //
 // The description of `runCode` is the behavioral contract of a session that
@@ -99,7 +101,7 @@ extension MultiTool {
         never time a call or poll for one. When runCode answers with `pending` false, the
         snippet is done and its result is the detail field: answer from that result. When
         runCode answers with `pending` true, the snippet is still going.
-        \(PendingWorkInstruction.text) Answer only from what the snippet returns: never
+        \(PendingRunEnvelope.pendingWorkInstruction) Answer only from what the snippet returns: never
         state a fact about the user's data that did not come from a `tools.*` return
         value, and never claim success for a call the snippet did not actually return.
         When a snippet fails, fix it and call runCode again immediately. \(globalsNote)

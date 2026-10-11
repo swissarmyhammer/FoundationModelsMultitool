@@ -106,7 +106,7 @@ struct RouterSessionMountTests {
         #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
         // The sentence carries the shared pending text and names this
         // envelope's token. It names no `wait` tool.
-        #expect(envelope.next.contains(PendingWorkInstruction.text))
+        #expect(envelope.next.contains(PendingRunEnvelope.pendingWorkInstruction))
         #expect(envelope.next.contains(envelope.completionToken))
         #expect(!envelope.next.contains("wait tool"))
         #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))

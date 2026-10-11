@@ -314,7 +314,7 @@ struct SandboxGlobalsTests {
 
         let message = try RunOutput.decoded(String.self, from: output)
         #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
-        #expect(message.contains(PendingWorkInstruction.text))
+        #expect(message.contains(PendingRunEnvelope.pendingWorkInstruction))
         // The call holds nothing: the run it names is still going.
         #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }

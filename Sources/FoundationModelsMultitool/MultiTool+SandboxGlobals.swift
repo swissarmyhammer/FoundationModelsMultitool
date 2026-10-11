@@ -790,7 +790,7 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
         case .waitRemoved:
             return "wait() does not exist. Do not wait for a run inside a snippet. "
                 + "Return the completion token of the run. "
-                + PendingWorkInstruction.text
+                + PendingRunEnvelope.pendingWorkInstruction
         case .malformedElicitationRequest:
             return elicitUsage
         case .undecodableElicitationRequest(let reason):
