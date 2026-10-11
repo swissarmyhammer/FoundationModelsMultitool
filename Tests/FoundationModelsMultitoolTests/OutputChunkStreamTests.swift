@@ -49,6 +49,11 @@ struct OutputChunkStreamTests {
     /// The cap of the snapshot store of the test that fills it.
     private static let tightCaptureCapBytes = 16
 
+    /// The cap of the snapshot store of the arrived-count test that makes a
+    /// hole. `OutputBuffer` cuts the first chunk of that test back to 9 bytes
+    /// and then stores 1 byte of the next chunk past the hole.
+    private static let holeCaptureCapBytes = 10
+
     /// The pending-byte budget of a test that must lose no chunk.
     private static let spaciousPendingCapBytes = 1_000_000
 
@@ -106,6 +111,30 @@ struct OutputChunkStreamTests {
                 eventStream == stream
             else { return }
             joined.append(contentsOf: bytes)
+        }
+    }
+
+    /// The offset in one stream of one run that the events state: the byte
+    /// count of each output event plus the dropped count of each gap event.
+    ///
+    /// - Parameters:
+    ///   - events: The collected events.
+    ///   - commandID: The completion token of the run to select.
+    ///   - stream: The stream to select.
+    /// - Returns: The sum of the two counts.
+    private func eventOffset(
+        _ events: [ShellOutputEvent], commandID: String, from stream: ShellOutputStream
+    ) -> Int {
+        events.reduce(into: 0) { offset, event in
+            guard event.commandID == commandID else { return }
+            switch event.kind {
+            case .output(let eventStream, let bytes) where eventStream == stream:
+                offset += bytes.count
+            case .gap(let eventStream, let dropped) where eventStream == stream:
+                offset += dropped
+            default:
+                break
+            }
         }
     }
 
@@ -535,6 +564,73 @@ struct OutputChunkStreamTests {
         #expect(snapshot?.stdout.bytes == fillingChunk)
         #expect(snapshot?.stdout.storedByteCount == Self.tightCaptureCapBytes)
         stream.finish()
+    }
+
+    /// The arrived count of a truncated snapshot is the offset the events
+    /// state, also when the store holds a hole and `bytes.count` is smaller.
+    @Test func theArrivedCountOfATruncatedSnapshotIsTheEventOffset() async throws {
+        try await expectArrivedCountIsTheEventOffset(
+            captureCapBytes: Self.holeCaptureCapBytes, truncated: true)
+    }
+
+    /// The arrived count of a snapshot that is not truncated is the offset the
+    /// events state, and it is also `bytes.count`.
+    @Test func theArrivedCountOfAnUntruncatedSnapshotIsTheEventOffset() async throws {
+        try await expectArrivedCountIsTheEventOffset(
+            captureCapBytes: Self.spaciousCaptureCapBytes, truncated: false)
+    }
+
+    /// Sends chunks on the two streams of one run with a budget of one chunk,
+    /// takes a snapshot, sends one more chunk, and compares the arrived count
+    /// of each stream with the offset that the events state.
+    ///
+    /// The chunk after the snapshot goes away from the live view too. Its gap
+    /// and the gap of the bytes before the snapshot are one event, which
+    /// arrives after the snapshot. Thus the test also examines the case where
+    /// one gap covers bytes on the two sides of the snapshot.
+    ///
+    /// - Parameters:
+    ///   - captureCapBytes: The cap of the snapshot store.
+    ///   - truncated: The expected `truncated` flag of the snapshot.
+    private func expectArrivedCountIsTheEventOffset(
+        captureCapBytes: Int, truncated: Bool
+    ) async throws {
+        let firstChunk = Array("abcdefghij\nk".utf8)
+        let droppedChunk = Array("\nZZZ".utf8)
+        let stderrChunk = Array("err\n".utf8)
+        let lateChunk = Array("late\n".utf8)
+        let stream = ShellOutputChunkStream(maxPendingBytes: firstChunk.count)
+
+        for (chunk, from) in [
+            (firstChunk, ShellOutputStream.stdout), (droppedChunk, .stdout), (stderrChunk, .stderr),
+        ] {
+            stream.send(
+                commandID: Self.firstToken, from: from, bytes: chunk, maxSize: captureCapBytes)
+        }
+        let snapshot = try #require(stream.snapshot(for: Self.firstToken))
+        stream.send(
+            commandID: Self.firstToken, from: .stdout, bytes: lateChunk, maxSize: captureCapBytes)
+        stream.complete(commandID: Self.firstToken)
+        stream.finish()
+        let events = await collect(stream).value
+
+        #expect(snapshot.stdout.truncated == truncated)
+        #expect(snapshot.stdout.arrivedByteCount == firstChunk.count + droppedChunk.count)
+        #expect(snapshot.stderr.arrivedByteCount == stderrChunk.count)
+        #expect(
+            snapshot.stdout.arrivedByteCount + lateChunk.count
+                == eventOffset(events, commandID: Self.firstToken, from: .stdout))
+        #expect(
+            snapshot.stderr.arrivedByteCount
+                == eventOffset(events, commandID: Self.firstToken, from: .stderr))
+        if truncated {
+            // The case the field exists for: the store holds a hole, thus
+            // `bytes.count` is not the offset.
+            #expect(snapshot.stdout.bytes.count < snapshot.stdout.arrivedByteCount)
+        } else {
+            #expect(snapshot.stdout.bytes.count == snapshot.stdout.arrivedByteCount)
+            #expect(snapshot.stderr.bytes.count == snapshot.stderr.arrivedByteCount)
+        }
     }
 
     /// A snapshot of a token the stream never saw is `nil`. Thus a host tells

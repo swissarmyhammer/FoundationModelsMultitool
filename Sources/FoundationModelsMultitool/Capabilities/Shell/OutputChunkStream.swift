@@ -154,6 +154,23 @@ public struct ShellRawOutput: Sendable, Equatable {
     /// can be larger than `bytes.count` after the other stream stored anything.
     public let storedByteCount: Int
 
+    /// The count of each byte of THIS stream that `send` gave to the store,
+    /// stored or not.
+    ///
+    /// It is the byte offset in this stream of the run where `bytes` ends in
+    /// the output of the child, also when `truncated` is `true` and `bytes`
+    /// has a hole. The contract with the live view: for each stream,
+    /// `arrivedByteCount` equals the sum of the byte counts of the `.output`
+    /// events plus the `droppedByteCount` of the `.gap` events of that stream,
+    /// for each byte that `send` gave to the store before the snapshot. Each
+    /// such byte is in exactly one `.output` event or one `.gap` event. A gap
+    /// for bytes that went away before the snapshot can arrive after the
+    /// snapshot, because a gap stands before the next delivered event of its
+    /// stream. Thus a host that counts the offset of each event can drop each
+    /// later byte below this offset: the snapshot already holds it, or it
+    /// went away from the store too.
+    public let arrivedByteCount: Int
+
     /// Puts the stored bytes of one stream with the state of the capture.
     ///
     /// - Parameters:
@@ -161,11 +178,35 @@ public struct ShellRawOutput: Sendable, Equatable {
     ///   - binaryDetected: Tells if this capture saw binary content.
     ///   - truncated: Tells if the store hit its own cap.
     ///   - storedByteCount: The cumulative stored bytes of the two streams.
-    public init(bytes: [UInt8], binaryDetected: Bool, truncated: Bool, storedByteCount: Int) {
+    ///   - arrivedByteCount: The bytes of this stream that arrived, the
+    ///     dropped bytes included.
+    public init(
+        bytes: [UInt8], binaryDetected: Bool, truncated: Bool, storedByteCount: Int,
+        arrivedByteCount: Int
+    ) {
         self.bytes = bytes
         self.binaryDetected = binaryDetected
         self.truncated = truncated
         self.storedByteCount = storedByteCount
+        self.arrivedByteCount = arrivedByteCount
+    }
+
+    /// Puts the stored bytes of one stream with the state of the capture, for
+    /// a caller that does not know the arrived-byte count.
+    ///
+    /// This initializer stays for source compatibility. It sets
+    /// `arrivedByteCount` to `bytes.count`, which is correct only for a
+    /// capture that is not truncated.
+    ///
+    /// - Parameters:
+    ///   - bytes: The bytes of the stream, exactly as the child wrote them.
+    ///   - binaryDetected: Tells if this capture saw binary content.
+    ///   - truncated: Tells if the store hit its own cap.
+    ///   - storedByteCount: The cumulative stored bytes of the two streams.
+    public init(bytes: [UInt8], binaryDetected: Bool, truncated: Bool, storedByteCount: Int) {
+        self.init(
+            bytes: bytes, binaryDetected: binaryDetected, truncated: truncated,
+            storedByteCount: storedByteCount, arrivedByteCount: bytes.count)
     }
 }
 
@@ -335,7 +376,8 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
     private static func rawOutput(from raw: OutputBuffer.RawOutput) -> ShellRawOutput {
         ShellRawOutput(
             bytes: raw.bytes, binaryDetected: raw.binaryDetected,
-            truncated: raw.truncated, storedByteCount: raw.storedByteCount)
+            truncated: raw.truncated, storedByteCount: raw.storedByteCount,
+            arrivedByteCount: raw.arrivedByteCount)
     }
 
     /// Starts to read the events of this stream.

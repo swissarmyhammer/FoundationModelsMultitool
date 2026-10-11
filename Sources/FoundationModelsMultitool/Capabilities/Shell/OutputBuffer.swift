@@ -22,7 +22,8 @@
 //   - One `maxSize` cap holds stdout and stderr together. The cumulative
 //     `storedByteCount`, and not the momentary `currentSize`, is what `append`
 //     counts against that cap — see below. The bytes past the cap go away, but
-//     `totalBytesProcessed` counts each byte that arrived.
+//     `stdoutArrivedByteCount` and `stderrArrivedByteCount` count each byte
+//     that arrived on their stream.
 //   - A truncation prefers a line boundary: the last `\n` inside the part that
 //     fits, or else the last start of a UTF-8 code point. Thus a stored buffer
 //     never cuts through the middle of a code point.
@@ -107,8 +108,19 @@ struct OutputBuffer: Sendable {
     /// Tells if a chunk carried binary content (a null byte).
     private(set) var binaryDetected = false
 
-    /// The number of bytes that arrived, the dropped bytes included.
-    private(set) var totalBytesProcessed = 0
+    /// The number of stdout bytes that arrived, the dropped bytes included.
+    ///
+    /// It only grows, and a drain does not lower it. Thus it is the byte
+    /// offset in the stdout of the child where the next chunk starts, also
+    /// after a truncation left a hole in the stored bytes.
+    private(set) var stdoutArrivedByteCount = 0
+
+    /// The stderr counterpart of `stdoutArrivedByteCount`.
+    private(set) var stderrArrivedByteCount = 0
+
+    /// The number of bytes that arrived on the two streams, the dropped bytes
+    /// included.
+    var totalBytesProcessed: Int { stdoutArrivedByteCount + stderrArrivedByteCount }
 
     /// The cumulative number of bytes that went into storage: the bytes a drain
     /// took out, plus the bytes that are in `stdoutData` and `stderrData` now.
@@ -145,7 +157,7 @@ struct OutputBuffer: Sendable {
     /// - Returns: The number of bytes that went into storage.
     @discardableResult
     mutating func appendStdout(_ data: [UInt8]) -> Int {
-        append(data, to: \.stdoutData)
+        append(data, to: \.stdoutData, counting: \.stdoutArrivedByteCount)
     }
 
     /// Appends `data` to the stderr stream, under the shared cap and with the
@@ -155,7 +167,7 @@ struct OutputBuffer: Sendable {
     /// - Returns: The number of bytes that went into storage.
     @discardableResult
     mutating func appendStderr(_ data: [UInt8]) -> Int {
-        append(data, to: \.stderrData)
+        append(data, to: \.stderrData, counting: \.stderrArrivedByteCount)
     }
 
     /// Appends `data` to the stream at `keyPath`.
@@ -168,11 +180,13 @@ struct OutputBuffer: Sendable {
     /// - Parameters:
     ///   - data: The bytes that arrived.
     ///   - keyPath: The stream to write to.
+    ///   - arrivedKeyPath: The arrived-byte counter of that stream.
     /// - Returns: The number of bytes that went into storage.
     private mutating func append(
-        _ data: [UInt8], to keyPath: WritableKeyPath<OutputBuffer, [UInt8]>
+        _ data: [UInt8], to keyPath: WritableKeyPath<OutputBuffer, [UInt8]>,
+        counting arrivedKeyPath: WritableKeyPath<OutputBuffer, Int>
     ) -> Int {
-        totalBytesProcessed += data.count
+        self[keyPath: arrivedKeyPath] += data.count
 
         if !binaryDetected {
             binaryDetected = Self.isBinary(data)
@@ -255,6 +269,14 @@ struct OutputBuffer: Sendable {
         /// larger than `bytes.count` after a drain, and also after the other
         /// stream stored bytes.
         var storedByteCount: Int
+        /// The cumulative bytes of THIS stream that arrived, the dropped bytes
+        /// included — `stdoutArrivedByteCount` or `stderrArrivedByteCount`.
+        ///
+        /// It is the byte offset in the output of the child where the next
+        /// chunk of this stream starts. It does not depend on `truncated` or
+        /// on a drain, thus it is the offset `bytes.count` cannot give after a
+        /// truncation.
+        var arrivedByteCount: Int
     }
 
     /// The stdout bytes that are in the buffer now, with the binary state and
@@ -262,10 +284,10 @@ struct OutputBuffer: Sendable {
     ///
     /// A read of this does not drain: the buffer stays exactly as it was, which
     /// is what makes it different from `extractRawStdout()`.
-    var rawStdout: RawOutput { rawOutput(from: stdoutData) }
+    var rawStdout: RawOutput { rawOutput(from: stdoutData, arrived: stdoutArrivedByteCount) }
 
     /// The stderr counterpart of `rawStdout`.
-    var rawStderr: RawOutput { rawOutput(from: stderrData) }
+    var rawStderr: RawOutput { rawOutput(from: stderrData, arrived: stderrArrivedByteCount) }
 
     // MARK: - The drain of the completed lines
 
@@ -350,7 +372,7 @@ struct OutputBuffer: Sendable {
     /// - Returns: The bytes that were in the stdout stream, with the state of
     ///   the capture.
     mutating func extractRawStdout() -> RawOutput {
-        extractRaw(from: \.stdoutData)
+        extractRaw(from: \.stdoutData, arrived: stdoutArrivedByteCount)
     }
 
     /// The stderr counterpart of `extractRawStdout()`.
@@ -358,20 +380,22 @@ struct OutputBuffer: Sendable {
     /// - Returns: The bytes that were in the stderr stream, with the state of
     ///   the capture.
     mutating func extractRawStderr() -> RawOutput {
-        extractRaw(from: \.stderrData)
+        extractRaw(from: \.stderrData, arrived: stderrArrivedByteCount)
     }
 
     /// Takes each byte of the stream at `keyPath`: it makes the view of the
     /// stream first, and it empties the stream after. Thus the next call gives
     /// back the bytes that arrive after this call only.
     ///
-    /// - Parameter keyPath: The stream to drain.
+    /// - Parameters:
+    ///   - keyPath: The stream to drain.
+    ///   - arrived: The arrived-byte count of that stream.
     /// - Returns: The bytes that were in the stream, with the state of the
     ///   capture.
     private mutating func extractRaw(
-        from keyPath: WritableKeyPath<OutputBuffer, [UInt8]>
+        from keyPath: WritableKeyPath<OutputBuffer, [UInt8]>, arrived: Int
     ) -> RawOutput {
-        let snapshot = rawOutput(from: self[keyPath: keyPath])
+        let snapshot = rawOutput(from: self[keyPath: keyPath], arrived: arrived)
         self[keyPath: keyPath] = []
         return snapshot
     }
@@ -555,11 +579,13 @@ struct OutputBuffer: Sendable {
     /// with no change: this is the one read-back path with no formatting step
     /// at all — `formatted(_:)` and `logLines(from:)` each have one.
     ///
-    /// - Parameter data: The bytes of one stream.
+    /// - Parameters:
+    ///   - data: The bytes of one stream.
+    ///   - arrived: The arrived-byte count of that stream.
     /// - Returns: The bytes with the state of the capture.
-    private func rawOutput(from data: [UInt8]) -> RawOutput {
+    private func rawOutput(from data: [UInt8], arrived: Int) -> RawOutput {
         RawOutput(
             bytes: data, binaryDetected: binaryDetected, truncated: truncated,
-            storedByteCount: storedByteCount)
+            storedByteCount: storedByteCount, arrivedByteCount: arrived)
     }
 }

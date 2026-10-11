@@ -471,7 +471,8 @@ struct OutputBufferTests {
         // each field at one time.
         let buffer = OutputBuffer(maxSize: Self.spaciousCapBytes)
         let clean = OutputBuffer.RawOutput(
-            bytes: [], binaryDetected: false, truncated: false, storedByteCount: 0)
+            bytes: [], binaryDetected: false, truncated: false, storedByteCount: 0,
+            arrivedByteCount: 0)
 
         #expect(buffer.rawStdout == clean)
         #expect(buffer.rawStderr == clean)
@@ -552,6 +553,32 @@ struct OutputBufferTests {
         // The child wrote "abcdefghij\nk" and then "\nZZZ". The stored bytes
         // pass over the `j`, thus they are not the first part of that.
         #expect(!Self.bytes("abcdefghij\nk\nZZZ").starts(with: raw.bytes))
+    }
+
+    @Test("The raw view counts the arrived bytes of its own stream, past a hole and a drain")
+    func theRawViewCountsTheArrivedBytesOfItsOwnStreamPastAHoleAndADrain() {
+        // The same hole as the test above: `bytes.count` is not the offset in
+        // the output of the child, and `arrivedByteCount` is.
+        var buffer = OutputBuffer(maxSize: Self.tightCapBytes)
+        let first = Self.bytes("abcdefghij\nk")
+        let second = Self.bytes("\nZZZ")
+        let stderrInput = Self.bytes("err\n")
+        buffer.appendStdout(first)
+        buffer.appendStdout(second)
+        buffer.appendStderr(stderrInput)
+
+        let raw = buffer.rawStdout
+        #expect(raw.truncated)
+        #expect(raw.arrivedByteCount == first.count + second.count)
+        #expect(raw.bytes.count < raw.arrivedByteCount)
+        // Each stream has its own count, and the sum of the two is the total.
+        #expect(buffer.rawStderr.arrivedByteCount == stderrInput.count)
+        #expect(buffer.totalBytesProcessed == first.count + second.count + stderrInput.count)
+
+        // A drain takes the bytes out, and it does not lower the count.
+        #expect(buffer.extractRawStdout().arrivedByteCount == first.count + second.count)
+        #expect(buffer.rawStdout.bytes == [])
+        #expect(buffer.rawStdout.arrivedByteCount == first.count + second.count)
     }
 
     @Test("The stderr raw view reports the shared state with no bytes of its own")
