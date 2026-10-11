@@ -99,7 +99,7 @@ struct FileChangeAttachmentTests {
         /// The close invocation record of each call the turn made, in arrival order.
         var closeRecords: [ToolInvocationRecord] {
             events.compactMap { event in
-                if case .toolInvocation(let record) = event, record.closedAt != nil { return record }
+                if case .toolInvocation(let record, _) = event, record.closedAt != nil { return record }
                 return nil
             }
         }
