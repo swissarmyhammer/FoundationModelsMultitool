@@ -23,8 +23,24 @@ comments:
   id: 01m4p7r4j20bd0aemjqqczy8jt
   text: 'Correction to the two comments above: the tool input decoded the escape in the example. The example is the letter t, then a backslash-u escape with the hex code 006f (the letter o), then the letters "ols". JavaScript reads that text as the identifier `tools`. The test `unicodeEscapeIsNeverANoOp` holds the real text.'
   timestamp: 2026-10-11T19:41:31.074605+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4p8b8n1p2h18h3vajc8w5sw
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (4c35b7f). 0 findings, 0 confirmed, 0 refuted. 7 checks done, 0 failed. 2 source files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: The task is in done. Send the commit sha 4c35b7f to ACPAgent (foundationmodelsacpagent-36).
+  timestamp: 2026-10-11T19:51:57.857461+00:00
+- actor: claude-code
+  id: 01m4p8bnaa4xy7t2jb8f8yz3ew
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 new files
+    - test: green — swift test, 2370 passed, 0 skipped; IntegrationTests build complete
+    - commit: 4c35b7f
+    - review: clean — 0 findings
+  timestamp: 2026-10-11T19:52:10.826036+00:00
+position_column: done
+position_ordinal: ffffd980
 title: Mark a runCode call that calls no tools.* verb as a no-op
 ---
 ## Problem
