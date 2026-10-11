@@ -37,8 +37,24 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift, Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift. `swift test --filter "ShellExecuteTests|BackgroundSettleGraceTests"`: 39 tests in 2 suites pass, no warnings in project sources.
     - next: /review
   timestamp: 2026-10-11T19:15:51.028986+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4p6x9rgqvj705e0k12amkfh
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (dd32c9e). 14 files reviewed. 0 findings, 0 confirmed, 0 refuted, 0 failed. Not reviewed: 6 .kanban files (ignore rule), README.md (no validator applies). The commit renames no file.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-11T19:26:51.664385+00:00
+- actor: claude-code
+  id: 01m4p6xq9k859esbqbrg4rjt35
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 15 files, then 2 files (the getLines pointer is removed)
+    - test: green — swift test, 2366 passed, 0 skipped; IntegrationTests build complete
+    - commit: dd32c9e
+    - review: clean — 0 findings, 14 files
+  timestamp: 2026-10-11T19:27:05.523752+00:00
+position_column: done
+position_ordinal: ffffd880
 title: Use one shared pending text for all background-work places
 ---
 ## Problem
