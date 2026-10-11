@@ -22,8 +22,24 @@ comments:
     - evidence: 11 files. Deleted Sources/FoundationModelsMultitool/Invocation/PendingWorkInstruction.swift. Changed Sources: Capabilities/Shell/Execute.swift, MultiTool+Background.swift, MultiTool+Description.swift, MultiTool+SandboxGlobals.swift, MultiTool.swift. Changed Tests: InlineSettleGraceTests, MultiToolExecutionTests, RouterSessionMountTests, SandboxGlobalsTests, ShellExecuteTests. Changed IntegrationTests: ShellBackgroundReportTests. `swift test`: 2370 tests in 209 suites passed. `swift test --package-path IntegrationTests --filter ShellBackgroundReportTests`: 2 tests passed. The full model integration suite did not run.
     - next: review
   timestamp: 2026-10-11T22:24:32.919269+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4phq47t7yd6dr0bqt3rjrnq
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (cbc8a35). 12 files reviewed. Findings 0, confirmed 0, refuted 0, attempted 14, failed 0. Five code-hygiene Swift rules declined only the deleted file PendingWorkInstruction.swift, because the file does not exist.
+    - next: none. The task is in done.
+  timestamp: 2026-10-11T22:35:43.738023+00:00
+- actor: claude-code
+  id: 01m4phqfv4w07t2wszadzzjhxb
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 12 files (1 deleted)
+    - test: green — swift test, 2370 passed, 0 skipped; IntegrationTests build complete
+    - commit: cbc8a35
+    - review: clean — 0 findings, 12 files
+  timestamp: 2026-10-11T22:35:55.620343+00:00
+position_column: done
+position_ordinal: ffffda80
 title: Use PendingRunEnvelope.pendingWorkInstruction from Extras; delete PendingWorkInstruction
 ---
 ## Problem
