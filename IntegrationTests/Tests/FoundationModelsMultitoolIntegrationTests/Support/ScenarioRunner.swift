@@ -528,7 +528,8 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             turn.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
-            .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
+            .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused,
+            .toolDisplay:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -548,7 +549,9 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // generation call; the `answered` event gives the sum of the
             // chain. `.submissionQueued` and `.mailDeliveryPaused` report a
             // wait of the model queue and a hold of mail, and no scenario here
-            // grades either. The submission and answer events are read after
+            // grades either. `.toolDisplay` carries display content that a tool
+            // posts for a host, and this runner grades no display content.
+            // The submission and answer events are read after
             // the loop, as one fold — see `settle(from:)`.
             break
         }
