@@ -24,37 +24,34 @@ import FoundationModelsExtras
 
 extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
-    /// call hands the model: end the answer, and the result comes back as a
-    /// new message.
+    /// call hands the model: the completion token of the snippet, and then
+    /// the shared ``PendingWorkInstruction/text``.
     ///
     /// **The session delivers a settled run as mail.** Router puts the
     /// terminal event of a background run into the session outbox, and that
     /// mail starts the next submission of the session
     /// (`generation-queue.md` §5.5 rule 1). Thus the model does not collect
-    /// the run. It ends its answer, and the next message it gets carries the
-    /// result. A wait inside the submission holds the model for every
-    /// session on it, and a run on the same model can never settle inside
-    /// that wait (§5.5). That is why this package mounts no `wait` tool.
+    /// the run. The next message it gets carries the result. A wait inside
+    /// the submission holds the model for every session on it, and a run on
+    /// the same model can never settle inside that wait (§5.5). That is why
+    /// this package mounts no `wait` tool.
     ///
-    /// It never prescribes a snippet, and it names `runCode` only to forbid a
-    /// call. Every mounted `runCode` call goes to the background (``mount``),
-    /// so a snippet that waits on a pending token is itself a background run
-    /// and hands back a fresh token. A sentence that told the model to run
-    /// another snippet made it chase tokens one generation a round (task
-    /// `^4qcf1v9`: 21 rounds and about 1700 seconds for an eight-second run).
-    /// And with no word against it, a model still called `runCode` to wait:
-    /// in one SWE-bench run, 133 of 348 calls were `return "waiting1"` to
-    /// `return "waiting130"` (task `^cf57dtd`). Thus the last sentence forbids
-    /// a call that waits or checks.
+    /// It never prescribes a snippet. Every mounted `runCode` call goes to the
+    /// background (``mount``), so a snippet that waits on a pending token is
+    /// itself a background run and hands back a fresh token. A sentence that
+    /// told the model to run another snippet made it chase tokens one
+    /// generation a round (task `^4qcf1v9`: 21 rounds and about 1700 seconds
+    /// for an eight-second run). A model also called `runCode` to wait: in one
+    /// SWE-bench run, 133 of 348 calls were `return "waiting1"` to
+    /// `return "waiting130"` (task `^cf57dtd`). Thus the shared text forbids a
+    /// call that waits or checks, and tells the model to do nothing when no
+    /// other work can be done (task `^1dzf1za`).
     ///
     /// The sentence names the token, because the mail that comes back names
     /// the run by the same token.
     public func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "The snippet is still running in the background, and this is not its result. "
-            + "Do not guess the result. End your answer now. "
-            + "When the snippet finishes, its result comes back to you as a new message "
-            + "with completionToken \"\(completionToken)\", and you answer from that result then. "
-            + "Do not call runCode to wait or to check; the result comes to you without a call."
+        "The snippet is still running in the background, with completionToken "
+            + "\"\(completionToken)\". \(PendingWorkInstruction.text)"
     }
 
     /// How long a `runCode` call waits for its own snippet before it answers
@@ -62,8 +59,8 @@ extension MultiTool: BackgroundTool {
     ///
     /// **Most snippets are short, and a token for a short snippet is pure
     /// cost.** One file read, one small edit, one `tools.*` call: each is over
-    /// in well under a second. Without this wait the model ends its answer and
-    /// pays one more submission to read the result from the mail. With this
+    /// in well under a second. Without this wait the model pays one more
+    /// submission to read the result from the mail. With this
     /// wait the common snippet answers with its own result, and the mail is
     /// left for the snippet that really is long.
     ///

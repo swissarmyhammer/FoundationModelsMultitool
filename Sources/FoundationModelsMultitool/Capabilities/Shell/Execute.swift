@@ -181,12 +181,13 @@ extension Execute: BackgroundTool {
     /// The `next` sentence the pending envelope of a background command hands
     /// the model.
     ///
-    /// It names the two planes a background run answers on, because they
-    /// answer different questions: the mail that the settled run becomes says
-    /// when the run ended, and `tools.shell.getLines` says what it wrote up to
-    /// now. A sentence that named one alone would leave the model either
-    /// ending its answer on a run it only wanted to peek at, or reading output
-    /// with no way to learn it was final.
+    /// It names the commandID of the run, because the mail that the settled
+    /// run becomes names the run by the same string. The rest is the shared
+    /// ``PendingWorkInstruction/text`` (task `^1dzf1za`).
+    ///
+    /// It does not send the model to `tools.shell.getLines`. The shared text
+    /// says "Do not call a tool to wait or to check", and a pointer to a
+    /// verb that reads the output so far tells the model to check.
     ///
     /// It sends the model to no `wait` tool. A wait inside a submission holds
     /// the model for every session on it, and Router delivers the terminal
@@ -196,11 +197,8 @@ extension Execute: BackgroundTool {
     /// - Parameter completionToken: The background run's token.
     /// - Returns: The collect directive, as plain prose.
     func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "The command is running in the background, and this is not its result. Do not guess "
-            + "what it wrote. To read what it has written so far, call tools.shell.getLines with "
-            + "commandID \"\(completionToken)\". To get its result, end your answer now: when the "
-            + "command ends, its report comes back to you as a new message with completionToken "
-            + "\"\(completionToken)\"."
+        "The command is running in the background, with commandID \"\(completionToken)\". "
+            + PendingWorkInstruction.text
     }
 }
 
@@ -852,8 +850,8 @@ struct Execute: Tool {
         changed in them. Use it as well to delete a file or a whole directory, to move one, and \
         to copy one. A command that ends within a few seconds answers with its report at once: \
         the tail of its output, its status and its exit code. A command that runs longer \
-        continues in the background: the answer is pending, and its report comes back to you as \
-        a new message after you end your answer. In a snippet the report is an object, so read \
+        continues in the background, and the answer is pending. \(PendingWorkInstruction.text) \
+        In a snippet the report is an object, so read \
         r.exitCode, r.output and r.commandID; a pending result is {pending: true, commandID}. \
         commandID is the run's completion token: \
         pass it to tools.shell.getLines to read everything the command printed so far, and to \

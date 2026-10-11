@@ -121,9 +121,9 @@ extension MultiTool {
         /// session is what puts each tool through the `ToolMounting` path of
         /// FoundationModelsExtras, where the background mount `MultiTool` declares for
         /// itself takes effect. So every `runCode` call goes to the background
-        /// and answers with a pending envelope. The model ends its answer, and
-        /// the settled run comes back to the session as mail, which starts the
-        /// next submission (Router `generation-queue.md` §5.5 rule 1). Mounted
+        /// and answers with a pending envelope. The settled run comes back to
+        /// the session as mail, which starts the next submission (Router
+        /// `generation-queue.md` §5.5 rule 1). Mounted
         /// on a bare `FoundationModels.LanguageModelSession` the same tools
         /// cannot go to the background at all: the snippet simply blocks, no
         /// envelope is ever written, and no mail comes. The integration suite
@@ -251,8 +251,9 @@ extension MultiTool {
 ///   run.
 /// - A snippet that is still running answers with a pending envelope and a
 ///   completion token. Its `next` sentence
-///   (`MultiTool.collectInstruction(forCompletionToken:)`) tells the model to
-///   end its answer: the settled run comes back to the session as mail. A
+///   (`MultiTool.collectInstruction(forCompletionToken:)`) carries the shared
+///   `PendingWorkInstruction.text`: the settled run comes back to the session
+///   as mail, and until then the model does other work or does nothing. A
 ///   model that does not need the result lets the snippet run (task
 ///   `^cv98vff`).
 ///

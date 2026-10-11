@@ -26,7 +26,7 @@ struct ShellBackgroundReportTests {
     private static let otherRunToken = "01M4GA9ZRG20YT5M75APW3P6GB"
 
     /// The `next` text of each envelope. The count does not read it.
-    private static let collectInstruction = "End your answer now."
+    private static let collectInstruction = "This is not the result."
 
     /// The tool the reports stand under. The count does not read it.
     private static let reportingTool = "runCode"

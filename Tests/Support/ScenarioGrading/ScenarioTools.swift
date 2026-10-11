@@ -638,7 +638,7 @@ public func integrationDelayedEchoNonce() -> String {
 ///
 /// The description says the result settles in the background, and stops
 /// there. It does not tell the model what to do while it runs: whether the
-/// model ends its answer and reads the result from the mail is exactly what
+/// model stops calling tools and reads the result from the mail is exactly what
 /// the canary measures, so the pending envelope on the handle carries that
 /// instruction, and it must stay the only source of it.
 public struct IntegrationDelayedEchoTool: Tool {

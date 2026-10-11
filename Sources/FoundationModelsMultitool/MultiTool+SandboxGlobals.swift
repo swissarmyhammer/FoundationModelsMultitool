@@ -789,8 +789,8 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
                 + "back. Call status() with no argument to list the token of every run still going."
         case .waitRemoved:
             return "wait() does not exist. Do not wait for a run inside a snippet. "
-                + "Return the completion token and end your answer. "
-                + "When the run finishes, its result comes back to you as mail, in a new message."
+                + "Return the completion token of the run. "
+                + PendingWorkInstruction.text
         case .malformedElicitationRequest:
             return elicitUsage
         case .undecodableElicitationRequest(let reason):

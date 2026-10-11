@@ -98,9 +98,8 @@ extension MultiTool {
         whole of how a snippet coordinates its work: do not wait() inside a snippet, and
         never time a call or poll for one. When runCode answers with `pending` false, the
         snippet is done and its result is the detail field: answer from that result. When
-        runCode answers with `pending` true, the snippet is still going and you do not have
-        its result: end your answer now, and the result comes back to you as a new message
-        when the snippet finishes. Answer only from what the snippet returns: never
+        runCode answers with `pending` true, the snippet is still going.
+        \(PendingWorkInstruction.text) Answer only from what the snippet returns: never
         state a fact about the user's data that did not come from a `tools.*` return
         value, and never claim success for a call the snippet did not actually return.
         When a snippet fails, fix it and call runCode again immediately. \(globalsNote)

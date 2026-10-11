@@ -277,15 +277,13 @@ struct MultiToolExecutionTests {
         // option set from outside: a model that learned the old sandbox
         // global still writes it, so a prohibition has to name what it
         // overrides. The sandbox keeps the name only for a repair text. A pending
-        // envelope tells the model to end its answer, because the settled run
-        // comes back as mail, and the description says the same thing (task
-        // ^4qcf1v9), so the two texts cannot pull the model two ways. No text
-        // sends the model to a `wait` tool: none is mounted.
+        // envelope and the description carry the same shared pending text
+        // (tasks ^4qcf1v9 and ^1dzf1za), so the two texts cannot pull the model
+        // two ways. No text sends the model to a `wait` tool: none is mounted.
         #expect(description.contains("Awaiting a call is the whole of how a snippet coordinates its work"))
         #expect(description.contains("do not wait()"))
         #expect(description.contains("never time a call or poll for one"))
-        #expect(description.contains("end your answer now"))
-        #expect(description.contains("comes back to you as a new message"))
+        #expect(description.contains(PendingWorkInstruction.text))
         #expect(!description.contains("wait tool"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.
@@ -484,9 +482,9 @@ struct MultiToolExecutionTests {
             mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
             prompts: prompts
         ) { index, runCode in
-            // The first submission starts the snippet and ends its answer, as
-            // the pending envelope tells the model to do. Every later
-            // submission only answers.
+            // The first submission starts the snippet and then does nothing
+            // more, as the pending envelope tells the model to do when no
+            // other work can be done. Every later submission only answers.
             guard index == 0 else { return "answered" }
             _ = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))

@@ -304,7 +304,7 @@ struct SandboxGlobalsTests {
 
     // MARK: - The removed wait()
 
-    @Test("a snippet that calls wait() in a session gets the repair text: return the token, end the answer, the result comes as mail")
+    @Test("a snippet that calls wait() in a session gets the repair text: return the token, and the shared pending text")
     func waitInASessionGivesTheRepairText() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
@@ -314,8 +314,7 @@ struct SandboxGlobalsTests {
 
         let message = try RunOutput.decoded(String.self, from: output)
         #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
-        #expect(message.contains("Return the completion token and end your answer"))
-        #expect(message.contains("comes back to you as mail"))
+        #expect(message.contains(PendingWorkInstruction.text))
         // The call holds nothing: the run it names is still going.
         #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }

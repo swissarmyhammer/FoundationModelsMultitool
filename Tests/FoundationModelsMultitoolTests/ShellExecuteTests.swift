@@ -702,6 +702,27 @@ struct ShellExecuteTests {
         #expect(!schema.contains("\"wait\""), "schema was: \(schema)")
     }
 
+    /// The pending sentence of a background command carries the one shared
+    /// pending text, and it names the commandID of the run (task `^1dzf1za`).
+    @Test("the pending sentence of a background command carries the shared pending text and the commandID")
+    func thePendingSentenceCarriesTheSharedPendingText() throws {
+        let completionToken = ToolContext.makeCompletionToken()
+
+        let sentence = makeVerb(over: try makeState()).collectInstruction(forCompletionToken: completionToken)
+
+        #expect(sentence.contains(PendingWorkInstruction.text))
+        #expect(sentence.contains("commandID \"\(completionToken)\""))
+    }
+
+    /// The description of the verb tells the model the same thing about a
+    /// pending command that the pending sentence tells it (task `^1dzf1za`).
+    @Test("the execute description carries the shared pending text")
+    func theDescriptionCarriesTheSharedPendingText() throws {
+        let description = makeVerb(over: try makeState()).description
+
+        #expect(description.contains(PendingWorkInstruction.text))
+    }
+
     /// The verb never blocks on its command past its settle period: the call
     /// hands back the run's identifier, and the builtins read the run from
     /// there.

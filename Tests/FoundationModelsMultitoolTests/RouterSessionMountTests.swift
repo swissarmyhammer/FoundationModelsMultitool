@@ -53,7 +53,7 @@ struct RouterSessionMountTests {
         // (the rule of the user). This snippet is over at once, so the mount
         // gives its own result, the same as the direct call, and no envelope.
         // A snippet that runs longer gets a pending envelope: see
-        // `runCodeEnvelopeTellsTheModelToEndItsAnswer` below.
+        // `runCodeEnvelopeCarriesTheSharedPendingText` below.
         #expect(!PendingRunEnvelope.isRendered(text: throughMount))
         #expect(throughMount == direct)
         // Called directly, with no session and no background runs to post into,
@@ -79,17 +79,17 @@ struct RouterSessionMountTests {
         #expect(mounted.description == searchTools.description)
     }
 
-    @Test("a snippet that is still running hands back an envelope that tells the model to end its answer, not to call a wait tool or another snippet")
-    func runCodeEnvelopeTellsTheModelToEndItsAnswer() async throws {
+    @Test("a snippet that is still running hands back an envelope that carries the shared pending text, not a call to a wait tool or another snippet")
+    func runCodeEnvelopeCarriesTheSharedPendingText() async throws {
         let context = try await makeOuterRunContext()
         // The live-lock of task ^4qcf1v9: every mounted `runCode` call
         // backgrounds, so a snippet that is still running is tracked and hands
         // back a token. An envelope whose `next` told the model to run another
         // snippet made the model chase tokens, one generation a round. A
         // settled run now comes back to the session as mail (Router
-        // `generation-queue.md` §5.5), so the envelope's `next` tells the model
-        // to end its answer. It names no `wait` tool, because no `wait` tool is
-        // mounted, and the sandbox has no `wait()` global.
+        // `generation-queue.md` §5.5), so the envelope's `next` carries the
+        // shared pending text (task ^1dzf1za). It names no `wait` tool, because
+        // no `wait` tool is mounted, and the sandbox has no `wait()` global.
         let gate = ReleaseGate()
         let runCode = MultiTool(
             registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
@@ -104,17 +104,13 @@ struct RouterSessionMountTests {
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
         #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
-        // The sentence tells the model to end its answer, says that the result
-        // comes back as a new message, and names this envelope's token. It
-        // names no `wait` tool.
-        #expect(envelope.next.contains("End your answer now"))
-        #expect(envelope.next.contains("comes back to you as a new message"))
+        // The sentence carries the shared pending text and names this
+        // envelope's token. It names no `wait` tool.
+        #expect(envelope.next.contains(PendingWorkInstruction.text))
         #expect(envelope.next.contains(envelope.completionToken))
         #expect(!envelope.next.contains("wait tool"))
         #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
-        // It prescribes no snippet. It names the background tool only to
-        // forbid a call that waits or checks (task `^cf57dtd`).
-        #expect(envelope.next.contains("Do not call runCode to wait or to check"))
+        // It prescribes no snippet (task `^cf57dtd`).
         #expect(!envelope.next.contains("Call this tool again"))
         #expect(!envelope.next.contains("return await wait"))
         // The envelope is a short report: shorter than one capped `runCode`

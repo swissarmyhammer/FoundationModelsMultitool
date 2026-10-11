@@ -136,18 +136,14 @@ struct InlineSettleGraceTests {
         }
     }
 
-    @Test("the pending sentence tells the model that no runCode call waits for the result or checks it")
-    func pendingSentenceForbidsPollingCalls() throws {
+    @Test("the pending sentence carries the shared pending text and the completion token")
+    func pendingSentenceCarriesTheSharedPendingText() throws {
         let completionToken = ToolContext.makeCompletionToken()
 
         let sentence = MultiTool(registry: try Self.registry())
             .collectInstruction(forCompletionToken: completionToken)
 
-        #expect(
-            sentence.contains(
-                "Do not call runCode to wait or to check; the result comes to you without a call."
-            )
-        )
+        #expect(sentence.contains(PendingWorkInstruction.text))
         #expect(sentence.contains(completionToken))
     }
 

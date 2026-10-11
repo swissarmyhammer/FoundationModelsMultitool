@@ -257,8 +257,8 @@ a fresh `runCode` sandbox can reach:
 `wait` is not a usable global. The sandbox `wait()` is removed, because a
 snippet that waits for a background run holds the model for every session on
 it. The name stays only so that a call to `wait()` fails with a repair text:
-return the completion token, end the answer, and the result comes back as
-mail.
+return the completion token, and the result comes back as mail. The repair
+text then gives the same pending text that each pending result gives.
 
 This list is not documentation alone. `HardeningTests` parses it out of this
 file and asserts it is set-equal to the globals the sandbox enumerates at
@@ -283,10 +283,11 @@ inner `tools.*` call of a snippet waits for the period of its `runCode`:
 - A call that is still running gives a pending result. In a snippet it is the
   object `{pending: true, completionToken, next}`, and `tools.shell.execute`
   also gives `commandID`. A top-level call gives a pending envelope with a
-  `completionToken`. The model ends its answer. When the run settles,
-  Router puts its result into the session outbox as mail, and that mail
-  starts the next submission of the session. The model answers from that
-  message.
+  `completionToken`. The `next` text tells the model not to wait or check:
+  it does other work that does not need the result, or, if there is no
+  other work, it does nothing. When the run settles, Router puts its result
+  into the session outbox as mail, and that mail starts the next submission
+  of the session. The model continues the task from that message.
 
 A snippet can look at a running snippet with `status()` and stop it with
 `cancel(completionToken)`. A snippet cannot wait for a run. Router runs the

@@ -3,8 +3,8 @@ import Testing
 import ScenarioGrading
 
 /// The canary over how a backgrounded run comes back to the model on this
-/// host: a `runCode` call hands the model a pending envelope, the model ends
-/// its answer while the run is still going, the settled run comes back to the
+/// host: a `runCode` call hands the model a pending envelope, the model does
+/// nothing more while the run is still going, the settled run comes back to the
 /// session as mail, and the model answers the mail.
 ///
 /// **One test for the whole background path.** Until card `^3vtvrzg` three
@@ -92,7 +92,7 @@ struct InBandCollectionCanaryTests {
     @Test("a backgrounded echo hands back a pending envelope, its value comes back through mail, and the mail answer reports it")
     func theDelayedEchoRoundTripsThroughMail() async throws {
         // The shortest sequence that still passes through the real machinery:
-        // call the named tool, take the handle, end the answer, get the mail,
+        // call the named tool, take the handle, do nothing more, get the mail,
         // report. Direct mode removes discovery, so no `searchTools` turn runs
         // at all.
         //
