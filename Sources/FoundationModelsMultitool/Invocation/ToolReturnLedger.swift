@@ -101,11 +101,18 @@ final class ToolReturnLedger: Sendable {
     /// simplification: a snippet whose calls all failed received no value it
     /// could have carried, so there is nothing for the notice to be about.
     ///
+    /// A call that gives a pending object records nothing for the same
+    /// reason: its result is not here yet, so no value of it can be carried.
+    /// ``PendingInnerCalls`` names that call instead. A notice that told the
+    /// model to "call runCode again" for a pending call would make the model
+    /// run that call a second time (task `^qg52whq`).
+    ///
     /// - Parameter call: the `tools.*` binding to run.
     /// - Returns: what `call` returned, unchanged.
     /// - Throws: whatever `call` throws, unchanged.
     func recording(_ call: () async throws -> InterpreterValue) async rethrows -> InterpreterValue {
         let value = try await call()
+        guard value.pendingCompletionToken == nil else { return value }
         recorded.withLock { $0.collect(from: value) }
         return value
     }

@@ -170,4 +170,22 @@ struct ToolReturnLedgerTests {
 
         #expect(ledger.notice(forReturnValue: .string("a sentence carrying none of that")) != nil)
     }
+
+    // MARK: - A pending object is not a result
+
+    @Test("a call that gives a pending object records nothing, so the notice does not tell the model to run it again")
+    func aPendingObjectRecordsNothing() async throws {
+        // The result of a pending call is not here yet, and
+        // `PendingInnerCalls` names the call. A notice that asked for its
+        // values would send the model to run the call a second time.
+        let ledger = ToolReturnLedger()
+        let pending = InterpreterValue.object([
+            SnippetPendingField.pending: .bool(true),
+            SnippetPendingField.completionToken: .string("pending-run"),
+            SnippetPendingField.next: .string("the result comes back as mail"),
+        ])
+        _ = await ledger.recording { pending }
+
+        #expect(ledger.notice(forReturnValue: .string("a sentence carrying none of that")) == nil)
+    }
 }

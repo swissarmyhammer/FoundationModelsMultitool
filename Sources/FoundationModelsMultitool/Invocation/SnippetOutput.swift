@@ -43,6 +43,22 @@ enum SnippetPendingField {
     static let next = "next"
 }
 
+extension InterpreterValue {
+    /// The completion token of this value when it is the pending object of
+    /// an inner call that went to the background, or `nil` for each other
+    /// value.
+    ///
+    /// The reading is the inverse of ``PendingRunEnvelope/snippetFields``:
+    /// an object whose ``SnippetPendingField/pending`` is `true` and whose
+    /// ``SnippetPendingField/completionToken`` is a string.
+    var pendingCompletionToken: String? {
+        guard case .object(let fields) = self, fields[SnippetPendingField.pending] == .bool(true),
+            case .string(let completionToken)? = fields[SnippetPendingField.completionToken]
+        else { return nil }
+        return completionToken
+    }
+}
+
 extension PendingRunEnvelope {
     /// This envelope as the object a snippet gets:
     /// `{pending: true, completionToken, next}`.

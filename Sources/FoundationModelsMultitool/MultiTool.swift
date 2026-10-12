@@ -533,6 +533,11 @@ public struct MultiTool: Tool {
         // calls of *this* run that are in flight, so the cancellation of this
         // run reaches each of them at once (see ``InFlightInnerCalls``).
         let inFlight = InFlightInnerCalls()
+        // One record per invocation, once more: it names the inner `tools.*`
+        // calls of *this* run that gave a pending object, so the result of
+        // this run tells the model not to run them again (see
+        // ``PendingInnerCalls``).
+        let pendingCalls = PendingInnerCalls()
         let code = "\(bundle.preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
@@ -540,7 +545,7 @@ public struct MultiTool: Tool {
                 + Self.makeRemovedGlobalHostFunctions(),
             installingAsync: makeAsyncHostFunctions(
                 over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns,
-                holding: inFlight)
+                holding: inFlight, naming: pendingCalls)
                 + Self.makeBackgroundRunHostFunctions(binding: binding),
             using: interpreter,
             cancelling: inFlight
@@ -562,7 +567,7 @@ public struct MultiTool: Tool {
             return ResultRenderer.render(
                 result,
                 limits: limits,
-                notice: uncarriedReturnNotice(from: ledger, for: result.returnValue)
+                notice: runNotice(from: ledger, naming: pendingCalls, for: result.returnValue)
             )
         case .failure(let interpreterError as InterpreterError):
             let resolution = await UnknownToolHint.hint(
@@ -581,11 +586,16 @@ public struct MultiTool: Tool {
             // The `tools.*` hint comes first. A message that names an
             // unknown path is about that path, and a message about a missing
             // Node.js global (see ``UnavailableGlobalHint``) names no path.
-            return ResultRenderer.render(
+            let rendered = ResultRenderer.render(
                 interpreterError,
                 hint: resolution?.text ?? UnavailableGlobalHint.hint(message: interpreterError.message),
                 directive: resolution?.directive ?? .repairSnippet
             )
+            // A snippet that failed can still leave a call in the background,
+            // for example one that read a field of a pending object. The
+            // notice comes last, after the repair directive, so the model
+            // repairs the snippet and does not run that call again.
+            return [rendered, pendingNotice(naming: pendingCalls)].compactMap { $0 }.joined(separator: "\n\n")
         case .failure(let error):
             throw error
         }
@@ -599,11 +609,34 @@ public struct MultiTool: Tool {
     /// the rendered text back into a value — so a sentence appended there
     /// would reach JavaScript rather than the model, where the teaching has no
     /// reader and the decode has one more thing to fail on.
-    private func uncarriedReturnNotice(
-        from ledger: ToolReturnLedger, for returnValue: InterpreterValue
+    ///
+    /// The notice of `pendingCalls` comes last: it tells the model what not to
+    /// do next, and the model reads the last line just before it acts.
+    ///
+    /// - Parameters:
+    ///   - ledger: the record of what the `tools.*` calls of this run returned.
+    ///   - pendingCalls: the record of the calls that gave a pending object.
+    ///   - returnValue: the value the snippet returned.
+    /// - Returns: the notices that apply, one blank line between each two, or
+    ///   `nil` when none applies.
+    private func runNotice(
+        from ledger: ToolReturnLedger, naming pendingCalls: PendingInnerCalls, for returnValue: InterpreterValue
     ) -> String? {
         guard depth == 0 else { return nil }
-        return ledger.notice(forReturnValue: returnValue)
+        let notices = [ledger.notice(forReturnValue: returnValue), pendingCalls.notice].compactMap { $0 }
+        return notices.isEmpty ? nil : notices.joined(separator: "\n\n")
+    }
+
+    /// The notice that names each inner call of this run that gave a pending
+    /// object, or `nil` when there is none or this run is nested — for the
+    /// reason ``runNotice(from:naming:for:)`` gives.
+    ///
+    /// - Parameter pendingCalls: the record of the calls that gave a pending
+    ///   object.
+    /// - Returns: the notice, or `nil`.
+    private func pendingNotice(naming pendingCalls: PendingInnerCalls) -> String? {
+        guard depth == 0 else { return nil }
+        return pendingCalls.notice
     }
 
     // MARK: - Running the snippet
@@ -696,6 +729,17 @@ public struct MultiTool: Tool {
         /// `APISurface.Entry.journalOp`, which derives it from the same pair the
         /// entry's `path` comes from.
         let journalOp: String?
+
+        /// The entry's fully-qualified snippet call path, for example
+        /// `"shell.execute"` — the path a pending notice names (see
+        /// ``PendingInnerCalls``).
+        let path: String
+
+        /// The name of this binding, as a pending notice states it. A tool
+        /// registered under no noun journals its own name as its `op`.
+        var callName: InnerCallName {
+            InnerCallName(path: path, tool: tool.name, op: journalOp ?? tool.name)
+        }
     }
 
     /// The positional host-function name for `registry.surface.entries[index]`
@@ -721,7 +765,8 @@ public struct MultiTool: Tool {
                 LiveTool(
                     hostFunctionName: hostFunctionName(at: index),
                     tool: tool,
-                    journalOp: entry.journalOp
+                    journalOp: entry.journalOp,
+                    path: entry.path
                 )
             )
         }
@@ -745,7 +790,10 @@ public struct MultiTool: Tool {
     /// sees the `LostRunError` it threw, which is what lets `call(arguments:)`
     /// throw it once the snippet has finished (see ``LostRunRecord``), and so
     /// `inFlight` holds it while it runs, which is what lets the cancellation
-    /// of this run reach it at once (see ``InFlightInnerCalls``). The wraps
+    /// of this run reach it at once (see ``InFlightInnerCalls``), and so
+    /// `pendingCalls` notes it when it gives a pending object, which is what
+    /// lets the result of this run name that call (see
+    /// ``PendingInnerCalls``). The wraps
     /// are applied to the whole list at once rather than at each construction
     /// site, so no binding added later can be left out of any record by
     /// omission.
@@ -763,12 +811,14 @@ public struct MultiTool: Tool {
     ///   - ledger: the record of what each binding returned.
     ///   - lostRuns: the record of the `LostRunError` a binding threw.
     ///   - inFlight: the record of the bindings in flight.
+    ///   - pendingCalls: the record of the bindings that gave a pending
+    ///     object.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
         over bundle: RegistryBundle,
         binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
-        holding inFlight: InFlightInnerCalls
+        holding inFlight: InFlightInnerCalls, naming pendingCalls: PendingInnerCalls
     ) -> [AsyncHostFunction] {
         // Captured here, in the task of the `runCode` call and in its span,
         // and not in the host functions: the interpreter calls them from its
@@ -777,53 +827,79 @@ public struct MultiTool: Tool {
         let scope = MultitoolTelemetry.Scope.current
         let logger = scope.logger
         var functions = bundle.liveTools.map { liveTool in
-            AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
-                try await Self.invokeAsync(
-                    tool: liveTool.tool,
-                    arguments: arguments,
-                    binding: binding,
-                    journalOp: liveTool.journalOp,
-                    logger: logger
-                )
-            }
-        }
-        if let searchTools {
-            functions.append(
-                AsyncHostFunction(name: Self.searchToolsHostName) { arguments in
+            (
+                liveTool.callName,
+                AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                     try await Self.invokeAsync(
-                        tool: searchTools,
-                        arguments: Self.widenedToObject(arguments, field: Self.searchToolsTaskField),
+                        tool: liveTool.tool,
+                        arguments: arguments,
                         binding: binding,
+                        journalOp: liveTool.journalOp,
                         logger: logger
                     )
                 }
             )
         }
-        functions.append(makeNestedRunCodeHostFunction(over: bundle))
-        return functions.map {
-            scope.bind(Self.recording($0, into: ledger, noting: lostRuns, holding: inFlight))
+        if let searchTools {
+            functions.append(
+                (
+                    InnerCallName(path: Self.searchToolsPath, tool: searchTools.name, op: searchTools.name),
+                    AsyncHostFunction(name: Self.searchToolsHostName) { arguments in
+                        try await Self.invokeAsync(
+                            tool: searchTools,
+                            arguments: Self.widenedToObject(arguments, field: Self.searchToolsTaskField),
+                            binding: binding,
+                            logger: logger
+                        )
+                    }
+                )
+            )
+        }
+        functions.append(
+            (InnerCallName(path: Self.runCodePath, tool: name, op: name), makeNestedRunCodeHostFunction(over: bundle)))
+        let records = InnerCallRecords(
+            ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls)
+        return functions.map { callName, function in
+            scope.bind(Self.recording(function, named: callName, into: records))
         }
     }
 
+    /// The per-run records that each `tools.*` binding of one `runCode`
+    /// invocation reports to.
+    private struct InnerCallRecords {
+        /// The record of what each binding returned.
+        let ledger: ToolReturnLedger
+
+        /// The record of the `LostRunError` a binding threw.
+        let lostRuns: LostRunRecord
+
+        /// The record that holds each binding while it runs.
+        let inFlight: InFlightInnerCalls
+
+        /// The record of the bindings that gave a pending object.
+        let pendingCalls: PendingInnerCalls
+    }
+
     /// Wraps one `tools.*` binding so this run's ledger sees the value it
-    /// handed back, this run's record sees the `LostRunError` it threw, and
-    /// this run's in-flight record holds it while it runs. The wrapper keeps
-    /// the same name.
+    /// handed back, this run's record sees the `LostRunError` it threw, this
+    /// run's in-flight record holds it while it runs, and this run's pending
+    /// record notes it when it gives a pending object. The wrapper keeps the
+    /// same name.
     ///
     /// - Parameters:
     ///   - function: the binding to wrap.
-    ///   - ledger: the record of what the binding returned.
-    ///   - lostRuns: the record of the `LostRunError` the binding threw.
-    ///   - inFlight: the record that holds the binding while it runs.
+    ///   - callName: the name of the binding, as a pending notice states it.
+    ///   - records: the records of this run.
     /// - Returns: the wrapped binding.
     private static func recording(
-        _ function: AsyncHostFunction, into ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
-        holding inFlight: InFlightInnerCalls
+        _ function: AsyncHostFunction, named callName: InnerCallName, into records: InnerCallRecords
     ) -> AsyncHostFunction {
         AsyncHostFunction(name: function.name) { arguments in
-            try await inFlight.running {
-                try await lostRuns.noting {
-                    try await ledger.recording { try await function.call(arguments) }
+            try await records.inFlight.running {
+                try await records.lostRuns.noting {
+                    try await records.pendingCalls.noting(callName) {
+                        try await records.ledger.recording { try await function.call(arguments) }
+                    }
                 }
             }
         }
