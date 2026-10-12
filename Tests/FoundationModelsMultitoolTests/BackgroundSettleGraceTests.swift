@@ -84,13 +84,9 @@ struct BackgroundSettleGraceTests {
     /// - Throws: When the store does not prepare, or the surface does not
     ///   render.
     private static func pendingProbeRunCode() throws -> (runCode: MultiTool, state: ShellState) {
-        let verbs = try shellVerbs()
-        let registry = try MultiTool.Builder()
-            .addGroup(named: "shell", [verbs.execute, verbs.getLines])
-            .addTools([WindowRecordingTool(name: pauseToolName, delayNanoseconds: pauseNanoseconds)])
-            .buildRegistry()
-        let configuration = MultiToolConfiguration(inlineSettleGrace: shortGrace)
-        return (MultiTool(registry: registry, configuration: configuration), verbs.state)
+        try shellRunCode(
+            grace: shortGrace,
+            extraTools: [WindowRecordingTool(name: pauseToolName, delayNanoseconds: pauseNanoseconds)])
     }
 
     /// The commandID of the one command that `state` recorded.
@@ -116,21 +112,27 @@ struct BackgroundSettleGraceTests {
         #expect(text.contains(PendingRunEnvelope.pendingWorkInstruction), "text: \(text)")
     }
 
-    /// A `runCode` whose snippets reach `tools.shell.execute` and
-    /// `tools.shell.getLines`.
+    /// A `runCode` whose snippets reach `tools.shell.execute`,
+    /// `tools.shell.getLines`, and each tool of `extraTools` at the top
+    /// level of `tools.*`.
     ///
-    /// - Parameter grace: The settle period of `runCode` and of its inner
-    ///   calls, or `nil` for the stock value.
-    /// - Returns: The tool.
+    /// - Parameters:
+    ///   - grace: The settle period of `runCode` and of its inner calls, or
+    ///     `nil` for the stock value.
+    ///   - extraTools: More tools for the snippets to reach.
+    /// - Returns: The tool, and the store of its shell commands.
     /// - Throws: When the store does not prepare, or the surface does not
     ///   render.
-    private static func shellRunCode(grace: TimeInterval? = nil) throws -> MultiTool {
+    private static func shellRunCode(
+        grace: TimeInterval? = nil, extraTools: [any Tool] = []
+    ) throws -> (runCode: MultiTool, state: ShellState) {
         let verbs = try shellVerbs()
         let registry = try MultiTool.Builder()
             .addGroup(named: "shell", [verbs.execute, verbs.getLines])
+            .addTools(extraTools)
             .buildRegistry()
         let configuration = grace.map { MultiToolConfiguration(inlineSettleGrace: $0) } ?? .default
-        return MultiTool(registry: registry, configuration: configuration)
+        return (MultiTool(registry: registry, configuration: configuration), verbs.state)
     }
 
     /// The step of a session whose first submission runs `snippet` in
@@ -188,7 +190,7 @@ struct BackgroundSettleGraceTests {
     func snippetExecuteAnswersWithItsOwnResult() async throws {
         let prompts = MailProbePrompts()
         let session = try await makeMailProbeSession(
-            mounting: [try Self.shellRunCode()], prompts: prompts,
+            mounting: [try Self.shellRunCode().runCode], prompts: prompts,
             step: Self.runningSnippet(
                 "const r = await tools.shell.execute({command: \"echo hi\"}); return [r.exitCode, r.commandID];"))
 
@@ -246,7 +248,7 @@ struct BackgroundSettleGraceTests {
             return [r.pending, r.commandID, g.commandID];
             """
         let session = try await makeMailProbeSession(
-            mounting: [try Self.shellRunCode(grace: Self.shortGrace)], inlineSettleGrace: Self.shortGrace,
+            mounting: [try Self.shellRunCode(grace: Self.shortGrace).runCode], inlineSettleGrace: Self.shortGrace,
             prompts: prompts, step: Self.runningSnippet(snippet))
 
         let result = try await session.respond(to: "run the long command")
@@ -276,7 +278,7 @@ struct BackgroundSettleGraceTests {
     func shortSnippetAnswersWithItsOwnValue() async throws {
         let prompts = MailProbePrompts()
         let session = try await makeMailProbeSession(
-            mounting: [try Self.shellRunCode()], prompts: prompts, step: Self.runningSnippet("return 1 + 1;"))
+            mounting: [try Self.shellRunCode().runCode], prompts: prompts, step: Self.runningSnippet("return 1 + 1;"))
 
         let result = try await session.respond(to: "add")
         _ = try await session.respond(to: Self.followUpMessage)
