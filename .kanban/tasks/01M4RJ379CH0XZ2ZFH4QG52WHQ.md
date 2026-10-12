@@ -95,8 +95,24 @@ comments:
     - evidence: 41f3cb5 refactor(test): share one shellRunCode helper in the settle grace tests; 9c9567f fix(telemetry): use InstrumentationContext in place of ServiceContext
     - next: kanban state is in a third commit. Nothing is pushed.
   timestamp: 2026-10-12T17:47:16.149341+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4rkpahkyra3z8b8553wx7hj
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~3..HEAD` gave 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). The engine reviewed 2 files. It did not review 2 `.kanban/` files because an ignore rule excludes them. No commit in the range renames a file, so a file-scoped review was not necessary. The prior finding at `BackgroundSettleGraceTests.swift:86` is fixed: `pendingProbeRunCode()` now calls `shellRunCode(grace:extraTools:)`, and that is the one construction path. All prior items are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-12T17:48:43.443292+00:00
+- actor: claude-code
+  id: 01m4rkpr5qz9kfjkc536zjj1hj
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (BackgroundSettleGraceTests.swift)
+    - test: green — swift test, 2374 passed, 0 failed (also fixed 3 ServiceContext deprecation warnings)
+    - commit: 41f3cb5, 9c9567f, 9c6bffd
+    - review: clean — 0 findings; finding at BackgroundSettleGraceTests.swift:86 fixed
+  timestamp: 2026-10-12T17:48:57.399014+00:00
+position_column: done
+position_ordinal: ffffdb80
 title: Name the pending inner calls in the runCode result when a snippet ends
 ---
 ## Problem
