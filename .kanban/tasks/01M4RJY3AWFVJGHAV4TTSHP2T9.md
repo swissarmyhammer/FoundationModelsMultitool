@@ -34,8 +34,24 @@ comments:
     - evidence: one local commit holds the source, the tests, and the kanban files. The commit sha is in the git log with subject "fix(runcode): name pending inner calls of a nested runCode in the outer result".
     - next: review
   timestamp: 2026-10-12T18:04:46.869887+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4rmvkkb1sth7vgyhf3xk0by
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (064dcf2). 0 findings, 0 confirmed, 0 refuted. 7 validator runs attempted, 0 failed, 0 skipped. Engine reviewed 3 files: Sources/FoundationModelsMultitool/Invocation/PendingInnerCalls.swift, Sources/FoundationModelsMultitool/MultiTool.swift, Tests/FoundationModelsMultitoolTests/BackgroundSettleGraceTests.swift. An ignore rule (.reviewignore) excluded 2 .kanban files. The commit renames no file, thus no file-scoped review was necessary. The engine found no defect in the change that gives the nested run the session binding of the outer run (MultiTool.EnclosingRun).
+    - next: none. Task moved to done.
+  timestamp: 2026-10-12T18:09:05.131597+00:00
+- actor: claude-code
+  id: 01m4rmw1epntyyjq34kjaq6sdf
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files
+    - test: green — swift test, 2376 passed, 0 failed
+    - commit: 064dcf2
+    - review: clean — 0 findings
+  timestamp: 2026-10-12T18:09:19.318033+00:00
+position_column: done
+position_ordinal: ffffdc80
 title: Name the pending inner calls of a nested tools.runCode in the outer runCode result
 ---
 ## Problem
