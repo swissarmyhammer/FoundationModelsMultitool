@@ -29,7 +29,7 @@ extension MultitoolTelemetry {
     ///
     /// The span opens through `TracedCall.run` of FoundationModelsExtras, with
     /// the tracer of the current task. The span is a child of the span of the
-    /// current `ServiceContext`. The span gets ``AttributeKey/outcome`` when
+    /// current `InstrumentationContext`. The span gets ``AttributeKey/outcome`` when
     /// the call ends: ``OutcomeValue/succeeded`` when `body` returns and set
     /// no outcome itself, or the outcome of the error when `body` throws. When
     /// the call throws, the span records the error and gets the error status,
@@ -115,7 +115,7 @@ extension MultitoolTelemetry {
     ///
     /// The interpreter runs each `tools.*` call of a snippet in a task that it
     /// starts on its own thread. That task has no task-local value of the
-    /// `runCode` call: no `ServiceContext`, no tracer that `withTracer` binds,
+    /// `runCode` call: no `InstrumentationContext`, no tracer that `withTracer` binds,
     /// no metrics factory that `withMetricsFactory` binds, and no
     /// ``boundLogger``. Thus `MultiTool` captures a scope in the task of the
     /// `runCode` call, in the `runCode` span, and binds it again around each
@@ -128,9 +128,9 @@ extension MultitoolTelemetry {
         /// The tracer of the captured task.
         let tracer: any Tracer
 
-        /// The service context of the captured task, with its current span.
-        /// `nil` when the task had none.
-        let serviceContext: ServiceContext?
+        /// The instrumentation context of the captured task, with its current
+        /// span. `nil` when the task had none.
+        let instrumentationContext: InstrumentationContext?
 
         /// The logger of the captured task.
         let logger: Logger
@@ -142,8 +142,8 @@ extension MultitoolTelemetry {
         /// The scope of the current task.
         static var current: Scope {
             Scope(
-                tracer: InstrumentationSystem.tracer, serviceContext: .current, logger: MultitoolTelemetry.logger,
-                metricsFactory: MetricsSystem.factory)
+                tracer: InstrumentationSystem.tracer, instrumentationContext: .current,
+                logger: MultitoolTelemetry.logger, metricsFactory: MetricsSystem.factory)
         }
 
         /// Wraps `function` so that it runs in this scope, from whichever task
@@ -155,7 +155,7 @@ extension MultitoolTelemetry {
             AsyncHostFunction(name: function.name) { arguments in
                 try await withTracer(tracer) {
                     try await withMetricsFactory(metricsFactory) {
-                        try await ServiceContext.withValue(serviceContext) {
+                        try await InstrumentationContext.withValue(instrumentationContext) {
                             try await MultitoolTelemetry.$boundLogger.withValue(logger) {
                                 try await function.call(arguments)
                             }
