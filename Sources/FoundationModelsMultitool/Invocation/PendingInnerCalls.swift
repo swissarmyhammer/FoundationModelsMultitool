@@ -29,7 +29,10 @@ struct InnerCallName: Sendable {
 /// `^qg52whq`).
 ///
 /// So each inner call that gives a pending object is recorded here, and the
-/// result of the run names each one. The notice uses the shared
+/// result of the run names each one. A nested `tools.runCode` run records its
+/// inner calls into the record of the run the model started, because a snippet
+/// reads the nested result as a value, and only the outer result reaches the
+/// model (see `MultiTool.EnclosingRun`). The notice uses the shared
 /// `PendingRunEnvelope.pendingWorkInstruction`, the same text that each
 /// pending envelope carries. The rendered result is the inline answer and
 /// also the mail of a background run, so one notice serves both.
@@ -75,6 +78,13 @@ final class PendingInnerCalls: Sendable {
 
     /// Runs one `tools.*` call, and records it when it gives a pending object.
     ///
+    /// A pending object that the record holds already is not recorded again.
+    /// This occurs when a nested `tools.runCode` returns the pending object of
+    /// one of its inner calls: the nested run records that inner call into
+    /// this record first, and then the `tools.runCode` call of the outer run
+    /// gives the same pending object. The first entry names the call that
+    /// started the run, thus the notice keeps it.
+    ///
     /// - Parameters:
     ///   - name: The name of the binding.
     ///   - call: The binding to run.
@@ -85,7 +95,10 @@ final class PendingInnerCalls: Sendable {
     ) async rethrows -> InterpreterValue {
         let value = try await call()
         if let pending = Self.pendingCall(named: name, in: value) {
-            calls.withLock { $0.append(pending) }
+            calls.withLock { recorded in
+                guard !recorded.contains(where: { $0.identifier == pending.identifier }) else { return }
+                recorded.append(pending)
+            }
         }
         return value
     }

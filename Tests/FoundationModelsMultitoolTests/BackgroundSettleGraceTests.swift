@@ -62,6 +62,12 @@ struct BackgroundSettleGraceTests {
     /// The `tools.*` path of the shell verb that the pending notice names.
     private static let executePath = "tools.shell.execute"
 
+    /// The `Tool` name of the shell verb that the pending notice names.
+    private static let executeTool = "execute"
+
+    /// The journal `op` of the shell verb that the pending notice names.
+    private static let executeOp = "execute shell"
+
     /// The `execute` verb and the `getLines` verb over one store, with a
     /// process-group registry private to this test.
     ///
@@ -308,6 +314,60 @@ struct BackgroundSettleGraceTests {
         let commandID = try await Self.onlyCommandID(in: probe.state)
         Self.expectNamesPendingExecute(commandID, in: result)
         #expect(!result.contains(ToolReturnLedger.uncarriedReturnNotice), "result: \(result)")
+        try await TestPoll.waitUntil("the result of the command comes back as mail") {
+            !Self.laterPrompts(containing: commandID, in: prompts.all).isEmpty
+        }
+    }
+
+    @Test("a nested tools.runCode that starts a long execute and does not return it gets an outer result that names the pending call")
+    func nestedRunCodeNamesThePendingInnerCall() async throws {
+        let prompts = MailProbePrompts()
+        let probe = try Self.pendingProbeRunCode()
+        let nestedSnippet = """
+            await tools.shell.execute({command: "\(Self.longCommand)"}); return { remaining: 1 };
+            """
+        let snippet = """
+            const nested = await tools.runCode({code: `\(nestedSnippet)`});
+            return nested.remaining;
+            """
+        let session = try await makeMailProbeSession(
+            mounting: [probe.runCode], inlineSettleGrace: Self.shortGrace, prompts: prompts,
+            step: Self.runningSnippet(snippet))
+
+        let result = try await session.respond(to: "run the long command")
+
+        #expect(!PendingRunEnvelope.isRendered(text: result), "the snippet itself went to the background: \(result)")
+        #expect(try Self.returnedValue(of: result) == .number(1), "result: \(result)")
+        let commandID = try await Self.onlyCommandID(in: probe.state)
+        Self.expectNamesPendingExecute(commandID, in: result)
+        #expect(result.contains(Self.executeTool), "result: \(result)")
+        #expect(result.contains(Self.executeOp), "result: \(result)")
+        try await TestPoll.waitUntil("the result of the command comes back as mail") {
+            !Self.laterPrompts(containing: commandID, in: prompts.all).isEmpty
+        }
+    }
+
+    @Test("a nested tools.runCode that returns the pending object of a long execute gets an outer result that names the call one time")
+    func nestedRunCodeNamesAReturnedPendingCallOneTime() async throws {
+        let prompts = MailProbePrompts()
+        let probe = try Self.pendingProbeRunCode()
+        let nestedSnippet = """
+            return await tools.shell.execute({command: "\(Self.longCommand)"});
+            """
+        let snippet = """
+            const nested = await tools.runCode({code: `\(nestedSnippet)`});
+            return nested.pending;
+            """
+        let session = try await makeMailProbeSession(
+            mounting: [probe.runCode], inlineSettleGrace: Self.shortGrace, prompts: prompts,
+            step: Self.runningSnippet(snippet))
+
+        let result = try await session.respond(to: "run the long command")
+
+        #expect(try Self.returnedValue(of: result) == .bool(true), "result: \(result)")
+        let commandID = try await Self.onlyCommandID(in: probe.state)
+        Self.expectNamesPendingExecute(commandID, in: result)
+        #expect(result.components(separatedBy: commandID).count == 2, "result: \(result)")
         try await TestPoll.waitUntil("the result of the command comes back as mail") {
             !Self.laterPrompts(containing: commandID, in: prompts.all).isEmpty
         }

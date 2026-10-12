@@ -360,7 +360,7 @@ public struct MultiTool: Tool {
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to expose as
     ///     `tools.*`.
-    ///   - configuration: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    ///   - configuration: see ``init(holder:configuration:interpreter:limits:searchTools:depth:enclosingRun:)``.
     ///   - interpreter: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
     ///   - limits: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
     ///   - searchTools: the mounted discovery tool a snippet reaches as
@@ -412,13 +412,16 @@ public struct MultiTool: Tool {
     ///   - depth: how many enclosing `tools.runCode` calls this run sits
     ///     inside. Defaults to `0`, the depth of a run the model started;
     ///     ``maxRunCodeDepth`` is where nesting stops.
+    ///   - enclosingRun: the run whose `tools.runCode` call this tool serves,
+    ///     or `nil` for a tool the model calls. Defaults to `nil`.
     init(
         holder: RegistryHolder,
         configuration: MultiToolConfiguration = .default,
         interpreter: (any Interpreter)? = nil,
         limits: ResultRendererLimits? = nil,
         searchTools: (any Tool)? = nil,
-        depth: Int = 0
+        depth: Int = 0,
+        enclosingRun: EnclosingRun? = nil
     ) {
         self.holder = holder
         self.configuration = configuration
@@ -426,6 +429,7 @@ public struct MultiTool: Tool {
         self.limits = limits ?? configuration.resultLimits
         self.searchTools = searchTools
         self.depth = depth
+        self.enclosingRun = enclosingRun
     }
 
     /// The mounted discovery tool a snippet reaches as `tools.searchTools`, or
@@ -450,6 +454,33 @@ public struct MultiTool: Tool {
     /// a snippet that recurses without a base case, which would otherwise
     /// spend the whole turn's time limit before returning anything.
     static let maxRunCodeDepth = 3
+
+    /// What a nested `tools.runCode` run gets from the run that called it.
+    ///
+    /// The host function of `tools.runCode` runs in a `Task` that the promise
+    /// pump of the interpreter starts outside each task tree, thus the nested
+    /// run cannot read the ambient `ToolContext` (see `RunBinding`). Without
+    /// the binding of the outer run, an inner background call of the nested
+    /// snippet, for example `tools.shell.execute`, runs to completion and
+    /// holds the nested snippet for its full duration.
+    ///
+    /// A snippet reads the nested result as a value, thus the nested result
+    /// carries no notice. The nested run records its pending inner calls into
+    /// the record of the outer run, and the result of the run the model
+    /// started names them (see ``PendingInnerCalls``).
+    struct EnclosingRun: Sendable {
+        /// The captured session binding of the outer run, or `nil` when that
+        /// run has no session.
+        let binding: RunBinding?
+
+        /// The record of the outer run that names each inner call that gave
+        /// a pending object.
+        let pendingCalls: PendingInnerCalls
+    }
+
+    /// The run whose `tools.runCode` call this tool serves, or `nil` for a
+    /// tool the model calls.
+    private let enclosingRun: EnclosingRun?
 
     /// Runs `arguments.code` against `tools.*` and renders the outcome.
     ///
@@ -512,8 +543,10 @@ public struct MultiTool: Tool {
         // where the session's ambient `ToolContext` is still reachable. Every
         // `tools.*` call below runs in a `Task` the interpreter's promise pump
         // starts from a JSC callback, outside every task tree, where
-        // `ToolContext.current` is `nil` — see `RunBinding`.
-        let binding = RunBinding.ambient(settlingWithin: configuration.inlineSettleGrace)
+        // `ToolContext.current` is `nil` — see `RunBinding`. A nested run
+        // takes the binding of the outer run for that reason (see
+        // ``EnclosingRun``).
+        let binding = runBinding
         // One notice chain per invocation, for the same reason: `notify()`
         // and `progress()` post through the captured context, never an
         // inherited one. `nil` when this run has no session — both globals
@@ -536,8 +569,10 @@ public struct MultiTool: Tool {
         // One record per invocation, once more: it names the inner `tools.*`
         // calls of *this* run that gave a pending object, so the result of
         // this run tells the model not to run them again (see
-        // ``PendingInnerCalls``).
-        let pendingCalls = PendingInnerCalls()
+        // ``PendingInnerCalls``). A nested run uses the record of the outer
+        // run, because only the outer result reaches the model (see
+        // ``EnclosingRun``).
+        let pendingCalls = enclosingRun?.pendingCalls ?? PendingInnerCalls()
         let code = "\(bundle.preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
@@ -601,6 +636,19 @@ public struct MultiTool: Tool {
         }
     }
 
+    /// The captured session binding of this run, or `nil` when it has none.
+    ///
+    /// A run the model started reads the ambient context; a nested run takes
+    /// the binding of the outer run (see ``EnclosingRun``). Read this only at
+    /// the top of ``call(arguments:)``, for the reason
+    /// `RunBinding.ambient(settlingWithin:)` gives.
+    private var runBinding: RunBinding? {
+        guard let enclosingRun else {
+            return RunBinding.ambient(settlingWithin: configuration.inlineSettleGrace)
+        }
+        return enclosingRun.binding
+    }
+
     /// The in-band notice this run's rendered result closes with, or `nil`
     /// when it closes with the value alone.
     ///
@@ -608,7 +656,9 @@ public struct MultiTool: Tool {
     /// result is read by a *snippet* — `makeNestedRunCodeHostFunction` decodes
     /// the rendered text back into a value — so a sentence appended there
     /// would reach JavaScript rather than the model, where the teaching has no
-    /// reader and the decode has one more thing to fail on.
+    /// reader and the decode has one more thing to fail on. A nested run
+    /// records its pending inner calls into `pendingCalls` of the outer run,
+    /// thus the outer result names them (see ``EnclosingRun``).
     ///
     /// The notice of `pendingCalls` comes last: it tells the model what not to
     /// do next, and the model reads the last line just before it acts.
@@ -856,7 +906,11 @@ public struct MultiTool: Tool {
             )
         }
         functions.append(
-            (InnerCallName(path: Self.runCodePath, tool: name, op: name), makeNestedRunCodeHostFunction(over: bundle)))
+            (
+                InnerCallName(path: Self.runCodePath, tool: name, op: name),
+                makeNestedRunCodeHostFunction(
+                    over: bundle, enclosedBy: EnclosingRun(binding: binding, pendingCalls: pendingCalls))
+            ))
         let records = InnerCallRecords(
             ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls)
         return functions.map { callName, function in
@@ -994,15 +1048,24 @@ public struct MultiTool: Tool {
     /// surface as the snippet that started it: a swap at the submission boundary
     /// reaches neither of them.
     ///
-    /// - Parameter bundle: the bundle this run read at its start.
-    private func makeNestedRunCodeHostFunction(over bundle: RegistryBundle) -> AsyncHostFunction {
+    /// The nested run also gets `enclosingRun`, so its inner calls reach the
+    /// session of this run, and its pending inner calls are named in the
+    /// result of the run the model started (see ``EnclosingRun``).
+    ///
+    /// - Parameters:
+    ///   - bundle: the bundle this run read at its start.
+    ///   - enclosingRun: what the nested run gets from this run.
+    private func makeNestedRunCodeHostFunction(
+        over bundle: RegistryBundle, enclosedBy enclosingRun: EnclosingRun
+    ) -> AsyncHostFunction {
         let depth = depth
         let nested = MultiTool(
             holder: RegistryHolder(current: bundle),
             configuration: configuration,
             limits: limits,
             searchTools: searchTools,
-            depth: depth + 1
+            depth: depth + 1,
+            enclosingRun: enclosingRun
         )
         return AsyncHostFunction(name: Self.runCodeHostName) { arguments in
             guard depth + 1 < Self.maxRunCodeDepth else {
