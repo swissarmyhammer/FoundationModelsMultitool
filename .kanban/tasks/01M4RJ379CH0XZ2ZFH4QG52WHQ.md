@@ -48,6 +48,53 @@ comments:
     - evidence: ea2b675 feat(runcode): name pending inner calls in the result when a snippet ends
     - next: review
   timestamp: 2026-10-12T17:37:25.747339+00:00
+- actor: claude-code
+  id: 01m4rk662sqsrz6q6nbfpvwdht
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (baa22e1); 1 finding (1 confirmed, 1 refuted) — Tests/FoundationModelsMultitoolTests/BackgroundSettleGraceTests.swift:86 (reuse/reuse). The commit renames no file.
+    - next: implement the open finding in the Review Findings section; the task stays in review.
+  timestamp: 2026-10-12T17:39:54.585146+00:00
+- actor: claude-code
+  id: 01m4rk6k0w3wyeenynn629ct35
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 7 files
+    - test: green — swift test, 2374 passed, 0 failed
+    - commit: baa22e1
+    - review: findings — Tests/FoundationModelsMultitoolTests/BackgroundSettleGraceTests.swift:86
+  timestamp: 2026-10-12T17:40:07.836702+00:00
+- actor: claude-code
+  id: 01m4rkbx5ktpwmhep4rg6688b2
+  text: |-
+    Finding fixed (reuse/reuse, BackgroundSettleGraceTests.swift:86):
+    - `shellRunCode(grace:extraTools:)` is now the one construction path. It takes `extraTools: [any Tool] = []` and passes them to `MultiTool.Builder.addTools`. It returns `(runCode: MultiTool, state: ShellState)`, so the store comes from the same `shellVerbs()` call that the registry uses.
+    - `pendingProbeRunCode()` is now one call: `shellRunCode(grace: shortGrace, extraTools: [pause tool])`.
+    - The three other callers read `.runCode`.
+    - No other registry or configuration build is left in the file. The top-level tests use `shellVerbs()` only and mount `verbs.execute` directly; they build no MultiTool.
+    - Why the tuple return: a default argument cannot call the throwing `shellVerbs()`, so a separate `verbs:` parameter would put the build back in each caller.
+  timestamp: 2026-10-12T17:43:02.067918+00:00
+- actor: claude-code
+  id: 01m4rkbzbwe0831neec55p7gyc
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/BackgroundSettleGraceTests.swift. `swift test --filter BackgroundSettleGraceTests`: 10 tests in 1 suite passed. `swift test`: 2374 tests in 209 suites passed, 0 failed. The only warning is the build-graph line "missing creator for mutated node" for the mlx-swift_Cmlx.bundle dependency, not the source. Not committed.
+    - next: /test, then /review (task stays in doing).
+  timestamp: 2026-10-12T17:43:04.316765+00:00
+- actor: claude-code
+  id: 01m4rkjsz0jcw92y0zt7qvbfx5
+  text: |-
+    ### test — green
+    - evidence: `swift package update`, then `swift test` — 2374 tests in 209 suites passed, 0 failed, 0 skipped. The first run had 3 compiler warnings in `Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry+Tracing.swift`: 'ServiceContext' is deprecated, renamed to 'InstrumentationContext'. The update moved swift-distributed-tracing to 1.6.0. I renamed the type, the `Scope` property (now `instrumentationContext`) and the doc comments. The final full run has 0 source warnings. The only warning left is the SwiftPM tool message "missing creator for mutated node" for the mlx bundle. It is not from the source.
+    - next: review. The work is not committed. The change in BackgroundSettleGraceTests.swift passes.
+  timestamp: 2026-10-12T17:46:48.160556+00:00
+- actor: claude-code
+  id: 01m4rkkn9ns2yvbh4mnwth96nc
+  text: |-
+    ### commit — changed
+    - evidence: 41f3cb5 refactor(test): share one shellRunCode helper in the settle grace tests; 9c9567f fix(telemetry): use InstrumentationContext in place of ServiceContext
+    - next: kanban state is in a third commit. Nothing is pushed.
+  timestamp: 2026-10-12T17:47:16.149341+00:00
 position_column: doing
 position_ordinal: '80'
 title: Name the pending inner calls in the runCode result when a snippet ends
@@ -86,4 +133,16 @@ Places to start: `MultiTool+Background.swift`, `MultiTool.swift`, `Invocation/Ru
 - [x] This works for an inline settle and for a background settle.
 - [x] New test: a snippet starts a long inner execute, does not return it, and ends. The result names the pending call.
 - [x] Tests pass.
-#bug
+
+
+## Review Findings (2026-10-12 12:37)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 5 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `plan.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/BackgroundSettleGraceTests.swift:86` `reuse/reuse` — `pendingProbeRunCode()` repeats the registry and configuration build of the existing `shellRunCode(grace:)` helper, with one extra tool added and a fixed grace. Two helpers now carry the same construction steps, and a change to one must be made in both. Give `shellRunCode` an optional `extraTools` parameter, for example `shellRunCode(grace: TimeInterval? = nil, extraTools: [any Tool] = [])`, and call it from `pendingProbeRunCode()`. That keeps one construction path. Keep the state return of `pendingProbeRunCode` by reading it from `shellVerbs()` separately, or return the verbs from the shared helper. #bug
