@@ -53,9 +53,10 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// background, and its result comes back to the session as mail. So the
     /// cost of a long snippet is this delay, one time, and nothing else.
     ///
-    /// The same value is the wait of each inner `tools.*` call of a background
-    /// tool, for example `tools.shell.execute`. An inner call that settles in
-    /// it gives the snippet its own result, so the snippet uses it at once.
+    /// The wait applies to the `runCode` call only. An inner `tools.*` call of
+    /// a snippet, also of a background tool such as `tools.shell.execute`,
+    /// runs to completion and gives the snippet its real result (task
+    /// `^6nnykct`).
     ///
     /// The wait is not a second work clock. It never cancels a snippet and it
     /// never shortens ``executionTimeLimit``.

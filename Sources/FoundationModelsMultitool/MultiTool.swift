@@ -460,21 +460,21 @@ public struct MultiTool: Tool {
     /// The host function of `tools.runCode` runs in a `Task` that the promise
     /// pump of the interpreter starts outside each task tree, thus the nested
     /// run cannot read the ambient `ToolContext` (see `RunBinding`). Without
-    /// the binding of the outer run, an inner background call of the nested
-    /// snippet, for example `tools.shell.execute`, runs to completion and
-    /// holds the nested snippet for its full duration.
+    /// the binding of the outer run, an inner call of the nested snippet runs
+    /// with no session: the engine does not mount it, and its events do not
+    /// reach the session.
     ///
     /// A snippet reads the nested result as a value, thus the nested result
-    /// carries no notice. The nested run records its pending inner calls into
-    /// the record of the outer run, and the result of the run the model
+    /// carries no notice. The nested run records its unawaited inner calls
+    /// into the record of the outer run, and the result of the run the model
     /// started names them (see ``PendingInnerCalls``).
     struct EnclosingRun: Sendable {
         /// The captured session binding of the outer run, or `nil` when that
         /// run has no session.
         let binding: RunBinding?
 
-        /// The record of the outer run that names each inner call that gave
-        /// a pending object.
+        /// The record of the outer run that names each inner call that ended
+        /// after the code of its snippet ended.
         let pendingCalls: PendingInnerCalls
     }
 
@@ -567,20 +567,23 @@ public struct MultiTool: Tool {
         // run reaches each of them at once (see ``InFlightInnerCalls``).
         let inFlight = InFlightInnerCalls()
         // One record per invocation, once more: it names the inner `tools.*`
-        // calls of *this* run that gave a pending object, so the result of
-        // this run tells the model not to run them again (see
+        // calls of *this* run that ended after the snippet code ended, so the
+        // result of this run tells the model not to run them again (see
         // ``PendingInnerCalls``). A nested run uses the record of the outer
         // run, because only the outer result reaches the model (see
         // ``EnclosingRun``).
         let pendingCalls = enclosingRun?.pendingCalls ?? PendingInnerCalls()
-        let code = "\(bundle.preamble)\n\(arguments.code)"
+        // One mark per invocation, also for a nested run: it records when the
+        // code of *this* snippet ended (see ``SnippetEndMark``).
+        let snippetEnd = SnippetEndMark()
+        let records = InnerCallRecords(
+            ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls,
+            snippetEnd: snippetEnd)
         let outcome = await Self.runCapturingOutcome(
-            code: code,
+            code: Self.wrappingSnippet(arguments.code, after: bundle.preamble),
             installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices)
-                + Self.makeRemovedGlobalHostFunctions(),
-            installingAsync: makeAsyncHostFunctions(
-                over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns,
-                holding: inFlight, naming: pendingCalls)
+                + Self.makeRemovedGlobalHostFunctions() + [Self.makeSnippetEndHostFunction(marking: snippetEnd)],
+            installingAsync: makeAsyncHostFunctions(over: bundle, binding: binding, reportingTo: records)
                 + Self.makeBackgroundRunHostFunctions(binding: binding),
             using: interpreter,
             cancelling: inFlight
@@ -626,10 +629,10 @@ public struct MultiTool: Tool {
                 hint: resolution?.text ?? UnavailableGlobalHint.hint(message: interpreterError.message),
                 directive: resolution?.directive ?? .repairSnippet
             )
-            // A snippet that failed can still leave a call in the background,
-            // for example one that read a field of a pending object. The
-            // notice comes last, after the repair directive, so the model
-            // repairs the snippet and does not run that call again.
+            // A snippet that failed can still have started a call that it did
+            // not await, and the run waited for that call to end. The notice
+            // comes last, after the repair directive, so the model repairs the
+            // snippet and does not run that call again.
             return [rendered, pendingNotice(naming: pendingCalls)].compactMap { $0 }.joined(separator: "\n\n")
         case .failure(let error):
             throw error
@@ -657,15 +660,16 @@ public struct MultiTool: Tool {
     /// the rendered text back into a value — so a sentence appended there
     /// would reach JavaScript rather than the model, where the teaching has no
     /// reader and the decode has one more thing to fail on. A nested run
-    /// records its pending inner calls into `pendingCalls` of the outer run,
-    /// thus the outer result names them (see ``EnclosingRun``).
+    /// records its unawaited inner calls into `pendingCalls` of the outer
+    /// run, thus the outer result names them (see ``EnclosingRun``).
     ///
     /// The notice of `pendingCalls` comes last: it tells the model what not to
     /// do next, and the model reads the last line just before it acts.
     ///
     /// - Parameters:
     ///   - ledger: the record of what the `tools.*` calls of this run returned.
-    ///   - pendingCalls: the record of the calls that gave a pending object.
+    ///   - pendingCalls: the record of the calls that ended after the snippet
+    ///     code ended.
     ///   - returnValue: the value the snippet returned.
     /// - Returns: the notices that apply, one blank line between each two, or
     ///   `nil` when none applies.
@@ -677,12 +681,12 @@ public struct MultiTool: Tool {
         return notices.isEmpty ? nil : notices.joined(separator: "\n\n")
     }
 
-    /// The notice that names each inner call of this run that gave a pending
-    /// object, or `nil` when there is none or this run is nested — for the
-    /// reason ``runNotice(from:naming:for:)`` gives.
+    /// The notice that names each inner call of this run that ended after the
+    /// snippet code ended, or `nil` when there is none or this run is nested —
+    /// for the reason ``runNotice(from:naming:for:)`` gives.
     ///
-    /// - Parameter pendingCalls: the record of the calls that gave a pending
-    ///   object.
+    /// - Parameter pendingCalls: the record of the calls that ended after the
+    ///   snippet code ended.
     /// - Returns: the notice, or `nil`.
     private func pendingNotice(naming pendingCalls: PendingInnerCalls) -> String? {
         guard depth == 0 else { return nil }
@@ -781,14 +785,18 @@ public struct MultiTool: Tool {
         let journalOp: String?
 
         /// The entry's fully-qualified snippet call path, for example
-        /// `"shell.execute"` — the path a pending notice names (see
-        /// ``PendingInnerCalls``).
+        /// `"shell.execute"` — the path a notice of ``PendingInnerCalls``
+        /// names.
         let path: String
 
-        /// The name of this binding, as a pending notice states it. A tool
-        /// registered under no noun journals its own name as its `op`.
+        /// The name of this binding, as a notice of ``PendingInnerCalls``
+        /// states it. A tool registered under no noun journals its own name
+        /// as its `op`. Only `Execute` gives a field that identifies its run:
+        /// the `commandID` under which the shell store keeps the output.
         var callName: InnerCallName {
-            InnerCallName(path: path, tool: tool.name, op: journalOp ?? tool.name)
+            InnerCallName(
+                path: path, tool: tool.name, op: journalOp ?? tool.name,
+                identifierField: tool is Execute ? Execute.commandIDField : nil)
         }
     }
 
@@ -841,8 +849,8 @@ public struct MultiTool: Tool {
     /// throw it once the snippet has finished (see ``LostRunRecord``), and so
     /// `inFlight` holds it while it runs, which is what lets the cancellation
     /// of this run reach it at once (see ``InFlightInnerCalls``), and so
-    /// `pendingCalls` notes it when it gives a pending object, which is what
-    /// lets the result of this run name that call (see
+    /// `pendingCalls` notes it when it ends after the snippet code ended,
+    /// which is what lets the result of this run name that call (see
     /// ``PendingInnerCalls``). The wraps
     /// are applied to the whole list at once rather than at each construction
     /// site, so no binding added later can be left out of any record by
@@ -858,17 +866,11 @@ public struct MultiTool: Tool {
     ///   - bundle: the bundle this run read at its start, whose `liveTools`
     ///     the bindings dispatch into.
     ///   - binding: the captured session binding of this run, or `nil`.
-    ///   - ledger: the record of what each binding returned.
-    ///   - lostRuns: the record of the `LostRunError` a binding threw.
-    ///   - inFlight: the record of the bindings in flight.
-    ///   - pendingCalls: the record of the bindings that gave a pending
-    ///     object.
+    ///   - records: the records of this run that each binding reports to.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
-        over bundle: RegistryBundle,
-        binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
-        holding inFlight: InFlightInnerCalls, naming pendingCalls: PendingInnerCalls
+        over bundle: RegistryBundle, binding: RunBinding?, reportingTo records: InnerCallRecords
     ) -> [AsyncHostFunction] {
         // Captured here, in the task of the `runCode` call and in its span,
         // and not in the host functions: the interpreter calls them from its
@@ -893,7 +895,9 @@ public struct MultiTool: Tool {
         if let searchTools {
             functions.append(
                 (
-                    InnerCallName(path: Self.searchToolsPath, tool: searchTools.name, op: searchTools.name),
+                    InnerCallName(
+                        path: Self.searchToolsPath, tool: searchTools.name, op: searchTools.name,
+                        identifierField: nil),
                     AsyncHostFunction(name: Self.searchToolsHostName) { arguments in
                         try await Self.invokeAsync(
                             tool: searchTools,
@@ -907,12 +911,10 @@ public struct MultiTool: Tool {
         }
         functions.append(
             (
-                InnerCallName(path: Self.runCodePath, tool: name, op: name),
+                InnerCallName(path: Self.runCodePath, tool: name, op: name, identifierField: nil),
                 makeNestedRunCodeHostFunction(
-                    over: bundle, enclosedBy: EnclosingRun(binding: binding, pendingCalls: pendingCalls))
+                    over: bundle, enclosedBy: EnclosingRun(binding: binding, pendingCalls: records.pendingCalls))
             ))
-        let records = InnerCallRecords(
-            ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls)
         return functions.map { callName, function in
             scope.bind(Self.recording(function, named: callName, into: records))
         }
@@ -930,19 +932,42 @@ public struct MultiTool: Tool {
         /// The record that holds each binding while it runs.
         let inFlight: InFlightInnerCalls
 
-        /// The record of the bindings that gave a pending object.
+        /// The record of the bindings that ended after the snippet code
+        /// ended.
         let pendingCalls: PendingInnerCalls
+
+        /// The moment the code of the snippet of this run ended.
+        let snippetEnd: SnippetEndMark
+
+        /// Records the value that one binding gave.
+        ///
+        /// The mark is read one time, so the value goes into exactly one of
+        /// the two records. A call that ended before the snippet code ended
+        /// goes into the ledger, because the snippet could carry its value.
+        /// A call that ended later goes into `pendingCalls`, and the ledger
+        /// does not see it (see ``ToolReturnLedger/record(_:)``).
+        ///
+        /// - Parameters:
+        ///   - value: the value that the binding gave.
+        ///   - callName: the name of the binding.
+        func account(for value: InterpreterValue, of callName: InnerCallName) {
+            guard snippetEnd.hasEnded else {
+                ledger.record(value)
+                return
+            }
+            pendingCalls.note(callName, gave: value)
+        }
     }
 
-    /// Wraps one `tools.*` binding so this run's ledger sees the value it
-    /// handed back, this run's record sees the `LostRunError` it threw, this
-    /// run's in-flight record holds it while it runs, and this run's pending
-    /// record notes it when it gives a pending object. The wrapper keeps the
-    /// same name.
+    /// Wraps one `tools.*` binding so this run's in-flight record holds it
+    /// while it runs, this run's record sees the `LostRunError` it threw, and
+    /// this run's records account for the value it handed back (see
+    /// `InnerCallRecords.account(for:of:)`). The wrapper keeps the same name.
     ///
     /// - Parameters:
     ///   - function: the binding to wrap.
-    ///   - callName: the name of the binding, as a pending notice states it.
+    ///   - callName: the name of the binding, as a notice of
+    ///     ``PendingInnerCalls`` states it.
     ///   - records: the records of this run.
     /// - Returns: the wrapped binding.
     private static func recording(
@@ -951,12 +976,64 @@ public struct MultiTool: Tool {
         AsyncHostFunction(name: function.name) { arguments in
             try await records.inFlight.running {
                 try await records.lostRuns.noting {
-                    try await records.pendingCalls.noting(callName) {
-                        try await records.ledger.recording { try await function.call(arguments) }
-                    }
+                    let value = try await function.call(arguments)
+                    records.account(for: value, of: callName)
+                    return value
                 }
             }
         }
+    }
+
+    // MARK: - The end of the snippet code
+
+    /// The flat global that the wrapper of ``wrappingSnippet(_:after:)``
+    /// calls when the snippet code ends.
+    ///
+    /// `__`-prefixed for the reason of ``searchToolsHostName``. The wrapper
+    /// keeps the function in a local constant and deletes the global before
+    /// the snippet code runs, so the global surface of the sandbox does not
+    /// change (`HardeningTests` enumerates that set).
+    static let snippetEndHostName = "__snippetEnded"
+
+    /// The local constant that holds ``snippetEndHostName`` while the snippet
+    /// code runs.
+    private static let snippetEndLocalName = "__snippetEnd"
+
+    /// The host function that records the end of the snippet code in
+    /// `snippetEnd`.
+    ///
+    /// - Parameter snippetEnd: the mark of this run.
+    /// - Returns: the host function, named ``snippetEndHostName``.
+    private static func makeSnippetEndHostFunction(marking snippetEnd: SnippetEndMark) -> HostFunction {
+        HostFunction(name: snippetEndHostName) { _ in
+            snippetEnd.markEnded()
+            return .null
+        }
+    }
+
+    /// The source that the interpreter runs for `code`: the preamble, then
+    /// `code` inside an async function whose end calls
+    /// ``snippetEndHostName``.
+    ///
+    /// The end of that function is the end of the snippet code: it returned
+    /// a value or threw. A `tools.*` call that ends after that moment is a
+    /// call that the snippet did not await (see ``SnippetEndMark``). The
+    /// value and the error of the function pass through unchanged, so the
+    /// interpreter reads the same outcome as from `code` alone.
+    ///
+    /// The wrapper opens on the first line of `code` and closes on a line of
+    /// its own after the last line, so each line of `code` keeps its number.
+    ///
+    /// - Parameters:
+    ///   - code: the snippet source of the model.
+    ///   - preamble: the preamble of the bundle of this run.
+    /// - Returns: the source to run.
+    static func wrappingSnippet(_ code: String, after preamble: String) -> String {
+        let opening =
+            "const \(snippetEndLocalName) = \(snippetEndHostName); delete globalThis.\(snippetEndHostName); "
+            + "return (async () => {"
+        let closing = "})().finally(() => { \(snippetEndLocalName)(); });"
+        return "\(preamble)\n\(opening)\(code)\n\(closing)"
     }
 
     /// The error `tools.runCode` throws when a snippet nests past

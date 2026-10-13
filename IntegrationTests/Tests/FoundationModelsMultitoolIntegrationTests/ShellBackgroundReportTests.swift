@@ -3,15 +3,14 @@ import FoundationModelsRouter
 import Testing
 
 /// The offline checks of how the shell background scenario counts the
-/// background report of the `tools.shell.execute` run (card `^pw3p6gb`).
+/// background report of one run (card `^pw3p6gb`).
 ///
-/// Under the settle-period rule (card `^38j4bbn`) the outer `runCode` call of
-/// the scenario answers with its own result, and the inner
-/// `tools.shell.execute` run is the run that goes to the background. That
-/// inner run posts its background report through the ambient context of the
-/// outer call, so the journal holds the report under the correlation of the
-/// OUTER run. Each check here gives journaled events to
-/// `backgroundReportCount(in:of:)`. No check loads a model or starts a
+/// The report of a run can stand under the correlation of another run: an
+/// event that an inner run posts reaches the session through the ambient
+/// context of the outer call, so the journal holds it under the correlation of
+/// the OUTER run. The count therefore reads the token that the envelope names,
+/// and not the correlation of the event. Each check here gives journaled events
+/// to `backgroundReportCount(in:of:)`. No check loads a model or starts a
 /// process. Thus each check always runs, and it is fast.
 @Suite("The shell background scenario counts the background report of the execute run")
 struct ShellBackgroundReportTests {

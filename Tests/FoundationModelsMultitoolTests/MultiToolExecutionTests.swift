@@ -196,12 +196,16 @@ struct MultiToolExecutionTests {
             arguments: RunCodeArguments(code: "tools.delayed(); return \"done\";")
         )
 
-        // The floating call is the point of this test, and it is also exactly
-        // the shape `ToolReturnLedger` reports: a call fired, its value never
-        // read, and a status word answered in its place. So the run closes with
-        // that notice, and the whole output is asserted rather than a loosened
-        // comparison.
-        #expect(output == "\"done\"\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
+        // The floating call ends after the snippet code ended, so the run
+        // waited for it, and `PendingInnerCalls` names it (task `^6nnykct`).
+        // `ToolReturnLedger` does not record its value, because the snippet
+        // could not carry it. The whole output is asserted.
+        let unawaitedNotice = [
+            PendingInnerCalls.noticeLead,
+            "- tools.delayed: tool \"delayed\", op \"delayed\"",
+            PendingInnerCalls.noticeAction,
+        ].joined(separator: "\n")
+        #expect(output == "\"done\"\n\n\(unawaitedNotice)")
         #expect(delayedTool.ranOnMainThread != nil)
     }
 

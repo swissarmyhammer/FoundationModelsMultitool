@@ -95,26 +95,21 @@ final class ToolReturnLedger: Sendable {
     /// Every scalar value the `tools.*` calls of this invocation returned.
     private let recorded = OSAllocatedUnfairLock(initialState: ScalarValues())
 
-    /// Runs one `tools.*` call and records the value it handed back.
+    /// Records the value that one `tools.*` call handed back.
     ///
     /// A call that throws records nothing, and that is right rather than a
     /// simplification: a snippet whose calls all failed received no value it
     /// could have carried, so there is nothing for the notice to be about.
     ///
-    /// A call that gives a pending object records nothing for the same
-    /// reason: its result is not here yet, so no value of it can be carried.
+    /// The caller does not record the value of a call that ended after the
+    /// snippet code ended: no value of it could be carried, and
     /// ``PendingInnerCalls`` names that call instead. A notice that told the
-    /// model to "call runCode again" for a pending call would make the model
-    /// run that call a second time (task `^qg52whq`).
+    /// model to "call runCode again" for that call would make the model run
+    /// it a second time (task `^qg52whq`).
     ///
-    /// - Parameter call: the `tools.*` binding to run.
-    /// - Returns: what `call` returned, unchanged.
-    /// - Throws: whatever `call` throws, unchanged.
-    func recording(_ call: () async throws -> InterpreterValue) async rethrows -> InterpreterValue {
-        let value = try await call()
-        guard value.pendingCompletionToken == nil else { return value }
+    /// - Parameter value: what the call returned.
+    func record(_ value: InterpreterValue) {
         recorded.withLock { $0.collect(from: value) }
-        return value
     }
 
     /// The notice this run's rendered result closes with, or `nil` when it

@@ -18,14 +18,13 @@ import ScenarioGrading
 // - The MODEL owns discovery and the start. It finds `tools.shell.execute`
 //   through `searchTools` and starts the command from a `runCode` snippet.
 //   The settle-period rule (card `^38j4bbn`) decides which run goes to the
-//   background. `Execute` declares a background mount for itself, so the inner
-//   `tools.shell.execute` call waits for its settle period. That wait ends
-//   before the settle period of the outer `runCode` call ends. The command
-//   never ends, so the execute run goes to the background and gives the
-//   snippet `{pending: true, commandID, completionToken, next}`. The snippet
-//   then ends inside the outer period, and the outer call answers with its own
-//   result. Thus the background run of this scenario is the EXECUTE run, and
-//   no outer pending envelope is expected.
+//   background, and it applies to the outer `runCode` call only (card
+//   `^6nnykct`). An inner `tools.shell.execute` call runs to completion, so
+//   the snippet waits for the command. The command never ends, so the
+//   `runCode` call answers with its pending envelope when its settle period
+//   ends, and the snippet goes on in the background with the shell run inside
+//   it. Thus the background run of this scenario is the RUNCODE run, and the
+//   shell run is an inner run of it.
 // - The HARNESS owns the readings that follow, because a live model cannot be
 //   asked to make them reliably and a scenario that asked would be grading the
 //   model rather than the background path. Each reading is taken through the
@@ -56,9 +55,9 @@ import ScenarioGrading
 ///
 /// Three properties, each of them load-bearing:
 ///
-/// 1. **It never ends.** The run therefore certainly still stands on the run
-///    plane while the harness reads it, so what ends it is the cancel and never
-///    the command ending by itself.
+/// 1. **It never ends.** The snippet that awaits it therefore certainly still
+///    stands on the run plane while the harness reads it, so what ends it is
+///    the cancel and never the command ending by itself.
 /// 2. **Its first line is its own process group.** `ShellRunner` spawns each
 ///    child with `platformOptions.processGroupID = 0`, so the child is its own
 ///    process-group leader and the `$$` of that shell IS the identifier of the
@@ -86,9 +85,9 @@ private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; slee
 /// It asks for the background start explicitly, in the words the verb's own
 /// description uses ("start a long command in the background and get its
 /// completion token back at once"). The wording does not decide the outcome:
-/// `Execute` declares a background mount for itself, so every `execute` call
-/// that runs longer than its settle period goes to the background whatever the
-/// model asked for, and this command never ends.
+/// `runCode` declares a background mount for itself, so every snippet that
+/// runs longer than its settle period goes to the background whatever the
+/// model asked for, and a snippet that awaits this command never ends.
 ///
 /// "Reply in one short sentence" keeps the reply as long as the scenario needs
 /// and no longer: no check reads the reply (see `shellBackgroundChecks(for:)`),
@@ -143,6 +142,10 @@ private let backgroundReportsPerRun = 1
 /// never two. `RoutedSessionActor.close()` journals exactly that list.
 private let terminalEventsPerRun = 1
 
+/// The `Tool` name of the `runCode` tool, which is the `tool` its background
+/// run stands under on the run plane.
+private let runCodeToolName = "runCode"
+
 /// Runs the shell background scenario end to end against a freshly resolved live
 /// profile, on the shipped configuration.
 ///
@@ -173,6 +176,7 @@ func runShellBackgroundScenario(name: String) async throws {
         let registry = try MultiTool.Builder()
             .withShell(storeDirectory: LiveRouterFixture.makeTempDir(), sandbox: probe)
             .buildRegistry()
+        let declaredJournalOp = registry.surface.entries.first { $0.path == shellExecutePath }?.journalOp
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface, and their own
         // descriptions carry the contract.
@@ -186,11 +190,18 @@ func runShellBackgroundScenario(name: String) async throws {
         // read WHILE the run is going — a reading taken after the turn would
         // find whatever Router's own end-of-turn handling left, which is a
         // different question from the one this scenario asks.
-        let watcher = Task { await observeShellRunPlane(probe: probe, registry: registry) }
+        let watcher = Task {
+            await observeShellRunPlane(probe: probe, registry: registry, declaredJournalOp: declaredJournalOp)
+        }
         let start = Date()
         let turn = try await streamTurn(of: session, prompt: shellBackgroundPrompt)
         let elapsed = Date().timeIntervalSince(start)
-        let plane = await watcher.value
+        var plane = await watcher.value
+        // The cancel comes after the turn. Until its settle period ends, the
+        // `runCode` call of the turn waits for the snippet in band, and a
+        // cancel then would end that call of the turn and not a background
+        // run.
+        await cancelSnippetRun(observed: &plane, probe: probe)
 
         // The journal half of task ^1hq8xny's split: `RoutedSessionActor.close()`
         // journals exactly what `SessionMailbox.sweep()` answers with, through
@@ -201,9 +212,8 @@ func runShellBackgroundScenario(name: String) async throws {
         let journal = await journaledRunEvents(
             awaiting: plane.sweptRunToken, in: fixture)
         let evidence = ShellBackgroundEvidence(
-            backgroundReports: backgroundReportCount(in: journal, of: plane.executeRunToken),
-            declaredJournalOp: registry.surface.entries
-                .first { $0.path == shellExecutePath }?.journalOp,
+            backgroundReports: backgroundReportCount(in: journal, of: plane.backgroundRun?.completionToken),
+            declaredJournalOp: declaredJournalOp,
             plane: plane,
             sweptRunTerminals: terminals(in: journal, of: plane.sweptRunToken)
         )
@@ -238,7 +248,7 @@ private let shellBackgroundReplyPreviewCharacters = 120
 
 // MARK: - What the harness read off the run plane
 
-/// One background shell run, as the run plane reports it.
+/// One background run, as the run plane reports it.
 ///
 /// The four fields stand together or not at all — a run is on the plane with all
 /// of them, or it is not on the plane — so they are one value rather than four
@@ -250,15 +260,15 @@ private let shellBackgroundReplyPreviewCharacters = 120
 /// would then be checkable nowhere.
 struct BackgroundShellRun: Sendable, CustomStringConvertible {
 
-    /// The `tool` the run stands under — the verb's own name.
+    /// The `tool` the run stands under — the tool's own name.
     let tool: String
 
-    /// The `op` the run stands under — the `"verb noun"` pair the registration
-    /// site derived.
+    /// The `op` the run stands under.
     let op: String
 
-    /// What kind of work the run is. A shell run declares `RunKind.process`,
-    /// which is what makes its stop authoritative.
+    /// What kind of work the run is. A `runCode` run is a `RunKind.swiftTask`,
+    /// and its cancel reaches the inner shell run through the cancellation of
+    /// the snippet.
     let kind: RunKind
 
     /// The run's completion token.
@@ -278,14 +288,13 @@ struct ShellRunPlaneObservation: Sendable {
     /// `nil` when no execute run started.
     ///
     /// It is read off the run's own ambient context, which the probe sandbox
-    /// keeps. The snippet gets the same token as the `commandID` and the
-    /// `completionToken` of its pending object, and the run plane lists the run
-    /// under it. Thus the harness finds the background run with no outer
-    /// pending envelope and with no reading of the model's reply.
+    /// keeps. The token is also the `commandID` under which the store keeps the
+    /// output of the run. The run is an inner run, so it never stands on the
+    /// run plane (card `^6nnykct`).
     var executeRunToken: String?
 
-    /// The model's own shell run, as the run plane reported it, or `nil` when it
-    /// never reached the plane.
+    /// The model's own `runCode` run, which holds the shell run, as the run
+    /// plane reported it, or `nil` when it never reached the plane.
     var backgroundRun: BackgroundShellRun?
 
     /// The lines `tools.shell.getLines` read back while the run was still
@@ -296,11 +305,13 @@ struct ShellRunPlaneObservation: Sendable {
     /// line.
     var childProcessGroup: pid_t?
 
-    /// What the run's own canceler reported when the harness cancelled it.
+    /// What the canceler of the `runCode` run reported when the harness
+    /// cancelled it.
     var cancelOutcome: OperationOutcome?
 
     /// Whether the child's process group held nothing at all before the
-    /// deadline — the proof that the tree died and left no orphan.
+    /// deadline — the proof that the cancel of the snippet reached the shell
+    /// run, and that the tree died and left no orphan.
     var childGone = false
 
     /// The completion token of the second shell run, left in the background for
@@ -320,9 +331,11 @@ struct ShellRunPlaneObservation: Sendable {
 ///     the ambient context of each `tools.shell.execute` run.
 ///   - registry: the built registry, whose `tools` hold the live
 ///     `tools.shell.getLines` verb over the same store.
+///   - declaredJournalOp: the op the registration site declared for
+///     `tools.shell.execute`, which the swept run stands under.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
-    probe: ShellRunContextProbe, registry: MultiTool.Registry
+    probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?
 ) async -> ShellRunPlaneObservation {
     var observation = ShellRunPlaneObservation()
 
@@ -345,7 +358,7 @@ private func observeShellRunPlane(
     // snapshot a snippet reads, taken through the same call.
     var background: BackgroundRun?
     _ = await IntegrationPoll.holds {
-        background = await context.backgroundRuns().first { $0.completionToken == token }
+        background = await context.backgroundRuns().first { $0.tool == runCodeToolName }
         return background != nil
     }
     guard let background else { return observation }
@@ -356,24 +369,41 @@ private func observeShellRunPlane(
     observation.liveLines = await liveOutput(of: token, in: registry)
     observation.childProcessGroup = processGroup(in: observation.liveLines)
 
-    // Started BEFORE the cancel below, so the session certainly holds a
-    // background shell run when `close()` sweeps: the run the model started is
-    // the one this scenario cancels, and a sweep needs one of its own to answer
-    // for.
+    // Started BEFORE the cancel of `cancelSnippetRun(observed:probe:)`, so the
+    // session certainly holds a background shell run when `close()` sweeps:
+    // the run the model started is the one this scenario cancels, and a sweep
+    // needs one of its own to answer for.
     observation.sweptRunToken = await startSweptRun(
-        under: context, alongside: token, in: registry)
-
-    observation.cancelOutcome = cancelReport(of: await context.cancel(completionToken: token))
-    if let group = observation.childProcessGroup {
-        // A poll and not slack: `killpg` kills the tree at once, and the leader
-        // of the group then stays an unreaped child of this process until
-        // swift-subprocess reaps it. A group that still holds a zombie still
-        // answers the probe.
-        observation.childGone = await IntegrationPoll.holds {
-            !processGroupStands(group)
-        }
-    }
+        under: context, alongside: background.completionToken, in: registry, op: declaredJournalOp)
     return observation
+}
+
+/// Cancels the background `runCode` run of the model, and reads whether the
+/// cancel reached the inner shell run.
+///
+/// Called after the turn, when the `runCode` call of the turn already answered
+/// with its pending envelope, so the cancel ends a background run.
+///
+/// - Parameters:
+///   - observation: what the harness read off the run plane; the outcome of the
+///     cancel and the state of the process group go into it.
+///   - probe: the sandbox the shell capability was built with, whose first
+///     context carries the session's mailbox.
+private func cancelSnippetRun(
+    observed observation: inout ShellRunPlaneObservation, probe: ShellRunContextProbe
+) async {
+    guard let context = probe.observedContexts.first, let token = observation.backgroundRun?.completionToken else {
+        return
+    }
+    observation.cancelOutcome = cancelReport(of: await context.cancel(completionToken: token))
+    guard let group = observation.childProcessGroup else { return }
+    // A poll and not slack: the cancel of the snippet cancels the inner call,
+    // `ShellRunner` then kills the tree, and the leader of the group stays an
+    // unreaped child of this process until swift-subprocess reaps it. A group
+    // that still holds a zombie still answers the probe.
+    observation.childGone = await IntegrationPoll.holds {
+        !processGroupStands(group)
+    }
 }
 
 /// Reads the stored output of a run that is still going, through the live
@@ -434,13 +464,12 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 /// Starts one more background shell run on the same session, and answers with
 /// its completion token.
 ///
-/// Through a real `runCode` snippet under the session's own ambient context,
-/// which is the path an inner `tools.*` call always takes (`RunBinding`): the
-/// unmounted `MultiTool` runs the snippet inline, and the inner
-/// `tools.shell.execute` call goes to the background on the session's mailbox
-/// because `Execute.mount` declares a background mount and the `sleep` runs
-/// longer than the settle period. The root package's `RegisteredJournalOpTests`
-/// drives a snippet the same way.
+/// The verb is mounted on the session's own mailbox through the context of the
+/// model's shell run, the way a session mounts a tool. `Execute.mount` declares
+/// a background mount, and the `sleep` runs longer than the settle period, so
+/// the run goes to the background as a `RunKind.process` run. A `runCode`
+/// snippet cannot start this run: an inner call runs to completion (card
+/// `^6nnykct`), so the snippet would wait for the whole `sleep`.
 ///
 /// It exists for one reading: `close()` has to have a background shell run to
 /// sweep, and the run the model started is the one this scenario cancels.
@@ -448,26 +477,19 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 /// - Parameters:
 ///   - context: the ambient context of the model's own shell run, which carries
 ///     the session's mailbox.
-///   - other: the completion token of that run, so the new one is told apart
-///     from it on the plane.
+///   - other: the completion token of the model's background run, so the new
+///     one is told apart from it on the plane.
 ///   - registry: the registry the session was mounted over, which is what makes
 ///     the new run stand on the same store and the same mailbox.
+///   - op: the op the new run stands under: the declared op of the verb.
 /// - Returns: the new run's completion token, or `nil` when it never went to
 ///   the background.
 private func startSweptRun(
-    under context: ToolContext, alongside other: String, in registry: MultiTool.Registry
+    under context: ToolContext, alongside other: String, in registry: MultiTool.Registry, op: String?
 ) async -> String? {
-    let multiTool = MultiTool(registry: registry)
-    _ = try? await ToolContext.$current.withValue(context) {
-        try await multiTool.call(
-            arguments: RunCodeArguments(
-                code: """
-                    return await tools.\(shellExecutePath)({ \
-                    command: "sleep \(sweptRunSleepSeconds)" });
-                    """
-            )
-        )
-    }
+    guard let execute = registry.tools[shellExecutePath] as? Execute else { return nil }
+    let mounted = context.mount(execute, op: op)
+    _ = try? await mounted.call(arguments: ExecuteArguments(command: "sleep \(sweptRunSleepSeconds)"))
     var token: String?
     _ = await IntegrationPoll.holds {
         token = await context.backgroundRuns()
@@ -569,13 +591,12 @@ private func terminals(in events: [OperationEvent], of token: String?) -> [Opera
 /// OF THAT RUN. The envelope's own token is the only key that names the run,
 /// and the `correlationID` of the event is not:
 ///
-/// - The execute run is an inner `tools.*` run. Its events reach the session
-///   re-stamped with the OUTER `runCode` run's correlation
-///   (`AmbientUpstreamSink`, `ToolContext.post(_:)`), so its background report
-///   is journaled under the token of the `runCode` run, and not under its own.
-/// - The swept run is an inner run of a second snippet, and its report can
-///   stand under any correlation. Its envelope names the swept run, and thus
-///   it is not counted for the execute run.
+/// - The report of a run can stand under the correlation of another run. An
+///   event that an inner run posts reaches the session re-stamped with the
+///   OUTER run's correlation (`AmbientUpstreamSink`, `ToolContext.post(_:)`).
+/// - The swept run is a second background run, and its report can stand under
+///   any correlation. Its envelope names the swept run, and thus it is not
+///   counted for the run the model started.
 ///
 /// Router's own byte-shape recognizer decides which detail is an envelope, and
 /// it decodes the token through the envelope's own `Codable` conformance. The
@@ -600,8 +621,9 @@ func backgroundReportCount(in events: [OperationEvent], of token: String?) -> In
 /// Everything one shell background run produced that its verdict is graded on.
 struct ShellBackgroundEvidence: Sendable {
 
-    /// How many background reports the session journaled for the execute run,
-    /// counted by the token of `ShellRunPlaneObservation.executeRunToken`.
+    /// How many background reports the session journaled for the background
+    /// `runCode` run, counted by the token of
+    /// `ShellRunPlaneObservation.backgroundRun`.
     let backgroundReports: Int
 
     /// The `"verb noun"` pair the registration site declared for
@@ -627,15 +649,17 @@ private let shellExecuteRunStartedCheckName = "executeRunStarted"
 /// itself exactly once.
 private let shellBackgroundReportCheckName = "backgroundReport"
 
-/// The label of the check that grades the run plane as listing the shell run.
-private let shellRunListedCheckName = "statusListsShellRun"
+/// The label of the check that grades the run plane as listing the `runCode`
+/// run that holds the shell run.
+private let snippetRunListedCheckName = "statusListsSnippetRun"
 
 /// The label of the check that grades `tools.shell.getLines` as having read the
 /// live run.
 private let shellLiveOutputCheckName = "getLinesReadsLiveRun"
 
-/// The label of the check that grades the cancel as having reported `.stopped`.
-private let shellCancelStoppedCheckName = "cancelReportsStopped"
+/// The label of the check that grades the cancel as having reported
+/// `.cancelled`.
+private let snippetCancelCheckName = "cancelReportsCancelled"
 
 /// The label of the check that grades the child's process group as gone.
 private let shellChildGoneCheckName = "childProcessGone"
@@ -654,11 +678,11 @@ private let shellJournaledTerminalCheckName = "oneJournaledTerminal"
 ///
 /// **No answer check.** The other runners in this target grade the model's reply
 /// because the reply is the only evidence they have that the work happened. This
-/// one has stronger evidence: a run stood on the run plane under the declared
-/// journal op, a live verb read the output that run wrote, a canceler reported
-/// the stop, and the process group is gone. A reply check beside those would add
-/// nothing and would make the verdict depend on how a model chose to phrase a
-/// completion token.
+/// one has stronger evidence: the snippet stood on the run plane, a live verb
+/// read the output that the inner shell run wrote, the canceler of the snippet
+/// reported the cancel, and the process group is gone. A reply check beside
+/// those would add nothing and would make the verdict depend on how a model
+/// chose to phrase a completion token.
 ///
 /// - Parameter evidence: what the run produced.
 /// - Returns: every condition this run is graded on, in reporting order.
@@ -677,18 +701,16 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
             held: evidence.backgroundReports == backgroundReportsPerRun,
             failureMessage:
                 "expected the journal to hold exactly \(backgroundReportsPerRun) progress event "
-                + "carrying the pending envelope of the execute run "
-                + "\(plane.executeRunToken ?? "(never started)"), and it held "
+                + "carrying the pending envelope of the runCode run "
+                + "\(plane.backgroundRun?.completionToken ?? "(never listed)"), and it held "
                 + "\(evidence.backgroundReports)"
         ),
         ScenarioCheck(
-            name: shellRunListedCheckName,
-            held: plane.backgroundRun?.kind == .process
-                && plane.backgroundRun?.op == evidence.declaredJournalOp,
+            name: snippetRunListedCheckName,
+            held: plane.backgroundRun?.kind == .swiftTask && plane.backgroundRun?.tool == runCodeToolName,
             failureMessage:
-                "expected the run plane to list the background shell run as kind "
-                + "\(RunKind.process.rawValue) under the declared op "
-                + "\(evidence.declaredJournalOp ?? "none"), and it listed "
+                "expected the run plane to list the background \(runCodeToolName) run as kind "
+                + "\(RunKind.swiftTask.rawValue), and it listed "
                 + "\(plane.backgroundRun?.description ?? "no run at all")"
         ),
         ScenarioCheck(
@@ -699,11 +721,11 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
                 + "completion token, and it read \(plane.liveLines)"
         ),
         ScenarioCheck(
-            name: shellCancelStoppedCheckName,
-            held: plane.cancelOutcome == .stopped,
+            name: snippetCancelCheckName,
+            held: plane.cancelOutcome == .cancelled,
             failureMessage:
-                "expected the run's own canceler to report \(OperationOutcome.stopped.rawValue) — "
-                + "a process group that took killpg(SIGKILL) is certainly dead — and it reported "
+                "expected the canceler of the runCode run to report "
+                + "\(OperationOutcome.cancelled.rawValue), and it reported "
                 + "\(plane.cancelOutcome?.rawValue ?? "nothing")"
         ),
         ScenarioCheck(
@@ -712,7 +734,7 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
             failureMessage:
                 "expected the child's process group "
                 + "\(plane.childProcessGroup.map { "\($0)" } ?? "(never read)") to hold nothing "
-                + "after the cancel, and it still held a process"
+                + "after the cancel of the snippet, and it still held a process"
         ),
         ScenarioCheck(
             name: shellJournaledTerminalCheckName,

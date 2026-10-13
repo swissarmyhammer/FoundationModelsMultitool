@@ -1,7 +1,7 @@
-import FoundationModelsExtras
 import Synchronization
 
-/// The name of one inner `tools.*` binding, as a pending notice states it.
+/// The name of one inner `tools.*` binding, as a notice of
+/// ``PendingInnerCalls`` states it.
 struct InnerCallName: Sendable {
     /// The path a snippet calls the binding by, without the `tools.` prefix:
     /// for example `"shell.execute"`.
@@ -13,119 +13,105 @@ struct InnerCallName: Sendable {
     /// The `op` the run of the call journals: the `"verb noun"` pair of a
     /// grouped tool (for example `"execute shell"`), or the tool name.
     let op: String
+
+    /// The field of the value of the call that identifies its run, or `nil`
+    /// when the tool gives no such field. For `tools.shell.execute` it is
+    /// `commandID`: the output of the command stays in the shell store under
+    /// that identifier.
+    let identifierField: String?
 }
 
-/// The inner `tools.*` calls of one `runCode` invocation that gave the
-/// snippet a pending object, and the notice that names them.
+/// The inner `tools.*` calls of one `runCode` invocation that were still
+/// running when the snippet code ended, and the notice that names them.
 ///
-/// **The gap this closes.** An inner call of a background tool, for example
-/// `tools.shell.execute`, gives the snippet a pending object when it runs
-/// longer than its settle period. The call continues in the background, and
-/// its result comes back to the session as a new message. A snippet that does
-/// not return the pending object hides that call from the model. In SWE-bench
-/// run `noop-stop-1012` (instance `django__django-13447`), a snippet started a
-/// test command, returned only a grep result, and ended. The model then
-/// thought that the command failed, and it ran the same command again (task
-/// `^qg52whq`).
+/// **The gap this closes.** A snippet can start a call and not await it.
+/// Each inner call runs to completion, and the interpreter gives no result
+/// before the last call ends (see ``SnippetEndMark``). But the code of the
+/// snippet ended before the call ended, so the value of the call is not in
+/// the value that the snippet returned. Without a notice, the result hides
+/// that call from the model. In SWE-bench run `noop-stop-1012` (instance
+/// `django__django-13447`), a snippet started a test command, returned only a
+/// grep result, and ended. The model then thought that the command failed,
+/// and it ran the same command again (task `^qg52whq`).
 ///
-/// So each inner call that gives a pending object is recorded here, and the
-/// result of the run names each one. A nested `tools.runCode` run records its
-/// inner calls into the record of the run the model started, because a snippet
-/// reads the nested result as a value, and only the outer result reaches the
-/// model (see `MultiTool.EnclosingRun`). The notice uses the shared
-/// `PendingRunEnvelope.pendingWorkInstruction`, the same text that each
-/// pending envelope carries. The rendered result is the inline answer and
-/// also the mail of a background run, so one notice serves both.
+/// So each inner call that ends after the snippet code ended is recorded
+/// here, and the result of the run names each one (task `^6nnykct`). A call
+/// that the snippet awaited always ends before the snippet code ends, so it
+/// is never named. A nested `tools.runCode` run records its inner calls into
+/// the record of the run the model started, because a snippet reads the
+/// nested result as a value, and only the outer result reaches the model
+/// (see `MultiTool.EnclosingRun`).
+///
+/// The notice does not tell the model that a call continues in the
+/// background: the result waited for each call to end. The rendered result
+/// is the inline answer and also the mail of a background run, so one
+/// notice serves both.
 ///
 /// A reference type guarded by a `Mutex`, rather than an `actor`, for the
 /// reason of ``ToolReturnLedger``: the recording side runs inside
 /// `AsyncHostFunction` bodies that the promise pump of the interpreter starts
 /// on any thread, and each operation is a small synchronous step.
 final class PendingInnerCalls: Sendable {
-    /// One inner call that gave the snippet a pending object.
-    private struct PendingCall: Sendable {
+    /// One inner call that ended after the snippet code ended.
+    private struct UnawaitedCall: Sendable {
         /// The name of the binding that was called.
         let name: InnerCallName
 
-        /// The field of the pending object that identifies the run:
-        /// `commandID` for a shell command, `completionToken` for each
-        /// other tool.
-        let identifierField: String
-
-        /// The value of that field.
-        let identifier: String
+        /// The identifier of the run of the call, as `field "value"`, or
+        /// `nil` when the call gave none.
+        let identifier: String?
 
         /// This call as one line of the notice.
         var line: String {
-            "- tools.\(name.path): tool \"\(name.tool)\", op \"\(name.op)\", \(identifierField) \"\(identifier)\""
+            let named = "- tools.\(name.path): tool \"\(name.tool)\", op \"\(name.op)\""
+            return identifier.map { "\(named), \($0)" } ?? named
         }
     }
 
     /// The first sentence of the notice, ahead of the list of calls.
     static let noticeLead =
-        "This snippet ended, but these tools.* calls that it started did not finish. They continue in "
-        + "the background:"
+        "This snippet ended before these tools.* calls that it started ended. The result waited for each "
+        + "call to end, but the value that the snippet returned does not hold their results:"
 
-    /// The sentence after the list of calls, ahead of the shared
-    /// pending-work text.
+    /// The sentence after the list of calls.
     static let noticeAction = "Do not run these calls again."
 
-    /// Each pending call, in the order the calls gave their pending objects.
-    private let calls = Mutex<[PendingCall]>([])
+    /// Each recorded call, in the order the calls ended.
+    private let calls = Mutex<[UnawaitedCall]>([])
 
     /// Creates an empty record.
     init() {}
 
-    /// Runs one `tools.*` call, and records it when it gives a pending object.
-    ///
-    /// A pending object that the record holds already is not recorded again.
-    /// This occurs when a nested `tools.runCode` returns the pending object of
-    /// one of its inner calls: the nested run records that inner call into
-    /// this record first, and then the `tools.runCode` call of the outer run
-    /// gives the same pending object. The first entry names the call that
-    /// started the run, thus the notice keeps it.
+    /// Records one call that ended after the snippet code ended.
     ///
     /// - Parameters:
-    ///   - name: The name of the binding.
-    ///   - call: The binding to run.
-    /// - Returns: What `call` returned, unchanged.
-    /// - Throws: Whatever `call` throws, unchanged.
-    func noting(
-        _ name: InnerCallName, _ call: () async throws -> InterpreterValue
-    ) async rethrows -> InterpreterValue {
-        let value = try await call()
-        if let pending = Self.pendingCall(named: name, in: value) {
-            calls.withLock { recorded in
-                guard !recorded.contains(where: { $0.identifier == pending.identifier }) else { return }
-                recorded.append(pending)
-            }
-        }
-        return value
+    ///   - name: The name of the binding that was called.
+    ///   - value: The value that the call gave.
+    func note(_ name: InnerCallName, gave value: InterpreterValue) {
+        let call = UnawaitedCall(name: name, identifier: Self.identifier(named: name.identifierField, in: value))
+        calls.withLock { $0.append(call) }
     }
 
-    /// The notice that names each pending call, or `nil` when no call of this
-    /// run gave a pending object.
+    /// The notice that names each recorded call, or `nil` when this run
+    /// recorded none.
     var notice: String? {
-        let pending = calls.withLock { $0 }
-        guard !pending.isEmpty else { return nil }
-        let lines = [Self.noticeLead] + pending.map(\.line)
-            + ["\(Self.noticeAction) \(PendingRunEnvelope.pendingWorkInstruction)"]
-        return lines.joined(separator: "\n")
+        let unawaited = calls.withLock { $0 }
+        guard !unawaited.isEmpty else { return nil }
+        return ([Self.noticeLead] + unawaited.map(\.line) + [Self.noticeAction]).joined(separator: "\n")
     }
 
-    /// The pending call that `value` states, or `nil` when `value` is not a
-    /// pending object.
+    /// The identifier of the run of a call, as `field "value"`.
     ///
     /// - Parameters:
-    ///   - name: The name of the binding that gave `value`.
-    ///   - value: The value the binding gave.
-    /// - Returns: The pending call.
-    private static func pendingCall(named name: InnerCallName, in value: InterpreterValue) -> PendingCall? {
-        guard let completionToken = value.pendingCompletionToken else { return nil }
-        if case .object(let fields) = value, case .string(let commandID)? = fields[Execute.commandIDField] {
-            return PendingCall(name: name, identifierField: Execute.commandIDField, identifier: commandID)
+    ///   - field: The field that holds the identifier, or `nil` when the tool
+    ///     gives none.
+    ///   - value: The value that the call gave.
+    /// - Returns: The identifier, or `nil` when `value` holds no string in
+    ///   `field`.
+    private static func identifier(named field: String?, in value: InterpreterValue) -> String? {
+        guard let field, case .object(let fields) = value, case .string(let identifier)? = fields[field] else {
+            return nil
         }
-        return PendingCall(
-            name: name, identifierField: SnippetPendingField.completionToken, identifier: completionToken)
+        return "\(field) \"\(identifier)\""
     }
 }

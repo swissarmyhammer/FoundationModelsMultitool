@@ -15,12 +15,11 @@ import FoundationModelsExtras
 // only when it takes longer (the rule of the user: "background should mean 'if
 // it takes longer than grace, background'"). The outer `runCode` call waits for
 // `configuration.inlineSettleGrace`. Inner `tools.*` calls run on the same
-// engine under `RunBinding.innerCallMount`, which runs to completion; an inner
-// call of a tool that declares the background, for example
-// `tools.shell.execute`, waits for the same period, and ends its wait before the
-// period of the outer call ends. So a short inner call gives the snippet its own
-// result, and only an inner call that runs long gives the snippet a pending
-// object.
+// engine under `RunBinding.innerCallMount`, which runs to completion, also for
+// a tool that declares the background, for example `tools.shell.execute` (see
+// `RunToCompletionInnerTool`). So an inner call always gives the snippet its
+// real result, and a snippet that runs longer than the settle period goes to
+// the background as one run (task `^6nnykct`).
 
 extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`

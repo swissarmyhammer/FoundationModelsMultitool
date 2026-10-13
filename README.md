@@ -273,17 +273,20 @@ takes longer than its settle period. A `runCode` call first waits for its
 snippet for `MultiToolConfiguration.inlineSettleGrace` (default
 `ToolMount.defaultInlineSettleGrace` of FoundationModelsExtras, 6 seconds).
 Each other background tool of the session, for example
-`tools.shell.execute`, waits for the period of `SessionConfiguration`, and an
-inner `tools.*` call of a snippet waits for the period of its `runCode`:
+`tools.shell.execute`, waits for the period of `SessionConfiguration`. An
+inner `tools.*` call of a snippet does not wait for a period: it always runs
+to completion, so an `await` in a snippet always gives the real result. In a
+snippet, `tools.shell.execute` gives an object, so `r.exitCode`, `r.output`
+and `r.commandID` are values. A call that the snippet started and did not
+await is named in the result, and the result tells the model not to run it
+again.
 
-- A call that settles in that time gives its own result, the same as a
-  synchronous call. No envelope comes, and no mail comes for that run. In a
-  snippet, `tools.shell.execute` gives an object, so `r.exitCode`,
-  `r.output` and `r.commandID` are values.
-- A call that is still running gives a pending result. In a snippet it is the
-  object `{pending: true, completionToken, next}`, and `tools.shell.execute`
-  also gives `commandID`. A top-level call gives a pending envelope with a
-  `completionToken`. The `next` text tells the model not to wait or check:
+- A call that settles in its period gives its own result, the same as a
+  synchronous call. No envelope comes, and no mail comes for that run.
+- A call that is still running gives a pending envelope with a
+  `completionToken`. A snippet that runs longer than its period goes to the
+  background as one run, and its real return value comes back later. The
+  `next` text tells the model not to wait or check:
   it does other work that does not need the result, or, if there is no
   other work, it does nothing. When the run settles, Router puts its result
   into the session outbox as mail, and that mail starts the next submission

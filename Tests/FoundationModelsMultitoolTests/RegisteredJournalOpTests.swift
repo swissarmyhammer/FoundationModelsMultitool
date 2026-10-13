@@ -20,21 +20,21 @@ import Testing
 ///
 /// ## The plane the pair appears on
 ///
-/// The run plane, and not the event journal of the enclosing snippet. An inner
-/// `tools.*` call inside a `runCode` snippet reaches the session's outbox
-/// re-stamped with the OUTER run's op, because `ToolContext.post(_:)` re-stamps
-/// every event it forwards. So `"execute shell"` surfaces on `BackgroundRun.op`
-/// — which `SessionMailbox.track(tool:op:)` fills from `ToolContext.op` — and
-/// on the `ToolInvocationRecord` built from that same field, and nowhere in the
-/// snippet's own journal.
+/// The context of the run, and not the event journal of the enclosing snippet.
+/// An inner `tools.*` call inside a `runCode` snippet reaches the session's
+/// outbox re-stamped with the OUTER run's op, because `ToolContext.post(_:)`
+/// re-stamps every event it forwards. So `"execute shell"` surfaces on the
+/// `ToolContext.op` of the inner run — the field that `BackgroundRun.op` and
+/// `ToolInvocationRecord.op` are built from — and nowhere in the snippet's own
+/// journal.
 ///
-/// `ToolInvocationRecord` is not readable from this package: `RunBinding`
-/// mounts through `ToolContext.mount`, whose own sink implements
-/// `post(event:)` alone, so an inner run's record takes
-/// `OperationEventSink`'s no-op default. The two
-/// readings below are therefore `BackgroundRun.op` and the `op` a called verb
-/// reads out of its own `ToolContext.current` — the one stamp both records are
-/// made from.
+/// An inner run never stands on the run plane: it runs to completion, also for
+/// a verb that declares the background (task `^6nnykct`). `ToolInvocationRecord`
+/// is not readable from this package either: `RunBinding` mounts through
+/// `ToolContext.mount`, whose own sink implements `post(event:)` alone, so an
+/// inner run's record takes `OperationEventSink`'s no-op default. The reading
+/// below is therefore the `op` a called verb reads out of its own
+/// `ToolContext.current` — the one stamp both records are made from.
 @Suite("RegisteredJournalOp")
 struct RegisteredJournalOpTests {
 
@@ -70,8 +70,8 @@ struct RegisteredJournalOpTests {
     private static let mcpHeldVerb = "held"
 
     /// The command of the run-plane test. It never ends by itself: it follows
-    /// a file that never grows. Thus it still stands on the run plane when the
-    /// test reads it, whatever the speed of the machine, and the test ends it
+    /// a file that never grows. Thus it is still running when the test reads
+    /// the run plane, whatever the speed of the machine, and the test ends it
     /// with a cancel before it returns.
     private static let heldCommand = "tail -f /dev/null"
 
@@ -173,30 +173,34 @@ struct RegisteredJournalOpTests {
 
     // MARK: - The run plane
 
-    @Test("a background tools.shell.execute run stands on the run plane under the op \"execute shell\"")
-    func aBackgroundShellRunStandsOnTheRunPlaneUnderThePair() async throws {
-        let registry = try Self.makeShellRegistry(in: scratch)
+    /// An inner call runs to completion, also for a verb that declares the
+    /// background (task `^6nnykct`). So a held command holds the snippet, and
+    /// its run never stands on the run plane. Only the cancel of the outer run
+    /// ends it, and the cancel ends the snippet with a `CancellationError`.
+    @Test(
+        "an inner tools.shell.execute run of a held command never stands on the run plane, and the cancel ends it",
+        .timeLimit(TestHangGuard.timeLimit))
+    func anInnerShellRunStaysOffTheRunPlane() async throws {
+        let sandbox = JournalOpProbeSandbox()
+        let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
         let context = try await makeOuterRunContext()
+        let run = Task {
+            try await Self.run(
+                """
+                return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
+                command: "\(Self.heldCommand)" });
+                """,
+                over: registry,
+                under: context)
+        }
 
-        try await Self.run(
-            """
-            return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "\(Self.heldCommand)" });
-            """,
-            over: registry,
-            under: context)
+        try await TestPoll.waitUntil("the run consulted its sandbox") {
+            !sandbox.observedOps.isEmpty
+        }
 
-        // `BackgroundToolRunner.call` awaits `SessionMailbox.track` before it hands
-        // the pending envelope back, so the run stands on the plane by the time
-        // the snippet that called it has settled. No poll is needed.
-        let going = try #require(await context.backgroundRuns().first)
-        #expect(going.op == "\(Self.executeVerb) \(Self.shellNoun)")
-        #expect(going.tool == Self.executeVerb)
-
-        // Awaited rather than deferred into a task of its own: an unstructured
-        // task started at the end of a test need never run, and the command this
-        // one stops never ends by itself.
-        _ = await context.cancel(completionToken: going.completionToken)
+        #expect(await context.backgroundRuns().isEmpty)
+        run.cancel()
+        await #expect(throws: CancellationError.self) { try await run.value }
     }
 
     // MARK: - The stamp the shell verb itself reads
@@ -207,10 +211,9 @@ struct RegisteredJournalOpTests {
     /// registration site put on the run, which is the one field
     /// `BackgroundRun.op` and `ToolInvocationRecord.op` are both built from.
     ///
-    /// The verb declares the background mount, so the snippet settles with the
-    /// pending envelope while the command still spawns. A short command can
-    /// be off the plane again before the snippet returns, so the test polls
-    /// the sandbox itself for the stamp instead of reading the plane.
+    /// An inner call runs to completion, so the run consulted its sandbox
+    /// before the snippet returns, and the run never stands on the run plane.
+    /// The test reads the stamp from the sandbox itself.
     @Test("a tools.shell.execute run carries the journal op \"execute shell\" into its own call")
     func aShellRunCarriesThePairIntoItsOwnCall() async throws {
         let sandbox = JournalOpProbeSandbox()

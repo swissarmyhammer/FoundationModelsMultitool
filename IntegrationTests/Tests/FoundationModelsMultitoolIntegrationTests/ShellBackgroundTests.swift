@@ -8,22 +8,20 @@ import Testing
 /// vended through `makeSessionTools(selection:embedder:sampleModel:)` and mounted on a
 /// `RoutedSession`. The model discovers `tools.shell.execute` and starts a
 /// never-ending command from a `runCode` snippet. Under the settle-period rule
-/// (card `^38j4bbn`) the inner execute run goes to the background and gives the
-/// snippet its pending object, and the outer `runCode` call answers with its
-/// own result. The harness takes the execute run's completion token from the
-/// run's own context, reads the run plane while the command is still running,
-/// ends it, and closes the session.
+/// (card `^38j4bbn`) the outer `runCode` call goes to the background, and the
+/// inner execute run runs to completion inside the snippet (card `^6nnykct`).
+/// The harness takes the execute run's completion token from the run's own
+/// context, reads the run plane while the command is still running, cancels
+/// the snippet, and closes the session.
 ///
 /// What each condition proves, and where the reading comes from, is stated on
 /// `shellBackgroundChecks(for:)` and on the runner in
 /// `Support/ShellBackgroundRunner.swift`. Two of them are worth naming here
 /// because they are the reason this suite is gated rather than a unit test:
 ///
-/// - `cancelReportsStopped` needs a REAL child process group. `.stopped` means
-///   the stop is certain, and only `killpg(SIGKILL)` on a group that exists
-///   makes it certain. The reading beside it, `childProcessGone`, polls
-///   `killpg(group, 0)` until the group holds nothing, so a canceler that
-///   reported the word and signalled nothing would fail.
+/// - `childProcessGone` needs a REAL child process group. It polls
+///   `killpg(group, 0)` until the group holds nothing after the cancel of the
+///   snippet, so a cancel that did not reach the inner shell run would fail.
 /// - `oneJournaledTerminal` needs a LOADED MODEL. It is the half task `^1hq8xny`
 ///   left to this card by design, recorded on both: `RoutedSessionActor.close()`
 ///   journals exactly what `SessionMailbox.sweep()` answers with, through

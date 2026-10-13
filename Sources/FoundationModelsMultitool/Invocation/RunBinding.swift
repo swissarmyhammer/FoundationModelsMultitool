@@ -42,15 +42,13 @@ import FoundationModelsExtras
 /// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
 /// engine as a `RunToCompletionRunner` — "two mounts, one engine, two
 /// policies." An inner call runs to completion, bounded by the clock of the
-/// outer `runCode` call, unless the called tool declares a mount of its own.
-/// An inner call of a tool that declares the background, for example
-/// `tools.shell.execute`, waits for the settle period of this binding, and
-/// gives the snippet its own result when its run settles in that time. The
-/// engine ends that wait before the settle period of the outer `runCode` call
-/// ends, so the snippet can still use the result. The engine still owns
-/// correlation, events, and outcomes for inner calls: it mints each one a
-/// fresh `completionToken` and re-binds `ToolContext.$current` explicitly
-/// around it, which is what lets two parallel calls under a snippet's
+/// outer `runCode` call. That holds also for a tool that declares the
+/// background, for example `tools.shell.execute`: `RunToCompletionInnerTool`
+/// keeps it out of the background, so a snippet that awaits the call gets
+/// its real result and never a pending object (task `^6nnykct`). The engine
+/// still owns correlation, events, and outcomes for inner calls: it mints
+/// each one a fresh `completionToken` and re-binds `ToolContext.$current`
+/// explicitly around it, which is what lets two parallel calls under a snippet's
 /// `Promise.all` correlate independently while posting to the one session's
 /// mailbox and sink.
 struct RunBinding: Sendable {
@@ -58,8 +56,9 @@ struct RunBinding: Sendable {
     /// `tools.*` calls run to completion — the constraint boundary
     /// (eventplan.md "The constraint boundary, and the escape hatch"): a
     /// snippet never receives a pending envelope in place of a value it
-    /// awaited, unless the tool it called declares the background for itself
-    /// and its run takes longer than the settle period.
+    /// awaited. A tool that declares the background for itself does not
+    /// change this: `RunToCompletionInnerTool` keeps the mode of its mount at
+    /// `.runToCompletion`.
     ///
     /// The mount states no clock. Each call path has one outer, tool-level
     /// timeout, and for an inner call that is the clock of the enclosing
@@ -72,8 +71,8 @@ struct RunBinding: Sendable {
 
     /// The ambient context captured at the top of the enclosing `runCode`
     /// invocation — its session identity, mailbox, upstream sink, the outer
-    /// run's `completionToken`, and the settle period of each inner
-    /// background call.
+    /// run's `completionToken`, and the settle period of each background call
+    /// that a tool mounts on this context from inside an inner call.
     let context: ToolContext
 
     /// The mount policy every inner `tools.*` call is wrapped with. Always a
@@ -92,10 +91,11 @@ struct RunBinding: Sendable {
     /// top of `MultiTool.call(arguments:)`, never from inside a `tools.*`
     /// call's own `Task`.
     ///
-    /// - Parameter grace: The settle period of each inner background call, in
-    ///   seconds: `MultiToolConfiguration.inlineSettleGrace` of the enclosing
-    ///   `runCode`. The host configures it, thus an inner call waits as long
-    ///   as the `runCode` call itself.
+    /// - Parameter grace: The settle period, in seconds, of each background
+    ///   call that a tool mounts on the context from inside an inner call:
+    ///   `MultiToolConfiguration.inlineSettleGrace` of the enclosing
+    ///   `runCode`. The inner `tools.*` call itself runs to completion (see
+    ///   `RunToCompletionInnerTool`).
     /// - Returns: The binding, or `nil` outside a session.
     static func ambient(settlingWithin grace: TimeInterval) -> RunBinding? {
         ToolContext.current.map { RunBinding(context: $0.settling(within: grace)) }
@@ -117,9 +117,10 @@ struct RunBinding: Sendable {
     /// completion.
     ///
     /// `ToolContext.mount(_:op:as:)` picks the decorator: a run-to-completion
-    /// runner for a `String`-output tool (or a background runner, when that
-    /// tool declares the background), a context-binding tool for any other
-    /// output. Each mints the call its own `completionToken` and binds
+    /// runner for a `String`-output tool, a context-binding tool for any other
+    /// output. The tool goes in through `RunToCompletionInnerTool`, so a tool
+    /// that declares the background also gets the run-to-completion runner.
+    /// Each mints the call its own `completionToken` and binds
     /// `ToolContext.$current` around it explicitly, so neither depends on what
     /// the calling task did or did not inherit — the property that makes this
     /// safe to call from the JS seam. Every decorator preserves the wrapped
@@ -163,7 +164,89 @@ struct RunBinding: Sendable {
     func invoke<T: Tool>(
         _ tool: T, arguments: T.Arguments, journalOp: String? = nil
     ) async throws -> T.Output {
-        let engine = context.mount(tool, op: journalOp, as: innerMount)
+        let engine = context.mount(RunToCompletionInnerTool(wrapped: tool), op: journalOp, as: innerMount)
         return try await engine.call(arguments: arguments)
+    }
+}
+
+/// A tool that keeps the tool beneath it out of the background, so that an
+/// inner `tools.*` call always runs to completion.
+///
+/// **Why the wrapper is necessary.** `ToolMounting.makeWrapped` of
+/// FoundationModelsExtras lets the mount that a tool declares through
+/// `BackgroundTool` win over the mount of the call site. `Execute` declares
+/// the background, so an inner `tools.shell.execute` call went to the
+/// background after the settle period, and the snippet got a pending object
+/// in place of the value it awaited. The snippet then continued as if the
+/// command had ended. In the SWE-bench run `pending-inner-1012` (instance
+/// `django__django-13964`), a snippet deleted the log of a 375-second test
+/// run about 5 seconds after the run started, and its grep found no file
+/// (task `^6nnykct`).
+///
+/// This wrapper declares the same mount as the tool beneath it, with the
+/// mode changed to `.runToCompletion`. The timeout of the declared mount, and
+/// the timeout that the tool gives for one call, stay. The settle period
+/// applies only to the outer `runCode` call: a snippet that runs longer than
+/// that period goes to the background as one run.
+struct RunToCompletionInnerTool<Wrapped: Tool>: Tool, BackgroundTool {
+    /// The tool beneath this wrapper.
+    let wrapped: Wrapped
+
+    /// The name of the tool beneath.
+    var name: String { wrapped.name }
+
+    /// The description of the tool beneath.
+    var description: String { wrapped.description }
+
+    /// The argument schema of the tool beneath.
+    var parameters: GenerationSchema { wrapped.parameters }
+
+    /// Whether the schema of the tool beneath goes into the instructions.
+    var includesSchemaInInstructions: Bool { wrapped.includesSchemaInInstructions }
+
+    /// The mount that the tool beneath declares, run to completion, or `nil`
+    /// when it declares none.
+    var mount: ToolMount? {
+        declared?.mount.map(Self.runningToCompletion)
+    }
+
+    /// The mount that the tool beneath gives for one call, run to
+    /// completion, or `nil` when it gives none.
+    ///
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: The mount of the call.
+    func mount(for arguments: GeneratedContent) -> ToolMount? {
+        declared?.mount(for: arguments).map(Self.runningToCompletion)
+    }
+
+    /// The timeout that the tool beneath gives for one call.
+    ///
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: The timeout in seconds, or `nil` for the timeout of the
+    ///   mount.
+    func timeout(from arguments: GeneratedContent) -> TimeInterval? {
+        declared?.timeout(from: arguments)
+    }
+
+    /// Calls the tool beneath.
+    ///
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: What the tool beneath returns, unchanged.
+    /// - Throws: What the tool beneath throws, unchanged.
+    func call(arguments: Wrapped.Arguments) async throws -> Wrapped.Output {
+        try await wrapped.call(arguments: arguments)
+    }
+
+    /// The tool beneath as a `BackgroundTool`, or `nil`.
+    private var declared: (any BackgroundTool)? {
+        wrapped as? any BackgroundTool
+    }
+
+    /// `mount` with the mode `.runToCompletion` and the same timeout.
+    ///
+    /// - Parameter mount: A mount that a tool declares.
+    /// - Returns: The changed mount.
+    private static func runningToCompletion(_ mount: ToolMount) -> ToolMount {
+        ToolMount(mode: .runToCompletion, timeout: mount.timeout)
     }
 }

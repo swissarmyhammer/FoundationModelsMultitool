@@ -840,19 +840,24 @@ carries what the calls returned, and only intent separates them. So the notice
 reports the shared fact and asks the model the one question it can answer, and
 the run that summarized deliberately reads a sentence and moves on.
 
-A second notice names each inner call that is still pending when the snippet
-ends (task `^qg52whq`, `PendingInnerCalls`). An inner call of a background tool,
-for example `tools.shell.execute`, gives the snippet a pending object when it
-runs longer than its settle period. The notice names each such call by its
-`tools.*` path, its tool, its op and its `commandID` or `completionToken`. Then
-it says "Do not run these calls again." and gives the shared
-`PendingRunEnvelope.pendingWorkInstruction`. It comes last, after the ledger
-notice, and it also closes a repairable error, because a snippet that failed on
-a pending object leaves the call running. The rendered result is the inline
-answer and also the mail of a background run, so the notice reaches the model in
-both cases. A pending object is not recorded in the ledger: its result is not
-there yet, and the ledger notice ("call runCode again") would make the model run
-the call a second time.
+An inner call never gives the snippet a pending object (task `^6nnykct`). Each
+inner `tools.*` call runs to completion, also a call of a background tool such
+as `tools.shell.execute` (`RunToCompletionInnerTool`), so an `await` always gives
+the real result. The settle period applies to the outer `runCode` call only: a
+snippet that runs longer goes to the background as one run, and its real return
+value comes back with the shared `PendingRunEnvelope.pendingWorkInstruction`.
+
+A second notice names each inner call that the snippet did not await (tasks
+`^qg52whq` and `^6nnykct`, `PendingInnerCalls`). The interpreter gives no result
+before every call ends, so such a call is a call that ended after the snippet
+code ended (`SnippetEndMark`). The notice names each such call by its `tools.*`
+path, its tool, its op and, for `tools.shell.execute`, its `commandID`. Then it
+says "Do not run these calls again." It comes last, after the ledger notice, and
+it also closes a repairable error. The rendered result is the inline answer and
+also the mail of a background run, so the notice reaches the model in both
+cases. The value of such a call is not recorded in the ledger: the snippet could
+not carry it, and the ledger notice ("call runCode again") would make the model
+run the call a second time.
 
 ## Components
 

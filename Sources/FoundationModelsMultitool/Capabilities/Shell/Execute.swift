@@ -54,9 +54,10 @@
 // through `ResultRenderer`, exactly as `runCode` renders its own, thus the model
 // reads one format for both. A snippet does not read that text: the verb is a
 // `SnippetOutputShaping` tool, so an inner `tools.shell.execute` call gives the
-// snippet an object (`commandID`, `exitCode`, `durationMs`, `lines`, `output`),
-// or `{pending: true, commandID, next}` for a command that runs longer than the
-// settle period.
+// snippet an object (`commandID`, `exitCode`, `durationMs`, `lines`, `output`).
+// An inner call runs to completion and never gives the snippet a pending
+// object, whatever the settle period (`RunToCompletionInnerTool`, task
+// `^6nnykct`).
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
 // thrown: a blank command, a command over the length cap, an environment that
@@ -126,12 +127,15 @@ extension Execute: BackgroundTool {
     ///
     /// **A declared mount is the only way a call of this verb reaches the
     /// background.** `ToolMounting.makeWrapped` picks `BackgroundToolRunner` on the
-    /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
-    /// inner `tools.*` call travels under — is `.runToCompletion`.
-    /// `ToolMounting` states that a declared mount wins over the composition
-    /// site, and this is that declaration. Each mounted call waits for the
-    /// settle period of the host: the verb states no `inlineSettleGrace` of
-    /// its own, so the default of `BackgroundTool` reads the configured value.
+    /// mount's mode alone. `ToolMounting` states that a declared mount wins
+    /// over the composition site, and this is that declaration. It applies to
+    /// a call that a session mounts. An inner `tools.*` call of a snippet does
+    /// not reach the background: `RunToCompletionInnerTool` keeps the timeout
+    /// of this mount and changes its mode to `.runToCompletion`, so a snippet
+    /// that awaits the call gets the report (task `^6nnykct`). Each mounted
+    /// call waits for the settle period of the host: the verb states no
+    /// `inlineSettleGrace` of its own, so the default of `BackgroundTool`
+    /// reads the configured value.
     /// A command that ends in that time answers with its report. Only a
     /// command that runs longer answers with the pending envelope, and goes on
     /// behind it.
@@ -207,9 +211,9 @@ extension Execute: BackgroundTool {
 extension Execute: SnippetOutputShaping {
 
     /// The value an inner `tools.shell.execute` call gives a snippet: the
-    /// report as an object, a correction as an object, or
-    /// `{pending: true, commandID, completionToken, next}` for a command that
-    /// runs longer than the settle period.
+    /// report as an object, or a correction as an object. An inner call runs
+    /// to completion, so the report is the report of a command that ended
+    /// (see `RunToCompletionInnerTool`).
     ///
     /// The report text is capped by `ResultRenderer`, and a cut text is not
     /// JSON. The sorted keys put `commandID` first, thus a cut keeps it, and
@@ -220,11 +224,6 @@ extension Execute: SnippetOutputShaping {
     /// - Parameter output: The text the call gave.
     /// - Returns: The value for the snippet.
     func snippetValue(ofOutput output: String) async -> InterpreterValue {
-        if let envelope = PendingRunEnvelope.makeDecoded(fromRendered: output) {
-            var fields = envelope.snippetFields
-            fields[Self.commandIDField] = .string(envelope.completionToken)
-            return .object(fields)
-        }
         if let decoded = try? JSONDecoder().decode(InterpreterValue.self, from: Data(output.utf8)),
             case .object = decoded
         {
