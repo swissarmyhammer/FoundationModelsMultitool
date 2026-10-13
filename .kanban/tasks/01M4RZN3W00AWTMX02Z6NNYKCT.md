@@ -57,8 +57,24 @@ comments:
     - evidence: c841d08 fix(runcode): give the real result for an await of an inner tools call
     - next: review
   timestamp: 2026-10-13T00:06:59.449855+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4s9ket2x8hwpvm2yzn8xs61
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (37b9407). Zero findings. 16 files reviewed, 14 validator runs, 0 failed. Not reviewed: 2 .kanban files (ignore rule), README.md and plan.md (no validator matches). The commit renames no file.
+    - next: The task is in done. Send the commit sha 37b9407 to the requester (foundationmodelsacpagent-2a, task ^nwy1gcf).
+  timestamp: 2026-10-13T00:11:38.178256+00:00
+- actor: claude-code
+  id: 01m4s9m0kgw8wpjdde4ejzechr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — new SnippetEndMark.swift; RunBinding.swift (RunToCompletionInnerTool), PendingInnerCalls.swift, ToolReturnLedger.swift, MultiTool.swift and others; tests in BackgroundSettleGraceTests
+    - test: green — swift test 2375 passed; IntegrationTests 115 passed
+    - commit: 37b9407
+    - review: clean — zero findings
+  timestamp: 2026-10-13T00:11:56.400835+00:00
+position_column: done
+position_ordinal: ffffdd80
 title: 'runCode: an await of an inner tools.* call always gives the real result'
 ---
 ## Problem
