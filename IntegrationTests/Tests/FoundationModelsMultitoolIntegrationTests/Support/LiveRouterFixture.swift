@@ -617,8 +617,15 @@ struct LiveRouterFixture {
     let router: Router
     /// The resolved, resident profile. Its models stay resident after this
     /// fixture is unreferenced, because `LiveModelResidency` keeps one hold of
-    /// each of them for the test process; see ``tearDown()``.
+    /// each of them for the test process; see ``tearDown(awaiting:)``.
     let profile: LanguageModelProfile
+
+    /// The weak references that tell when the model handles of ``profile``
+    /// are free. Read it before the fixture goes away, and give it to
+    /// ``tearDown(awaiting:)`` after.
+    var release: LiveProfileRelease {
+        LiveProfileRelease(of: profile)
+    }
     /// The durable transcripts root passed to `Router.init(recordingsDir:)`.
     /// Stands under ``recordingsRoot`` — inside the workspace, never under the
     /// ephemeral temporary directory — so the recorded run survives the
@@ -652,7 +659,7 @@ struct LiveRouterFixture {
     ///
     /// Takes ``liveProfileTurnstile`` before resolving anything, so at
     /// most one integration scenario in the target generates at a time;
-    /// ``tearDown()`` gives it back. A resolution that throws gives it back
+    /// ``tearDown(awaiting:)`` gives it back. A resolution that throws gives it back
     /// itself, since its caller is left with no fixture to tear down.
     ///
     /// Each call makes a new `Router`, thus each scenario gets its own
@@ -733,17 +740,37 @@ struct LiveRouterFixture {
         }
     }
 
-    /// Gives ``liveProfileTurnstile`` back to the next waiting scenario.
-    /// Call once a scenario is done with this fixture, on every exit path
-    /// (success, assertion failure, or thrown error).
+    /// Waits until the model handles of a fixture are free, and then gives
+    /// ``liveProfileTurnstile`` back to the next waiting scenario. Call it
+    /// once a scenario is done with its fixture, on every exit path (success,
+    /// assertion failure, or thrown error), and after the fixture went away.
+    ///
+    /// The wait is necessary: the turnstile admits one live profile at a time,
+    /// and a profile is live until its handles are free, not until the body
+    /// of its scenario returned. Router prices the next resolve against the
+    /// session bytes that the handles keep in the pool. See
+    /// ``LiveProfileRelease`` for the case that made the two moments differ.
+    ///
+    /// A handle that is not free before the hang guard of the polls records
+    /// an issue, which names each handle that is still held. The turnstile
+    /// then goes back all the same, so the hang guard of the next test is not
+    /// spent in the queue.
     ///
     /// The three resident models stay resident after this call, because
     /// `LiveModelResidency` keeps one hold of each model for the whole test
     /// process. The next scenario that names the same model thus loads
-    /// nothing. The handles and the sessions of this fixture are still freed
-    /// by ARC once nothing references them, so a scenario must keep no handle
-    /// and no session past its own test function.
-    func tearDown() async {
+    /// nothing. That hold keeps no session bytes, thus the wait does not
+    /// wait for it.
+    ///
+    /// - Parameter release: the ``release`` of the fixture, read before the
+    ///   fixture went away.
+    static func tearDown(awaiting release: LiveProfileRelease) async {
+        if !(await release.awaitRelease()) {
+            let message =
+                "the model handles \(release.heldNames) of the last live profile were still held "
+                + "after its scenario ended, so the next resolve would be priced against them"
+            Issue.record(Comment(rawValue: message))
+        }
         await liveProfileTurnstile.release()
     }
 

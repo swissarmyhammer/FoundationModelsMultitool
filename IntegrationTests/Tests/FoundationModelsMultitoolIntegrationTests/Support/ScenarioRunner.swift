@@ -597,6 +597,11 @@ extension StreamedTurn {
 /// prints a skip note and returns without recording an issue, so the suite
 /// stays green on a network/GPU-less box. Every other error propagates.
 ///
+/// The release waits until the model handles of the fixture are free (see
+/// `LiveRouterFixture.tearDown(awaiting:)`). The fixture lives in
+/// ``runLiveFixtureBody(name:profile:_:)`` only, thus it is gone when that
+/// call returns, and the wait does not wait for a reference of this call.
+///
 /// - Parameters:
 ///   - name: the scenario label named in the skip note.
 ///   - body: the scenario's own work, given the resolved fixture.
@@ -607,23 +612,49 @@ func withLiveRouterFixture(
     profile definition: ProfileDefinition = multitoolTinyProfile,
     _ body: (LiveRouterFixture) async throws -> Void
 ) async throws {
+    guard let run = try await runLiveFixtureBody(name: name, profile: definition, body) else { return }
+    await LiveRouterFixture.tearDown(awaiting: run.release)
+    try run.outcome.get()
+}
+
+/// Resolves one live fixture and runs `body` against it, for
+/// ``withLiveRouterFixture(name:profile:_:)``.
+///
+/// The fixture is a local value of this call, thus it is gone when this call
+/// returns. Only the weak references of its ``LiveRouterFixture/release``
+/// come out.
+///
+/// - Parameters:
+///   - name: the scenario label named in the skip note.
+///   - definition: the profile to resolve.
+///   - body: the scenario's own work, given the resolved fixture.
+/// - Returns: the release of the fixture and the outcome of `body`, or `nil`
+///   when the resolution threw `GenerationError.notWiredForLiveInference`.
+///   A body that threw that error has a successful outcome.
+/// - Throws: whatever the resolution throws, other than
+///   `GenerationError.notWiredForLiveInference`.
+private func runLiveFixtureBody(
+    name: String,
+    profile definition: ProfileDefinition,
+    _ body: (LiveRouterFixture) async throws -> Void
+) async throws -> (release: LiveProfileRelease, outcome: Result<Void, any Error>)? {
     let fixture: LiveRouterFixture
     do {
         fixture = try await LiveRouterFixture.resolve(definition)
     } catch GenerationError.notWiredForLiveInference {
         printSkipNote(name)
-        return
+        return nil
     }
 
+    let release = fixture.release
     do {
         try await body(fixture)
-        await fixture.tearDown()
+        return (release, .success(()))
     } catch GenerationError.notWiredForLiveInference {
         printSkipNote(name)
-        await fixture.tearDown()
+        return (release, .success(()))
     } catch {
-        await fixture.tearDown()
-        throw error
+        return (release, .failure(error))
     }
 }
 
