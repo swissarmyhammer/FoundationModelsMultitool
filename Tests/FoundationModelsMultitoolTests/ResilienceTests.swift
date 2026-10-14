@@ -117,25 +117,6 @@ struct ResilienceTests {
     /// started: the first connect, plus one reconnect attempt.
     private static let secondAttempt = 2
 
-    /// The count of bounded waits of the client-operation queue that one
-    /// teardown of the client records: the queued `client.disconnect()`
-    /// waits behind its predecessor, and the caller waits behind the queued
-    /// `client.disconnect()`. `disconnect()` makes one teardown, and each
-    /// connect attempt makes one teardown before it connects.
-    private static let boundedWaitsPerTeardown = 2
-
-    /// The count of bounded waits of the client-operation queue that one
-    /// connect attempt that connects records: its teardown, and the queued
-    /// `client.connect(transport:)` that waits behind the teardown.
-    private static let boundedWaitsPerConnectedAttempt = boundedWaitsPerTeardown + 1
-
-    /// The count of bounded waits of the client-operation queue that
-    /// ``freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod()``
-    /// records before the test ends them: the first connect, the first
-    /// disconnect, and the teardown of the fresh attempt.
-    private static let boundedWaitsBeforeTheFreshConnect =
-        boundedWaitsPerConnectedAttempt + boundedWaitsPerTeardown + boundedWaitsPerTeardown
-
     // MARK: - Helpers
 
     /// A `MCPServer` named ``serverName`` over the three given clocks, with
@@ -544,23 +525,22 @@ struct ResilienceTests {
         withExtendedLifetime((straggler, fresh)) {}
     }
 
-    /// The `.disconnect` side of the per-predecessor bound of the queue: a
-    /// real `client.disconnect()` held in flight, and a fresh connect
-    /// enqueued behind it. With no connect unresolved anywhere in the queue,
-    /// the short bound applies, and it is safe to proceed once it elapses
-    /// even though the predecessor never finishes.
+    /// A real `client.disconnect()` that took the state of the client and
+    /// then stays in flight, and a fresh connect behind it. The transport of
+    /// the first connection holds its `disconnect()` at a gate, thus that
+    /// `client.disconnect()` call does not return until the test opens the
+    /// gate — the stand-in for a disconnect that does not return. The fresh
+    /// attempt must not wait for that return: the disconnect ended its queue
+    /// turn when it took the state, and nothing after the take changes the
+    /// client.
     ///
-    /// Each bounded wait of the queue sleeps on a `GatedClock`, thus no bound
-    /// can elapse before the test ends it. The test ends each bound that is
-    /// pending when the fresh attempt waits, and no later bound. Thus the
-    /// fresh connect runs only after the teardown of the fresh attempt
-    /// ended. The clock records the bound each wait chose, which is
-    /// what proves the short bound and not the long one. The fresh transport
-    /// holds its own connect at a gate, thus the fresh attempt cannot reach
-    /// `.ready` before the first disconnect wrote `.disconnected`.
-    @Test func freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod()
-        async throws
-    {
+    /// Each bounded wait of the queue sleeps on a `GatedClock` that the test
+    /// opens only at the end. Thus no bound can let the fresh attempt
+    /// proceed, and the clock records no sleep: no bound takes part. The
+    /// fresh transport holds its own connect at a gate, thus the fresh
+    /// attempt cannot reach `.ready` before the first disconnect wrote
+    /// `.disconnected`.
+    @Test func freshOperationPassesAnInFlightDisconnectThatTookTheClientState() async throws {
         let (initial, clientTransport1) = try await makeScriptedPair(name: "initial-server")
         let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
         let queueClock = GatedClock()
@@ -569,48 +549,98 @@ struct ResilienceTests {
         try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
         #expect(await server.state == .ready)
 
-        // The first disconnect enters the client queue.
-        let tailBeforeDisconnect = await server.clientQueueTail
+        // The first disconnect takes the state of the client, and its
+        // transport then holds it in flight.
         let firstDisconnect = Task { await server.disconnect() }
-        await server.waitUntilClientQueueTailChanges(from: tailBeforeDisconnect)
+        try await gatedDisconnect.disconnectArrival.wait()
 
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
         let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
         let spy = DisposableSpyTransport(wrapping: gatedConnect)
-        // The fresh attempt enters the client queue.
-        let tailBehindDisconnect = await server.clientQueueTail
         let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
-        await server.waitUntilClientQueueTailChanges(from: tailBehindDisconnect)
 
-        // The fresh attempt waits in the queue, and no bound elapsed: it has
-        // not raced ahead of the first disconnect.
-        #expect(await spy.connectWasCalled == false)
-
-        // Every pending bound elapses, with the first disconnect still gated:
-        // the first disconnect returns, and the fresh attempt proceeds anyway
-        // and connects its own transport.
-        //
-        // The test ends only the bounds that are recorded now, and not
-        // `open()` the clock. `open()` also ends the later bound of the queued
-        // `client.connect(transport:)` behind the queued `client.disconnect()`
-        // of the fresh attempt. Then that connect can run beside that
-        // disconnect on the one `MCP.Client`, and that disconnect can close
-        // the transport of the fresh server after the connect opened it. The
-        // fresh server then drops each later message, the retry waits for an
-        // `initialize` answer that never comes, and the test stays forever.
-        // With this order, the connect runs only after that disconnect ended.
-        try await queueClock.waitForRecordedSleeps(atLeast: Self.boundedWaitsBeforeTheFreshConnect)
-        queueClock.openRecordedSleeps()
-        await firstDisconnect.value
+        // The fresh attempt connects its own transport while the first
+        // disconnect is still in flight.
         try await spy.connectArrival.wait()
+
+        // The first disconnect ends, and writes `.disconnected`. Then the
+        // fresh attempt ends, and writes `.ready`.
+        await gatedDisconnect.release()
+        await firstDisconnect.value
+        #expect(await server.state == .disconnected)
         await gatedConnect.release()
         try await attempt2.value
         #expect(await server.state == .ready)
-        #expect(!queueClock.recordedSleeps.isEmpty)
-        #expect(queueClock.recordedSleeps.allSatisfy { $0 == MCPServer.clientDisconnectGracePeriod })
+        #expect(queueClock.recordedSleeps.isEmpty)
+
+        queueClock.open()
+        withExtendedLifetime((initial, fresh)) {}
+    }
+
+    // MARK: - A queued connect never passes a disconnect that did not take the state
+
+    /// A connect queued behind a `client.disconnect()` that has not yet
+    /// taken the state of the client must wait for that take. Otherwise the
+    /// late disconnect takes, and closes, the connection of the connect.
+    ///
+    /// The order is fixed, and no load can change it (card `^kdtrmhv`):
+    ///
+    /// 1. A first disconnect takes the state of the client, and its gated
+    ///    transport holds it in flight.
+    /// 2. A second disconnect enters the queue behind it. Its task runs under
+    ///    `ScopeHeldClock.$holdsSleeps`, thus each bound that it sleeps on
+    ///    waits until the test opens the clock: no bound can let it run.
+    /// 3. A connect enters the queue behind the second disconnect, outside
+    ///    that mark, thus each bound that it sleeps on ends at once. The test
+    ///    waits until the connect returned.
+    /// 4. The test opens the clock, and waits until the queued operation of
+    ///    the second disconnect ended.
+    /// 5. The new connection must still answer a request.
+    ///
+    /// A queue that lets a bound decide this order runs the connect in step
+    /// 3 before the second disconnect, and the second disconnect takes and
+    /// closes the new connection in step 4: the request in step 5 then fails.
+    /// The queue must run the second disconnect first, when the first one
+    /// took the state. It has nothing left to take, and the connect then
+    /// makes the only connection. No bound takes part, thus the clock records
+    /// no sleep.
+    @Test func queuedConnectNeverPassesADisconnectThatDidNotTakeTheClientState() async throws {
+        let (initial, clientTransport1) = try await makeScriptedPair(name: "initial-server")
+        let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
+        let queueClock = ScopeHeldClock()
+        let server = makeServer(clientQueueClock: queueClock)
+        try await server.connect(via: gatedDisconnect)
+
+        // 1. The first disconnect takes the state, and stays in flight.
+        let firstDisconnect = Task { await server.disconnect() }
+        try await gatedDisconnect.disconnectArrival.wait()
+
+        // 2. The second disconnect enters the queue, with its bounds held.
+        let tailBeforeSecondDisconnect = await server.clientQueueTail
+        let secondDisconnect = ScopeHeldClock.$holdsSleeps.withValue(true) {
+            Task { await server.disconnectClientWithoutHanging() }
+        }
+        await server.waitUntilClientQueueTailChanges(from: tailBeforeSecondDisconnect)
+        let secondDisconnectOperation = await server.clientQueueTail
+
+        // 3. The connect enters the queue behind it, and returns.
+        let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
+        let generation = await server.connectGeneration
+        let initialized = try await server.connectClientExclusively(
+            transport: clientTransport2, generation: generation)
+        #expect(initialized != nil)
+
+        // 4. Each held bound ends, and the second disconnect ends.
+        queueClock.open()
+        await secondDisconnectOperation.value
+
+        // 5. The new connection still answers.
+        _ = try await server.client.listTools()
+        #expect(queueClock.recordedSleeps.isEmpty)
 
         await gatedDisconnect.release()
-        queueClock.open()
+        await firstDisconnect.value
+        await secondDisconnect.value
         withExtendedLifetime((initial, fresh)) {}
     }
 

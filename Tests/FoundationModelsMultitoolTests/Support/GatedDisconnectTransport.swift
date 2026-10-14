@@ -13,19 +13,23 @@ import MCP
 /// called, then delegates to the wrapped transport — the disconnect-side
 /// counterpart of ``GatedConnectTransport``.
 ///
-/// `MCP.Client.disconnect()` clears its own connection state synchronously,
-/// up front, and then awaits the `disconnect()` of its transport before it
-/// returns — so this gate holds a real `client.disconnect()` call open for as
+/// `MCP.Client.disconnect()` takes its connection state first, and then
+/// awaits the `disconnect()` of its transport before it returns — so this
+/// gate holds a real `client.disconnect()` call open, after the take, for as
 /// long as a test needs. That is what proves the client-operation queue of
-/// `MCPServer` bounds a wait behind a still-in-flight disconnect predecessor
-/// by the short grace period, instead of racing ahead at once or waiting for
-/// it indefinitely.
+/// `MCPServer` lets a later operation pass a disconnect that took the state
+/// and does not return, with no bound and no wait for that return.
 actor GatedDisconnectTransport: WrappingTransport {
     let wrapped: any Transport
     var wrappedReceiveStream: AsyncThrowingStream<Data, Swift.Error>?
 
     /// The gate `disconnect()` waits on.
     private let gate = ReleaseGate()
+
+    /// The gate that `disconnect()` opens when it is called. A
+    /// `client.disconnect()` calls it only after it took the state of the
+    /// client, thus a test waits on it to know that the take occurred.
+    let disconnectArrival = TestGate()
 
     /// The logger of this double — a no-op.
     nonisolated let logger = GatedDisconnectTransport.noOpLogger(
@@ -46,9 +50,10 @@ actor GatedDisconnectTransport: WrappingTransport {
         try await connectWrapped()
     }
 
-    /// Blocks until ``release()`` is called, then delegates to the wrapped
-    /// transport.
+    /// Opens ``disconnectArrival``, blocks until ``release()`` is called,
+    /// then delegates to the wrapped transport.
     func disconnect() async {
+        disconnectArrival.open()
         await gate.wait()
         await wrapped.disconnect()
     }

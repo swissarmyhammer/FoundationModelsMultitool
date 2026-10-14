@@ -147,6 +147,8 @@ public actor MCPServer {
 
     /// The clock each bounded wait of the client-operation queue sleeps on —
     /// see `awaitWithBoundedWait(_:timeout:on:)` in `MCPServer+ClientQueue.swift`.
+    /// Only a wait behind an unresolved connect has a bound; no clock decides
+    /// the order of a disconnect and the operation after it.
     ///
     /// It is not ``clock``. A test gives ``clock`` a virtual clock whose sleep
     /// never waits, and a queue bound that never waits would let a queued
@@ -213,6 +215,18 @@ public actor MCPServer {
     /// Starts as an already-completed sentinel task, so the first operation
     /// ever enqueued has nothing to wait for.
     var clientQueueTail: Task<Void, Never> = Task {}
+
+    /// The kind of the operation that set ``clientQueueTail``, or `nil` while
+    /// the tail is the first sentinel. `enqueueClientOperation(kind:_:)` reads
+    /// it: only the wait behind a connect operation has a bound.
+    var clientQueueTailKind: ClientOperationKind?
+
+    /// The events of the running `client.disconnect()` call, or `nil` when no
+    /// disconnect operation waits for its take — set by
+    /// `disconnectClientUntilItTookTheState(transportClosed:)`, and taken by
+    /// `endClientDisconnectTurn()` when the client took its state. See
+    /// `MCPServer+ClientQueue.swift`.
+    var runningClientDisconnect: ClientDisconnectEvents?
 
     /// Each caller of `waitUntilClientQueueTailChanges(from:)` that waits for
     /// the next operation to enter the client queue — resumed by

@@ -22,26 +22,62 @@
 // own disconnect (torn down first) and its own later connect, which must run
 // in that order.
 //
-// **Why the wait is bounded, and why two bounds.** `MCP.Client.disconnect()`
-// mutates its shared state synchronously, at the start, before anything that
-// can hang; by the time it runs past a short grace period, there is nothing
-// left for a later operation to race. `MCP.Client.connect(transport:)` is the
-// opposite: it spawns its receive-loop task only AFTER `transport.connect()`
-// returns, and that task re-reads the connection when it runs. So while any
-// connect anywhere in the chain is unresolved, every enqueued operation waits
-// under the far more generous connect bound. The bound cannot be infinite: a
-// straggler that never finishes `transport.connect()` can never reach the
-// dangerous step, and no reader can tell "wedged for good" from "slow so far"
-// in advance, so a fresh attempt must be able to make progress past one.
+// **When a disconnect ends its turn.** `MCP.Client.disconnect()` first reads
+// its logger with an `await` (`await connection?.logger`). Only after that
+// `await` does it take its connection, its message-handling task and its
+// pending requests, and set each one to empty. A connect that runs before
+// that point gives the client its new connection, and the late disconnect
+// then takes and closes that new connection. Thus no operation can pass a
+// disconnect before the disconnect took the state. After that point the
+// disconnect closes the connection it took, and then waits for the end of the
+// message-handling task it took. That wait does not end while a
+// server-to-client request handler is suspended on that connection, thus the
+// call may never return. But nothing it does after the take changes the
+// client again, so a later operation is safe once the take occurred.
+//
+// Thus a disconnect ends its turn at the first of two events, and no clock
+// decides it:
+//
+// - The client calls `disconnect()` on the connection it took. Each
+//   connection is a `DropObservingTransport`, and it reports that call to
+//   `endClientDisconnectTurn()`. Before that call the sdk only resumes the
+//   pending requests and cancels the task, and neither can hang.
+// - `client.disconnect()` returns. This is the event when the client had no
+//   connection to take. Then it also has no message-handling task to wait
+//   for, and it returns at once.
+//
+// The 500 ms bound that stood here before protected the queue against the
+// `client.disconnect()` call that does not return. The first event above
+// protects against that case too, and it does not let an operation pass a
+// disconnect that has not taken the state yet.
+//
+// **When the caller of a disconnect continues.** The caller of
+// `disconnectClientWithoutHanging()` waits longer than the queue: until the
+// transport that the client took closed, or until `client.disconnect()`
+// returned. A stdio transport kills and reaps its subprocess in its
+// `disconnect()`, thus `MCPServer.disconnect()` returns with that subprocess
+// gone, and a connect attempt spawns its new subprocess only after that. The
+// suspended server-to-client handler does not stop this wait, because the
+// client waits for its message-handling task only after the transport
+// closed.
+//
+// **Why the wait behind a connect is bounded.** `MCP.Client.connect(transport:)`
+// spawns its receive-loop task only AFTER `transport.connect()` returns, and
+// that task re-reads the connection when it runs. So an operation that waits
+// behind an unresolved connect waits under ``clientConnectStragglerGracePeriod``.
+// The bound cannot be infinite: a straggler that never finishes
+// `transport.connect()` can never reach the dangerous step, and no reader can
+// tell "wedged for good" from "slow so far" in advance, so a fresh attempt
+// must be able to make progress past one.
 
 import MCP
 
 extension MCPServer {
     /// Which operation ``enqueueClientOperation(kind:_:)`` enqueues — the
-    /// two are not interchangeable, because WHERE each one mutates the state
-    /// of the client relative to its own potential hang point differs, and
-    /// that difference is what makes a short bound safe for one and not the
-    /// other — see the header of this file.
+    /// two are not interchangeable, because the event that lets the next
+    /// operation start differs: a connect has a bound, and a disconnect ends
+    /// its turn when it took the state of the client — see the header of
+    /// this file.
     enum ClientOperationKind {
         /// A `client.connect(transport:)` call.
         case connect
@@ -50,28 +86,25 @@ extension MCPServer {
         case disconnect
     }
 
-    /// How many milliseconds ``clientDisconnectGracePeriod`` lasts.
-    private static let clientDisconnectGraceMilliseconds = 500
+    /// The two events of the running `client.disconnect()` call that a
+    /// waiter waits for — see the header of this file.
+    struct ClientDisconnectEvents {
+        /// Finished when the call took the state of the client, or returned:
+        /// the end of the queue turn of the disconnect operation.
+        let stateTaken: AsyncStream<Void>.Continuation
+
+        /// Finished when the transport that the call took closed, or when
+        /// the call returned: the event the caller of
+        /// `disconnectClientWithoutHanging()` waits for.
+        let transportClosed: AsyncStream<Void>.Continuation
+    }
 
     /// How many seconds ``clientConnectStragglerGracePeriod`` lasts.
     private static let clientConnectStragglerGraceSeconds = 5
 
-    /// How long a queued operation waits for its predecessor while no connect
-    /// is unresolved anywhere in the queue, and how long `disconnect()` waits
-    /// for `client.disconnect()` to return before it proceeds anyway.
-    ///
-    /// Generous against a healthy `disconnect()` (single-digit milliseconds),
-    /// and still well under a user-visible delay for the pathological case
-    /// this bounds: `MCP.Client.disconnect()` does not reliably return while a
-    /// registered server-to-client request handler is suspended on the same
-    /// connection, even though its effects take place at once.
-    static let clientDisconnectGracePeriod = Duration.milliseconds(
-        clientDisconnectGraceMilliseconds)
-
-    /// How long a queued operation waits for its predecessor while some
-    /// `client.connect(transport:)` operation is unresolved anywhere in the
-    /// queue — see the header of this file for why this is finite, and why it
-    /// is far more generous than ``clientDisconnectGracePeriod``.
+    /// How long a queued operation waits for its predecessor when that
+    /// predecessor is a `client.connect(transport:)` operation that is not
+    /// resolved — see the header of this file for why this is finite.
     static let clientConnectStragglerGracePeriod = Duration.seconds(
         clientConnectStragglerGraceSeconds)
 
@@ -113,13 +146,16 @@ extension MCPServer {
     /// Enqueues `operation` onto ``clientQueueTail`` and returns a task the
     /// caller awaits for the result of `operation`.
     ///
-    /// `operation` runs once every operation enqueued before it finished —
-    /// or once the bound elapsed: ``clientConnectStragglerGracePeriod`` when
-    /// ``pendingConnectStragglers`` was greater than zero at the moment this
-    /// operation was enqueued, and ``clientDisconnectGracePeriod`` otherwise.
-    /// The chaining is synchronous — no `await` stands between the read of
-    /// the tail and its replacement — so two calls are always ordered exactly
-    /// as they were made on this actor.
+    /// `operation` runs once the operation enqueued just before it finished.
+    /// When that predecessor is a connect operation and
+    /// ``pendingConnectStragglers`` is greater than zero at the moment this
+    /// operation is enqueued, `operation` also runs once
+    /// ``clientConnectStragglerGracePeriod`` elapsed. Behind a disconnect
+    /// operation there is no bound: such an operation finishes once it took
+    /// the state of the client — see `disconnectClientWithoutHanging()`. The
+    /// chaining is synchronous — no `await` stands between the read of the
+    /// tail and its replacement — so two calls are always ordered exactly as
+    /// they were made on this actor.
     ///
     /// - Parameters:
     ///   - kind: Which operation `operation` performs. A `.connect` operation
@@ -133,22 +169,26 @@ extension MCPServer {
     ) -> Task<T, any Error> {
         let previous = clientQueueTail
         // Read before the kind of this operation can affect the count: what
-        // is ALREADY enqueued decides the bound of this wait.
-        let timeout =
-            pendingConnectStragglers > 0
-            ? Self.clientConnectStragglerGracePeriod : Self.clientDisconnectGracePeriod
+        // is ALREADY enqueued decides whether this wait has a bound.
+        let waitsUnderConnectBound = clientQueueTailKind == .connect && pendingConnectStragglers > 0
         if kind == .connect {
             pendingConnectStragglers += 1
         }
         let clock = clientQueueClock
         let task = Task<T, any Error> {
-            await Self.awaitWithBoundedWait(previous, timeout: timeout, on: clock)
+            if waitsUnderConnectBound {
+                await Self.awaitWithBoundedWait(
+                    previous, timeout: Self.clientConnectStragglerGracePeriod, on: clock)
+            } else {
+                await previous.value
+            }
             defer {
                 if kind == .connect { self.decrementPendingConnectStragglers() }
             }
             return try await operation()
         }
         clientQueueTail = Task<Void, Never> { _ = try? await task.value }
+        clientQueueTailKind = kind
         let tailWaiters = clientQueueTailWaiters
         clientQueueTailWaiters = []
         for waiter in tailWaiters {
@@ -187,7 +227,8 @@ extension MCPServer {
     ///
     /// The client connects over a `DropObservingTransport` around
     /// `transport`, which reports the end of the receive stream of
-    /// `transport` to `handleTransportDrop(generation:)` — see
+    /// `transport` to `handleTransportDrop(generation:)`, and the
+    /// `disconnect()` call of the client to `endClientDisconnectTurn()` — see
     /// `DropObservingTransport.swift`. The wrap comes after the
     /// `DisposableTransport` check above, which reads the conformance of the
     /// factory-built instance itself.
@@ -205,10 +246,15 @@ extension MCPServer {
     ) async throws -> Initialize.Result? {
         // Built here, and not inside the queued operation: the wrapper
         // outlives this call — the client holds it for the whole connection —
-        // so its report holds this actor weakly, and no cycle stands.
-        let observed = DropObservingTransport(wrapping: transport) { [weak self] in
-            await self?.handleTransportDrop(generation: generation)
-        }
+        // so its reports hold this actor weakly, and no cycle stands.
+        let observed = DropObservingTransport(
+            wrapping: transport,
+            onDrop: { [weak self] in
+                await self?.handleTransportDrop(generation: generation)
+            },
+            onDisconnect: { [weak self] in
+                await self?.endClientDisconnectTurn() ?? {}
+            })
         let task = enqueueClientOperation(kind: .connect) { () async throws -> Initialize.Result? in
             guard
                 await self.isCurrentGeneration(
@@ -224,18 +270,66 @@ extension MCPServer {
         return try await task.value
     }
 
-    /// Enqueues `client.disconnect()` and waits for it no longer than
-    /// ``clientDisconnectGracePeriod``.
+    /// Enqueues `client.disconnect()`, and returns once the transport that
+    /// the call took closed, or once the call returned.
     ///
     /// The enqueue is synchronous, as the first thing this method does, so a
     /// connect enqueued right after it is chained to run strictly after this
-    /// disconnect — even when this method itself gave up waiting. Every
-    /// internal caller that needs the connection torn down routes through
-    /// here, and never calls `client.disconnect()` directly.
+    /// disconnect took the state. This method does not wait for the end of
+    /// `client.disconnect()`, which may never come — see the header of this
+    /// file. Every internal caller that needs the connection torn down
+    /// routes through here, and never calls `client.disconnect()` directly.
     func disconnectClientWithoutHanging() async {
-        let task = enqueueClientOperation(kind: .disconnect) { await self.client.disconnect() }
-        await Self.awaitWithBoundedWait(
-            Task<Void, Never> { _ = try? await task.value },
-            timeout: Self.clientDisconnectGracePeriod, on: clientQueueClock)
+        let (transportClosed, transportClosedContinuation) = AsyncStream<Void>.makeStream()
+        let task = enqueueClientOperation(kind: .disconnect) {
+            await self.disconnectClientUntilItTookTheState(
+                transportClosed: transportClosedContinuation)
+        }
+        _ = try? await task.value
+        for await _ in transportClosed {}
+    }
+
+    /// Starts `client.disconnect()` in a task of its own, never cancelled,
+    /// and returns at the first of two events: the call took the connection
+    /// of the client (``endClientDisconnectTurn()``), or the call returned.
+    ///
+    /// The queued disconnect operation of `disconnectClientWithoutHanging()`
+    /// runs this, thus the queue gives the next operation its turn at that
+    /// event — see the header of this file.
+    ///
+    /// - Parameter transportClosed: Finished when the transport that the
+    ///   call took closed, or when the call returned.
+    private func disconnectClientUntilItTookTheState(
+        transportClosed: AsyncStream<Void>.Continuation
+    ) async {
+        let (stateTaken, stateTakenContinuation) = AsyncStream<Void>.makeStream()
+        runningClientDisconnect = ClientDisconnectEvents(
+            stateTaken: stateTakenContinuation, transportClosed: transportClosed)
+        let client = client
+        Task {
+            await client.disconnect()
+            stateTakenContinuation.finish()
+            transportClosed.finish()
+        }
+        for await _ in stateTaken {}
+    }
+
+    /// Ends the queue turn of the running `client.disconnect()` call — the
+    /// report of a `DropObservingTransport` whose `disconnect()` the client
+    /// called. The client calls it on the connection it took, thus the
+    /// state of the client is already empty.
+    ///
+    /// A no-op when no disconnect operation is running.
+    ///
+    /// - Returns: The closure that the `DropObservingTransport` calls once
+    ///   its wrapped transport closed. It ends the wait of the caller of
+    ///   `disconnectClientWithoutHanging()`. The closure holds the events of
+    ///   this one call, thus a later disconnect cannot get its report.
+    func endClientDisconnectTurn() -> @Sendable () -> Void {
+        guard let events = runningClientDisconnect else { return {} }
+        runningClientDisconnect = nil
+        events.stateTaken.finish()
+        let transportClosed = events.transportClosed
+        return { transportClosed.finish() }
     }
 }
