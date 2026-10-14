@@ -91,9 +91,12 @@ struct MCPServerCallTests {
     /// The text the failing tool answers.
     private static let failingToolText = "nope"
 
-    /// The bound of the bare call of the timeout case — short, because the
-    /// test proves it bounds real time.
+    /// The bound of the bare call of the timeout cases. The test clock
+    /// records it and ends it; no real time passes.
     private static let bareCallTimeout = Duration.milliseconds(50)
+
+    /// How many sleeps the timer of one bare call asks the clock for.
+    private static let oneBareTimerSleep = 1
 
     /// The name of the tool that never answers and ignores cancellation.
     private static let hangingToolName = "hangs"
@@ -123,20 +126,33 @@ struct MCPServerCallTests {
 
     /// A scripted server that serves `tools`, connected to a fresh
     /// `MCPServer` named ``serverName`` over the in-memory transport — the
-    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:connectAttemptClock:callTimeout:renderBudget:)``
+    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:)``
     /// under this suite's own name.
     ///
     /// - Parameters:
     ///   - tools: The tools to register before the connect.
     ///   - callTimeout: The bound of a bare call of the server.
+    ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
+    ///     Defaults to a `GatedClock` that no test opens.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.
     private static func connected(
-        serving tools: [ScriptedTool], callTimeout: Duration = MCPServer.defaultCallTimeout
+        serving tools: [ScriptedTool], callTimeout: Duration = MCPServer.defaultCallTimeout,
+        callTimeoutClock: any Clock<Duration> = GatedClock()
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
         try await MCPTestSupport.connectedMCPServer(
-            serving: tools, name: serverName, callTimeout: callTimeout)
+            serving: tools, name: serverName, callTimeoutClock: callTimeoutClock, callTimeout: callTimeout)
+    }
+
+    /// The event that came first in the race of
+    /// ``aBareCallTimesOutOnlyOnTheInjectedClock()``.
+    private enum BareCallFirstEvent: Equatable {
+        /// The timer of the bare call asked the injected clock for its sleep.
+        case timerSlept
+
+        /// The bare call ended.
+        case callEnded
     }
 
     /// A scripted tool that answers an `isError` result at once.
@@ -346,20 +362,70 @@ struct MCPServerCallTests {
     /// A call with no ambient context has no engine to bound it, so the
     /// server's own `callTimeout` does: the request is cancelled on the wire,
     /// and the call answers in band. The tool holds the call until the test
-    /// releases it, thus only the `callTimeout` can end the call.
+    /// releases it, thus only the `callTimeout` can end the call. The timer
+    /// sleeps on a `ManualClock`, which ends the sleep at once and records
+    /// the bound it was asked for.
     @Test("a call with no ambient context is bounded by callTimeout and answers in band")
     func aBareCallIsBoundedByTheCallTimeout() async throws {
         let held = HeldScriptedTool(named: Self.heldToolName)
+        let clock = ManualClock()
         let (scripted, server) = try await Self.connected(
-            serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout)
+            serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
 
         let result = try await server.call(name: Self.heldToolName, arguments: nil)
 
         #expect(result.isError == true)
+        #expect(clock.recordedSleeps == [Self.bareCallTimeout])
         let recorded = await scripted.waitForRecordedNotifications(
             count: Self.oneNotification, timeout: Self.notificationTimeout)
         #expect(recorded.first?.method == CancelledNotification.name)
         await held.release()
+    }
+
+    /// The timer of a bare call sleeps on the clock that the server got at
+    /// init, and on no other clock. The clock of this test opens only when
+    /// the test opens it, and the tool holds the call. Thus the timer must
+    /// ask this clock for its sleep before the call can end, and the call
+    /// ends with the timeout result only after the test opens the clock.
+    ///
+    /// The test races the two events. A timer that sleeps on the real clock
+    /// never asks this clock for a sleep, and ends the call first: the race
+    /// then records `callEnded`, and the test fails.
+    @Test("a bare call stays pending until the injected clock ends its timer, then answers the timeout result")
+    func aBareCallTimesOutOnlyOnTheInjectedClock() async throws {
+        let held = HeldScriptedTool(named: Self.heldToolName)
+        let clock = GatedClock()
+        let (scripted, server) = try await Self.connected(
+            serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
+        let callEnded = TestGate()
+        let call = Task {
+            defer { callEnded.open() }
+            return try await server.call(name: Self.heldToolName, arguments: nil)
+        }
+        try await held.waitForArrival()
+
+        let first = try await withThrowingTaskGroup(of: BareCallFirstEvent.self) { group in
+            group.addTask {
+                try await clock.waitForRecordedSleeps(atLeast: Self.oneBareTimerSleep)
+                return .timerSlept
+            }
+            group.addTask {
+                try await callEnded.wait()
+                return .callEnded
+            }
+            let winner = try await group.next()
+            group.cancelAll()
+            return winner
+        }
+
+        #expect(first == .timerSlept)
+        #expect(clock.recordedSleeps == [Self.bareCallTimeout])
+        #expect(!callEnded.isOpen)
+        clock.open()
+        let result = try await call.value
+        #expect(result.isError == true)
+        await held.release()
+        withExtendedLifetime(scripted) {}
     }
 
     /// The file header of `MCPServer+Call.swift`: "the engine's clock ... is

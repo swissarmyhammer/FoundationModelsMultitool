@@ -164,6 +164,15 @@ public actor MCPServer {
     /// the timeout gives a clock it opens on command.
     let connectAttemptClock: any Clock<Duration>
 
+    /// The clock the timer of a bare call sleeps on — see
+    /// `startBareTimeout(for:)` in `MCPServer+Call.swift`.
+    ///
+    /// It is not ``clock``. A test gives ``clock`` a virtual clock whose sleep
+    /// never waits, and a bare-call timer that never waits would end each bare
+    /// call at once with the timeout result. A host always gets the real clock
+    /// here; a test of the bare-call timeout gives a clock it controls.
+    let callTimeoutClock: any Clock<Duration>
+
     /// The logger every retry, reconnect and discarded attempt is reported to.
     let logger: Logger
 
@@ -359,6 +368,7 @@ public actor MCPServer {
             clock: clock,
             clientQueueClock: ContinuousClock(),
             connectAttemptClock: ContinuousClock(),
+            callTimeoutClock: ContinuousClock(),
             callTimeout: callTimeout,
             renderBudget: renderBudget,
             elicitationHandler: elicitationHandler,
@@ -382,6 +392,8 @@ public actor MCPServer {
     ///     client-operation queue sleeps on — see ``clientQueueClock``.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect sleeps on — see ``connectAttemptClock``.
+    ///   - callTimeoutClock: The clock the timer of a bare call sleeps on —
+    ///     see ``callTimeoutClock``.
     ///   - callTimeout: See the public initializer.
     ///   - renderBudget: See the public initializer.
     ///   - elicitationHandler: See the public initializer.
@@ -392,6 +404,7 @@ public actor MCPServer {
         clock: any Clock<Duration>,
         clientQueueClock: any Clock<Duration>,
         connectAttemptClock: any Clock<Duration>,
+        callTimeoutClock: any Clock<Duration>,
         callTimeout: Duration,
         renderBudget: RenderBudget,
         elicitationHandler: ElicitationHandler?,
@@ -406,6 +419,7 @@ public actor MCPServer {
         self.clock = clock
         self.clientQueueClock = clientQueueClock
         self.connectAttemptClock = connectAttemptClock
+        self.callTimeoutClock = callTimeoutClock
         self.callTimeout = callTimeout
         self.renderBudget = renderBudget
         self.elicitationHandler = elicitationHandler

@@ -45,11 +45,8 @@ struct MetricsTests {
     /// The name of the argument of each MCP call.
     private static let argumentName = "city"
 
-    /// How long the MCP tool that does not answer sleeps: longer than the test.
-    private static let hangingToolSleep = Duration.seconds(3600)
-
-    /// The bound of a bare MCP call in the timeout case: short, so the case
-    /// ends soon.
+    /// The bound of a bare MCP call in the timeout case. The timer sleeps on
+    /// a `ManualClock`, which records the bound and ends the sleep at once.
     private static let shortCallTimeout = Duration.milliseconds(100)
 
     /// The name of the inner tool of the `runCode` cases.
@@ -149,13 +146,14 @@ struct MetricsTests {
         }
     }
 
-    /// An MCP tool that does not answer.
+    /// An MCP tool that does not answer: it waits on a gate that no one
+    /// opens, until its task is cancelled.
     private static var hangingTool: ScriptedTool {
         ScriptedTool(
             definition: MCP.Tool(
                 name: hangingToolName, description: "Does not answer.", inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
-            try await Task.sleep(for: hangingToolSleep)
+            try await TestGate().wait()
             return CallTool.Result(content: [])
         }
     }
@@ -244,11 +242,14 @@ struct MetricsTests {
     @Test("a bare MCP call that times out records one error with the kind timeout, and no isError")
     func timedOutCallRecordsATimeout() async throws {
         let scripted = await Self.scriptedServer(serving: Self.hangingTool)
+        let clock = ManualClock()
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
-                to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger)
+                to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger,
+                callTimeoutClock: clock)
             _ = try await server.call(
                 name: Self.hangingToolName, arguments: [Self.argumentName: .string(Self.argumentMarker)])
+            #expect(clock.recordedSleeps == [Self.shortCallTimeout])
 
             let errors = try context.metricsFactory.expectCounter(
                 MultitoolTelemetry.MetricName.mcpServerErrors.rawValue, Self.errorDimensions(.timeout))

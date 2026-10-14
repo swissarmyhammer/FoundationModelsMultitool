@@ -57,12 +57,9 @@ struct MCPTracePropagationTests {
     /// with.
     private static let traceparentVersionPrefix = "00-"
 
-    /// The bound of a bare call in the timeout case: short, so the case ends
-    /// soon.
+    /// The bound of a bare call in the timeout case. The timer sleeps on a
+    /// `ManualClock`, which records the bound and ends the sleep at once.
     private static let shortCallTimeout = Duration.milliseconds(100)
-
-    /// How long the tool that does not answer sleeps: longer than the test.
-    private static let hangingToolSleep = Duration.seconds(3600)
 
     /// The count of calls in flight when the transport drops or the server
     /// reconnects.
@@ -86,7 +83,8 @@ struct MCPTracePropagationTests {
         }
     }
 
-    /// The tool that does not answer. `counter` counts the calls of its
+    /// The tool that does not answer: it waits on a gate that no one opens,
+    /// until its task is cancelled. `counter` counts the calls of its
     /// handler.
     ///
     /// - Parameter counter: The counter of the calls.
@@ -98,7 +96,7 @@ struct MCPTracePropagationTests {
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
             counter.increment()
-            try await Task.sleep(for: hangingToolSleep)
+            try await TestGate().wait()
             return CallTool.Result(content: [])
         }
     }
@@ -233,11 +231,14 @@ struct MCPTracePropagationTests {
     func timedOutCallGivesAnErrorStatus() async throws {
         let counter = CallCounter()
         let scripted = await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
+        let clock = ManualClock()
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
-                to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger)
+                to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger,
+                callTimeoutClock: clock)
             let result = try await server.call(name: Self.hangingToolName, arguments: Self.arguments)
             #expect(result.isError == true)
+            #expect(clock.recordedSleeps == [Self.shortCallTimeout])
 
             let client = try #require(Self.clientSpans(in: context).first)
             Self.expectFailure(of: client, outcome: .timedOut, errorKind: .timeout)

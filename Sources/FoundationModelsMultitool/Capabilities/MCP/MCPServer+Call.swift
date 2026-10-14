@@ -403,11 +403,15 @@ extension MCPServer {
     /// with an in-band `isError` result and `notifications/cancelled` goes
     /// out for the request.
     ///
+    /// The timer sleeps on ``callTimeoutClock``, the clock the server got at
+    /// init — the real clock for a host.
+    ///
     /// - Parameter requestID: The id of the bare request.
     private func startBareTimeout(for requestID: ID) {
         let timeout = callTimeout
+        let clock = callTimeoutClock
         let timer = Task {
-            try? await Task.sleep(for: timeout)
+            try? await clock.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             await self.endInFlightCall(requestID: requestID, reason: Self.bareCallTimedOutReason) {
                 entry in

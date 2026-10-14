@@ -102,7 +102,7 @@ struct StdioServerProcessTests {
     ///
     /// The connect-attempt timeout of the server sleeps on a clock that no
     /// test opens. Thus a slow spawn never times the connect or the reconnect
-    /// out — see ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    /// out — see ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///
     /// - Parameters:
     ///   - stdio: The process whose `respawn()` is the transport factory.

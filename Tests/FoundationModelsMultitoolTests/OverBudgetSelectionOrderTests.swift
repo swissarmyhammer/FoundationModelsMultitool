@@ -162,7 +162,7 @@ struct OverBudgetSelectionOrderTests {
     /// product already holds the verbs the mount connects.
     ///
     /// Each server of the mount comes from
-    /// ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``,
+    /// ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``,
     /// so no connect of the mount can time out on a busy machine.
     ///
     /// - Returns: the registry and the servers behind it.

@@ -30,6 +30,9 @@ final class HeldScriptedTool: Sendable {
     /// How many calls arrived at the handler.
     private let arrivals = Mutex(0)
 
+    /// The gate that the first call opens when it arrives at the handler.
+    private let arrival = TestGate()
+
     /// Makes a held tool.
     ///
     /// - Parameter name: The name of the tool.
@@ -43,6 +46,14 @@ final class HeldScriptedTool: Sendable {
         arrivals.withLock { $0 > 0 }
     }
 
+    /// Waits until a call arrived at the handler: the server is in the call,
+    /// and the call holds. Returns at once when a call already arrived.
+    ///
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitForArrival() async throws {
+        try await arrival.wait()
+    }
+
     /// The definition and the handler, for `ScriptedServer.addTool(_:)`.
     var scriptedTool: ScriptedTool {
         ScriptedTool(
@@ -51,6 +62,7 @@ final class HeldScriptedTool: Sendable {
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
             self.arrivals.withLock { $0 += 1 }
+            self.arrival.open()
             await self.gate.wait()
             return CallTool.Result(content: [.text(text: Self.releasedText, annotations: nil, _meta: nil)])
         }

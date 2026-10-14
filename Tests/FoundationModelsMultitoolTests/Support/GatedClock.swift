@@ -83,6 +83,30 @@ final class GatedClock: Clock, Sendable {
         /// The ticket the next sleep takes.
         var nextTicket = 0
 
+        /// Each wait of ``waitForRecordedSleeps(atLeast:)`` that did not end,
+        /// by id: the count of recorded sleeps it waits for, and its
+        /// continuation.
+        var sleepCountWaiters: [Int: (count: Int, continuation: CheckedContinuation<Void, any Error>)] = [:]
+
+        /// The id of each wait for recorded sleeps whose task was cancelled
+        /// before the wait was stored.
+        var cancelledSleepCountWaits: Set<Int> = []
+
+        /// The id that the next wait for recorded sleeps gets.
+        var nextSleepCountWaitID = 0
+
+        /// Takes each wait for recorded sleeps that the current count of
+        /// ``sleeps`` satisfies out of ``sleepCountWaiters``.
+        ///
+        /// - Returns: The continuations to resume outside the lock.
+        mutating func takeSatisfiedSleepCountWaiters() -> [CheckedContinuation<Void, any Error>] {
+            let satisfied = sleepCountWaiters.filter { $0.value.count <= sleeps.count }
+            for id in satisfied.keys {
+                sleepCountWaiters[id] = nil
+            }
+            return satisfied.values.map(\.continuation)
+        }
+
         /// Moves ``currentInstant`` to `deadline` when `deadline` is later.
         ///
         /// - Parameter deadline: The instant a sleep that ends asked for.
@@ -189,12 +213,64 @@ final class GatedClock: Clock, Sendable {
     /// - Parameter deadline: The instant the sleep asks for.
     /// - Returns: The ticket of the sleep.
     private func takeTicket(for deadline: ManualInstant) -> Ticket {
-        state.withLock { current in
+        let (ticket, satisfied) = state.withLock { current in
             let duration = current.currentInstant.duration(to: deadline)
             current.sleeps.append(duration)
             let number = current.nextTicket
             current.nextTicket += 1
-            return Ticket(number: number, duration: duration)
+            return (Ticket(number: number, duration: duration), current.takeSatisfiedSleepCountWaiters())
+        }
+        for continuation in satisfied {
+            continuation.resume()
+        }
+        return ticket
+    }
+
+    /// Waits until the clock recorded at least `count` sleeps — the event
+    /// that the code under test asked for that many sleeps. Returns at once
+    /// when it already did.
+    ///
+    /// A recorded sleep can still wait for ``open()``, or it can already be
+    /// over. Thus a test that must act while a bound is pending waits here,
+    /// acts, and then opens the clock.
+    ///
+    /// - Parameter count: How many recorded sleeps end the wait.
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitForRecordedSleeps(atLeast count: Int) async throws {
+        let id = state.withLock { current -> Int in
+            defer { current.nextSleepCountWaitID += 1 }
+            return current.nextSleepCountWaitID
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                let start = state.withLock { current -> Registration in
+                    if current.cancelledSleepCountWaits.remove(id) != nil {
+                        return .cancelled
+                    }
+                    if current.sleeps.count >= count {
+                        return .proceed
+                    }
+                    current.sleepCountWaiters[id] = (count, continuation)
+                    return .wait
+                }
+                switch start {
+                case .proceed:
+                    continuation.resume()
+                case .cancelled:
+                    continuation.resume(throwing: CancellationError())
+                case .wait:
+                    break
+                }
+            }
+        } onCancel: {
+            let waiter = state.withLock { current -> CheckedContinuation<Void, any Error>? in
+                if let found = current.sleepCountWaiters.removeValue(forKey: id) {
+                    return found.continuation
+                }
+                current.cancelledSleepCountWaits.insert(id)
+                return nil
+            }
+            waiter?.resume(throwing: CancellationError())
         }
     }
 
