@@ -1,3 +1,4 @@
+import Logging
 import MCP
 import MCPTestServer
 import Testing
@@ -92,10 +93,8 @@ struct ResilienceTests {
     /// The attempt budget of every single-attempt policy.
     private static let singleAttempt = 1
 
-    /// How long a test waits for a released, orphaned attempt to run and
-    /// discard its result before it asserts — a fixed, bounded interval,
-    /// because the whole point is that nothing observable changes.
-    private static let orphanedAttemptSettleDelay = Duration.milliseconds(200)
+    /// The count of per-attempt timeouts that one connect attempt arms.
+    private static let oneArmedTimeout = 1
 
     /// `BackoffPolicy.connectTimeout` of the fresh attempt of
     /// ``freshAttemptWaitsForInFlightStragglerBeforeConnectingItsOwnTransport()``.
@@ -118,6 +117,25 @@ struct ResilienceTests {
     /// started: the first connect, plus one reconnect attempt.
     private static let secondAttempt = 2
 
+    /// The count of bounded waits of the client-operation queue that one
+    /// teardown of the client records: the queued `client.disconnect()`
+    /// waits behind its predecessor, and the caller waits behind the queued
+    /// `client.disconnect()`. `disconnect()` makes one teardown, and each
+    /// connect attempt makes one teardown before it connects.
+    private static let boundedWaitsPerTeardown = 2
+
+    /// The count of bounded waits of the client-operation queue that one
+    /// connect attempt that connects records: its teardown, and the queued
+    /// `client.connect(transport:)` that waits behind the teardown.
+    private static let boundedWaitsPerConnectedAttempt = boundedWaitsPerTeardown + 1
+
+    /// The count of bounded waits of the client-operation queue that
+    /// ``freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod()``
+    /// records before the test ends them: the first connect, the first
+    /// disconnect, and the teardown of the fresh attempt.
+    private static let boundedWaitsBeforeTheFreshConnect =
+        boundedWaitsPerConnectedAttempt + boundedWaitsPerTeardown + boundedWaitsPerTeardown
+
     // MARK: - Helpers
 
     /// A `MCPServer` named ``serverName`` over the three given clocks, with
@@ -128,21 +146,58 @@ struct ResilienceTests {
     ///     `ManualClock`, whose sleeps end at once. A test that reads the
     ///     backoff schedule gives its own `ManualClock`.
     ///   - clientQueueClock: The clock each bounded wait of the
-    ///     client-operation queue sleeps on. Defaults to a real clock.
+    ///     client-operation queue sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens, thus no bound of the queue elapses: each queued
+    ///     operation waits for its predecessor. A test that needs a bound to
+    ///     elapse gives its own `GatedClock` and opens it.
     ///   - connectAttemptClock: The clock the per-attempt timeout sleeps on.
     ///     Defaults to a `GatedClock` that no test opens, thus no attempt
     ///     times out, however slow the machine is. A test of the timeout
     ///     gives its own clock (card `^kdtrmhv`: no test checks the speed of
     ///     the machine).
+    ///   - logger: The logger the server writes its records to. A test that
+    ///     waits for a record gives the logger of
+    ///     ``makeStaleConnectDiscardLogger()``.
     /// - Returns: The server, not yet connected.
     private func makeServer(
         clock: any Clock<Duration> = ManualClock(),
-        clientQueueClock: any Clock<Duration> = ContinuousClock(),
-        connectAttemptClock: any Clock<Duration> = GatedClock()
+        clientQueueClock: any Clock<Duration> = GatedClock(),
+        connectAttemptClock: any Clock<Duration> = GatedClock(),
+        logger: Logger = MCPServer.defaultLogger
     ) -> MCPServer {
         MCPTestSupport.makeServer(
             name: Self.serverName, clock: clock, clientQueueClock: clientQueueClock,
-            connectAttemptClock: connectAttemptClock)
+            connectAttemptClock: connectAttemptClock, logger: logger)
+    }
+
+    /// Makes a logger that opens a gate when `MCPServer` records that it
+    /// discarded the late result of a stale connect attempt — the last step
+    /// that such an attempt makes.
+    ///
+    /// - Returns: The logger to give to the server, and the gate that the
+    ///   record opens.
+    private func makeStaleConnectDiscardLogger() -> (logger: Logger, discarded: TestGate) {
+        let discarded = TestGate()
+        let logger = Logger(label: "resilience-test.stale-connect-discard") { _ in
+            StaleConnectDiscardLogHandler(discarded: discarded)
+        }
+        return (logger, discarded)
+    }
+
+    /// Waits until `clock` recorded a sleep of `duration`. Each step waits
+    /// for the next recorded sleep, the event that the code under test asked
+    /// for one more sleep. Thus the wait reads no time.
+    ///
+    /// - Parameters:
+    ///   - duration: The duration of the sleep to wait for.
+    ///   - clock: The clock that records the sleeps.
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    private func waitForRecordedSleep(of duration: Duration, on clock: GatedClock) async throws {
+        var recorded = clock.recordedSleeps
+        while !recorded.contains(duration) {
+            try await clock.waitForRecordedSleeps(atLeast: recorded.count + 1)
+            recorded = clock.recordedSleeps
+        }
     }
 
     /// Starts a fresh `ScriptedServer` on the server end of an in-memory pair
@@ -171,10 +226,16 @@ struct ResilienceTests {
     /// every reconnect attempt — hangs for good, the never-resumed
     /// continuation idiom of `HangingTransport`.
     ///
-    /// - Parameter counter: Records every `makePair` call, so a test asserts
-    ///   how many attempts were made.
+    /// - Parameters:
+    ///   - counter: Records every `makePair` call, so a test asserts how many
+    ///     attempts were made.
+    ///   - hangArrival: The gate that each attempt after the first opens
+    ///     before it hangs. A test waits on it to know that a reconnect
+    ///     attempt is in flight.
     /// - Returns: The transport.
-    private func respawningThatHangsAfterFirstConnect(counter: CallCounter) -> RespawningTransport {
+    private func respawningThatHangsAfterFirstConnect(
+        counter: CallCounter, hangArrival: TestGate
+    ) -> RespawningTransport {
         RespawningTransport {
             let attempt = counter.increment()
             if attempt == 1 {
@@ -183,6 +244,7 @@ struct ResilienceTests {
                 try await scripted.start(transport: server)
                 return (client, scripted)
             }
+            hangArrival.open()
             return try await withCheckedThrowingContinuation {
                 (_: CheckedContinuation<RespawningTransport.Pair, any Error>) in
                 // Never resumed: every reconnect attempt after the first
@@ -201,15 +263,15 @@ struct ResilienceTests {
     /// - Parameters:
     ///   - server: The server to connect. Its attempt clock is `attemptClock`.
     ///   - attemptClock: The clock the timeout of the attempt sleeps on.
+    ///   - inFlight: The gate that the gated step of the attempt opens when
+    ///     it is called.
     ///   - connect: Starts the connect on `server`.
-    ///   - inFlight: Whether the gated step of the attempt was called.
     private func connectUntilOrphaned(
-        _ server: MCPServer, attemptClock: GatedClock,
-        connect: @escaping @Sendable () async throws -> Void,
-        inFlight: () async -> Bool
+        _ server: MCPServer, attemptClock: GatedClock, inFlight: TestGate,
+        connect: @escaping @Sendable () async throws -> Void
     ) async throws {
         let connecting = Task { try await connect() }
-        try await TestPoll.waitUntil("the gated step of the attempt is in flight", inFlight)
+        try await inFlight.wait()
         attemptClock.open()
         await #expect(throws: MCPServerError.self) {
             try await connecting.value
@@ -304,10 +366,9 @@ struct ResilienceTests {
     /// timeout of the attempt sleeps on a `GatedClock`. Thus the connect can
     /// end only when the test opens the clock, and the clock records the
     /// timeout that the attempt armed. A retry loop that blocks on the
-    /// abandoned attempt hangs, and the hang guard fails the test. The test
-    /// reads no real time (card `^tm4x2hp`: no test checks the speed of the
-    /// machine).
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    /// abandoned attempt makes the test hang. The test reads no real time
+    /// (card `^tm4x2hp`: no test checks the speed of the machine).
+    @Test
     func connectAttemptTimeoutEndsTheAttemptEvenWhenTransportHangs() async throws {
         let hanging = HangingTransport()
         let policy = BackoffPolicy(
@@ -317,7 +378,7 @@ struct ResilienceTests {
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
 
         let connecting = Task { try await server.connect(via: hanging, backoffPolicy: policy) }
-        try await TestPoll.waitUntil("the attempt armed its timeout") { !attemptClock.recordedSleeps.isEmpty }
+        try await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout)
         attemptClock.open()
 
         await #expect(throws: MCPServerError.self) {
@@ -329,25 +390,29 @@ struct ResilienceTests {
     /// The gate holds the attempt in its connect, and the test ends the
     /// timeout of the attempt only then. Thus the timeout always wins, however
     /// slow the machine is.
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    ///
+    /// The test waits for the record of the discard, the last step of the
+    /// orphaned attempt, and then reads the state. It waits for no fixed
+    /// time.
+    @Test
     func lateResolvingAttemptAfterExhaustionIsDiscarded() async throws {
         let (scripted, clientTransport) = try await makeScriptedPair()
         let gated = GatedConnectTransport(wrapping: clientTransport)
         let attemptClock = GatedClock()
-        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
+        let (logger, discarded) = makeStaleConnectDiscardLogger()
+        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock, logger: logger)
 
         // The gate stays closed past connectTimeout, so this attempt times
         // out and backoff is exhausted while the orphaned attempt is still
         // blocked in the background.
-        try await connectUntilOrphaned(server, attemptClock: attemptClock) {
+        try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
             try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
-        } inFlight: {
-            await gated.connectWasCalled
         }
 
-        // Now let the orphaned attempt succeed, and give it time to run.
+        // Now let the orphaned attempt succeed, and wait until the server
+        // discarded its late result.
         await gated.release()
-        try await Task.sleep(for: Self.orphanedAttemptSettleDelay)
+        try await discarded.wait()
 
         // The late success was discarded: no identity, and not ready.
         #expect(await server.identity == nil)
@@ -360,23 +425,23 @@ struct ResilienceTests {
     /// which discards a late FAILURE. The wrapped `FlakyConnectTransport`
     /// makes the now-late attempt fail its handshake instead of succeeding,
     /// so this proves the late failure never reaches `.faulted` either.
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    @Test
     func lateFailingAttemptAfterExhaustionIsDiscarded() async throws {
         let (scripted, clientTransport) = try await makeScriptedPair()
         let flaky = FlakyConnectTransport(wrapping: clientTransport, failingConnectAttempts: 1)
         let gated = GatedConnectTransport(wrapping: flaky)
         let attemptClock = GatedClock()
-        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
+        let (logger, discarded) = makeStaleConnectDiscardLogger()
+        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock, logger: logger)
 
-        try await connectUntilOrphaned(server, attemptClock: attemptClock) {
+        try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
             try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
-        } inFlight: {
-            await gated.connectWasCalled
         }
 
-        // Now let the orphaned attempt fail its handshake.
+        // Now let the orphaned attempt fail its handshake, and wait until the
+        // server discarded the late failure.
         await gated.release()
-        try await Task.sleep(for: Self.orphanedAttemptSettleDelay)
+        try await discarded.wait()
 
         // The late failure was discarded too: the state stays where the
         // reported exhaustion left it, and is not overwritten with `.faulted`.
@@ -390,7 +455,7 @@ struct ResilienceTests {
     /// transport to the client, and must release the transport instead.
     /// Only a gated FACTORY reaches this window — by the time a gated
     /// transport opens, the factory already returned.
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    @Test
     func lateResolvingFactoryAfterExhaustionDisposesAbandonedTransport() async throws {
         let (scripted, clientTransport) = try await makeScriptedPair()
         let spy = DisposableSpyTransport(wrapping: clientTransport)
@@ -398,19 +463,17 @@ struct ResilienceTests {
         let attemptClock = GatedClock()
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
 
-        try await connectUntilOrphaned(server, attemptClock: attemptClock) {
+        try await connectUntilOrphaned(
+            server, attemptClock: attemptClock, inFlight: gatedFactory.makeArrival
+        ) {
             try await server.connect(
                 via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
-        } inFlight: {
-            await gatedFactory.makeWasCalled
         }
 
         // The dispose is the event the abandoned attempt ends with: wait for
         // it, and never for a fixed time.
         await gatedFactory.release()
-        try await TestPoll.waitUntil("the abandoned attempt disposed its transport") {
-            await spy.disposeWasCalled
-        }
+        try await spy.disposeArrival.wait()
 
         // Never connected — the client race is closed — and disposed — the
         // resource leak is closed.
@@ -436,7 +499,7 @@ struct ResilienceTests {
     /// of the first attempt only, and never a bound of the queue: thus the
     /// fresh attempt can pass the straggler only when the straggler ends, and
     /// no load can change that (card `^kdtrmhv`).
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    @Test
     func freshAttemptWaitsForInFlightStragglerBeforeConnectingItsOwnTransport() async throws {
         let (straggler, clientTransport1) = try await makeScriptedPair(name: "straggler-server")
         let gated = GatedConnectTransport(wrapping: clientTransport1)
@@ -448,8 +511,8 @@ struct ResilienceTests {
         // The timeout and the connect run at the same time. Open the timeout
         // only when the connect is in flight, else the timeout can win before
         // the connect is enqueued, and no straggler stays.
-        try await TestPoll.waitUntil("the first attempt armed its timeout") { !attemptClock.recordedSleeps.isEmpty }
-        try await TestPoll.waitUntil("the first attempt is in connect") { await gated.connectWasCalled }
+        try await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout)
+        try await gated.connectArrival.wait()
         attemptClock.open(sleepsOf: Self.gatedConnectTimeout)
         await #expect(throws: MCPServerError.self) {
             try await firstAttempt.value
@@ -462,9 +525,8 @@ struct ResilienceTests {
             connectTimeout: Self.freshAttemptConnectTimeout, baseDelay: Self.singleAttemptDelay,
             maxDelay: Self.singleAttemptDelay, maxAttempts: Self.singleAttempt)
         let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: freshPolicy) }
-        try await TestPoll.waitUntil("the fresh attempt waits behind the straggler") {
-            queueClock.recordedSleeps.contains(MCPServer.clientConnectStragglerGracePeriod)
-        }
+        // The fresh attempt waits behind the straggler.
+        try await waitForRecordedSleep(of: MCPServer.clientConnectStragglerGracePeriod, on: queueClock)
 
         try #require(await spy.connectWasCalled == false)
         #expect(await server.state != .ready)
@@ -489,8 +551,10 @@ struct ResilienceTests {
     /// even though the predecessor never finishes.
     ///
     /// Each bounded wait of the queue sleeps on a `GatedClock`, thus no bound
-    /// can elapse before the test opens the clock, and every bound elapses
-    /// when it does. The clock records the bound each wait chose, which is
+    /// can elapse before the test ends it. The test ends each bound that is
+    /// pending when the fresh attempt waits, and no later bound. Thus the
+    /// fresh connect runs only after the teardown of the fresh attempt
+    /// ended. The clock records the bound each wait chose, which is
     /// what proves the short bound and not the long one. The fresh transport
     /// holds its own connect at a gate, thus the fresh attempt cannot reach
     /// `.ready` before the first disconnect wrote `.disconnected`.
@@ -505,32 +569,40 @@ struct ResilienceTests {
         try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
         #expect(await server.state == .ready)
 
+        // The first disconnect enters the client queue.
         let tailBeforeDisconnect = await server.clientQueueTail
         let firstDisconnect = Task { await server.disconnect() }
-        try await TestPoll.waitUntil("the first disconnect entered the client queue") {
-            await server.clientQueueTail != tailBeforeDisconnect
-        }
+        await server.waitUntilClientQueueTailChanges(from: tailBeforeDisconnect)
 
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
         let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
         let spy = DisposableSpyTransport(wrapping: gatedConnect)
+        // The fresh attempt enters the client queue.
         let tailBehindDisconnect = await server.clientQueueTail
         let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
-        try await TestPoll.waitUntil("the fresh attempt entered the client queue") {
-            await server.clientQueueTail != tailBehindDisconnect
-        }
+        await server.waitUntilClientQueueTailChanges(from: tailBehindDisconnect)
 
         // The fresh attempt waits in the queue, and no bound elapsed: it has
         // not raced ahead of the first disconnect.
         #expect(await spy.connectWasCalled == false)
 
-        // Every bound elapses, with the first disconnect still gated: the
-        // first disconnect returns, and the fresh attempt proceeds anyway.
-        queueClock.open()
+        // Every pending bound elapses, with the first disconnect still gated:
+        // the first disconnect returns, and the fresh attempt proceeds anyway
+        // and connects its own transport.
+        //
+        // The test ends only the bounds that are recorded now, and not
+        // `open()` the clock. `open()` also ends the later bound of the queued
+        // `client.connect(transport:)` behind the queued `client.disconnect()`
+        // of the fresh attempt. Then that connect can run beside that
+        // disconnect on the one `MCP.Client`, and that disconnect can close
+        // the transport of the fresh server after the connect opened it. The
+        // fresh server then drops each later message, the retry waits for an
+        // `initialize` answer that never comes, and the test stays forever.
+        // With this order, the connect runs only after that disconnect ended.
+        try await queueClock.waitForRecordedSleeps(atLeast: Self.boundedWaitsBeforeTheFreshConnect)
+        queueClock.openRecordedSleeps()
         await firstDisconnect.value
-        try await TestPoll.waitUntil("the fresh attempt connected its own transport") {
-            await spy.connectWasCalled
-        }
+        try await spy.connectArrival.wait()
         await gatedConnect.release()
         try await attempt2.value
         #expect(await server.state == .ready)
@@ -538,6 +610,7 @@ struct ResilienceTests {
         #expect(queueClock.recordedSleeps.allSatisfy { $0 == MCPServer.clientDisconnectGracePeriod })
 
         await gatedDisconnect.release()
+        queueClock.open()
         withExtendedLifetime((initial, fresh)) {}
     }
 
@@ -557,10 +630,11 @@ struct ResilienceTests {
     /// 3. The test ends the timeout of the hung attempt. The reconnect gives
     ///    up and bumps the generation, and its stale result must not move
     ///    the state.
-    @Test(.timeLimit(TestHangGuard.timeLimit))
+    @Test
     func explicitConnectDuringInFlightReconnectWins() async throws {
         let counter = CallCounter()
-        let respawning = respawningThatHangsAfterFirstConnect(counter: counter)
+        let hangArrival = TestGate()
+        let respawning = respawningThatHangsAfterFirstConnect(counter: counter, hangArrival: hangArrival)
         let policy = BackoffPolicy(
             connectTimeout: Self.hungReconnectConnectTimeout, baseDelay: Self.singleAttemptDelay,
             maxDelay: Self.singleAttemptDelay, maxAttempts: Self.singleAttempt)
@@ -573,15 +647,16 @@ struct ResilienceTests {
 
         await respawning.disconnect()
         let reconnect = Task { try? await server.reconnect() }
-        try await TestPoll.waitUntil("the hung second attempt armed its timeout") {
-            counter.count == Self.secondAttempt && attemptClock.recordedSleeps.count == Self.secondAttempt
-        }
+        // The hung second attempt is in flight, and armed its timeout.
+        try await hangArrival.wait()
+        try await attemptClock.waitForRecordedSleeps(atLeast: Self.secondAttempt)
+        #expect(counter.count == Self.secondAttempt)
+        #expect(attemptClock.recordedSleeps.count == Self.secondAttempt)
 
         let (fresh, freshTransport) = try await makeScriptedPair(name: "fresh-server")
         let explicitConnect = Task { try await server.connect(via: freshTransport) }
-        try await TestPoll.waitUntil("the explicit connect waits behind the hung attempt") {
-            queueClock.recordedSleeps.contains(MCPServer.clientConnectStragglerGracePeriod)
-        }
+        // The explicit connect waits behind the hung attempt.
+        try await waitForRecordedSleep(of: MCPServer.clientConnectStragglerGracePeriod, on: queueClock)
         #expect(await server.state == .connecting)
 
         queueClock.open(sleepsOf: MCPServer.clientConnectStragglerGracePeriod)
@@ -666,5 +741,48 @@ struct ResilienceTests {
 
         #expect(await server.state == .ready)
         withExtendedLifetime(scripted) {}
+    }
+}
+
+/// A `LogHandler` that opens a gate when `MCPServer` records that it
+/// discarded the late result of a stale connect attempt: a late success or a
+/// late failure. That record is the last step of an orphaned attempt. Thus a
+/// test waits on the gate in place of a fixed sleep, and then reads the state
+/// that the attempt left.
+///
+/// It ignores every other record.
+private struct StaleConnectDiscardLogHandler: LogHandler {
+    /// The messages of the records that open the gate.
+    private static let discardMessages: Set<String> = [
+        MultitoolTelemetry.LogMessage.mcpStaleSuccessDiscarded.rawValue,
+        MultitoolTelemetry.LogMessage.mcpStaleFailureDiscarded.rawValue,
+    ]
+
+    /// The gate that a discard record opens.
+    let discarded: TestGate
+
+    /// The metadata of the handler. The handler does not read it.
+    var metadata: Logger.Metadata = [:]
+
+    /// The lowest level that the handler gets: each level, so that no
+    /// discard record is filtered out.
+    var logLevel: Logger.Level = .trace
+
+    /// Reads or writes one value of ``metadata``.
+    ///
+    /// - Parameter key: The key of the value.
+    subscript(metadataKey key: String) -> Logger.Metadata.Value? {
+        get { metadata[key] }
+        set { metadata[key] = newValue }
+    }
+
+    /// Opens ``discarded`` when the message of `event` is one of
+    /// ``discardMessages``.
+    ///
+    /// - Parameter event: The record.
+    func log(event: LogEvent) {
+        if Self.discardMessages.contains(event.message.description) {
+            discarded.open()
+        }
     }
 }

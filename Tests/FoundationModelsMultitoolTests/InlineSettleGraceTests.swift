@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
@@ -27,17 +28,32 @@ struct InlineSettleGraceTests {
     }
 
     /// The wait of the quick snippet in the test that runs it beside a slow
-    /// tool: the hang bound of `TestPoll`, in seconds.
+    /// tool, in seconds.
     ///
-    /// The test does not measure time with it. It is only the bound of a
-    /// hang (card `^3np5yzj`: no test checks the speed of the machine). The
-    /// test proves the property with an event: the quick snippet answers
-    /// while the slow tool still spins.
-    private static let besideSlowToolGrace = TimeInterval(TestPoll.deadline.components.seconds)
+    /// The wait is on a `ManualRunClock` that the test never advances, thus
+    /// the wait never ends by time and the value has no effect on the result
+    /// (card `^3np5yzj`: no test checks the speed of the machine). The test
+    /// proves the property with an event: the quick snippet answers while the
+    /// slow tool still spins.
+    private static let besideSlowToolGrace: TimeInterval = 1
 
     /// A registry carrying one real tool.
     private static func registry() throws -> MultiTool.Registry {
         try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+    }
+
+    /// The context of an outer run on a session whose run clock is a
+    /// `ManualRunClock` that no test advances.
+    ///
+    /// The settle period of each mounted call and the timeout of each run wait
+    /// on that clock, thus no wait ends by time. A snippet that settles always
+    /// answers inside its settle period, and only a period of `0` gives the
+    /// pending envelope. No test here reads real time.
+    ///
+    /// - Returns: The context.
+    /// - Throws: Whatever standing up the stub session throws.
+    private static func makeContextOnStoppedClock() async throws -> ToolContext {
+        try await makeStubRun(runClock: ManualRunClock()).context
     }
 
     /// Mounts `tool` the way a Router session mounts every tool.
@@ -86,7 +102,7 @@ struct InlineSettleGraceTests {
 
     @Test("a snippet that finishes inside the wait answers with its own result, with no envelope")
     func quickSnippetAnswersWithItsResult() async throws {
-        let context = try await makeOuterRunContext()
+        let context = try await Self.makeContextOnStoppedClock()
         let runCode = MultiTool(registry: try Self.registry())
         let mounted = try Self.mounted(runCode, on: context)
 
@@ -98,31 +114,30 @@ struct InlineSettleGraceTests {
 
     /// The slow snippet runs on a mount with no wait, thus its call answers
     /// pending at once and the tool goes on in the background. The quick
-    /// snippet runs on a second mount whose wait is only a hang bound. The
+    /// snippet runs on a second mount whose wait is on a stopped clock. The
     /// test checks an event, not a time: the quick snippet answered with its
     /// own result while the slow tool still kept every CPU busy. A quick
     /// snippet that cannot start until the slow tool stops answers only after
     /// the spin ended, and the last check fails.
-    @Test(
-        "a snippet that awaits nothing answers with its own result while a slow tool keeps every CPU busy",
-        .timeLimit(TestHangGuard.timeLimit))
+    @Test("a snippet that awaits nothing answers with its own result while a slow tool keeps every CPU busy")
     func quickSnippetAnswersBesideABusySlowTool() async throws {
         let latch = ToolReleaseLatch()
         defer { latch.release() }
         let hog = CooperativePoolHogTool(latch: latch)
-        let context = try await makeOuterRunContext()
+        let context = try await Self.makeContextOnStoppedClock()
         let registry = try MultiTool.Builder().addTool(hog).buildRegistry()
         let slowMount = try Self.mounted(
             MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)), on: context)
         let quickMount = try Self.mounted(
             MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: Self.besideSlowToolGrace)),
-            on: try await makeOuterRunContext()
+            on: try await Self.makeContextOnStoppedClock()
         )
         let slow = try Self.envelope(
             try await slowMount.call(arguments: RunCodeArguments(code: "return await tools.hog();"))
         )
         #expect(slow.pending)
-        try await TestPoll.waitUntil("the slow tool keeps every CPU busy") { hog.hasStarted }
+        // The event of the slow tool: a child started to spin.
+        try await hog.waitUntilStarted()
 
         let quick = try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
 
@@ -149,7 +164,7 @@ struct InlineSettleGraceTests {
 
     @Test("a host that turns the wait off gets the completion token back, as every mounted call did before")
     func noWaitAnswersWithTheCompletionToken() async throws {
-        let context = try await makeOuterRunContext()
+        let context = try await Self.makeContextOnStoppedClock()
         let runCode = MultiTool(
             registry: try Self.registry(),
             configuration: MultiToolConfiguration(inlineSettleGrace: 0)

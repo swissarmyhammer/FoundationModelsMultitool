@@ -19,9 +19,10 @@ import Testing
 /// `Support/ShellBackgroundRunner.swift`. Two of them are worth naming here
 /// because they are the reason this suite is gated rather than a unit test:
 ///
-/// - `childProcessGone` needs a REAL child process group. It polls
-///   `killpg(group, 0)` until the group holds nothing after the cancel of the
-///   snippet, so a cancel that did not reach the inner shell run would fail.
+/// - `childProcessGone` needs a REAL child process group. After the cancel of
+///   the snippet, it waits on the exit event of the kernel for each process of
+///   the group (`ProcessExitWait`), so a cancel that did not reach the inner
+///   shell run would fail.
 /// - `oneJournaledTerminal` needs a LOADED MODEL. It is the half task `^1hq8xny`
 ///   left to this card by design, recorded on both: `RoutedSessionActor.close()`
 ///   journals exactly what `SessionMailbox.sweep()` answers with, through
@@ -37,16 +38,12 @@ import Testing
 /// without it.
 @Suite(
     "A shell command on the background path (phase-2)",
-    .serialized,
-    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
-    // It stops a turn that cannot end. It does not check the speed of the
-    // machine (card `^tm4x2hp`).
+    .serialized
+    // No test checks the speed of the machine (card `^tm4x2hp`).
     //
-    // The harness bounds a turn that never reaches `tools.shell.execute` with
-    // the shared poll hang guard `IntegrationPoll.deadline`, after which it
-    // reports what it read rather than hanging. The time limit stands above
-    // that bound, so it is not the primary detector of anything.
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    // No step waits on time. When the turn never gets to
+    // `tools.shell.execute`, the watcher stops on the event that the turn
+    // ended. Then the harness reports what it read.
 )
 struct ShellBackgroundTests {
     @Test("a shell command goes to the background, stands on the run plane, is read live, is stopped, and is journaled")

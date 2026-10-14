@@ -41,8 +41,37 @@ import Synchronization
 /// copy the caller never reads.
 final class ShellRunContextProbe: CommandSandbox {
 
-    /// The ambient context of each run that consulted this probe, in call order.
-    private let observed = Mutex<[ToolContext]>([])
+    /// Everything that `preflight` and the waiters change.
+    private struct State {
+        /// The ambient context of each run that consulted this probe, in call
+        /// order.
+        var contexts: [ToolContext] = []
+
+        /// Each wait of ``waitForFirstContext()`` that did not end, by id.
+        var waiters: [Int: CheckedContinuation<ToolContext, any Error>] = [:]
+
+        /// The id of each wait whose task was cancelled before the wait was
+        /// recorded.
+        var cancelled: Set<Int> = []
+
+        /// The id that the next wait gets.
+        var nextID = 0
+    }
+
+    /// What one call of ``waitForFirstContext()`` does next.
+    private enum WaitStart {
+        /// A context is there: the wait returns it at once.
+        case ready(ToolContext)
+
+        /// The task was cancelled before the wait was recorded.
+        case cancelled
+
+        /// The wait continues until a context comes or the task is cancelled.
+        case waiting
+    }
+
+    /// The state of the probe.
+    private let state = Mutex(State())
 
     /// The ambient context of each run that consulted this probe, in call order.
     ///
@@ -50,18 +79,73 @@ final class ShellRunContextProbe: CommandSandbox {
     /// recorded: it has no completion token, so it names nothing on the run
     /// plane and there is nothing for a scenario to read it by.
     var observedContexts: [ToolContext] {
-        observed.withLock { $0 }
+        state.withLock { $0.contexts }
     }
 
-    /// Keeps the ambient context of this run, and proves nothing about the
-    /// confinement.
+    /// Waits until a run consulted this probe, and answers the context of the
+    /// first such run. Returns at once when one already did.
+    ///
+    /// This is the event that the model started a `tools.shell.execute` run,
+    /// and it replaces a poll of ``observedContexts``.
+    ///
+    /// - Returns: The ambient context of the first run.
+    /// - Throws: `CancellationError` when the task is cancelled before a run
+    ///   consulted this probe.
+    func waitForFirstContext() async throws -> ToolContext {
+        let id = state.withLock { current -> Int in
+            defer { current.nextID += 1 }
+            return current.nextID
+        }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ToolContext, any Error>) in
+                let start = state.withLock { current -> WaitStart in
+                    let wasCancelled = current.cancelled.remove(id) != nil
+                    if let first = current.contexts.first {
+                        return .ready(first)
+                    }
+                    if wasCancelled {
+                        return .cancelled
+                    }
+                    current.waiters[id] = continuation
+                    return .waiting
+                }
+                switch start {
+                case .ready(let context):
+                    continuation.resume(returning: context)
+                case .cancelled:
+                    continuation.resume(throwing: CancellationError())
+                case .waiting:
+                    break
+                }
+            }
+        } onCancel: {
+            let waiter = state.withLock { current -> CheckedContinuation<ToolContext, any Error>? in
+                if let found = current.waiters.removeValue(forKey: id) {
+                    return found
+                }
+                current.cancelled.insert(id)
+                return nil
+            }
+            waiter?.resume(throwing: CancellationError())
+        }
+    }
+
+    /// Keeps the ambient context of this run, ends each wait of
+    /// ``waitForFirstContext()``, and proves nothing about the confinement.
     ///
     /// - Parameters:
     ///   - workingDirectory: Not read — nothing is proved.
     ///   - temporaryDirectory: Not read — nothing is proved.
     func preflight(workingDirectory: String, temporaryDirectory: String) async {
         guard let context = ToolContext.current else { return }
-        observed.withLock { $0.append(context) }
+        let (first, waiting) = state.withLock { current -> (ToolContext, [CheckedContinuation<ToolContext, any Error>]) in
+            current.contexts.append(context)
+            defer { current.waiters.removeAll() }
+            return (current.contexts[0], Array(current.waiters.values))
+        }
+        for waiter in waiting {
+            waiter.resume(returning: first)
+        }
     }
 
     /// Gives back `shellPath` and `shellArguments` unchanged.

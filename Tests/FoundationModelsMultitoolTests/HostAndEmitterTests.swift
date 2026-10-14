@@ -1,9 +1,15 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+
+/// How many timers a mounted `runCode` call puts on the run clock while it
+/// waits for its settle period: the timeout of the run
+/// (`executionTimeLimit`) and the settle period.
+private let runCodeTimers = 2
 
 /// The progress detail `AmbientRecordingTool(name: "recorder")` posts.
 ///
@@ -51,7 +57,11 @@ struct HostAndEmitterTests {
             .addTool(GatedTool(latch: latch))
             .addTool(recorder)
             .buildRegistry()
-        let run = try await makeStubRun()
+        // The run clock of the session. The call goes to the background when
+        // the test moves this clock past the settle period of `runCode`, and no
+        // real time passes.
+        let clock = ManualRunClock()
+        let run = try await makeStubRun(runClock: clock)
         let sessionID = run.context.sessionID
         // A caller-supplied sink: this test reads the run's OWN correlation,
         // and the mount's own sink re-stamps onto the mounting run's token.
@@ -64,9 +74,16 @@ struct HostAndEmitterTests {
                 as? any Tool<RunCodeArguments, String>
         )
 
-        let rendered = try await mounted.call(
-            arguments: RunCodeArguments(code: "await tools.gated(); return await tools.recorder();")
-        )
+        // The latch holds the snippet, thus the call answers only when the
+        // clock moves past the settle period. A mounted `runCode` call puts two
+        // timers on the clock: the timeout of the run and the settle period.
+        let rendered = try await callPastSettlePeriod(
+            on: clock, grace: MultiToolConfiguration.default.inlineSettleGrace, timers: runCodeTimers
+        ) {
+            try await mounted.call(
+                arguments: RunCodeArguments(code: "await tools.gated(); return await tools.recorder();")
+            )
+        }
 
         // The run backgrounded with its snippet still inside the gated call, so the
         // recorder has not run yet and nothing of its own is on the sink.

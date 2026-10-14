@@ -4,8 +4,9 @@
 //
 // The context uses the real session and the real resolver of the address
 // guard, thus each request goes to the real provider. The session has no
-// timeout of its own: the fetcher sets no time limit on a request, and
-// ``IntegrationHangGuard/timeLimit`` bounds each test. The search goes
+// timeout of its own: the fetcher sets no time limit on a request, and no
+// test has a time limit. A request that never ends shows as a hang. The
+// search goes
 // through `WebVerbCall.search` of `MultitoolTestSupport`, the call that the
 // unit suites make too. A test asserts only facts that are stable for years:
 // a well-known host in the hits, the `https` scheme, and the host that `site`
@@ -47,8 +48,8 @@ enum LiveSearch {
     /// after the previous one (card `^kghyac5`). The results page publishes
     /// no limit, thus the value comes from that measurement: two seconds is
     /// more than three times the gap that failed. A suite of two tests waits
-    /// at most this long one time, which is a small part of
-    /// ``IntegrationHangGuard/timeLimit``.
+    /// at most this long one time. The wait spaces the requests, and waits
+    /// for no fact (see ``LiveSearchSpacing``).
     static let searchSpacingSeconds: Int64 = 2
 
     /// The one spacing of the live searches of the test process.

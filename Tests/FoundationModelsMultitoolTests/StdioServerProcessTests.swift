@@ -46,11 +46,33 @@ struct StdioServerProcessTests {
     /// proves more than "this one test cleaned up after itself."
     private static let sharedRegistry = ProcessRegistry()
 
-    /// The absolute path of the long-lived child most tests spawn.
-    private static let sleepCommand = "/bin/sleep"
+    /// The absolute path of the long-lived child most tests spawn. The child
+    /// reads ``holdFIFO``, and no one writes to that FIFO. Thus the open of
+    /// the FIFO blocks, and the child lives until a kill ends it. No time
+    /// sets how long it lives.
+    private static let holdCommand = "/bin/cat"
 
-    /// The arguments of that child: a sleep long enough to outlive any test.
-    private static let sleepArguments = ["60"]
+    /// The FIFO that each long-lived child of this test reads, and that no
+    /// one writes. Its `deinit` removes the FIFO when the test ends.
+    private let holdFIFO: ShellCommandGate
+
+    /// The arguments of the long-lived child: the path of ``holdFIFO``.
+    private var holdArguments: [String] {
+        [holdFIFO.path]
+    }
+
+    /// A shell fragment that starts one long-lived child: a `cat` of
+    /// ``holdFIFO``, which blocks until a kill ends it.
+    private var holdShellCommand: String {
+        "\(Self.holdCommand) '\(holdFIFO.path)'"
+    }
+
+    /// Makes the FIFO of this test.
+    ///
+    /// - Throws: What `ShellCommandGate.init()` throws.
+    init() throws {
+        holdFIFO = try ShellCommandGate()
+    }
 
     /// The absolute path of the shell the tests that need a script spawn.
     private static let shellCommand = "/bin/sh"
@@ -63,10 +85,10 @@ struct StdioServerProcessTests {
     private static let absentCommand = "/nonexistent/binary-that-does-not-exist"
 
     /// A command that is not an absolute path, which the initializer refuses.
-    private static let relativeCommand = "sleep"
+    private static let relativeCommand = "cat"
 
     /// How many children the group-kill script forks: two backgrounded
-    /// `sleep`s.
+    /// `cat`s of ``holdFIFO``.
     private static let forkedChildCount = 2
 
     /// How many times the leak test makes a spawn fail.
@@ -158,15 +180,16 @@ struct StdioServerProcessTests {
         #expect(Self.sharedRegistry.registeredPids.isEmpty)
     }
 
-    /// A `StdioServerProcess` over `sleepCommand`, registered into
-    /// `sharedRegistry`.
+    /// A `StdioServerProcess` over ``holdCommand`` with ``holdArguments``,
+    /// registered into `sharedRegistry`: a child that lives until a kill
+    /// ends it.
     ///
     /// - Parameter name: The server name of the process.
     /// - Returns: The process, not yet spawned.
     /// - Throws: What `StdioServerProcess.init` throws.
-    private static func makeSleeper(named name: String) throws -> StdioServerProcess {
+    private func makeHeldChild(named name: String) throws -> StdioServerProcess {
         try StdioServerProcess(
-            command: sleepCommand, args: sleepArguments, name: name, registry: sharedRegistry)
+            command: Self.holdCommand, args: holdArguments, name: name, registry: Self.sharedRegistry)
     }
 
     /// Whether `pid` names no live process and no zombie — see
@@ -192,14 +215,14 @@ struct StdioServerProcessTests {
     @Test func initRejectsANonAbsoluteCommand() {
         #expect(throws: StdioServerProcess.StdioServerProcessError.self) {
             _ = try StdioServerProcess(
-                command: Self.relativeCommand, args: Self.sleepArguments, name: "relative-path-test",
+                command: Self.relativeCommand, args: holdArguments, name: "relative-path-test",
                 registry: Self.sharedRegistry)
         }
     }
 
     @Test func initAcceptsAnAbsoluteCommand() throws {
-        let stdio = try Self.makeSleeper(named: "absolute-path-test")
-        #expect(stdio.command == Self.sleepCommand)
+        let stdio = try makeHeldChild(named: "absolute-path-test")
+        #expect(stdio.command == Self.holdCommand)
         Self.confirmNoLeaks()
     }
 
@@ -207,7 +230,7 @@ struct StdioServerProcessTests {
 
     @Test("respawn vends a transport whose logger has the label of the library")
     func respawnVendsATransportWithTheLibraryLogger() async throws {
-        let stdio = try Self.makeSleeper(named: "logger-label-test")
+        let stdio = try makeHeldChild(named: "logger-label-test")
 
         let transport = try await stdio.respawn()
         let label = await transport.logger.label
@@ -315,7 +338,7 @@ struct StdioServerProcessTests {
     // MARK: - respawn() spawns in its own process group and registers the pid
 
     @Test func respawnSpawnsInItsOwnProcessGroupAndRegistersThePid() async throws {
-        let stdio = try Self.makeSleeper(named: "own-group-test")
+        let stdio = try makeHeldChild(named: "own-group-test")
         _ = try await stdio.respawn()
 
         guard let pid = stdio.currentPid else {
@@ -337,7 +360,7 @@ struct StdioServerProcessTests {
     /// reads the global registry and sweeps nothing.
     @Test func publicInitRegistersIntoTheGlobalRegistryWhileTheProcessRuns() async throws {
         let stdio = try StdioServerProcess(
-            command: Self.sleepCommand, args: Self.sleepArguments, name: "global-registry-test")
+            command: Self.holdCommand, args: holdArguments, name: "global-registry-test")
         _ = try await stdio.respawn()
 
         guard let pid = stdio.currentPid else {
@@ -474,7 +497,7 @@ struct StdioServerProcessTests {
     // MARK: - Explicit shutdown group-kills and reaps, asserted by pid
 
     @Test func shutdownGroupKillsAndReapsAssertedByPid() async throws {
-        let stdio = try Self.makeSleeper(named: "shutdown-test")
+        let stdio = try makeHeldChild(named: "shutdown-test")
         _ = try await stdio.respawn()
         guard let pid = stdio.currentPid else {
             Issue.record("expected respawn() to record a pid")
@@ -492,7 +515,7 @@ struct StdioServerProcessTests {
     // MARK: - respawn() tears down whatever it was fronting before spawning fresh
 
     @Test func respawnTerminatesAndReapsThePreviousProcessBeforeSpawningAFreshOne() async throws {
-        let stdio = try Self.makeSleeper(named: "respawn-test")
+        let stdio = try makeHeldChild(named: "respawn-test")
         _ = try await stdio.respawn()
         guard let firstPid = stdio.currentPid else {
             Issue.record("expected first respawn() to record a pid")
@@ -523,7 +546,7 @@ struct StdioServerProcessTests {
     /// overwrite the first pid in silence: that would leave a live child
     /// registered but unreachable by every teardown path of the type.
     @Test func concurrentRespawnCallsNeverOrphanTheLosingPid() async throws {
-        let stdio = try Self.makeSleeper(named: "concurrent-respawn-test")
+        let stdio = try makeHeldChild(named: "concurrent-respawn-test")
 
         async let first = stdio.respawn()
         async let second = stdio.respawn()
@@ -548,12 +571,19 @@ struct StdioServerProcessTests {
     /// when this package tears the server down — the reason the spawn goes
     /// into its own process group instead of a kill of the one known pid.
     ///
-    /// The script prints the pid of each backgrounded `sleep`, so the test
-    /// asserts by pid and not by a count of a process listing.
+    /// The script prints the pid of each backgrounded `cat` of ``holdFIFO``,
+    /// so the test asserts by pid and not by a count of a process listing.
+    ///
+    /// A killed grandchild is not a child of this process, thus this process
+    /// cannot reap it. The test waits on the exit event of each grandchild
+    /// (``ProcessExitWait/waitUntilGone(_:)``), and not on time.
     @Test func groupKillAlsoTerminatesAChildTheSpawnedProcessForkedItself() async throws {
         let stdio = try StdioServerProcess(
             command: Self.shellCommand,
-            args: [Self.shellScriptFlag, "sleep 60 & echo $!; sleep 60 & echo $!; wait"],
+            args: [
+                Self.shellScriptFlag,
+                "\(holdShellCommand) & echo $!; \(holdShellCommand) & echo $!; wait",
+            ],
             name: "group-kill-test",
             registry: Self.sharedRegistry
         )
@@ -573,11 +603,14 @@ struct StdioServerProcessTests {
 
         await stdio.shutdown()
 
-        // A killed grandchild is reaped by the system, not by this process,
-        // so its slot goes away a moment after the kill.
+        // A killed grandchild is reaped by the system, not by this process.
+        // The wait ends on the exit event of the kernel: the grandchild is
+        // gone, or it is a zombie that the system did not reap yet.
         for child in childPids {
-            let gone = await TestPoll.holds { Self.isGone(child) }
-            #expect(gone, "expected the forked child \(child) to die with its process group")
+            await ProcessExitWait.waitUntilGone(child)
+            #expect(
+                ProcessExitWait.hasExited(child),
+                "expected the forked child \(child) to die with its process group")
         }
         #expect(Self.isGone(pid))
         Self.confirmNoLeaks()
@@ -586,7 +619,7 @@ struct StdioServerProcessTests {
     // MARK: - Connection teardown (the vended transport's disconnect()) also group-kills and reaps
 
     @Test func disconnectingTheVendedTransportGroupKillsAndReapsTheProcess() async throws {
-        let stdio = try Self.makeSleeper(named: "connection-teardown-test")
+        let stdio = try makeHeldChild(named: "connection-teardown-test")
         let transport = try await stdio.respawn()
         guard let pid = stdio.currentPid else {
             Issue.record("expected respawn() to record a pid")
@@ -610,7 +643,7 @@ struct StdioServerProcessTests {
     /// would tear that child down. `dispose()` on the never-connected
     /// transport must release it.
     @Test func disposeTerminatesAndReapsANeverConnectedSpawn() async throws {
-        let stdio = try Self.makeSleeper(named: "dispose-test")
+        let stdio = try makeHeldChild(named: "dispose-test")
         let transport = try await stdio.respawn()
         guard let pid = stdio.currentPid else {
             Issue.record("expected respawn() to record a pid")
@@ -635,7 +668,7 @@ struct StdioServerProcessTests {
     /// on the STALE transport — whose own pid already lost that race — must
     /// be a no-op with respect to the fresher, live process.
     @Test func disposeNeverKillsAFresherConcurrentSpawnThatAlreadyWonTheRace() async throws {
-        let stdio = try Self.makeSleeper(named: "dispose-race-test")
+        let stdio = try makeHeldChild(named: "dispose-race-test")
 
         let staleTransport = try await stdio.respawn()
         guard let firstPid = stdio.currentPid else {
@@ -677,7 +710,7 @@ struct StdioServerProcessTests {
     /// with no explicit call from anyone: ARC runs the `deinit` of the shared
     /// process state.
     @Test func releasingEveryReferenceReapsTheProcessViaOwnerTeardown() async throws {
-        var stdio: StdioServerProcess? = try Self.makeSleeper(named: "owner-teardown-test")
+        var stdio: StdioServerProcess? = try makeHeldChild(named: "owner-teardown-test")
 
         // The value is unwrapped, spawned and read inside this helper, and the
         // vended transport is discarded there — nothing is bound in this
@@ -719,7 +752,10 @@ struct StdioServerProcessTests {
 
         let stdio = try StdioServerProcess(
             command: Self.shellCommand,
-            args: [Self.shellScriptFlag, "printf '%s|%s\\n' \"$\(overrideName)\" \"$HOME\"; sleep 60"],
+            args: [
+                Self.shellScriptFlag,
+                "printf '%s|%s\\n' \"$\(overrideName)\" \"$HOME\"; \(holdShellCommand)",
+            ],
             env: [StdioServerProcess.EnvVariable(name: overrideName, value: "child-value")],
             name: "env-augment-test",
             registry: Self.sharedRegistry

@@ -10,30 +10,21 @@ import os
 // the whole grep. While that is so, the kernel gives no new thread to a
 // constrained global dispatch queue at the same QoS. This fixture does the same
 // thing in a form that a test can stop.
+//
+// The fixture reads no clock. A child spins until the latch is released, and
+// it measures one slice of work by a count of latch reads, not by time.
 
 /// The value `CooperativePoolHogTool` returns when it stops.
 let cooperativePoolHogResult = "hog-result"
 
-/// The milliseconds one child of `CooperativePoolHogTool` spins before it
-/// yields.
+/// How many times one child of `CooperativePoolHogTool` reads its latch in
+/// one slice before it yields.
 ///
-/// Short, so that another task at the same priority gets a thread soon. That is
-/// also how the children of a real grep behave: each one is a short job.
-private let hogSliceMilliseconds = 5
-
-/// The time one child of `CooperativePoolHogTool` spins before it yields.
-private let hogSliceDuration: Duration = .milliseconds(hogSliceMilliseconds)
-
-/// The longest time, in seconds, that `CooperativePoolHogTool` keeps the CPUs
-/// busy.
-///
-/// A test releases the latch long before this. The ceiling stops the spin of a
-/// test that failed before it released the latch, so that no other test runs
-/// beside a busy CPU for the rest of the suite.
-private let hogCeilingSeconds = 10
-
-/// The longest time `CooperativePoolHogTool` keeps the CPUs busy.
-private let hogCeiling: Duration = .seconds(hogCeilingSeconds)
+/// Each read takes a lock, thus the slice is real CPU work that the compiler
+/// cannot remove. The count keeps a slice short, so that another task at the
+/// same priority gets a thread soon. That is also how the children of a real
+/// grep behave: each one is a short job.
+private let hogSliceLatchReads = 10_000
 
 /// A tool that keeps each thread of the cooperative pool busy until its latch
 /// is released.
@@ -43,8 +34,13 @@ private let hogCeiling: Duration = .seconds(hogCeilingSeconds)
 /// userInitiated. The priority is stated here so that the fixture does not
 /// depend on the thread that calls it.
 ///
+/// A child stops when the latch is released or when the call is cancelled.
+/// A test that fails before it releases the latch releases it in a `defer`,
+/// thus no spin outlives its test.
+///
 /// `final class … Sendable` with lock-guarded state, the same pattern as
-/// `GatedTool`: a test reads ``hasStarted`` while the call is in flight.
+/// `GatedTool`: a test waits for ``waitUntilStarted()`` and reads
+/// ``isSpinning`` while the call is in flight.
 final class CooperativePoolHogTool: Tool, Sendable {
     /// The `Tool` name this fixture installs under.
     ///
@@ -57,8 +53,8 @@ final class CooperativePoolHogTool: Tool, Sendable {
     /// The latch whose release stops every child.
     private let latch: ToolReleaseLatch
 
-    /// Whether a child of a call started to spin.
-    private let startedBox = OSAllocatedUnfairLock(initialState: false)
+    /// The gate that the first child opens when it starts to spin.
+    private let started = TestGate()
 
     /// The number of children that spin now.
     private let spinningChildren = OSAllocatedUnfairLock(initialState: 0)
@@ -72,23 +68,29 @@ final class CooperativePoolHogTool: Tool, Sendable {
 
     /// Whether a child of a call started to spin: the cooperative pool became
     /// busy.
-    var hasStarted: Bool { startedBox.withLock { $0 } }
+    var hasStarted: Bool { started.isOpen }
 
     /// Whether a child of a call spins now: the cooperative pool is still
-    /// busy. It becomes `false` when the latch is released, the ceiling
-    /// elapses, or the call is cancelled.
+    /// busy. It becomes `false` when the latch is released or the call is
+    /// cancelled.
     var isSpinning: Bool { spinningChildren.withLock { $0 > 0 } }
 
-    /// Keeps one busy child on each CPU until the latch is released, the
-    /// ceiling elapses, or the call is cancelled.
+    /// Waits until a child of a call started to spin.
+    ///
+    /// - Throws: `CancellationError` when the waiting task is cancelled first.
+    func waitUntilStarted() async throws {
+        try await started.wait()
+    }
+
+    /// Keeps one busy child on each CPU until the latch is released or the
+    /// call is cancelled.
     ///
     /// - Parameter arguments: unused — this tool takes none.
     /// - Returns: ``cooperativePoolHogResult``.
     func call(arguments: NoArguments) async throws -> String {
-        let deadline = ContinuousClock.now + hogCeiling
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<ProcessInfo.processInfo.activeProcessorCount {
-                group.addTask(priority: .high) { await self.spin(until: deadline) }
+                group.addTask(priority: .high) { await self.spin() }
             }
         }
         try Task.checkCancellation()
@@ -96,16 +98,18 @@ final class CooperativePoolHogTool: Tool, Sendable {
     }
 
     /// Spins one slice at a time, and yields between the slices, until the
-    /// latch is released, `deadline` is reached, or the task is cancelled.
+    /// latch is released or the task is cancelled.
     ///
-    /// - Parameter deadline: the instant the spin stops at the latest.
-    private func spin(until deadline: ContinuousClock.Instant) async {
+    /// A slice is ``hogSliceLatchReads`` reads of the latch. The yield is part
+    /// of the work, as in a real grep, and not a wait for time.
+    private func spin() async {
         spinningChildren.withLock { $0 += 1 }
         defer { spinningChildren.withLock { $0 -= 1 } }
-        startedBox.withLock { $0 = true }
-        while !latch.isReleased, ContinuousClock.now < deadline, !Task.isCancelled {
-            let sliceEnd = ContinuousClock.now + hogSliceDuration
-            while ContinuousClock.now < sliceEnd {}
+        started.open()
+        while !latch.isReleased, !Task.isCancelled {
+            for _ in 0..<hogSliceLatchReads where latch.isReleased {
+                break
+            }
             await Task.yield()
         }
     }

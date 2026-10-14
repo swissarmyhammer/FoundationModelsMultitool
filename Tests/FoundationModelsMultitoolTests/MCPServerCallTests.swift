@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import MCP
 import MCPTestServer
@@ -66,18 +67,10 @@ struct MCPServerCallTests {
     /// How many progress notifications the short progress tool sends.
     private static let progressSteps = 3
 
-    /// How long the short progress tool waits between notifications.
-    private static let progressStepDelay = Duration.milliseconds(5)
-
     /// The name of the tool whose call holds on the server until the test
     /// releases it, thus the call is still in flight when the test acts on
     /// it.
     private static let heldToolName = "held"
-
-    /// How long a test waits for the scripted server to record a
-    /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
-    /// not a speed check (card `^tm4x2hp`).
-    private static let notificationTimeout = TestPoll.deadline
 
     /// How many recorded notifications the cancel cases wait for.
     private static let oneNotification = 1
@@ -101,12 +94,17 @@ struct MCPServerCallTests {
     /// The name of the tool that never answers and ignores cancellation.
     private static let hangingToolName = "hangs"
 
-    /// The inner-call bound of the context case, in seconds — short, because
-    /// the test proves it bounds real time.
+    /// The inner-call bound of the context case, in seconds. The run clock of
+    /// the test is a `ManualRunClock`, and the test moves it by this bound.
+    /// Thus no real time passes, and the value is only a number.
     private static let innerCallBoundSeconds: TimeInterval = 0.05
 
+    /// How many sleepers the inner-call bound puts on the run clock: the one
+    /// timer of the mount.
+    private static let innerCallBoundSleepers = 1
+
     /// The inner-call mount of the context case: the run-to-completion mode
-    /// of `RunBinding.innerCallMount`, with a short engine clock of its own.
+    /// of `RunBinding.innerCallMount`, with an engine clock of its own.
     /// `RunBinding.innerCallMount` states no clock, because the outer
     /// `runCode` clock bounds an inner call. This test has no outer `runCode`,
     /// thus it injects this mount to put an engine clock over the MCP call.
@@ -186,7 +184,7 @@ struct MCPServerCallTests {
     /// - Parameter scripted: The server to register it on.
     private static func addProgressTool(to scripted: ScriptedServer) async {
         await scripted.addProgressReportingTool(
-            named: progressToolName, totalSteps: progressSteps, stepDelay: progressStepDelay)
+            named: progressToolName, totalSteps: progressSteps)
     }
 
     /// Runs one call of `server` under a bound ambient context, the way the
@@ -274,14 +272,13 @@ struct MCPServerCallTests {
         let callTask = Task {
             try await Self.call(server, tool: Self.heldToolName, under: context)
         }
-        try await TestPoll.waitUntil("the call reached the server") { held.hasArrived }
+        try await held.waitForArrival()
         callTask.cancel()
 
         await #expect(throws: CancellationError.self) {
             _ = try await callTask.value
         }
-        let recorded = await scripted.waitForRecordedNotifications(
-            count: Self.oneNotification, timeout: Self.notificationTimeout)
+        let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
         #expect(recorded.first?.method == CancelledNotification.name)
         await held.release()
     }
@@ -376,8 +373,7 @@ struct MCPServerCallTests {
 
         #expect(result.isError == true)
         #expect(clock.recordedSleeps == [Self.bareCallTimeout])
-        let recorded = await scripted.waitForRecordedNotifications(
-            count: Self.oneNotification, timeout: Self.notificationTimeout)
+        let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
         #expect(recorded.first?.method == CancelledNotification.name)
         await held.release()
     }
@@ -432,35 +428,51 @@ struct MCPServerCallTests {
     /// what bounds every call made under a context". An inner `tools.*` call
     /// goes through `RunBinding.invoke(_:arguments:journalOp:)`. In a real run
     /// the outer `runCode` clock is that engine clock. This test calls the
-    /// binding with no outer `runCode`, thus it injects a mount with a short
-    /// clock of its own (``shortInnerCallMount``). The server makes no
-    /// progress, so only that clock can end the call: it throws the timeout
-    /// error of the mount, and the MCP call itself ends with
-    /// `notifications/cancelled` on the wire and no entry left in flight.
+    /// binding with no outer `runCode`, thus it injects a mount with a clock
+    /// of its own (``shortInnerCallMount``). The server makes no progress, so
+    /// only that clock can end the call: it throws the timeout error of the
+    /// mount, and the MCP call itself ends with `notifications/cancelled` on
+    /// the wire and no entry left in flight.
+    ///
+    /// The timer of the mount waits on the run clock of the context. Here
+    /// that clock is a `ManualRunClock`, and the order is fixed: the test
+    /// waits until the timer sleeps on the clock, checks that the call did
+    /// not end, and then moves the clock by exactly the bound. No real time
+    /// passes.
     @Test("a call under a context to a server that makes no progress ends at the inner-call bound")
     func aCallUnderAContextEndsAtTheInnerCallBound() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.hangingTool])
+        let clock = ManualRunClock()
         let binding = RunBinding(
-            context: try await makeOuterRunContext(), innerMount: Self.shortInnerCallMount)
-        let start = ContinuousClock.now
+            context: try await makeStubRun(runClock: clock).context, innerMount: Self.shortInnerCallMount)
+        let sleepersBefore = clock.sleeperCount
+        let invokeEnded = TestGate()
 
-        let thrown = await MCPCallProbe.thrownError {
-            _ = try await binding.invoke(
-                Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+        let invoke = Task {
+            defer { invokeEnded.open() }
+            return await MCPCallProbe.thrownError {
+                _ = try await binding.invoke(
+                    Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+            }
         }
+        await clock.waitForSleepers(atLeast: sleepersBefore + Self.innerCallBoundSleepers)
+        #expect(!invokeEnded.isOpen)
+        clock.advance(by: .seconds(Self.innerCallBoundSeconds))
+        let thrown = await invoke.value
 
-        let elapsed = ContinuousClock.now - start
         // The hanging tool never answers, thus a call that ended at all was
         // ended by a bound, and the error names the bound that fired: the
-        // configured inner-call bound. No upper bound on the real time stands
-        // here (card `^tm4x2hp`: no test checks the speed of the machine).
+        // configured inner-call bound. The test replaces the old check of the
+        // real elapsed time (`elapsed >= bound`) with events: the call did
+        // not end while the timer slept, and it ended only after the run
+        // clock moved by exactly the bound. That is the same fact, and it
+        // reads no real time (card `^tm4x2hp`: no test checks the speed of
+        // the machine).
         #expect(
             thrown as? ToolMountError
                 == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
             "thrown was: \(String(describing: thrown))")
-        #expect(elapsed >= .seconds(Self.innerCallBoundSeconds), "elapsed was: \(elapsed)")
-        let recorded = await scripted.waitForRecordedNotifications(
-            count: Self.oneNotification, timeout: Self.notificationTimeout)
+        let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
         #expect(recorded.first?.method == CancelledNotification.name)
         #expect(await server.inFlightCalls.isEmpty)
     }

@@ -14,6 +14,41 @@
 
 import MCP
 
+/// The count of the done stages of the dynamic toolset scenario, and each
+/// caller of ``ScriptedServer/waitForDynamicToolsetStages(atLeast:)`` that
+/// waits.
+///
+/// A value type that the `ScriptedServer` actor holds, so the actor
+/// isolation guards it.
+struct DynamicToolsetStageWaiters {
+    /// How many stages are done.
+    private(set) var stagesDone = 0
+
+    /// Each wait, with the count of done stages that ends it.
+    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    /// Adds a wait that the done stage number `count` resumes.
+    ///
+    /// - Parameters:
+    ///   - count: The number of done stages that ends the wait.
+    ///   - continuation: The continuation to resume.
+    mutating func add(count: Int, continuation: CheckedContinuation<Void, Never>) {
+        waiters.append((count: count, continuation: continuation))
+    }
+
+    /// Counts one more done stage, and resumes each wait whose count the
+    /// done stages now reach.
+    mutating func recordStageDone() {
+        stagesDone += 1
+        let done = stagesDone
+        let reached = waiters.filter { $0.count <= done }
+        waiters.removeAll { $0.count <= done }
+        for waiter in reached {
+            waiter.continuation.resume()
+        }
+    }
+}
+
 extension ScriptedServer {
     /// The name of the tool the scenario re-schemas partway through —
     /// present from the start, still present at the end under the same name
@@ -142,7 +177,26 @@ extension ScriptedServer {
         // call that the actor takes in that gap must run the stage after it.
         dynamicToolsetStagesRun += 1
         await stage(self)
+        dynamicToolsetStageWaiters.recordStageDone()
         return true
+    }
+
+    /// Waits until at least `count` stages of the scenario are done. Returns
+    /// at once when they already are.
+    ///
+    /// A stage is done when its mutation and its
+    /// `notifications/tools/list_changed` ran — the moment
+    /// ``advanceDynamicToolsetScenario()`` returns for it. The end of that
+    /// stage resumes this wait, and no timer does. A test of
+    /// ``runDynamicToolsetStages(on:)`` waits here for the stages its clock
+    /// let run.
+    ///
+    /// - Parameter count: The number of done stages that ends the wait.
+    public func waitForDynamicToolsetStages(atLeast count: Int) async {
+        guard dynamicToolsetStageWaiters.stagesDone < count else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            dynamicToolsetStageWaiters.add(count: count, continuation: continuation)
+        }
     }
 
     /// Runs each stage of the scenario that did not run yet, one

@@ -407,9 +407,12 @@ struct SearchToolsToolTests {
     func discoveryNeverReturnsAPendingEnvelope() async throws {
         let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
         // Slow, not broken: the model answers a genuine selection in the end.
-        // The delay is what gives a background mount its chance to background
-        // the call, which is exactly what `searchTools` must not allow.
-        let slow = ScriptedLanguageModel(answers: [.delayed(#"{"ids":["getCities"]}"#, by: .milliseconds(300))])
+        // The test holds the model answer until the model call comes, and then
+        // releases it. The hold is what gives a background mount its chance to
+        // background the call, which is exactly what `searchTools` must not
+        // allow.
+        let hold = HeldCall()
+        let slow = ScriptedLanguageModel(answers: [.held(#"{"ids":["getCities"]}"#, until: hold)])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
@@ -428,7 +431,9 @@ struct SearchToolsToolTests {
                 as? any Tool<SearchToolsArguments, String>
         )
 
-        let feedback = try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+        async let called = mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+        try await hold.releaseOnArrival()
+        let feedback = try await called
 
         #expect(!PendingRunEnvelope.isRendered(text: feedback))
         #expect(feedback.contains("getCities"))

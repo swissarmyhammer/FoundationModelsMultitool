@@ -17,8 +17,7 @@ import Testing
 /// hit. Each other outcome fails. The test sends one search.
 @Suite(
     "Live: the keyless chain gives hits from a keyless provider",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct KeylessChainLiveTests {
     /// The names of the two keyless providers. The set is stated here, and

@@ -94,9 +94,6 @@ struct MCPToolTests {
     /// How many progress notifications the progress tool sends.
     private static let progressSteps = 3
 
-    /// How long the progress tool waits between notifications.
-    private static let progressStepDelay = Duration.milliseconds(5)
-
     /// A render budget far under the echoed text of the budget cases.
     private static let tightBudgetCharacters = 16
 
@@ -462,8 +459,7 @@ struct MCPToolTests {
     func callsWithNoAmbientContext() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await scripted.addProgressReportingTool(
-            named: Self.progressToolName, totalSteps: Self.progressSteps,
-            stepDelay: Self.progressStepDelay)
+            named: Self.progressToolName, totalSteps: Self.progressSteps)
         let entry = try MCPCatalogEntry(
             tool: MCP.Tool(
                 name: Self.progressToolName, description: nil, inputSchema: Self.anyObjectSchema))

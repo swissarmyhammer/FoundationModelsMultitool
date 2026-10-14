@@ -234,20 +234,21 @@ struct WebFetcherTests {
     /// end the load. The test waits for the request at the stub, then
     /// cancels, then reads the result. It reads no real time (card
     /// `^tm4x2hp`: no test checks the speed of the machine).
-    @Test(
-        "a cancel of the calling task ends a load whose server never answers, and stops the request",
-        .timeLimit(TestHangGuard.timeLimit))
+    @Test("a cancel of the calling task ends a load whose server never answers, and stops the request")
     func cancelEndsHangingLoad() async throws {
         let stub = WebStub(routes: [Self.pageURL: .hang])
         let fetcher = stub.makeFetcher()
         let request = try WebStub.request(to: Self.pageURL)
         let loading = Task { await fetcher.load(request) }
-        try await TestPoll.waitUntil("the stub got the request") { !stub.requests.isEmpty }
+        // The event of the stub: the request arrived.
+        try await stub.waitForRequest()
         loading.cancel()
         let result = await loading.value
         let failure = #expect(throws: WebFetchFailure.self) { try result.get() }
         #expect(failure?.correctiveMessage.hasPrefix("The request to \(Self.pageURL) failed: ") == true)
-        try await TestPoll.waitUntil("the session stopped the request") { stub.stoppedURLs == [Self.pageURL] }
+        // The event of the stub: the session stopped the load.
+        try await stub.waitForStop()
+        #expect(stub.stoppedURLs == [Self.pageURL])
     }
 
     // MARK: - Failures

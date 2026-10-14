@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
@@ -65,12 +66,12 @@ struct SuspendedContextTests {
         // The gated snippet cannot settle before the test releases its latch.
         // Thus a call that answered at all did not wait for the snippet, and
         // its run still stands in the background. The test reads no real time
-        // (card `^tm4x2hp`: no test checks the speed of the machine).
+        // (card `^tm4x2hp`: no test checks the speed of the machine). The
+        // order is fixed: the mount starts the run on the plane before it
+        // returns the pending envelope, thus one read finds the run.
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let token = try Self.completionToken(of: rendered)
-        try await TestPoll.waitUntil("the gated run stands in the background") {
-            await harness.run.context.backgroundRuns().contains { $0.completionToken == token }
-        }
+        #expect(await harness.run.context.backgroundRuns().contains { $0.completionToken == token })
         #expect(!harness.latch.isReleased)
 
         harness.latch.release()
@@ -89,7 +90,12 @@ struct SuspendedContextTests {
             arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
         let token = try Self.completionToken(of: rendered)
-        try await Task.sleep(nanoseconds: Self.aliveWindowNanoseconds)
+        // The run plane waits on the manual clock of the harness: the timeout
+        // of the run is the one wait on it. The clock moves past the alive
+        // window only after that timer waits, in a fixed order. A timer that
+        // ends inside the window ends here, and no real time passes.
+        await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers)
+        harness.clock.advance(by: Self.aliveWindow)
 
         // Alive: the mailbox still holds the background run, and the promise
         // the snippet is awaiting has not been torn down under it.
@@ -122,7 +128,7 @@ struct SuspendedContextTests {
         // true statement about the product fail whenever the machine was
         // loaded. The latch is still closed here, so the call starting at all
         // is what the assertion was always after.
-        try await TestPoll.waitUntil("the gated call started") { harness.gated.hasStarted }
+        try await harness.gated.waitUntilStarted()
         #expect(!harness.gated.wasCancelled)
 
         let token = try Self.completionToken(of: rendered)
@@ -159,7 +165,7 @@ struct SuspendedContextTests {
         // that lands before the gated call starts leaves nothing to unwind,
         // so `wasCancelled` would never be written. Wait for the call to
         // start, then cancel.
-        try await TestPoll.waitUntil("the gated call started") { harness.gated.hasStarted }
+        try await harness.gated.waitUntilStarted()
 
         // A second snippet, in the same session and through the same mounted
         // tool, cancels the first through the sandbox's own `cancel()` global.
@@ -184,10 +190,9 @@ struct SuspendedContextTests {
         // The pending promise's own work was torn down with the context —
         // nothing released the gate. `wasCancelled` is written by the tool's
         // own task as it unwinds, and the terminal event above can be observed
-        // before that write lands, so wait for it the way
-        // ``TestPoll.waitUntil(_:before:every:_:)`` exists to — sampling it here is a
-        // race, not a check.
-        try await TestPoll.waitUntil("the gated call unwound") { harness.gated.wasCancelled }
+        // before that write lands, so wait for that event — sampling it here
+        // is a race, not a check.
+        try await harness.gated.waitUntilCancelled()
         #expect(!harness.latch.isReleased)
         let backgrounded = await harness.run.context.backgroundRuns()
         #expect(backgrounded.isEmpty)
@@ -195,11 +200,17 @@ struct SuspendedContextTests {
 
     // MARK: - Fixtures
 
-    /// How long after its call returned a suspended run must still be alive.
+    /// How far the run clock moves after the call returned, while the
+    /// suspended run must still be alive.
     ///
     /// Long enough that a watchdog armed at the moment the call returned would
-    /// have fired, and short enough that the suite stays fast.
-    private static let aliveWindowNanoseconds: UInt64 = 600_000_000
+    /// have fired. The clock is a `ManualRunClock`, thus no real time passes.
+    private static let aliveWindow: Duration = .milliseconds(600)
+
+    /// How many waits the run clock holds while the gated run is in the
+    /// background: the timeout of the run (`executionTimeLimit`). The settle
+    /// period of the harness is `0`, thus it adds no wait.
+    private static let runTimeoutSleepers = 1
 
     /// The snippet every suspended-context test runs.
     ///
@@ -237,6 +248,10 @@ struct SuspendedContextTests {
 
         /// The sink each mounted run posts to, unstamped.
         let sink: RecordingEventSink
+
+        /// The run clock of the session: each timer of a run waits on it, and
+        /// it moves only when a test advances it.
+        let clock: ManualRunClock
     }
 
     /// A registry exposing one gated tool as `tools.gated`.
@@ -271,7 +286,8 @@ struct SuspendedContextTests {
             registry: try Self.registry(exposing: gated),
             configuration: configuration
         )
-        let run = try await makeStubRun()
+        let clock = ManualRunClock()
+        let run = try await makeStubRun(runClock: clock)
         // A caller-supplied sink, so a terminal carries the run's OWN token
         // rather than the mounting run's.
         let sink = RecordingEventSink()
@@ -281,7 +297,8 @@ struct SuspendedContextTests {
             latch: latch,
             mounted: mounted,
             run: run,
-            sink: sink
+            sink: sink,
+            clock: clock
         )
     }
 

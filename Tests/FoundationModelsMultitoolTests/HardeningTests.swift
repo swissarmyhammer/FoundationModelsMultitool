@@ -48,9 +48,8 @@ struct HardeningTests {
     ///
     /// Thus no clock can end the run while the test runs. The only event that
     /// can end the run is the cancellation. A cancellation that does not
-    /// reach the run makes the test hang, and ``TestHangGuard/timeLimit``
-    /// then fails it. Thus the tests read no clock (card `^3np5yzj`: no test
-    /// checks the speed of the machine).
+    /// reach the run makes the test hang. Thus the tests read no clock (card
+    /// `^3np5yzj`: no test checks the speed of the machine).
     ///
     /// - Parameter registry: The registry of the tool.
     /// - Returns: A `runCode` tool that only a cancellation can stop.
@@ -58,53 +57,71 @@ struct HardeningTests {
         MultiTool(registry: registry, interpreter: JSCInterpreter())
     }
 
-    /// How long the slow tool of the pending-promise test sleeps: one day, in
-    /// nanoseconds.
+    /// The snippet of the infinite-loop tests: it reports that it started,
+    /// and then spins.
     ///
-    /// The tool cannot answer while the test runs, thus a cancellation that
-    /// does not reach its pending call makes the test hang, and the hang guard
-    /// fails it. A tool that answers by itself would let `MultiTool.call`
-    /// throw `CancellationError` from its own check after the run, whether or
-    /// not the cancellation reached the pending call.
-    private static let unreachedToolDelayNanoseconds: UInt64 = 86_400_000_000_000
+    /// The report is a `tools.*` call that the snippet does not await, thus
+    /// the snippet goes into the loop at once, and the call reports from its
+    /// own task while the loop spins. The test cancels at that event, and
+    /// never after a real delay (card `^3np5yzj`: no test checks the speed of
+    /// the machine).
+    private static let reportingInfiniteLoop = "tools.\(startedToolName)(); while (true) {}"
 
-    @Test(
-        "cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// The `tools.*` name of the tool that ``reportingInfiniteLoop`` calls.
+    private static let startedToolName = "started"
+
+    /// A `runCode` tool over one ``WindowRecordingTool`` named
+    /// ``startedToolName``, whose `arrival` gate reports that the snippet
+    /// started.
+    ///
+    /// The hold of the tool is never released, thus the call never completes
+    /// by itself, and only the cancellation can end the run.
+    ///
+    /// - Returns: The tool, and the tool whose call reports the start.
+    /// - Throws: When the registry does not build.
+    private static func makeReportingMultiTool() throws -> (multiTool: MultiTool, started: WindowRecordingTool) {
+        let started = WindowRecordingTool(name: startedToolName)
+        let registry = try MultiTool.Builder().addTool(started).buildRegistry()
+        return (makeMultiTool(registry: registry), started)
+    }
+
+    @Test("cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError")
     func cancellationTerminatesInfiniteLoopSnippet() async throws {
         // The sandbox has no clock: if cancellation did not reach the loop,
-        // the test would hang until its hang guard fails it.
-        let multiTool = Self.makeMultiTool(registry: Self.emptyRegistry)
+        // the test would hang.
+        let (multiTool, started) = try Self.makeReportingMultiTool()
 
         let task = Task {
-            try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
+            try await multiTool.call(arguments: RunCodeArguments(code: Self.reportingInfiniteLoop))
         }
-        // Let the loop actually start spinning before cancelling.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // The event: the snippet started, and the loop spins.
+        try await started.hold.arrival.wait()
         task.cancel()
 
         await Self.expectCancellationError { _ = try await task.value }
     }
 
-    @Test(
-        "cancelling the task running MultiTool.call while it waits on a pending tools.* promise still throws CancellationError",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// The slow tool holds its call until the test releases it, and the test
+    /// never releases it. Thus a cancellation that does not reach the pending
+    /// call makes the test hang. A tool that answers by itself would let
+    /// `MultiTool.call` throw `CancellationError` from its own check after the
+    /// run, whether or not the cancellation reached the pending call.
+    @Test("cancelling the task running MultiTool.call while it waits on a pending tools.* promise still throws CancellationError")
     func cancellationCancelsWhileAwaitingAPendingToolCall() async throws {
         // Regression for the async host-function bridge (eventplan.md "Async
         // JavaScript"): unlike `while (true) {}` above, this snippet spends
         // its time waiting on a pending `tools.*` call, with no job of its
         // run executing JS — a different code path M10's cancellation
         // guarantee must also reach.
-        let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: Self.unreachedToolDelayNanoseconds)
+        let slowTool = WindowRecordingTool(name: "slow")
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
         let multiTool = Self.makeMultiTool(registry: registry)
 
         let task = Task {
             try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();"))
         }
-        // Let the snippet actually start awaiting the pending call before
-        // cancelling.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // The event: the pending call started, so the snippet awaits it.
+        try await slowTool.hold.arrival.wait()
         task.cancel()
 
         await Self.expectCancellationError { _ = try await task.value }
@@ -112,23 +129,20 @@ struct HardeningTests {
 
     /// No run has a clock, thus only its cancellation can end it,
     /// and a busy machine cannot turn a cancelled run into a timed-out one. A
-    /// cancellation that does not reach its run makes the test hang, and the
-    /// hang guard fails it (card `^3np5yzj`).
-    @Test(
-        "repeated concurrent cancellations across many MultiTool.call invocations all complete cleanly, with no deadlock and no hung interpreter thread",
-        .timeLimit(TestHangGuard.timeLimit)
-    )
+    /// cancellation that does not reach its run makes the test hang (card
+    /// `^3np5yzj`). Each cancel comes at the start event of its snippet.
+    @Test("repeated concurrent cancellations across many MultiTool.call invocations all complete cleanly, with no deadlock and no hung interpreter thread")
     func cancellationStressTestNoDeadlock() async throws {
         let iterations = 40
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<iterations {
                 group.addTask {
-                    let multiTool = Self.makeMultiTool(registry: Self.emptyRegistry)
+                    let (multiTool, started) = try Self.makeReportingMultiTool()
                     let task = Task {
-                        try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
+                        try await multiTool.call(arguments: RunCodeArguments(code: Self.reportingInfiniteLoop))
                     }
-                    try await Task.sleep(nanoseconds: 20_000_000)
+                    try await started.hold.arrival.wait()
                     task.cancel()
                     await Self.expectCancellationError { _ = try await task.value }
                 }

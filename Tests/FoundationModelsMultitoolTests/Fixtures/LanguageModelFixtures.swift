@@ -31,8 +31,9 @@ enum ScriptedAnswer: Sendable {
     /// Gives this text, for example a `Selection` as JSON.
     case text(String)
 
-    /// Waits for the duration, and then gives the text.
-    case delayed(String, by: Duration)
+    /// Opens the arrival gate of the hold when the call comes, waits until the
+    /// hold is released, and then gives the text.
+    case held(String, until: HeldCall)
 
     /// Throws the error.
     case failure(any Error & Sendable)
@@ -101,8 +102,8 @@ final class ScriptedLanguageModelScript: Sendable {
         switch answerForCall(call, index) {
         case .text(let text):
             return text
-        case .delayed(let text, let delay):
-            try await Task.sleep(for: delay)
+        case .held(let text, let hold):
+            try await hold.pass()
             return text
         case .failure(let error):
             throw error
@@ -131,7 +132,7 @@ struct ScriptedLanguageModel: LanguageModel {
     }
 
     /// Makes a model that gives `texts`, in call order: the common case of a
-    /// script with no failure and no delay.
+    /// script with no failure and no hold.
     ///
     /// - Parameter texts: The text of each answer, in call order.
     init(_ texts: [String]) {

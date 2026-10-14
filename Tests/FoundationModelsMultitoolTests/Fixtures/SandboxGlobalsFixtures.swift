@@ -79,13 +79,14 @@ struct ScriptedRun: Sendable {
 /// engine's own canceler reports it; this names the value a test expects.
 let scriptedRunCancelOutcome: OperationOutcome = .cancelled
 
-/// How long a fixture waits for a mailbox to record a settlement before
-/// giving up: ``TestPoll/deadline``, in seconds.
+/// The deadline a fixture gives `ToolContext.wait(completionToken:seconds:)`
+/// when it waits for a mailbox to record a settlement: `nil`, no deadline.
 ///
 /// This is a synchronization point, not a timing assertion — the wait
-/// resolves the instant the mailbox records the terminal event. The bound is
-/// a hang guard and not a speed check (card `^tm4x2hp`).
-let scriptedRunSettlementSeconds = Double(TestPoll.deadline.components.seconds)
+/// resolves the instant the mailbox records the terminal event. No clock ends
+/// it (card `^tm4x2hp`: no test checks the speed of the machine). A run that
+/// never settles makes the test hang, and that hang is the failure.
+let scriptedRunSettlementSeconds: Double? = nil
 
 /// What a scripted run could not do.
 enum ScriptedRunFailure: Error, CustomStringConvertible {
@@ -93,8 +94,8 @@ enum ScriptedRunFailure: Error, CustomStringConvertible {
     /// never went to the background — the text it returned instead.
     case didNotBackground(String)
 
-    /// The run's progress detail never reached the run's status row within
-    /// ``scriptedRunSettlementSeconds`` — the detail that was awaited.
+    /// The run posted its progress detail, but the run's status row did not
+    /// show it — the detail that was awaited.
     case progressNeverArrived(String)
 
     var description: String {
@@ -132,6 +133,9 @@ final class GatedScriptedTool: Tool, Sendable {
     /// The gate the fixture opens once the run is in the background.
     private let backgrounded: SettlementGate
 
+    /// The gate the call opens once its progress post returned.
+    private let progressPosted: SettlementGate
+
     /// What the call returns once the gate opens; the terminal event's
     /// detail. Also the reason it throws, when `fails` is set.
     private let detail: String
@@ -148,6 +152,8 @@ final class GatedScriptedTool: Tool, Sendable {
     ///   - name: the tool's name, which the engine also stamps as the run's op.
     ///   - gate: the gate to block on.
     ///   - backgrounded: the gate that reports the run is in the background.
+    ///   - progressPosted: the gate the call opens once its progress post
+    ///     returned.
     ///   - detail: what to return once the gate opens.
     ///   - progress: the progress detail to post once backgrounded, or `nil`.
     ///   - fails: whether to throw once the gate opens rather than return.
@@ -155,6 +161,7 @@ final class GatedScriptedTool: Tool, Sendable {
         name: String,
         gate: SettlementGate,
         backgrounded: SettlementGate,
+        progressPosted: SettlementGate,
         detail: String,
         progress: String?,
         fails: Bool
@@ -162,6 +169,7 @@ final class GatedScriptedTool: Tool, Sendable {
         self.name = name
         self.gate = gate
         self.backgrounded = backgrounded
+        self.progressPosted = progressPosted
         self.detail = detail
         self.progress = progress
         self.fails = fails
@@ -178,7 +186,12 @@ final class GatedScriptedTool: Tool, Sendable {
             // states the order at the fixture too, and the tests that read
             // `latestProgress` do not depend on that internal step.
             await backgrounded.wait()
+            // The run records the detail on its status row before this post
+            // returns (`ToolRun.post(event:)` awaits
+            // `RunPlane.updateProgress`). Thus the gate opens after the row
+            // shows the detail, in a fixed order.
             await ToolContext.current?.progress(progress)
+            await progressPosted.open()
         }
         await gate.wait()
         if fails { throw ScriptedToolFailure(description: detail) }
@@ -197,8 +210,14 @@ final class GatedScriptedTool: Tool, Sendable {
 /// The run keeps going — and so stays visible to `status()` — until
 /// ``settle(_:on:)`` opens its gate.
 ///
+/// The call waits for the settle period of the session before it answers
+/// with the pending envelope. That period waits on `clock`, and this moves
+/// `clock` past it after its timer waits
+/// (``callPastSettlePeriod(on:grace:timers:_:)``). Thus no real time passes.
+///
 /// - Parameters:
 ///   - context: the session context to start the run on.
+///   - clock: the run clock of the session of `context`.
 ///   - tool: the tool's name that owns the run; also the run's op.
 ///   - detail: what the call returns once it finishes — the detail a finished
 ///     run reports. Also the reason it throws when `failing`.
@@ -213,6 +232,7 @@ final class GatedScriptedTool: Tool, Sendable {
 ///   background, or when a requested progress detail never arrived.
 func startScriptedRun(
     on context: ToolContext,
+    clock: ManualRunClock,
     tool: String = "shell",
     detail: String = "scripted-terminal-detail",
     progress: String? = nil,
@@ -220,21 +240,30 @@ func startScriptedRun(
 ) async throws -> ScriptedRun {
     let gate = SettlementGate()
     let backgrounded = SettlementGate()
+    let progressPosted = SettlementGate()
     let engine = context.mount(
         GatedScriptedTool(
             name: tool,
             gate: gate,
             backgrounded: backgrounded,
+            progressPosted: progressPosted,
             detail: detail,
             progress: progress,
             fails: failing
         ),
         // The scripted tool declares no mount of its own, so the site puts it
-        // in the background: the call answers the envelope at once, and the
-        // body goes on behind it under no clock.
+        // in the background: the call answers the envelope when the settle
+        // period of the session ends, and the body goes on behind it under no
+        // timeout.
         as: ToolMount(mode: .background, timeout: nil)
     )
-    let rendered = try await engine.call(arguments: NoArguments())
+    // The gate holds the body, thus the call answers only when the clock
+    // moves past the settle period.
+    let rendered = try await callPastSettlePeriod(
+        on: clock, grace: context.inlineSettleGrace, timers: settlePeriodTimers
+    ) {
+        try await engine.call(arguments: NoArguments())
+    }
     guard PendingRunEnvelope.isRendered(text: rendered) else {
         throw ScriptedRunFailure.didNotBackground(rendered)
     }
@@ -245,31 +274,30 @@ func startScriptedRun(
         // The envelope is proof the run is in the background, so the call may
         // post now.
         await backgrounded.open()
-        try await awaitProgress(progress, of: completionToken, on: context)
+        await progressPosted.wait()
+        try await expectProgress(progress, of: completionToken, on: context)
     }
     return ScriptedRun(completionToken: completionToken, tool: tool, op: tool, gate: gate)
 }
 
-/// Returns once the run's status row reports `detail` as its latest progress.
+/// Checks one time that the run's status row reports `detail` as its latest
+/// progress.
 ///
-/// A progress post travels tool -> sink -> status row, so it lands shortly
-/// after the call that made it. This is the synchronization point that closes
-/// that gap; it is not a timing assertion, and it resolves the instant the
-/// detail is recorded.
+/// The caller calls this after the post of the tool returned. The run records
+/// the detail on the status row before that post returns, thus one read is
+/// enough, and nothing waits on a clock or polls.
 ///
 /// - Parameters:
-///   - detail: the progress detail to wait for.
+///   - detail: the progress detail to find.
 ///   - completionToken: the run that posted it.
 ///   - context: the session context the run is registered on.
-/// - Throws: ``ScriptedRunFailure/progressNeverArrived(_:)`` if it never lands.
-private func awaitProgress(
+/// - Throws: ``ScriptedRunFailure/progressNeverArrived(_:)`` when the row does
+///   not show it.
+private func expectProgress(
     _ detail: String, of completionToken: String, on context: ToolContext
 ) async throws {
-    let arrived = await TestPoll.holds {
-        let row = await context.backgroundRuns().first { $0.completionToken == completionToken }
-        return row?.latestProgressDetail == detail
-    }
-    guard arrived else {
+    let row = await context.backgroundRuns().first { $0.completionToken == completionToken }
+    guard row?.latestProgressDetail == detail else {
         throw ScriptedRunFailure.progressNeverArrived(detail)
     }
 }
@@ -300,14 +328,86 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 /// accept and the snippet stays suspended, so an `.acceptedAwaitingCompletion`
 /// delivery is followed by `complete(elicitationId:)`, exactly as a real
 /// host's out-of-band flow would.
-actor ScriptedElicitationSink {
-    /// The run whose journal is watched and whose session answers.
-    private let run: StubRun
+///
+/// The watch waits on the recorder of the run
+/// (``CollectingTranscriptRecorder/waitUntil(_:)``): it wakes when the journal
+/// gets an elicitation that it did not answer yet. It reads no clock and does
+/// not poll. A test can drop this answerer at once: the watch task holds the
+/// log and the run, not the answerer, and it keeps answering for the life of
+/// the run.
+final class ScriptedElicitationSink: Sendable {
+    /// What the watch observed and what the session reported.
+    private let log: ElicitationAnswerLog
 
-    /// The answer this gives to every elicitation it observes.
-    private let response: ElicitationResponse
+    /// Makes an answerer and starts watching at once.
+    ///
+    /// - Parameters:
+    ///   - run: the run to watch and answer through.
+    ///   - response: the answer to give.
+    init(run: StubRun, answering response: ElicitationResponse) {
+        let log = ElicitationAnswerLog()
+        self.log = log
+        Task { await Self.watch(run, answering: response, into: log) }
+    }
 
     /// Every elicitation request observed, in arrival order.
+    var requests: [ElicitationRequest] {
+        get async { await log.requests }
+    }
+
+    /// What the session reported for each delivered answer, in delivery order.
+    var deliveries: [ElicitationAnswerDelivery] {
+        get async { await log.deliveries }
+    }
+
+    /// What the session reported for each URL-mode completion.
+    var completions: [ElicitationCompletionDelivery] {
+        get async { await log.completions }
+    }
+
+    /// The first observed request, or `nil` when none arrived.
+    var observedRequest: ElicitationRequest? {
+        get async { await log.requests.first }
+    }
+
+    /// Answers each elicitation of the journal of `run` exactly one time.
+    ///
+    /// Each turn waits until the journal holds an elicitation that the log
+    /// did not claim, and then answers each new one. `SessionEvent` carries no
+    /// elicitation case, and the journal is where a drained elicitation lands.
+    ///
+    /// - Parameters:
+    ///   - run: the run to watch and answer through.
+    ///   - response: the answer to give.
+    ///   - log: where the watch records what it observed.
+    private static func watch(
+        _ run: StubRun, answering response: ElicitationResponse, into log: ElicitationAnswerLog
+    ) async {
+        while !Task.isCancelled {
+            let answered = await log.answered
+            let arrived = await run.recorder.waitUntil { events in
+                events.contains { event in
+                    guard event.kind == .elicitation, let request = event.elicitation else { return false }
+                    return !answered.contains(request.elicitationId.description)
+                }
+            }
+            guard arrived else { return }
+            for event in await recordedOperationEvents(of: run, ofKind: .elicitation) {
+                guard let request = event.elicitation, await log.claim(request) else { continue }
+                let id = request.elicitationId.description
+                let delivery = await run.session.respond(elicitationId: id, response: response)
+                await log.record(delivery: delivery)
+                guard delivery == .acceptedAwaitingCompletion else { continue }
+                await log.record(completion: await run.session.complete(elicitationId: id))
+            }
+        }
+    }
+}
+
+/// What a ``ScriptedElicitationSink`` observed, and what the session reported
+/// for each answer.
+actor ElicitationAnswerLog {
+    /// Every elicitation request claimed, in arrival order.
     private(set) var requests: [ElicitationRequest] = []
 
     /// What the session reported for each delivered answer, in delivery order.
@@ -316,46 +416,30 @@ actor ScriptedElicitationSink {
     /// What the session reported for each URL-mode completion.
     private(set) var completions: [ElicitationCompletionDelivery] = []
 
-    /// The elicitation ids already answered, so the watch answers each one time.
-    private var answered: Set<String> = []
+    /// The elicitation ids already claimed, so the watch answers each one time.
+    private(set) var answered: Set<String> = []
 
-    /// Makes an answerer and starts watching at once.
+    /// Claims `request` for one answer.
     ///
-    /// - Parameters:
-    ///   - run: the run to watch and answer through.
-    ///   - response: the answer to give.
-    init(run: StubRun, answering response: ElicitationResponse) {
-        self.run = run
-        self.response = response
-        Task { await self.watch() }
+    /// - Parameter request: the observed request.
+    /// - Returns: `true` the first time, `false` when it was claimed before.
+    func claim(_ request: ElicitationRequest) -> Bool {
+        guard answered.insert(request.elicitationId.description).inserted else { return false }
+        requests.append(request)
+        return true
     }
 
-    /// The first observed request, or `nil` when none arrived.
-    var observedRequest: ElicitationRequest? { requests.first }
-
-    /// Polls the journal and answers each elicitation exactly one time.
+    /// Records what the session reported for one answer.
     ///
-    /// A poll rather than a stream: `SessionEvent` carries no elicitation case,
-    /// and the journal is where a drained elicitation lands.
-    private func watch() async {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(scriptedRunSettlementSeconds))
-        while ContinuousClock.now < deadline {
-            for event in await recordedOperationEvents(of: run, ofKind: .elicitation) {
-                guard let request = event.elicitation else { continue }
-                let id = request.elicitationId.description
-                guard !answered.contains(id) else { continue }
-                answered.insert(id)
-                requests.append(request)
-                let delivery = await run.session.respond(
-                    elicitationId: id, response: response)
-                deliveries.append(delivery)
-                guard delivery == .acceptedAwaitingCompletion else { continue }
-                completions.append(await run.session.complete(elicitationId: id))
-            }
-            // A sleep between two reads, and not a yield: the watch lasts as
-            // long as the hang guard ``scriptedRunSettlementSeconds``, and a
-            // loop of yields would hold a core busy for all that time.
-            try? await Task.sleep(for: TestPoll.interval)
-        }
+    /// - Parameter delivery: the report of the session.
+    func record(delivery: ElicitationAnswerDelivery) {
+        deliveries.append(delivery)
+    }
+
+    /// Records what the session reported for one URL-mode completion.
+    ///
+    /// - Parameter completion: the report of the session.
+    func record(completion: ElicitationCompletionDelivery) {
+        completions.append(completion)
     }
 }

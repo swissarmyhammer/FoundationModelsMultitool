@@ -81,11 +81,35 @@ struct LiveCatalogTests {
         /// Every snapshot recorded so far.
         private(set) var snapshots: [MCPToolCatalog] = []
 
-        /// Appends one snapshot.
+        /// Each caller of ``waitForSnapshots(atLeast:)`` that waits, with the
+        /// count of snapshots that ends its wait.
+        private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+        /// Appends one snapshot, and resumes each waiter whose count the
+        /// recorder now holds.
         ///
         /// - Parameter snapshot: The snapshot to record.
         func append(_ snapshot: MCPToolCatalog) {
             snapshots.append(snapshot)
+            let reached = waiters.filter { $0.count <= snapshots.count }
+            waiters.removeAll { $0.count <= snapshots.count }
+            for waiter in reached {
+                waiter.continuation.resume()
+            }
+        }
+
+        /// Waits until the recorder holds at least `count` snapshots. The
+        /// wait ends on the append of the snapshot, not on a timer.
+        ///
+        /// - Parameter count: The minimum number of snapshots to wait for.
+        /// - Returns: The snapshots when the recorder holds `count` of them.
+        func waitForSnapshots(atLeast count: Int) async -> [MCPToolCatalog] {
+            if snapshots.count < count {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    waiters.append((count: count, continuation: continuation))
+                }
+            }
+            return snapshots
         }
     }
 
@@ -97,15 +121,13 @@ struct LiveCatalogTests {
         /// The task iterating `catalogUpdates`; cancelled when the test ends.
         let task: Task<Void, Never>
 
-        /// Polls until at least `count` snapshots were recorded, or the poll
-        /// deadline passes.
+        /// Waits until at least `count` snapshots were recorded. The wait
+        /// ends on the event of the recorder, not on a deadline.
         ///
         /// - Parameter count: The minimum number of snapshots to wait for.
-        /// - Returns: The snapshots at the moment `count` was reached, or at
-        ///   the deadline, whichever came first.
+        /// - Returns: The snapshots at the moment `count` was reached.
         func snapshots(atLeast count: Int) async -> [MCPToolCatalog] {
-            _ = await TestPoll.holds { await recorder.snapshots.count >= count }
-            return await recorder.snapshots
+            await recorder.waitForSnapshots(atLeast: count)
         }
     }
 
@@ -165,16 +187,15 @@ struct LiveCatalogTests {
     ///   - scripted: The server that sends the burst.
     ///   - server: The server whose window coalesces the burst.
     ///   - windowClock: The clock `server` sleeps its window on.
-    /// - Throws: What the burst throws, and `TestPoll.ConditionNeverHeld`
-    ///   when the server never counts the whole burst.
+    /// - Throws: What the burst throws.
     private static func emitBurstInOneWindow(
         from scripted: ScriptedServer, to server: MCPServer, windowClock: GatedClock
     ) async throws {
         let generationBefore = await server.toolListChangedGeneration
         try await scripted.emitToolListChangedBurst(count: burstCount)
-        try await TestPoll.waitUntil("the server counted the whole burst") {
-            await server.toolListChangedGeneration == generationBefore + burstCount
-        }
+        // The server resumes this wait when it counts the last notification
+        // of the burst.
+        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + burstCount)
         windowClock.open()
     }
 

@@ -38,8 +38,7 @@ import Testing
 /// names. That count measures the model, thus no test asserts it.
 @Suite(
     "Gated git scenarios: a real model reads a repository through tools.git in runCode",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct GitScenarioTests {
 

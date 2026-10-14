@@ -19,6 +19,11 @@
 // its handlers and a strong capture would cycle. The source's references to
 // `Examples/` targets are gone: this package ships no examples.
 //
+// **No time.** No scripted scenario sleeps or waits on a clock. A progress
+// tool sends its notifications back to back, a scheduled mutation runs when
+// its trigger returns, and a test that waits for a recorded notification
+// waits on an event that the recording sends.
+//
 // **The types are `public`.** A product exports its surface, and the two
 // consumers of this one — the unit test target and the nested integration
 // package — are other modules. Every public item carries a doc comment.
@@ -41,15 +46,6 @@ public actor ScriptedServer {
     /// The error message a handler throws when its weak `self` capture is
     /// gone — one string, so every such guard reports the same words.
     private static let deallocatedErrorMessage = "ScriptedServer deallocated"
-
-    /// How many milliseconds ``waitForRecordedNotifications(count:timeout:)``
-    /// waits between two reads of ``recordedNotifications``.
-    private static let recordedNotificationPollMilliseconds = 5
-
-    /// How often ``waitForRecordedNotifications(count:timeout:)`` re-reads
-    /// ``recordedNotifications`` while it polls.
-    private static let recordedNotificationPollInterval = Duration.milliseconds(
-        recordedNotificationPollMilliseconds)
 
     /// Runs `body` with the resolved instance of a `[weak self]` capture, or
     /// throws ``deallocatedErrorMessage`` when the server is gone.
@@ -76,6 +72,16 @@ public actor ScriptedServer {
         return try await body(weakSelf)
     }
 
+    /// One wait of ``waitForRecordedNotifications(count:)`` that did not end.
+    private struct NotificationWaiter {
+        /// The count of recorded notifications that ends the wait.
+        let count: Int
+
+        /// The continuation that ends the wait with the recorded
+        /// notifications.
+        let continuation: CheckedContinuation<[RecordedNotification], Never>
+    }
+
     /// The wrapped swift-sdk server that speaks the MCP protocol.
     private let server: MCP.Server
 
@@ -95,6 +101,18 @@ public actor ScriptedServer {
     /// See ``RecordedNotification`` for what is captured.
     public private(set) var recordedNotifications: [RecordedNotification] = []
 
+    /// Each wait of ``waitForRecordedNotifications(count:)`` that did not
+    /// end, by id. ``recordNotification(method:requestId:reason:)`` resumes
+    /// each wait whose count it reaches.
+    private var notificationWaiters: [Int: NotificationWaiter] = [:]
+
+    /// The id of each wait for recorded notifications whose task was
+    /// cancelled before the wait was stored.
+    private var cancelledNotificationWaits: Set<Int> = []
+
+    /// The id that the next wait for recorded notifications gets.
+    private var nextNotificationWaitID = 0
+
     /// The capabilities the client declared in its `initialize` request, or
     /// `nil` before any client initialized — what a test reads to prove the
     /// wire carried a capability, and not only that the client held it.
@@ -105,6 +123,11 @@ public actor ScriptedServer {
     /// and not in `DynamicToolsetScenario.swift`, because an extension cannot
     /// hold a stored property.
     var dynamicToolsetStagesRun = 0
+
+    /// How many stages of the dynamic toolset scenario are done, and each
+    /// caller of `waitForDynamicToolsetStages(atLeast:)` that waits. It is
+    /// stored here for the same reason as ``dynamicToolsetStagesRun``.
+    var dynamicToolsetStageWaiters = DynamicToolsetStageWaiters()
 
     /// Creates a scripted server around a fresh `MCP.Server`.
     ///
@@ -260,8 +283,11 @@ public actor ScriptedServer {
     }
 
     /// Schedules `mutation` — an ``addTool(_:)``, a ``removeTool(named:)``, a
-    /// ``replaceTool(_:)``, or a mix — to run after `delay`: the "on a timer"
-    /// half of the tool-mutation scenario.
+    /// ``replaceTool(_:)``, or a mix — to run when `trigger` returns: the
+    /// "later, from the far side" half of the tool-mutation scenario.
+    ///
+    /// The trigger is an event that the test controls, for example the wait
+    /// of a gate that the test opens. No time sets when the mutation runs.
     ///
     /// The task is unstructured on purpose. The caller returns at once and
     /// observes the mutation from the far side of the connection, so no
@@ -269,14 +295,15 @@ public actor ScriptedServer {
     /// holds `self` weakly, so it never keeps a released server alive.
     ///
     /// - Parameters:
-    ///   - delay: How long to wait before `mutation` runs.
+    ///   - trigger: The event the mutation waits for. The mutation runs when
+    ///     it returns.
     ///   - mutation: The mutation to apply, given the live server.
     public func scheduleMutation(
-        after delay: Duration,
+        after trigger: @escaping @Sendable () async -> Void,
         _ mutation: @escaping @Sendable (ScriptedServer) async -> Void
     ) {
         Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            await trigger()
             guard let self else { return }
             await mutation(self)
         }
@@ -339,28 +366,25 @@ public actor ScriptedServer {
 
     // MARK: - Progress
 
-    /// Registers a tool that sends `totalSteps` progress notifications,
-    /// `stepDelay` apart, before it returns — "periodic
-    /// `notifications/progress` during a long call".
+    /// Registers a tool that sends `totalSteps` progress notifications, back
+    /// to back, before it returns — "periodic `notifications/progress`
+    /// during a long call".
     ///
     /// Progress goes out only when the caller opted in with a
     /// `progressToken` in the `_meta` of the call, as the spec requires;
-    /// otherwise the tool waits out the same total duration and returns.
+    /// otherwise the tool returns at once.
     ///
     /// - Parameters:
     ///   - name: The tool name.
     ///   - totalSteps: How many progress notifications to send.
-    ///   - stepDelay: How long to wait between notifications.
     public func addProgressReportingTool(
         named name: String,
-        totalSteps: Int,
-        stepDelay: Duration
+        totalSteps: Int
     ) {
         addProgressTool(
             named: name,
             description: "Reports progress over \(totalSteps) steps before completing.",
             totalSteps: totalSteps,
-            stepDelay: stepDelay,
             perCallIdentity: nil)
     }
 
@@ -373,40 +397,36 @@ public actor ScriptedServer {
     /// token of the caller, which is what makes it an independent check that
     /// a client-side correlation key really keys each progress update to its
     /// call. Otherwise the same as
-    /// ``addProgressReportingTool(named:totalSteps:stepDelay:)``, including
-    /// the opt-in contract.
+    /// ``addProgressReportingTool(named:totalSteps:)``, including the opt-in
+    /// contract.
     ///
     /// - Parameters:
     ///   - name: The tool name.
     ///   - totalSteps: How many progress notifications to send.
-    ///   - stepDelay: How long to wait between notifications.
     public func addCallIdentifyingProgressTool(
         named name: String,
-        totalSteps: Int,
-        stepDelay: Duration
+        totalSteps: Int
     ) {
         addProgressTool(
             named: name,
             description: "Reports its own per-call identity over \(totalSteps) steps before completing.",
             totalSteps: totalSteps,
-            stepDelay: stepDelay,
             perCallIdentity: { UUID().uuidString })
     }
 
-    /// The result text of ``addProgressReportingTool(named:totalSteps:stepDelay:)``,
+    /// The result text of ``addProgressReportingTool(named:totalSteps:)``,
     /// which has no per-call identity to report — what a test of the
     /// rendered result of that tool expects.
     public static let progressToolCompletionText = "done"
 
-    /// The registration ``addProgressReportingTool(named:totalSteps:stepDelay:)``
-    /// and ``addCallIdentifyingProgressTool(named:totalSteps:stepDelay:)``
-    /// share; the two differ only in the text one call reports and returns.
+    /// The registration ``addProgressReportingTool(named:totalSteps:)`` and
+    /// ``addCallIdentifyingProgressTool(named:totalSteps:)`` share; the two
+    /// differ only in the text one call reports and returns.
     ///
     /// - Parameters:
     ///   - name: The tool name.
     ///   - description: The model-facing description.
     ///   - totalSteps: How many progress notifications to send.
-    ///   - stepDelay: How long to wait between notifications.
     ///   - perCallIdentity: Mints, once per call, the text that call reports
     ///     as every progress `message` and returns as its result; `nil`
     ///     reports no message and returns `progressToolCompletionText`.
@@ -414,7 +434,6 @@ public actor ScriptedServer {
         named name: String,
         description: String,
         totalSteps: Int,
-        stepDelay: Duration,
         perCallIdentity: (@Sendable () -> String)?
     ) {
         addScriptedTool(
@@ -424,11 +443,9 @@ public actor ScriptedServer {
         ) { [weak self] params in
             try await Self.withResolvedSelf(self) { instance in
                 let identity = perCallIdentity?()
-                try await instance.conditionallyReportProgress(
-                    params: params, totalSteps: totalSteps, stepDelay: stepDelay
-                ) { token in
+                try await instance.conditionallyReportProgress(params: params) { token in
                     try await instance.sendProgressNotifications(
-                        token: token, totalSteps: totalSteps, stepDelay: stepDelay
+                        token: token, totalSteps: totalSteps
                     ) { _ in identity }
                 }
                 let text = identity ?? Self.progressToolCompletionText
@@ -437,19 +454,22 @@ public actor ScriptedServer {
         }
     }
 
-    /// Sends `totalSteps` `notifications/progress` notifications, `stepDelay`
-    /// apart — the loop every progress-reporting tool shares.
+    /// Sends `totalSteps` `notifications/progress` notifications, back to
+    /// back — the loop every progress-reporting tool shares.
+    ///
+    /// Each notification is on the wire before the next one goes out, and
+    /// the last one is on the wire before the tool answers. Thus the client
+    /// reads them in step order, before the result.
     ///
     /// - Parameters:
     ///   - token: The progress token the caller sent in the `_meta` of the
     ///     call.
     ///   - totalSteps: How many notifications to send.
-    ///   - stepDelay: How long to wait between notifications.
     ///   - messageForStep: The `message` for a given 1-based step. The
     ///     default reports no message.
     /// - Throws: What `MCP.Server.notify(_:)` throws.
     private func sendProgressNotifications(
-        token: ProgressToken, totalSteps: Int, stepDelay: Duration,
+        token: ProgressToken, totalSteps: Int,
         messageForStep: (Int) -> String? = { _ in nil }
     ) async throws {
         for step in 1...totalSteps {
@@ -458,32 +478,24 @@ public actor ScriptedServer {
                     .init(
                         progressToken: token, progress: Double(step),
                         total: Double(totalSteps), message: messageForStep(step))))
-            try await Task.sleep(for: stepDelay)
         }
     }
 
-    /// Reports progress when the caller opted in with a `progressToken`, or
-    /// waits out the same total duration — the opt-in-or-wait branch every
-    /// progress-reporting handler shares.
+    /// Reports progress when the caller opted in with a `progressToken`, and
+    /// does nothing otherwise — the opt-in branch every progress-reporting
+    /// handler shares.
     ///
     /// - Parameters:
     ///   - params: The call parameters; `_meta.progressToken` decides.
-    ///   - totalSteps: How many steps the wait-only branch accounts for.
-    ///   - stepDelay: How long each step accounts for in the wait-only
-    ///     branch.
     ///   - notify: Sends this tool's own `notifications/progress` sequence,
     ///     given the token of the caller.
     /// - Throws: What `notify` throws.
     private func conditionallyReportProgress(
         params: CallTool.Parameters,
-        totalSteps: Int,
-        stepDelay: Duration,
         _ notify: (ProgressToken) async throws -> Void
     ) async throws {
         if let token = params._meta?.progressToken {
             try await notify(token)
-        } else {
-            try await Task.sleep(for: stepDelay * totalSteps)
         }
     }
 
@@ -502,7 +514,7 @@ public actor ScriptedServer {
 
     /// The argument the slow-build tool reads to decide its terminal
     /// outcome — an argument, never a wall-clock guess; see
-    /// ``addSlowBuildTool(named:totalSteps:stepDelay:)``.
+    /// ``addSlowBuildTool(named:totalSteps:)``.
     private static let slowBuildShouldFailArgument = "should_fail"
 
     /// The `inputSchema` of the slow-build tool: one optional boolean flag,
@@ -518,42 +530,30 @@ public actor ScriptedServer {
         ]
     )
 
-    /// The default step count of ``addSlowBuildTool(named:totalSteps:stepDelay:)``.
+    /// The default step count of ``addSlowBuildTool(named:totalSteps:)``.
     ///
     /// `public`, like ``ServerMode/slowBuildToolName``: a default argument of
     /// a public function must be at least as visible as the function, because
     /// Swift resolves defaults at the call site, in other modules too.
     public static let defaultSlowBuildStepCount = 20
 
-    /// The default delay between steps of
-    /// ``addSlowBuildTool(named:totalSteps:stepDelay:)`` — one second, so the
-    /// default shape reports about once a second for about twenty seconds.
-    ///
-    /// `public` — see ``defaultSlowBuildStepCount``.
-    public static let defaultSlowBuildStepDelay = Duration.seconds(1)
-
     /// Registers a tool that simulates a multi-step build: `totalSteps`
-    /// `notifications/progress` updates, `stepDelay` apart, each naming its
+    /// `notifications/progress` updates, back to back, each naming its
     /// phase (``slowBuildPhases``), then a success — or, when the caller
     /// passed `should_fail: true`, an `isError` result.
     ///
     /// The outcome is controlled by argument, not by wall-clock timing: the
     /// caller decides the terminal outcome at call time, so a test built on
-    /// it is deterministic. `totalSteps` and `stepDelay` are factory
-    /// parameters, the shape ``addProgressReportingTool(named:totalSteps:stepDelay:)``
-    /// takes, so a test registers a fast instance instead of waiting out the
-    /// default run.
+    /// it is deterministic. `totalSteps` is a factory parameter, the shape
+    /// ``addProgressReportingTool(named:totalSteps:)`` takes.
     ///
     /// - Parameters:
     ///   - name: The tool name. Defaults to ``ServerMode/slowBuildToolName``.
     ///   - totalSteps: How many progress notifications to send. Defaults to
     ///     ``defaultSlowBuildStepCount``.
-    ///   - stepDelay: How long to wait between notifications. Defaults to
-    ///     ``defaultSlowBuildStepDelay``.
     public func addSlowBuildTool(
         named name: String = ServerMode.slowBuildToolName,
-        totalSteps: Int = ScriptedServer.defaultSlowBuildStepCount,
-        stepDelay: Duration = ScriptedServer.defaultSlowBuildStepDelay
+        totalSteps: Int = ScriptedServer.defaultSlowBuildStepCount
     ) {
         addScriptedTool(
             name: name,
@@ -562,11 +562,8 @@ public actor ScriptedServer {
             inputSchema: Self.slowBuildInputSchema
         ) { [weak self] params in
             try await Self.withResolvedSelf(self) { instance in
-                try await instance.conditionallyReportProgress(
-                    params: params, totalSteps: totalSteps, stepDelay: stepDelay
-                ) { token in
-                    try await instance.sendSlowBuildProgress(
-                        token: token, totalSteps: totalSteps, stepDelay: stepDelay)
+                try await instance.conditionallyReportProgress(params: params) { token in
+                    try await instance.sendSlowBuildProgress(token: token, totalSteps: totalSteps)
                 }
                 let shouldFail = params.arguments?[Self.slowBuildShouldFailArgument]?.boolValue ?? false
                 return Self.slowBuildResult(totalSteps: totalSteps, shouldFail: shouldFail)
@@ -574,19 +571,16 @@ public actor ScriptedServer {
         }
     }
 
-    /// Sends `totalSteps` progress updates, `stepDelay` apart, each naming
-    /// its build phase — ``sendProgressNotifications(token:totalSteps:stepDelay:messageForStep:)``
+    /// Sends `totalSteps` progress updates, back to back, each naming its
+    /// build phase — ``sendProgressNotifications(token:totalSteps:messageForStep:)``
     /// with a step-dependent message.
     ///
     /// - Parameters:
     ///   - token: The progress token of the caller.
     ///   - totalSteps: How many notifications to send.
-    ///   - stepDelay: How long to wait between notifications.
     /// - Throws: What `MCP.Server.notify(_:)` throws.
-    private func sendSlowBuildProgress(
-        token: ProgressToken, totalSteps: Int, stepDelay: Duration
-    ) async throws {
-        try await sendProgressNotifications(token: token, totalSteps: totalSteps, stepDelay: stepDelay) { step in
+    private func sendSlowBuildProgress(token: ProgressToken, totalSteps: Int) async throws {
+        try await sendProgressNotifications(token: token, totalSteps: totalSteps) { step in
             Self.slowBuildPhaseMessage(step: step, totalSteps: totalSteps)
         }
     }
@@ -633,20 +627,10 @@ public actor ScriptedServer {
     ///   - name: The tool name.
     ///   - message: The message shown to the user in the prompt.
     ///   - requestedSchema: The schema of the elicited response.
-    ///   - preElicitationDelay: How long to sleep before the
-    ///     `elicitation/create` goes out. A nonzero value lets a soft
-    ///     deadline of the test elapse first, so the call has detached by
-    ///     the time it elicits. Defaults to `.zero`.
-    ///   - postElicitationStall: How long to sleep after the elicitation
-    ///     resolves, before the `tools/call` response goes out. Lets a test
-    ///     prove that a call deadline restarted from the moment the
-    ///     elicitation was answered. Defaults to `.zero`.
     public func addElicitingTool(
         named name: String,
         message: String,
-        requestedSchema: Elicitation.RequestSchema,
-        preElicitationDelay: Duration = .zero,
-        postElicitationStall: Duration = .zero
+        requestedSchema: Elicitation.RequestSchema
     ) {
         addScriptedTool(
             name: name,
@@ -654,14 +638,8 @@ public actor ScriptedServer {
             inputSchema: JSONSchemaBuilder.emptySchema
         ) { [weak self] _ in
             try await Self.withResolvedSelf(self) { instance in
-                if preElicitationDelay > .zero {
-                    try await Task.sleep(for: preElicitationDelay)
-                }
                 let result = try await instance.server.requestElicitation(
                     message: message, requestedSchema: requestedSchema)
-                if postElicitationStall > .zero {
-                    try await Task.sleep(for: postElicitationStall)
-                }
                 return Self.buildElicitationResult(from: result)
             }
         }
@@ -688,7 +666,7 @@ public actor ScriptedServer {
     /// Registers a tool that sends a URL-mode `elicitation/create` mid-call
     /// — `URLParameters { message, mode: .url, url, elicitationId }` — then
     /// reflects the result in its own `tools/call` result: the URL-mode
-    /// mirror of ``addElicitingTool(named:message:requestedSchema:preElicitationDelay:postElicitationStall:)``.
+    /// mirror of ``addElicitingTool(named:message:requestedSchema:)``.
     ///
     /// - Parameters:
     ///   - name: The tool name.
@@ -748,7 +726,8 @@ public actor ScriptedServer {
 
     // MARK: - Recorded notifications
 
-    /// Appends one recorded notification.
+    /// Appends one recorded notification, and ends each wait of
+    /// ``waitForRecordedNotifications(count:)`` whose count it reaches.
     ///
     /// Not a trivial wrapper: `recordedNotifications` is actor-isolated
     /// mutable state, and a `[weak self]` notification closure that runs off
@@ -762,28 +741,65 @@ public actor ScriptedServer {
     private func recordNotification(method: String, requestId: ID?, reason: String?) {
         recordedNotifications.append(
             RecordedNotification(method: method, requestId: requestId, reason: reason))
+        let reached = notificationWaiters.filter { $0.value.count <= recordedNotifications.count }
+        for (id, waiter) in reached {
+            notificationWaiters[id] = nil
+            waiter.continuation.resume(returning: recordedNotifications)
+        }
     }
 
-    /// Polls ``recordedNotifications`` until at least `count` have arrived,
-    /// or `timeout` elapses.
+    /// Waits until at least `count` notifications were recorded.
     ///
-    /// The message-handling task of the wrapped server drives the recording,
-    /// so there is no signal a test can await; a bounded poll observes it
-    /// without a fixed sleep.
+    /// The recording sends the event that ends the wait. Thus no time limits
+    /// the wait: a notification that never comes is a wait that ends only
+    /// when the task of the caller is cancelled.
+    ///
+    /// - Parameter count: The minimum number of recorded notifications to
+    ///   wait for.
+    /// - Returns: ``recordedNotifications`` at the moment `count` was
+    ///   reached, or at the moment the task of the caller was cancelled.
+    public func waitForRecordedNotifications(count: Int) async -> [RecordedNotification] {
+        if recordedNotifications.count >= count {
+            return recordedNotifications
+        }
+        let id = nextNotificationWaitID
+        nextNotificationWaitID += 1
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<[RecordedNotification], Never>) in
+                storeNotificationWaiter(id: id, count: count, continuation: continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelNotificationWait(id: id) }
+        }
+    }
+
+    /// Stores one wait for recorded notifications, or ends it at once when
+    /// its count is already reached or its task was already cancelled.
     ///
     /// - Parameters:
-    ///   - count: The minimum number of recorded notifications to wait for.
-    ///   - timeout: The maximum time to wait.
-    /// - Returns: ``recordedNotifications`` at the moment `count` was
-    ///   reached, or at the moment `timeout` elapsed, whichever came first.
-    public func waitForRecordedNotifications(
-        count: Int, timeout: Duration
-    ) async -> [RecordedNotification] {
-        let deadline = ContinuousClock.now + timeout
-        while recordedNotifications.count < count && ContinuousClock.now < deadline {
-            try? await Task.sleep(for: Self.recordedNotificationPollInterval)
+    ///   - id: The id of the wait.
+    ///   - count: The count of recorded notifications that ends the wait.
+    ///   - continuation: The continuation that ends the wait.
+    private func storeNotificationWaiter(
+        id: Int, count: Int, continuation: CheckedContinuation<[RecordedNotification], Never>
+    ) {
+        if cancelledNotificationWaits.remove(id) != nil || recordedNotifications.count >= count {
+            continuation.resume(returning: recordedNotifications)
+            return
         }
-        return recordedNotifications
+        notificationWaiters[id] = NotificationWaiter(count: count, continuation: continuation)
+    }
+
+    /// Ends one wait for recorded notifications whose task was cancelled, or
+    /// marks the wait so that it ends when it is stored.
+    ///
+    /// - Parameter id: The id of the wait.
+    private func cancelNotificationWait(id: Int) {
+        if let waiter = notificationWaiters.removeValue(forKey: id) {
+            waiter.continuation.resume(returning: recordedNotifications)
+        } else {
+            cancelledNotificationWaits.insert(id)
+        }
     }
 }
 

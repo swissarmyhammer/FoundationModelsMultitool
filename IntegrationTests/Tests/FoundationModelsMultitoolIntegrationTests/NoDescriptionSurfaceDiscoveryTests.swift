@@ -81,8 +81,7 @@ private let noDescriptionQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated searchTools discovery over a surface of tools with no description",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct NoDescriptionSurfaceDiscoveryTests {
     @Test("the shipped text for a tool with no description gives answers of real catalog paths, one time each")

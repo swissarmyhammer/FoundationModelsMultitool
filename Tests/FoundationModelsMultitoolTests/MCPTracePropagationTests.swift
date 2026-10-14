@@ -61,10 +61,6 @@ struct MCPTracePropagationTests {
     /// `ManualClock`, which records the bound and ends the sleep at once.
     private static let shortCallTimeout = Duration.milliseconds(100)
 
-    /// The count of calls in flight when the transport drops or the server
-    /// reconnects.
-    private static let oneCallInFlight = 1
-
     // MARK: - Fixture tools
 
     /// A tool that answers `result` with one text block of ``resultMarker``.
@@ -84,18 +80,18 @@ struct MCPTracePropagationTests {
     }
 
     /// The tool that does not answer: it waits on a gate that no one opens,
-    /// until its task is cancelled. `counter` counts the calls of its
-    /// handler.
+    /// until its task is cancelled. Its handler opens `arrival` first, so a
+    /// test waits on that event to know that the call reached the handler.
     ///
-    /// - Parameter counter: The counter of the calls.
+    /// - Parameter arrival: The gate that the handler opens when it runs.
     /// - Returns: The scripted tool.
-    private static func hangingTool(counting counter: CallCounter) -> ScriptedTool {
+    private static func hangingTool(opening arrival: TestGate) -> ScriptedTool {
         ScriptedTool(
             definition: MCP.Tool(
                 name: hangingToolName, description: "Does not answer.",
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
-            counter.increment()
+            arrival.open()
             try await TestGate().wait()
             return CallTool.Result(content: [])
         }
@@ -229,8 +225,7 @@ struct MCPTracePropagationTests {
 
     @Test("a bare call that times out gives an error status on its client span")
     func timedOutCallGivesAnErrorStatus() async throws {
-        let counter = CallCounter()
-        let scripted = await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
+        let scripted = await Self.scriptedServer(serving: [Self.hangingTool(opening: TestGate())])
         let clock = ManualClock()
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
@@ -266,15 +261,15 @@ struct MCPTracePropagationTests {
 
     @Test("a transport drop under a call records one span event on the client span, and an error status")
     func transportDropRecordsASpanEvent() async throws {
-        let counter = CallCounter()
+        let handlerRan = TestGate()
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
-            await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
+            await Self.scriptedServer(serving: [Self.hangingTool(opening: handlerRan)])
         }
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-            try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneCallInFlight }
+            try await handlerRan.wait()
             await respawning.disconnect()
             await #expect(throws: MCPServerError.self) {
                 _ = try await call.value
@@ -288,15 +283,15 @@ struct MCPTracePropagationTests {
 
     @Test("a reconnect under a call records one span event on the client span, and an error status")
     func reconnectRecordsASpanEvent() async throws {
-        let counter = CallCounter()
+        let handlerRan = TestGate()
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
-            await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
+            await Self.scriptedServer(serving: [Self.hangingTool(opening: handlerRan)])
         }
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-            try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneCallInFlight }
+            try await handlerRan.wait()
             try await server.reconnect()
             await #expect(throws: (any Error).self) {
                 _ = try await call.value

@@ -373,9 +373,7 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// `testServerTargetName`. The unit test target and the live web suites of the
 /// nested `IntegrationTests` package use the same helpers: `RunOutput`, the
 /// decode of a `runCode` output; `WebVerbCall`, the one call of each web verb;
-/// `WebPageHead`, the value of each page of the goal snippet of web.md;
-/// `TestPoll`, the one poll loop of the test support code, which
-/// `IntegrationPoll` of the nested package uses too; and
+/// `WebPageHead`, the value of each page of the goal snippet of web.md; and
 /// `TemporaryGitRepository`, the git repository of one test, which the git
 /// suites of both packages make with libgit2. A package can import the
 /// products of another package only, thus a helper that both of them read

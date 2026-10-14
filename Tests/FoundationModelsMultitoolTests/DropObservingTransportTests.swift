@@ -25,9 +25,9 @@ import Testing
 /// What the report of a drop then does — `handleTransportDrop(generation:)` and
 /// the `.lost` calls that follow — is read by `LostCallTests`.
 ///
-/// The time limit is ``TestHangGuard/timeLimit``: it stops a mirror that never
-/// ends, and it is a hang guard and not a speed check (card `^tm4x2hp`).
-@Suite("DropObservingTransport", .timeLimit(TestHangGuard.timeLimit))
+/// Each test waits on an event and never on a time. No test checks the speed
+/// of the machine (card `^tm4x2hp`).
+@Suite("DropObservingTransport")
 struct DropObservingTransportTests {
 
     // MARK: - Shared test constants

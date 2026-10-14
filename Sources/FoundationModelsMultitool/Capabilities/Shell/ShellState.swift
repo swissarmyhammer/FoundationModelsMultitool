@@ -190,6 +190,25 @@ actor ShellState {
     /// answer.
     private var pidWaiters: [String: [CheckedContinuation<pid_t?, Never>]] = [:]
 
+    /// One wait of ``waitForStoredLines(commandID:atLeast:)``: the count of
+    /// stored lines it waits for, and the continuation that ends it.
+    private struct LineCountWaiter {
+        /// The count of stored lines that ends the wait.
+        let count: Int
+
+        /// Resumes the wait.
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    /// Each wait of ``waitForStoredLines(commandID:atLeast:)`` that did not
+    /// end, keyed by completion token.
+    ///
+    /// `appendLines(commandID:stdout:stderr:)` ends each wait whose count the
+    /// stored lines reach, after the write to the log. `completeCommand` ends
+    /// each wait of the command, thus a command that ends with fewer lines
+    /// never leaves a wait suspended.
+    private var lineCountWaiters: [String: [LineCountWaiter]] = [:]
+
     /// Resumes every continuation `pidWaiters` holds for `commandID` with
     /// `result`, and forgets them.
     ///
@@ -410,6 +429,55 @@ actor ShellState {
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: buffer)
+        resolveLineCountWaiters(commandID: commandID, commandEnded: false)
+    }
+
+    /// Waits until the store holds at least `count` lines of the command
+    /// under `commandID`, or until that command ended.
+    ///
+    /// This is an internal hook for the tests. The runner gives each chunk to
+    /// a live view (`ShellOutputChunkStream`) BEFORE it writes the lines of
+    /// that chunk to the store. Thus a test that saw a chunk on the live view
+    /// cannot know that `getLines` reads it yet. This wait is the event that
+    /// the write occurred. It returns at once when the store already holds
+    /// the lines, or when the command already ended. A wait for a token that
+    /// no command started under yet continues until such a command stores the
+    /// lines or ends.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token of the run.
+    ///   - count: The count of stored lines that ends the wait.
+    func waitForStoredLines(commandID: String, atLeast count: Int) async {
+        if let found = record(commandID: commandID), found.lineCount >= count || found.status != .running {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            lineCountWaiters[commandID, default: []].append(
+                LineCountWaiter(count: count, continuation: continuation))
+        }
+    }
+
+    /// Ends each wait of ``waitForStoredLines(commandID:atLeast:)`` for
+    /// `commandID` that the stored lines satisfy, or each wait of that
+    /// command when it ended.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token of the run.
+    ///   - commandEnded: Whether the command ended. Then each wait ends.
+    private func resolveLineCountWaiters(commandID: String, commandEnded: Bool) {
+        guard let waiters = lineCountWaiters.removeValue(forKey: commandID) else { return }
+        let stored = record(commandID: commandID)?.lineCount ?? 0
+        var stillWaiting: [LineCountWaiter] = []
+        for waiter in waiters {
+            if commandEnded || stored >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                stillWaiting.append(waiter)
+            }
+        }
+        if !stillWaiting.isEmpty {
+            lineCountWaiters[commandID] = stillWaiting
+        }
     }
 
     /// Marks a command finished with the status and the exit code it gives, and
@@ -437,6 +505,7 @@ actor ShellState {
         commands[index].exitCode = exitCode
         commands[index].completedAt = ContinuousClock().now
         commands[index].completedAtWall = Date()
+        resolveLineCountWaiters(commandID: commandID, commandEnded: true)
     }
 
     /// Finalizes a command **only while it still runs**, in one hop of the

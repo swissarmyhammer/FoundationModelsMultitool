@@ -55,9 +55,11 @@ import ScenarioGrading
 ///
 /// Three properties, each of them load-bearing:
 ///
-/// 1. **It never ends.** The snippet that awaits it therefore certainly still
-///    stands on the run plane while the harness reads it, so what ends it is
-///    the cancel and never the command ending by itself.
+/// 1. **It never ends.** It waits on `gate`, a ``ShellCommandGate`` that the
+///    harness never releases, and no sleep. The snippet that awaits it
+///    therefore certainly still stands on the run plane while the harness
+///    reads it, so what ends it is the cancel and never the command ending by
+///    itself.
 /// 2. **Its first line is its own process group.** `ShellRunner` spawns each
 ///    child with `platformOptions.processGroupID = 0`, so the child is its own
 ///    process-group leader and the `$$` of that shell IS the identifier of the
@@ -65,13 +67,19 @@ import ScenarioGrading
 ///    reaching into a `ShellState` it does not own — the store's process map is
 ///    per-instance and in memory, so a second `ShellState` over the same
 ///    directory would read nothing.
-/// 3. **It writes output as it goes.** `tools.shell.getLines` has to read a
-///    LIVE run, and a run that wrote nothing would let an empty read pass.
+/// 3. **It writes output before it waits.** `tools.shell.getLines` has to read
+///    a LIVE run, and a run that wrote nothing would let an empty read pass.
 ///
 /// It carries no quotation mark and no nonce, because the model has to reproduce
 /// it verbatim inside a JavaScript string literal and every character it has to
-/// escape is a character it can get wrong.
-private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; sleep 1 ; done"
+/// escape is a character it can get wrong. The path of the gate is short and
+/// carries no quotation mark either (see ``ShellCommandGate``).
+///
+/// - Parameter gate: The FIFO the command waits on.
+/// - Returns: The command line.
+private func shellBackgroundCommand(holdingOn gate: ShellCommandGate) -> String {
+    "echo $$ ; echo tick ; \(gate.waitCommand)"
+}
 
 /// The request the model is given.
 ///
@@ -93,12 +101,17 @@ private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; slee
 /// and no longer: no check reads the reply (see `shellBackgroundChecks(for:)`),
 /// and the final reply of CI run `36951032341` was 177 generated tokens,
 /// approximately 33 s on the CI runner `mini` (card `^3vtvrzg`).
-private let shellBackgroundPrompt = """
+///
+/// - Parameter command: The command the model must start.
+/// - Returns: The prompt.
+private func shellBackgroundPrompt(starting command: String) -> String {
+    """
     Start this shell command running in the background and tell me the completion token it hands \
     back. Do not wait for it to finish, because it never finishes. Reply in one short sentence.
 
-    \(shellBackgroundCommand)
+    \(command)
     """
+}
 
 /// The snippet call path of the verb that reads one run's stored output.
 ///
@@ -109,25 +122,6 @@ private let shellGetLinesPath = "shell.getLines"
 /// The snippet call path of the run-plane verb of the shell capability.
 private let shellExecutePath = "shell.execute"
 
-/// How long the command that is left standing for the session-end sweep sleeps.
-///
-/// A bare `sleep`, because nothing about that run is read while it is going: it
-/// exists so that one shell run is still in the background when `close()`
-/// sweeps, and the only reading taken of it is the terminal event `close()`
-/// journals. It sleeps far longer than the whole suite, so it cannot end by
-/// itself and be swept as a finished run.
-private let sweptRunSleepSeconds = 600
-
-/// The signal `killpg` takes to ASK whether a process group is still there.
-///
-/// Signal 0 sends NOTHING. `killpg` performs the checks of a signal it is about
-/// to send and then sends none, thus this is the one reading that answers "does
-/// this group still hold a process" with no risk to what stands in the group.
-/// The only group this scenario ever names is the one its own command printed.
-private let existenceProbeSignal: Int32 = 0
-
-/// What `killpg` answers when it reached the group.
-private let killpgReachedGroup: Int32 = 0
 
 /// How many background reports one background run makes.
 ///
@@ -186,15 +180,33 @@ func runShellBackgroundScenario(name: String) async throws {
             discoveryPriming: scenarioDiscoveryPriming
         )
 
+        // The command of the model waits on `modelGate`, and the swept run
+        // waits on `sweptGate`. The harness releases neither: a kill ends
+        // each command. Both gates live to the end of the scenario.
+        let modelGate = try ShellCommandGate()
+        let sweptGate = try ShellCommandGate()
+        let turnEnded = ScenarioGate()
+
         // Started before the turn and read after it. The run plane has to be
         // read WHILE the run is going — a reading taken after the turn would
         // find whatever Router's own end-of-turn handling left, which is a
         // different question from the one this scenario asks.
         let watcher = Task {
-            await observeShellRunPlane(probe: probe, registry: registry, declaredJournalOp: declaredJournalOp)
+            await observeShellRunPlane(
+                probe: probe, registry: registry, declaredJournalOp: declaredJournalOp,
+                turnEnded: turnEnded, sweptGate: sweptGate)
         }
         let start = Date()
-        let turn = try await streamTurn(of: session, prompt: shellBackgroundPrompt)
+        let turn: StreamedTurn
+        do {
+            turn = try await streamTurn(
+                of: session, prompt: shellBackgroundPrompt(starting: shellBackgroundCommand(holdingOn: modelGate)))
+        } catch {
+            turnEnded.open()
+            watcher.cancel()
+            throw error
+        }
+        turnEnded.open()
         let elapsed = Date().timeIntervalSince(start)
         var plane = await watcher.value
         // The cancel comes after the turn. Until its settle period ends, the
@@ -309,9 +321,9 @@ struct ShellRunPlaneObservation: Sendable {
     /// cancelled it.
     var cancelOutcome: OperationOutcome?
 
-    /// Whether the child's process group held nothing at all before the
-    /// deadline — the proof that the cancel of the snippet reached the shell
-    /// run, and that the tree died and left no orphan.
+    /// Whether each process of the child's process group exited after the
+    /// cancel — the proof that the cancel of the snippet reached the shell
+    /// run, and that the tree died and left no live orphan.
     var childGone = false
 
     /// The completion token of the second shell run, left in the background for
@@ -321,10 +333,22 @@ struct ShellRunPlaneObservation: Sendable {
 
 /// Reads the run plane of the live session while the model's turn is going.
 ///
-/// Every step is a poll rather than one read, because a live model decides when
-/// each of them becomes possible and because the engine sends a run to the
-/// background as it takes it. A step that never becomes possible leaves its
-/// readings unset and the verdict says which one stopped.
+/// No step waits on time. Each step waits on an event, or reads once at a
+/// point where the product already made the reading true:
+///
+/// - The context of the model's shell run comes with the event of the probe
+///   (``ShellRunContextProbe/waitForFirstContext()``). A model that never
+///   starts the run gives no such event, thus the wait also ends when the turn
+///   ended (`turnEnded`), and the step leaves its reading unset.
+/// - The `runCode` run stands on the run plane before its body runs:
+///   `RunPlane.start` adds the run in the same step of its actor that creates
+///   the task of the body, and the shell run is inside that body. Thus one
+///   read after the context came is enough.
+/// - The live output comes with the event of the store
+///   (`ShellState.waitForStoredLines`).
+///
+/// A step that cannot read leaves its readings unset, and the verdict says
+/// which one stopped.
 ///
 /// - Parameters:
 ///   - probe: the sandbox the shell capability was built with, which hands over
@@ -333,22 +357,16 @@ struct ShellRunPlaneObservation: Sendable {
 ///     `tools.shell.getLines` verb over the same store.
 ///   - declaredJournalOp: the op the registration site declared for
 ///     `tools.shell.execute`, which the swept run stands under.
+///   - turnEnded: the gate the runner opens when the turn ended.
+///   - sweptGate: the FIFO the command of the swept run waits on.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
-    probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?
+    probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?,
+    turnEnded: ScenarioGate, sweptGate: ShellCommandGate
 ) async -> ShellRunPlaneObservation {
     var observation = ShellRunPlaneObservation()
 
-    // Every wait below is a poll with the one shared hang-guard deadline of
-    // this target, `IntegrationPoll.deadline`, and never a deadline of its
-    // own: a live model decides when each reading becomes possible, and no
-    // test checks the speed of the machine (card `^kdtrmhv`).
-    var context: ToolContext?
-    _ = await IntegrationPoll.holds {
-        context = probe.observedContexts.first
-        return context != nil
-    }
-    guard let context else { return observation }
+    guard let context = await firstShellRunContext(of: probe, orAfter: turnEnded) else { return observation }
     let token = context.completionToken
     observation.executeRunToken = token
 
@@ -356,11 +374,7 @@ private func observeShellRunPlane(
     // `ToolContext.backgroundRuns()` rendered as JS objects — see
     // `MultiTool.makeBackgroundRunHostFunctions(binding:)` — so this is the same
     // snapshot a snippet reads, taken through the same call.
-    var background: BackgroundRun?
-    _ = await IntegrationPoll.holds {
-        background = await context.backgroundRuns().first { $0.tool == runCodeToolName }
-        return background != nil
-    }
+    let background = await context.backgroundRuns().first { $0.tool == runCodeToolName }
     guard let background else { return observation }
     observation.backgroundRun = BackgroundShellRun(
         tool: background.tool, op: background.op, kind: background.kind,
@@ -374,8 +388,36 @@ private func observeShellRunPlane(
     // the run the model started is the one this scenario cancels, and a sweep
     // needs one of its own to answer for.
     observation.sweptRunToken = await startSweptRun(
-        under: context, alongside: background.completionToken, in: registry, op: declaredJournalOp)
+        under: context, alongside: background.completionToken, in: registry, op: declaredJournalOp,
+        holdingOn: sweptGate)
     return observation
+}
+
+/// The ambient context of the model's first shell run, or `nil` when the turn
+/// ended with no shell run.
+///
+/// Two events race, and the first one decides: the probe sees the first shell
+/// run (``ShellRunContextProbe/waitForFirstContext()``), or the runner opens
+/// `turnEnded`. After the turn ended, the probe is read one time, thus a run
+/// that came at the same time as the end of the turn is not lost.
+///
+/// - Parameters:
+///   - probe: the sandbox the shell capability was built with.
+///   - turnEnded: the gate the runner opens when the turn ended.
+/// - Returns: the context of the first shell run, or `nil`.
+private func firstShellRunContext(
+    of probe: ShellRunContextProbe, orAfter turnEnded: ScenarioGate
+) async -> ToolContext? {
+    await withTaskGroup(of: ToolContext?.self) { group in
+        group.addTask { try? await probe.waitForFirstContext() }
+        group.addTask {
+            guard (try? await turnEnded.wait()) != nil else { return nil }
+            return probe.observedContexts.first
+        }
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
+    }
 }
 
 /// Cancels the background `runCode` run of the model, and reads whether the
@@ -397,13 +439,18 @@ private func cancelSnippetRun(
     }
     observation.cancelOutcome = cancelReport(of: await context.cancel(completionToken: token))
     guard let group = observation.childProcessGroup else { return }
-    // A poll and not slack: the cancel of the snippet cancels the inner call,
-    // `ShellRunner` then kills the tree, and the leader of the group stays an
-    // unreaped child of this process until swift-subprocess reaps it. A group
-    // that still holds a zombie still answers the probe.
-    observation.childGone = await IntegrationPoll.holds {
-        !processGroupStands(group)
+    // The cancel of the snippet cancels the inner call, and `ShellRunner` then
+    // kills the tree. No process can join the group after that. The harness
+    // reads each process the group still holds, and waits on the exit event of
+    // the kernel for each one (`ProcessExitWait`), and not on time. A process
+    // that the kill missed never exits, and that wait is the failure of the
+    // run. A process that exited and that no one reaped yet counts as gone:
+    // the system reaps it at a time this process does not control.
+    let members = ProcessExitWait.processes(inGroup: group)
+    for member in members {
+        await ProcessExitWait.waitUntilGone(member)
     }
+    observation.childGone = members.allSatisfy(ProcessExitWait.hasExited)
 }
 
 /// Reads the stored output of a run that is still going, through the live
@@ -414,19 +461,19 @@ private func cancelSnippetRun(
 /// directory would answer for no run at all. The verb the registry holds is the
 /// one the capability built, over the one store the run wrote into.
 ///
+/// The read waits for an event first: `ShellState.waitForStoredLines` ends
+/// when the store wrote the first line of the run, or when the run ended.
+/// Then the verb reads one time.
+///
 /// - Parameters:
 ///   - token: the run's completion token, which is also its `commandID`.
 ///   - registry: the built registry holding the live verb.
 /// - Returns: the lines read, or an empty array when the verb is not there or
-///   the run wrote nothing before the deadline.
+///   the run ended with no line.
 private func liveOutput(of token: String, in registry: MultiTool.Registry) async -> [String] {
     guard let getLines = registry.tools[shellGetLinesPath] as? GetLines else { return [] }
-    var lines: [String] = []
-    _ = await IntegrationPoll.holds {
-        lines = (try? await getLines.call(arguments: GetLinesArguments(commandID: token)))?.lines ?? []
-        return !lines.isEmpty
-    }
-    return lines
+    await getLines.state.waitForStoredLines(commandID: token, atLeast: 1)
+    return (try? await getLines.call(arguments: GetLinesArguments(commandID: token)))?.lines ?? []
 }
 
 /// The separator a stored line puts between its number and its text.
@@ -450,29 +497,25 @@ private func processGroup(in lines: [String]) -> pid_t? {
     return nil
 }
 
-/// Whether any process still stands in the process group that `group` leads.
-///
-/// Every group this is asked about is one this scenario's own command created
-/// and printed.
-///
-/// - Parameter group: the identifier of the process group to ask about.
-/// - Returns: `true` while the group still holds a process.
-private func processGroupStands(_ group: pid_t) -> Bool {
-    killpg(group, existenceProbeSignal) == killpgReachedGroup
-}
-
 /// Starts one more background shell run on the same session, and answers with
 /// its completion token.
 ///
 /// The verb is mounted on the session's own mailbox through the context of the
 /// model's shell run, the way a session mounts a tool. `Execute.mount` declares
-/// a background mount, and the `sleep` runs longer than the settle period, so
-/// the run goes to the background as a `RunKind.process` run. A `runCode`
+/// a background mount, and the command waits on `gate` past the settle period,
+/// so the run goes to the background as a `RunKind.process` run. A `runCode`
 /// snippet cannot start this run: an inner call runs to completion (card
-/// `^6nnykct`), so the snippet would wait for the whole `sleep`.
+/// `^6nnykct`), so the snippet would wait for the whole command.
 ///
-/// It exists for one reading: `close()` has to have a background shell run to
-/// sweep, and the run the model started is the one this scenario cancels.
+/// The command waits on a ``ShellCommandGate`` that no one releases, and no
+/// sleep. Nothing about that run is read while it is going: it exists so that
+/// one shell run is still in the background when `close()` sweeps, and the
+/// only reading taken of it is the terminal event `close()` journals. It
+/// cannot end by itself, so it cannot be swept as a finished run.
+///
+/// The run stands on the run plane when the mounted call returned: the call
+/// returns only after `RunPlane.start` added the run, and the command cannot
+/// end. Thus one read of the plane is enough.
 ///
 /// - Parameters:
 ///   - context: the ambient context of the model's own shell run, which carries
@@ -482,22 +525,19 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 ///   - registry: the registry the session was mounted over, which is what makes
 ///     the new run stand on the same store and the same mailbox.
 ///   - op: the op the new run stands under: the declared op of the verb.
+///   - gate: the FIFO the command waits on.
 /// - Returns: the new run's completion token, or `nil` when it never went to
 ///   the background.
 private func startSweptRun(
-    under context: ToolContext, alongside other: String, in registry: MultiTool.Registry, op: String?
+    under context: ToolContext, alongside other: String, in registry: MultiTool.Registry, op: String?,
+    holdingOn gate: ShellCommandGate
 ) async -> String? {
     guard let execute = registry.tools[shellExecutePath] as? Execute else { return nil }
     let mounted = context.mount(execute, op: op)
-    _ = try? await mounted.call(arguments: ExecuteArguments(command: "sleep \(sweptRunSleepSeconds)"))
-    var token: String?
-    _ = await IntegrationPoll.holds {
-        token = await context.backgroundRuns()
-            .first { $0.kind == .process && $0.completionToken != other }?
-            .completionToken
-        return token != nil
-    }
-    return token
+    _ = try? await mounted.call(arguments: ExecuteArguments(command: gate.waitCommand))
+    return await context.backgroundRuns()
+        .first { $0.kind == .process && $0.completionToken != other }?
+        .completionToken
 }
 
 /// The outcome a cancel reported, or `nil` when there was nothing to report.
@@ -534,26 +574,21 @@ private func cancelReport(of outcome: CancelOutcome) -> OperationOutcome? {
 /// Read after `close()`, so one snapshot carries the whole run: the background
 /// report the turn wrote, and the terminal the sweep wrote.
 ///
-/// A poll, because the transcript is a file: `close()` journals before it
-/// returns, and this is the synchronization point onto the write rather than a
-/// claim about how long it takes.
+/// One read, and no poll: `close()` journals before it returns. The drain of
+/// `close()` awaits the journal write of each swept terminal
+/// (`SessionOutbox.journalWithoutStaging(event:)`), and that write awaits the
+/// append of the recorder to the transcript file. Thus the order of the
+/// product puts the terminal in the file before this read.
 ///
 /// - Parameters:
 ///   - token: the swept run's completion token, or `nil` when no run was left to
-///     sweep — in which case there is no terminal to wait for and the journal is
-///     read once.
+///     sweep. The token is not read: the one read covers both cases.
 ///   - fixture: the resolved fixture, whose recording root holds the transcript.
 /// - Returns: every journaled operation event, in transcript order.
 private func journaledRunEvents(
     awaiting token: String?, in fixture: LiveRouterFixture
 ) async -> [OperationEvent] {
-    var events: [OperationEvent] = []
-    _ = await IntegrationPoll.holds {
-        events = journaledOperationEvents(in: (try? fixture.transcriptEvents()) ?? [])
-        guard let token else { return true }
-        return !terminals(in: events, of: token).isEmpty
-    }
-    return events
+    journaledOperationEvents(in: (try? fixture.transcriptEvents()) ?? [])
 }
 
 /// Every `OperationEvent` the recorded transcript carries.

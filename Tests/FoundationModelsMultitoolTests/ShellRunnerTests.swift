@@ -96,10 +96,6 @@ struct ShellRunnerTests {
     /// tree does.
     private static let readyThenWait = "echo \(readyMarker); wait"
 
-    /// The shortest a `sleep 1` with no time limit may take. A run below it
-    /// proves a limit fired that nobody asked for.
-    private static let unlimitedSleepLowerBound = Duration.milliseconds(900)
-
     /// A directory path no file system holds, thus `realpath(3)` resolves
     /// nothing of it and the resolver gives the input back.
     private static let absentDirectory = "/nonexistent-shellrunner-tests-directory"
@@ -156,8 +152,9 @@ struct ShellRunnerTests {
     ///     thus an ordinary test never touches the process-wide instance. Give
     ///     one here when a test must read the state of the registry.
     ///   - clock: The clock the timer of a time limit sleeps on. The default is
-    ///     the real clock. A test of a time limit gives a `GatedClock`, thus
-    ///     the limit fires when the test opens the clock.
+    ///     a `GatedClock` that no test opens, thus no test waits on the real
+    ///     clock. A test of a time limit gives a `GatedClock` that it opens,
+    ///     thus the limit fires when the test opens the clock.
     ///   - outputChunkStream: The live view of the output the runner tees into,
     ///     or `nil` — the default — for none. A test reads it to learn when the
     ///     command started its tree.
@@ -165,7 +162,7 @@ struct ShellRunnerTests {
     /// - Throws: What `TestScratch.makeDirectory` or `ShellState.init` throws.
     private func makeRunner(
         registry: ProcessRegistry = ProcessRegistry(),
-        clock: any Clock<Duration> = ContinuousClock(),
+        clock: any Clock<Duration> = GatedClock(),
         outputChunkStream: ShellOutputChunkStream? = nil
     ) throws -> (runner: ShellRunner, state: ShellState, directory: URL) {
         let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
@@ -214,12 +211,12 @@ struct ShellRunnerTests {
         Int.random(in: markerLowerBound...markerUpperBound)
     }
 
-    /// Counts the live processes whose whole command line matches `pattern`,
-    /// through `pgrep -f`.
+    /// The pids of the live processes whose whole command line matches
+    /// `pattern`, through `pgrep -f`.
     ///
     /// - Parameter pattern: The pattern `pgrep -f` reads.
-    /// - Returns: The number of matches, and 0 when `pgrep` finds none.
-    private func processCount(matching pattern: String) -> Int {
+    /// - Returns: The pids, and an empty list when `pgrep` finds none.
+    private func processIDs(matching pattern: String) -> [pid_t] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         process.arguments = ["-f", pattern]
@@ -229,77 +226,83 @@ struct ShellRunnerTests {
         do {
             try process.run()
         } catch {
-            return 0
+            return []
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         let text = String(decoding: data, as: UTF8.self)
-        return text.split(separator: "\n").filter { !$0.isEmpty }.count
+        return text.split(separator: "\n").compactMap { pid_t($0) }
     }
 
-    /// Polls `processCount(matching:)` until `predicate` accepts the count.
+    /// Waits until each process of `members` exited, and then counts the
+    /// processes that still match `pattern` and did not exit.
     ///
-    /// The wait is for an event: the count that the predicate accepts. Its
-    /// only deadline is ``TestPoll/deadline``, a hang guard and not a speed
-    /// check (card `^tm4x2hp`).
+    /// Each member is a grandchild of this process, thus this process cannot
+    /// reap it, and the system reaps it at a time this process does not
+    /// control. The wait is on the exit event of the kernel for each member
+    /// (``ProcessExitWait/waitUntilGone(_:)``), and not on time. A member that
+    /// the kill missed never exits, and that wait is the failure of the test.
+    /// After the waits, no member of the killed tree can start a new process,
+    /// thus one reading of `pgrep` is the count of the survivors.
     ///
     /// - Parameters:
+    ///   - members: The pids of the tree, read while the tree ran.
     ///   - pattern: The pattern `pgrep -f` reads.
-    ///   - predicate: What the count must satisfy.
-    /// - Returns: The last count the poll read.
-    private func waitForProcessCount(
-        matching pattern: String,
-        until predicate: (Int) -> Bool
-    ) async -> Int {
-        await TestPoll.lastReading(of: { processCount(matching: pattern) }, until: predicate)
+    /// - Returns: The count of the processes that match `pattern` and that
+    ///   did not exit.
+    private func survivorCount(afterTheExitOf members: [pid_t], matching pattern: String) async -> Int {
+        for member in members {
+            await ProcessExitWait.waitUntilGone(member)
+        }
+        return processIDs(matching: pattern).filter { !ProcessExitWait.hasExited($0) }.count
     }
 
-    /// Polls the log of `commandID` until it holds a line.
+    /// Waits until the store holds a line of `commandID`, and reads the lines.
     ///
-    /// The wait is for an event: the first line in the store. Its only
-    /// deadline is ``TestPoll/deadline``, a hang guard and not a speed check
-    /// (card `^tm4x2hp`). Each caller runs a gated command, which cannot end
-    /// before the test opens its gate, thus the line arrives while the
-    /// command still runs, however slow the machine is.
+    /// The wait is for an event: `ShellState.waitForStoredLines` ends when the
+    /// store wrote the first line. Each caller runs a gated command, which
+    /// cannot end before the test opens its gate, thus the line arrives while
+    /// the command still runs, however slow the machine is.
     ///
     /// - Parameters:
     ///   - state: The store to read.
     ///   - commandID: The completion token of the run.
-    /// - Returns: The lines the last read gave, which is empty when none
-    ///   arrived.
+    /// - Returns: The lines of the run.
     /// - Throws: What `ShellState.getLines` throws.
     private func waitForLines(in state: ShellState, commandID: String) async throws -> [LogLine] {
-        try await TestPoll.lastReading(
-            of: { try await linesOnceStarted(in: state, commandID: commandID) },
-            until: { !$0.isEmpty })
+        await state.waitForStoredLines(commandID: commandID, atLeast: 1)
+        return try await state.getLines(commandID: commandID)
     }
 
-    /// The lines of `commandID`, and an empty array while no command started
-    /// under that token yet.
+    /// Reads `events` until the output of the run holds `marker`.
     ///
-    /// `run(_:)` makes the record of a run inside the task that a test starts,
-    /// thus a poll of the store can arrive BEFORE that task ran at all. The
-    /// window is real, and it is the ordinary case: a test creates the task and
-    /// then reaches the store at once, thus the read wins the race against a
-    /// task that the runtime did not schedule yet. `getLines` reports an unknown
-    /// token in that window, and "the run did not start yet" is exactly "no line
-    /// yet" to a poll.
-    ///
-    /// The guard reads the record first, and the record is what `startCommand`
-    /// makes, thus a token that has a record cannot make `getLines` report an
-    /// unknown token. Each other failure of the store still travels up, thus a
-    /// log that does not read still fails the test.
+    /// The wait is for an event of the run, and not for a time. The iterator
+    /// stays with the caller, thus a test can wait for several markers of one
+    /// run, one after the other.
     ///
     /// - Parameters:
-    ///   - state: The store to read.
-    ///   - commandID: The completion token of the run.
-    /// - Returns: The lines of the run, or an empty array while it did not start.
-    /// - Throws: What `ShellState.getLines` throws.
-    private func linesOnceStarted(
-        in state: ShellState, commandID: String
-    ) async throws -> [LogLine] {
-        guard await state.record(commandID: commandID) != nil else { return [] }
-        return try await state.getLines(commandID: commandID)
+    ///   - marker: The text to wait for.
+    ///   - events: The iterator of the live view of the output of the run.
+    /// - Returns: `true` when the marker arrived, or `false` when the run or
+    ///   the stream ended first.
+    private static func waitForOutput(
+        containing marker: String, from events: inout ShellOutputChunkStream.Iterator
+    ) async -> Bool {
+        var output = ""
+        while let event = await events.next() {
+            switch event.kind {
+            case .output(_, let bytes):
+                output += String(decoding: bytes, as: UTF8.self)
+                if output.contains(marker) {
+                    return true
+                }
+            case .gap:
+                continue
+            case .completed:
+                return false
+            }
+        }
+        return false
     }
 
     /// Makes a directory named `name` inside the directory of one test, thus a
@@ -452,8 +455,8 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let alive = processCount(matching: pattern)
-        #expect(alive >= Self.treeMemberCount, "expected the sleep tree to run, saw \(alive)")
+        let members = processIDs(matching: pattern)
+        #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
         clock.open()
         let outcome = try await runTask.value
@@ -461,8 +464,7 @@ struct ShellRunnerTests {
         #expect(outcome.exitCode == Self.absentExitCode)
         #expect(clock.recordedSleeps == [Self.treeKillTimeout])
 
-        let survivors = await waitForProcessCount(
-            matching: pattern, until: { $0 == 0 })
+        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
         #expect(survivors == 0, "the group kill left \(survivors) survivor(s)")
     }
 
@@ -653,18 +655,34 @@ struct ShellRunnerTests {
     /// stream in sequence, is that the lines of a single stream land in the
     /// order the child wrote them, and that no line of either stream goes away
     /// or arrives twice. This test states that guarantee, and no more.
+    ///
+    /// The writes alternate in fixed steps, and no step waits on time. The
+    /// command waits on a `ShellCommandGate` after each write. The test reads
+    /// the write on the live view, and only then releases the next step. The
+    /// line of a step arrives after the shell closed the FIFO of the step
+    /// before, thus each release reaches the wait of the next step.
     @Test("standard output and standard error each keep their own write order")
     func stdoutAndStderrEachStayInWriteOrderWithAlternatingWrites() async throws {
-        let (runner, state, _) = try makeRunner()
+        let live = ShellOutputChunkStream()
+        let (runner, state, _) = try makeRunner(outputChunkStream: live)
         let token = ToolContext.makeCompletionToken()
+        let gate = try ShellCommandGate()
+        var events = live.makeAsyncIterator()
+        defer { live.finish() }
 
         let command = """
-            printf 'out1\\n'; sleep 0.05
-            printf 'err1\\n' >&2; sleep 0.05
-            printf 'out2\\n'; sleep 0.05
+            printf 'out1\\n'; \(gate.waitCommand)
+            printf 'err1\\n' >&2; \(gate.waitCommand)
+            printf 'out2\\n'; \(gate.waitCommand)
             printf 'err2\\n' >&2
             """
-        _ = try await runner.run(.init(command: command, completionToken: token))
+        let runTask = Task { try await runner.run(.init(command: command, completionToken: token)) }
+        defer { runTask.cancel() }
+        for step in ["out1", "err1", "out2"] {
+            #expect(await Self.waitForOutput(containing: step, from: &events), "the step \(step) never wrote")
+            try await gate.release()
+        }
+        _ = try await runTask.value
         let lines = try await state.getLines(commandID: token)
 
         // Each line arrived exactly one time — none went away, and none came
@@ -721,14 +739,13 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the command never reported that it runs")
-        let alive = processCount(matching: pattern)
-        #expect(alive >= 1, "expected the command to run, saw \(alive)")
+        let members = processIDs(matching: pattern)
+        #expect(members.count >= 1, "expected the command to run, saw \(members.count)")
 
         let outcome = await runner.canceler(completionToken: token)()
         #expect(outcome == .stopped)
 
-        let survivors = await waitForProcessCount(
-            matching: pattern, until: { $0 == 0 })
+        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
         #expect(survivors == 0, "the canceler left \(survivors) survivor(s)")
 
         _ = try? await runTask.value
@@ -755,14 +772,13 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let alive = processCount(matching: pattern)
-        #expect(alive >= Self.treeMemberCount, "expected the sleep tree to run, saw \(alive)")
+        let members = processIDs(matching: pattern)
+        #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
         let outcome = await runner.canceler(completionToken: token)()
         #expect(outcome == .stopped)
 
-        let survivors = await waitForProcessCount(
-            matching: pattern, until: { $0 == 0 })
+        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
         #expect(survivors == 0, "the canceler left \(survivors) member(s) of the group alive")
 
         _ = try? await runTask.value
@@ -792,23 +808,27 @@ struct ShellRunnerTests {
         try openGate(gate)
     }
 
+    /// With no limit the command runs to its own end. The command waits on a
+    /// `ShellCommandGate`, thus it cannot end before the test releases it.
+    /// The release returns only after the command opened the FIFO, thus the
+    /// command ran up to that point, and then it ends by itself. The timer of
+    /// a limit sleeps on the `GatedClock` of the runner. A clock that
+    /// recorded no sleep proves that the runner started no timer at all.
     @Test("no time limit applies when the request asks for none")
     func noTimeoutIsAppliedWhenNoneRequested() async throws {
-        let (runner, _, _) = try makeRunner()
+        let clock = GatedClock()
+        let (runner, _, _) = try makeRunner(clock: clock)
         let token = ToolContext.makeCompletionToken()
+        let gate = try ShellCommandGate()
 
-        // With no limit the command runs to its own end. A limit short enough
-        // to kill it would have to stand below one second, and there is none.
-        let clock = ContinuousClock()
-        let start = clock.now
-        let outcome = try await runner.run(.init(command: "sleep 1", completionToken: token))
-        let elapsed = clock.now - start
+        let runTask = Task { try await runner.run(.init(command: gate.waitCommand, completionToken: token)) }
+        defer { runTask.cancel() }
+        try await gate.release()
+        let outcome = try await runTask.value
 
         #expect(outcome.status == .completed)
         #expect(outcome.exitCode == 0)
-        #expect(
-            elapsed >= Self.unlimitedSleepLowerBound,
-            "sleep 1 ended suspiciously early (\(elapsed))")
+        #expect(clock.recordedSleeps.isEmpty, "a run with no limit slept on its clock: \(clock.recordedSleeps)")
     }
 
     // MARK: - The registry across one run

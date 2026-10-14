@@ -1,7 +1,10 @@
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
+// `Router.useRunClock(_:)` is internal: only a test gives a router its run
+// clock. A debug build compiles Router with testing enabled.
+@testable import FoundationModelsRouter
 @testable import MultitoolTestSupport
 
 // MARK: - A router over a stub model
@@ -283,12 +286,78 @@ struct StubRun {
 /// `nil`, and with no recorder nothing is journaled at all — which makes
 /// `TranscriptEvent.merged(under:)` read an empty set and every event
 /// assertion silently observe nothing.
+///
+/// A test that must wait for an event waits with
+/// ``waitUntil(_:)``: ``append(_:to:)`` resumes each wait whose condition
+/// becomes true. Nothing reads a clock or polls.
 actor CollectingTranscriptRecorder: TranscriptRecorder {
+    /// One wait for a condition on the recorded events.
+    private struct EventWaiter {
+        /// The condition that ends the wait.
+        let isMet: @Sendable ([OperationEvent]) -> Bool
+
+        /// Resumes the wait: `true` when the condition is met, `false` when
+        /// the task was cancelled first.
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+
     /// Every partial this recorder was handed, in arrival order.
     private(set) var partials: [TranscriptEvent.Partial] = []
 
+    /// Each wait that did not end, by id.
+    private var waiters: [Int: EventWaiter] = [:]
+
+    /// The id that the next wait gets.
+    private var nextWaiterID = 0
+
     func append(_ partial: TranscriptEvent.Partial, to directory: URL?) async {
         partials.append(partial)
+        resumeMetWaiters()
+    }
+
+    /// Waits until `isMet` is true for the recorded operation events.
+    ///
+    /// The condition is tested now, and again after each append. The wait
+    /// reads no clock.
+    ///
+    /// - Parameter isMet: The condition on every recorded operation event, in
+    ///   arrival order. It must not block.
+    /// - Returns: `true` when the condition is met, `false` when the task was
+    ///   cancelled first.
+    func waitUntil(_ isMet: @escaping @Sendable ([OperationEvent]) -> Bool) async -> Bool {
+        if isMet(operationEvents) {
+            return true
+        }
+        let id = nextWaiterID
+        nextWaiterID += 1
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                if Task.isCancelled {
+                    continuation.resume(returning: false)
+                    return
+                }
+                waiters[id] = EventWaiter(isMet: isMet, continuation: continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelWait(id: id) }
+        }
+    }
+
+    /// Resumes each wait whose condition is true now.
+    private func resumeMetWaiters() {
+        guard !waiters.isEmpty else { return }
+        let events = operationEvents
+        for (id, waiter) in waiters where waiter.isMet(events) {
+            waiters.removeValue(forKey: id)
+            waiter.continuation.resume(returning: true)
+        }
+    }
+
+    /// Ends one wait with `false`, when it did not end yet.
+    ///
+    /// - Parameter id: The id of the wait.
+    private func cancelWait(id: Int) {
+        waiters.removeValue(forKey: id)?.continuation.resume(returning: false)
     }
 
     /// Drops everything recorded so far.
@@ -334,6 +403,8 @@ actor CollectingTranscriptRecorder: TranscriptRecorder {
 ///     ``makeStubProfile(recorder:loader:standardModel:in:)``.
 ///   - directory: Where the router caches and records. A fresh temporary
 ///     directory per call keeps runs of one suite apart.
+///   - runClock: The run clock of the session, or `nil` for the real time.
+///     See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
 /// - Returns: The session, and the recorder of its transcript.
 /// - Throws: Whatever resolving the profile throws.
 func makeStubSession(
@@ -341,11 +412,12 @@ func makeStubSession(
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
     in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())")
+        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    runClock: (any RunClock)? = nil
 ) async throws -> (session: any RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
     let profile = try await makeStubProfile(
-        recorder: recorder, loader: loader, standardModel: standardModel, in: directory)
+        recorder: recorder, loader: loader, standardModel: standardModel, in: directory, runClock: runClock)
     return (profile.standard.makeSession(instructions: nil, tools: tools), recorder)
 }
 
@@ -367,6 +439,11 @@ func makeStubSession(
 ///     container another test loaded first.
 ///   - directory: Where the router caches. A fresh temporary directory per
 ///     call keeps runs of one suite apart.
+///   - runClock: The run clock of each session of the profile: the timeout
+///     of each run, the settle period of each background call, and
+///     `ToolContext.wait(completionToken:seconds:)`. `nil` keeps the real
+///     time. A test that gives a `ManualRunClock` ends those timers with
+///     `ManualRunClock.advance(by:)` in a fixed order, and reads no real time.
 /// - Returns: The resolved profile.
 /// - Throws: Whatever resolving the profile throws.
 func makeStubProfile(
@@ -374,7 +451,8 @@ func makeStubProfile(
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
     in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())")
+        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    runClock: (any RunClock)? = nil
 ) async throws -> LanguageModelProfile {
     let router = Router(
         cacheDir: directory,
@@ -383,6 +461,9 @@ func makeStubProfile(
         metadataSource: StubMetadata(),
         loader: loader
     )
+    if let runClock {
+        await router.useRunClock(runClock)
+    }
     return try await router.resolve(
         profile: ProfileDefinition(
             name: "stub",
@@ -398,15 +479,21 @@ func makeStubProfile(
 /// Stands up a router over the stub model and takes a real ``ToolContext``
 /// out of a tool call on it.
 ///
-/// - Parameter directory: Where the router caches and records. A fresh
-///   temporary directory per call keeps runs of one suite apart.
+/// - Parameters:
+///   - directory: Where the router caches and records. A fresh temporary
+///     directory per call keeps runs of one suite apart.
+///   - runClock: The run clock of the session, or `nil` for the real time.
+///     See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
 /// - Returns: The session and its context.
 /// - Throws: Whatever resolving the profile throws.
-func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
-    .appendingPathComponent("multitool-stub-\(ULID.generate())")) async throws -> StubRun
-{
+func makeStubRun(
+    in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    runClock: (any RunClock)? = nil
+) async throws -> StubRun {
     let box = CapturedContextBox()
-    let stub = try await makeStubSession(mounting: [ContextCaptureTool(box: box)], in: directory)
+    let stub = try await makeStubSession(
+        mounting: [ContextCaptureTool(box: box)], in: directory, runClock: runClock)
     _ = try await stub.session.respond(to: "capture", maxTokens: nil)
     guard let context = box.context else {
         throw StubRunFailure.noContextCaptured
@@ -416,6 +503,42 @@ func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
     await stub.recorder.reset()
     return StubRun(session: stub.session, context: context, recorder: stub.recorder)
 }
+
+/// Runs one mounted call that must go to the background, and moves the run
+/// clock past its settle period. No real time passes.
+///
+/// The order is fixed. The call starts, and the test waits until the timers
+/// of the call wait on `clock` (``ManualRunClock/waitForSleepers(atLeast:)``).
+/// Then the clock moves by `grace`, the settle period ends, and the call
+/// answers with its pending envelope. The work of the call must not end by
+/// itself before that: hold it on a gate that the test opens later.
+///
+/// - Parameters:
+///   - clock: The run clock of the session that the call is mounted on.
+///   - grace: The settle period of the call, in seconds. It must be the
+///     full configured period, or more.
+///   - timers: How many timers the call puts on `clock` while it waits for
+///     its settle period. The settle period is one timer, and a run timeout
+///     is one more.
+///   - call: The mounted call.
+/// - Returns: What the call answered.
+/// - Throws: What the call throws.
+func callPastSettlePeriod<Answer: Sendable>(
+    on clock: ManualRunClock,
+    grace: TimeInterval,
+    timers: Int,
+    _ call: @escaping @Sendable () async throws -> Answer
+) async throws -> Answer {
+    let sleepersBefore = clock.sleeperCount
+    async let answer = call()
+    await clock.waitForSleepers(atLeast: sleepersBefore + timers)
+    clock.advance(by: .seconds(grace))
+    return try await answer
+}
+
+/// How many timers a mounted call with no run timeout puts on the run clock
+/// while it waits for its settle period: the settle period alone.
+let settlePeriodTimers = 1
 
 /// What standing up a stub run could not do.
 enum StubRunFailure: Error, CustomStringConvertible {
@@ -510,7 +633,7 @@ func settledOperationEvents(
 /// run into one open row that it writes later, so a read while the session is
 /// open sees only the first progress event of a run. A test that reads more
 /// than one progress event of a run reads with ``settledOperationEvents(of:ofKind:)``.
-/// The polling variant below is for the sweep `RoutedSession.close()` runs on
+/// The waiting variant below is for the sweep `RoutedSession.close()` runs on
 /// a task of its own.
 ///
 /// - Parameters:
@@ -533,14 +656,18 @@ func recordedOperationEvents(
 /// the sweep produced. It passed on a warm machine and failed on CI, which is
 /// the shape of that race exactly.
 ///
+/// The wait is an event: the recorder resumes it when an append brings the
+/// count to `count` (``CollectingTranscriptRecorder/waitUntil(_:)``). It
+/// reads no clock and does not poll.
+///
 /// - Parameters:
 ///   - run: The stub run whose journal to read.
 ///   - kind: The event kind to keep.
-///   - count: How many to wait for.
-/// - Returns: The events, once `count` of them are there, or whatever was
-///   journaled when the deadline passed.
 ///   - correlatedTo: The runs to keep, by `correlationID`, or `nil` for every
 ///     run of the session.
+///   - count: How many to wait for.
+/// - Returns: The events, once `count` of them are there, or whatever was
+///   journaled when the task was cancelled.
 ///
 /// **Pass `correlatedTo` for anything that sweeps.** `RoutedSession.close()`
 /// settles EVERY background run the session holds, and one of those is the
@@ -555,15 +682,11 @@ func recordedOperationEvents(
     correlatedTo correlationIDs: Set<String>? = nil,
     awaiting count: Int
 ) async -> [OperationEvent] {
-    func matching() async -> [OperationEvent] {
-        guard let correlationIDs else { return await recordedOperationEvents(of: run, ofKind: kind) }
-        return await recordedOperationEvents(of: run, ofKind: kind, correlatedTo: correlationIDs)
+    @Sendable func matching(_ events: [OperationEvent]) -> [OperationEvent] {
+        events.filter { event in
+            event.kind == kind && (correlationIDs?.contains(event.correlationID) ?? true)
+        }
     }
-    let deadline = ContinuousClock.now.advanced(by: TestPoll.deadline)
-    var events = await matching()
-    while events.count < count, ContinuousClock.now < deadline {
-        try? await Task.sleep(for: TestPoll.interval)
-        events = await matching()
-    }
-    return events
+    _ = await run.recorder.waitUntil { matching($0).count >= count }
+    return matching(await run.recorder.operationEvents)
 }

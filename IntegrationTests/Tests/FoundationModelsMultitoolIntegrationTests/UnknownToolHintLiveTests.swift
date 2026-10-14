@@ -189,8 +189,7 @@ let imaginedToolPaths = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated did-you-mean hints over the agent's files-and-shell surface",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct UnknownToolHintLiveTests {
     @Test("every wrong tools.* path answers with a tool the surface really defines")

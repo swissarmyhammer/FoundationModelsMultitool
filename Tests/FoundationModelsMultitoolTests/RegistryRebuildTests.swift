@@ -104,19 +104,45 @@ struct RegistryRebuildTests {
         return (scripted, server)
     }
 
-    /// Polls until the catalog of `server` does or does not hold a tool
-    /// named `name`, and fails the test when it never does.
+    /// The error ``waitUntilCatalog(of:satisfies:)`` throws when
+    /// `catalogUpdates` ends before a snapshot meets the condition.
+    private struct CatalogUpdatesEnded: Error {}
+
+    /// Reads the `catalogUpdates` snapshots of `server` until one snapshot
+    /// meets `condition`. The wait ends on the snapshot event, not on a
+    /// timer.
+    ///
+    /// The stream holds every snapshot since the server was made, and no
+    /// other consumer reads it in this suite (this suite starts no
+    /// `SurfaceRefresher`). Thus each call reads on from the snapshot after
+    /// the last one an earlier call read, and it does not miss a snapshot.
     ///
     /// - Parameters:
-    ///   - server: The server whose catalog to read.
+    ///   - server: The server whose snapshots to read.
+    ///   - condition: The condition one snapshot must meet.
+    /// - Throws: ``CatalogUpdatesEnded`` when the stream ends first.
+    private static func waitUntilCatalog(
+        of server: MCPServer, satisfies condition: (MCPToolCatalog) -> Bool
+    ) async throws {
+        for await snapshot in await server.catalogUpdates where condition(snapshot) {
+            return
+        }
+        throw CatalogUpdatesEnded()
+    }
+
+    /// Reads the `catalogUpdates` snapshots of `server` until one snapshot
+    /// does or does not hold a tool named `name`.
+    ///
+    /// - Parameters:
+    ///   - server: The server whose snapshots to read.
     ///   - name: The tool name to look for.
     ///   - present: Whether to wait for the tool to appear or to vanish.
-    /// - Throws: `TestPoll.ConditionNeverHeld` when the deadline passes.
+    /// - Throws: ``CatalogUpdatesEnded`` when the stream ends first.
     private static func waitUntilCatalog(
         of server: MCPServer, holds name: String, present: Bool
     ) async throws {
-        try await TestPoll.waitUntil("the catalog holds \(name): \(present)") {
-            (await server.tool(named: name) != nil) == present
+        try await waitUntilCatalog(of: server) { snapshot in
+            snapshot.tools.contains { $0.name == name } == present
         }
     }
 
@@ -210,8 +236,8 @@ struct RegistryRebuildTests {
         // at one path, which is the `.duplicateName` collision of the build.
         await scripted.addTool(ScriptedServer.echoTool())
         try await scripted.emitToolListChangedBurst(count: Self.oneNotification)
-        try await TestPoll.waitUntil("the catalog holds the echo tool two times") {
-            (try? await server.catalog.tools.count) == Self.echoToolCountAfterDuplicate
+        try await Self.waitUntilCatalog(of: server) { snapshot in
+            snapshot.tools.count == Self.echoToolCountAfterDuplicate
         }
 
         await #expect {

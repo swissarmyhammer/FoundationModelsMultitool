@@ -13,6 +13,12 @@
 /// A caller takes a turn before each request. A turn starts at least
 /// ``interval`` after the start of the previous turn. The turns start in the
 /// order of their reservations.
+///
+/// This is the one wait on the real clock that stays in the test code, and
+/// that is correct: it spaces the live requests to an external service, to
+/// avoid HTTP 429 from that service. It waits for no fact of the test, thus no
+/// event can take its place, and no result of a test depends on how long it
+/// waits.
 actor LiveSearchSpacing {
     /// The shortest time between the starts of two turns.
     let interval: Duration

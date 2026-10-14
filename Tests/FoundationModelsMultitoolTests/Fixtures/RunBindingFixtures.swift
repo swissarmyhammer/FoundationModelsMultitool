@@ -133,8 +133,10 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// public initializer and `SessionMailbox` is internal to Router. See
 /// `StubRouterFixtures.swift` for the stack that stands the session up.
 ///
+/// - Parameter runClock: the run clock of the session, or `nil` for the real
+///   time. See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
 /// - Returns: the outer run's ambient context.
 /// - Throws: whatever standing up the stub session throws.
-func makeOuterRunContext() async throws -> ToolContext {
-    try await makeStubRun().context
+func makeOuterRunContext(runClock: (any RunClock)? = nil) async throws -> ToolContext {
+    try await makeStubRun(runClock: runClock).context
 }

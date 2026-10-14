@@ -5,11 +5,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// How long the slow fixture tool sleeps before returning — long enough that
-/// a mount which handed back a handle at once would have answered long before
-/// the real value arrived.
-private let innerCallDelayNanoseconds: UInt64 = 200_000_000
-
 /// Phase-1 coverage for `RunBinding` — eventplan.md § "Async JavaScript"
 /// ("Session affinity across the seam"), § "Background tools and the completion
 /// token" (the code-mode mount: the background off), and § "The constraint
@@ -36,13 +31,19 @@ struct RunBindingTests {
         #expect(RunBinding.innerCallMount.timeout == nil)
     }
 
+    /// The slow tool holds its call until the test releases it, and the test
+    /// releases it only after the call started. Thus a mount that handed back
+    /// a handle at once answers before the real value can arrive. The test
+    /// reads no real time.
     @Test("a slow inner call still returns its real value, and never goes to the background")
     func slowInnerCallReturnsItsRealValueWithoutBackgrounding() async throws {
-        let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: innerCallDelayNanoseconds)
+        let slowTool = WindowRecordingTool(name: "slow")
         let context = try await makeOuterRunContext()
         let binding = RunBinding(context: context)
 
-        let output = try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))
+        async let invoked = binding.invoke(slowTool, arguments: NoArguments(unused: nil))
+        try await slowTool.hold.releaseOnArrival()
+        let output = try await invoked
 
         #expect(output == "slow-result")
         #expect(!PendingRunEnvelope.isRendered(text: output))

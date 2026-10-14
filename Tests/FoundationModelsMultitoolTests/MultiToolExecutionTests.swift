@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import ScenarioGrading
 import Testing
@@ -130,8 +131,11 @@ struct MultiToolExecutionTests {
 
         // `return tools.delayed();`, with no `await`, is correct per
         // eventplan.md: "An unawaited return settles at the boundary...
-        // `return tools.x.y(...)` is correct."
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.delayed();"))
+        // `return tools.x.y(...)` is correct." The call is pending until the
+        // test releases it, after the call came.
+        async let called = multiTool.call(arguments: RunCodeArguments(code: "return tools.delayed();"))
+        try await delayedTool.hold.releaseOnArrival()
+        let output = try await called
 
         #expect(output == "\"delayed-result\"")
         #expect(delayedTool.ranOnMainThread == false)
@@ -145,9 +149,11 @@ struct MultiToolExecutionTests {
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let output = try await multiTool.call(
+        async let called = multiTool.call(
             arguments: RunCodeArguments(code: "const result = await tools.delayed(); return result;")
         )
+        try await delayedTool.hold.releaseOnArrival()
+        let output = try await called
 
         #expect(output == "\"delayed-result\"")
         #expect(delayedTool.ranOnMainThread == false)
@@ -155,12 +161,10 @@ struct MultiToolExecutionTests {
 
     /// Each call waits at one ``Rendezvous`` until the other call has
     /// arrived. A bridge that ran the calls one after another leaves the first
-    /// call waiting for a call that cannot start, and the hang guard reports
-    /// it. Calls that ran concurrently always meet, thus the test reads no real
-    /// time (card `^kdtrmhv`: no test checks the speed of the machine).
-    @Test(
-        "Promise.all over two tools.* calls runs both at the same time",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// call waiting for a call that cannot start, and the test hangs. Calls
+    /// that ran concurrently always meet, thus the test reads no real time
+    /// (card `^kdtrmhv`: no test checks the speed of the machine).
+    @Test("Promise.all over two tools.* calls runs both at the same time")
     func promiseAllRunsToolCallsConcurrently() async throws {
         let rendezvous = Rendezvous(partySize: Self.concurrentCallCount)
         let registry = try MultiTool.Builder()
@@ -185,13 +189,18 @@ struct MultiToolExecutionTests {
     /// How many `tools.*` calls the `Promise.all` snippet starts together.
     private static let concurrentCallCount = 2
 
+    /// The floating call waits on a gate that the interpreter opens when the
+    /// snippet code ended (see ``SnippetEndSignalingInterpreter``). Thus the
+    /// call always ends after the snippet code ended, in a fixed order, and
+    /// the test reads no real time.
     @Test("a floating (unawaited) tools.* call still completes its real work before runCode returns")
     func floatingToolCallSettlesBeforeReturn() async throws {
-        let delayedTool = DelayedTool()
+        let snippetEnded = TestGate()
+        let delayedTool = DelayedTool(hold: HeldCall(release: snippetEnded))
         let registry = try MultiTool.Builder()
             .addTool(delayedTool)
             .buildRegistry()
-        let multiTool = MultiTool(registry: registry)
+        let multiTool = MultiTool(registry: registry, interpreter: SnippetEndSignalingInterpreter(opening: snippetEnded))
 
         let output = try await multiTool.call(
             arguments: RunCodeArguments(code: "tools.delayed(); return \"done\";")
@@ -443,15 +452,16 @@ struct MultiToolExecutionTests {
     // MARK: - A settled background run comes back as mail
 
     /// How long the collector of the removed-`wait()` test waits for its own
-    /// snippet: the hang bound of `TestPoll`, in seconds.
+    /// snippet, in seconds.
     ///
-    /// The test does not measure time with it. It is only the bound of a
-    /// hang (card `^pfvdg5b`: no test checks the speed of the machine). The
-    /// collector snippet throws at its first statement, thus it settles, and
-    /// the settle is the event that ends the wait. The gated snippet runs on a
-    /// mount with no wait at all, thus no time decides which of the two
-    /// envelopes is pending.
-    private static let collectorGrace = TimeInterval(TestPoll.deadline.components.seconds)
+    /// The collector runs on a session whose run clock is a `ManualRunClock`
+    /// that the test never advances. Thus this period never ends, and the
+    /// value has no effect on the result (card `^pfvdg5b`: no test checks the
+    /// speed of the machine). The collector snippet throws at its first
+    /// statement, thus it settles, and the settle is the event that ends the
+    /// wait. The gated snippet runs on a mount with no wait at all, thus no
+    /// time decides which of the two envelopes is pending.
+    private static let collectorGrace: TimeInterval = 1
 
     /// The seconds argument of the removed sandbox `wait()` in the snippet
     /// that tries to collect a run. The call throws before it reads the
@@ -541,7 +551,7 @@ struct MultiToolExecutionTests {
         let refused = OSAllocatedUnfairLock<String?>(initialState: nil)
         let token = OSAllocatedUnfairLock<String?>(initialState: nil)
         let collectorMount = try #require(
-            try await makeOuterRunContext().mount(
+            try await makeStubRun(runClock: ManualRunClock()).context.mount(
                 Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
                 as? any Tool<RunCodeArguments, String>)
         let session = try await makeMailProbeSession(

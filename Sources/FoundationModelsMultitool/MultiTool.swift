@@ -1129,6 +1129,12 @@ public struct MultiTool: Tool {
     /// session of this run, and its pending inner calls are named in the
     /// result of the run the model started (see ``EnclosingRun``).
     ///
+    /// The nested run also gets the interpreter of this run. An interpreter
+    /// keeps no state from one run to the next (each run gets a fresh
+    /// sandbox), thus the nested snippet runs as it did on a new
+    /// `JSCInterpreter`. A test that gives this tool an interpreter of its
+    /// own thus also sees the nested snippets.
+    ///
     /// - Parameters:
     ///   - bundle: the bundle this run read at its start.
     ///   - enclosingRun: what the nested run gets from this run.
@@ -1139,6 +1145,7 @@ public struct MultiTool: Tool {
         let nested = MultiTool(
             holder: RegistryHolder(current: bundle),
             configuration: configuration,
+            interpreter: interpreter,
             limits: limits,
             searchTools: searchTools,
             depth: depth + 1,

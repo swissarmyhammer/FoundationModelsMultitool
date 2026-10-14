@@ -13,8 +13,7 @@ import Testing
 /// request, thus no HTTP request leaves the computer. A test does not retry.
 @Suite(
     "Live: the address guard refuses loopback and metadata addresses",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct GuardLiveTests {
     /// A public DNS name that resolves to the loopback address.

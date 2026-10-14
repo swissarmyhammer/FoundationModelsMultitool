@@ -5,8 +5,8 @@
 // The context uses the real session and the real resolver of the address
 // guard, thus each request goes to the real page, and each guard check reads
 // the real DNS answer. The session has no timeout of its own: the fetcher
-// sets no time limit on a request, and ``IntegrationHangGuard/timeLimit``
-// bounds each test. Each suite calls the `fetch` verb through
+// sets no time limit on a request, and no test has a time limit. A request
+// that never ends shows as a hang. Each suite calls the `fetch` verb through
 // `WebVerbCall.fetch` of `MultitoolTestSupport`, the call that the unit suites
 // make too. A test asserts only facts that are stable for years: a known
 // title, a known redirect, a known media type. A test does not retry.

@@ -43,14 +43,12 @@ struct SandboxPreflightTests {
     private static let otherTemporaryDirectory = "/private/tmp/u"
 
     /// The number of callers that reach one gate together in the overlap test.
-    private static let overlappingCallerCount = 16
-
-    /// How long the stand-in canary takes in the overlap test.
     ///
-    /// A canary that answers at once lets the first caller finish before the
-    /// second one starts, thus a gate that cannot hold concurrent callers
-    /// together would pass by luck.
-    private static let overlappingCanaryDuration = Duration.milliseconds(50)
+    /// The stand-in canary of that test holds until each of these callers has
+    /// arrived. A canary that answers at once lets the first caller finish
+    /// before the second one starts, thus a gate that cannot hold concurrent
+    /// callers together would pass by luck.
+    private static let overlappingCallerCount = 16
 
     /// The wrapper that the two passing live-spawn tests run: it ends at once,
     /// with exit code 0 and no standard error.
@@ -130,13 +128,23 @@ struct SandboxPreflightTests {
         // that reads and then starts would let each caller that arrives before
         // the first one ends start a canary of its own. Calls one after the
         // other cannot tell the two designs apart. This test can.
-        let counter = CanaryCounter(taking: Self.overlappingCanaryDuration)
+        //
+        // The canary holds until each caller is inside `passOnce`, past its
+        // read of the gate: the internal hook of the gate counts the waiting
+        // callers, and the test opens the canary only when the count reaches
+        // each caller. Thus each caller overlaps the canary run.
+        let release = TestGate()
+        let counter = CanaryCounter(heldBy: release)
         let gate = CanaryGate()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<Self.overlappingCallerCount {
-                group.addTask { try await gate.passOnce(counter.run) }
+                group.addTask {
+                    try await gate.passOnce(counter.run)
+                }
             }
+            await gate.waitForWaitingCallers(atLeast: Self.overlappingCallerCount)
+            release.open()
             try await group.waitForAll()
         }
 
@@ -210,21 +218,23 @@ private final class CanaryCounter: Sendable {
     /// script runs out, thus a script of one entry is a constant answer.
     private let script: [Result<Void, CanaryFailure>]
 
-    /// How long each run takes before it answers, or `nil` to answer at once.
-    private let duration: Duration?
+    /// The gate that each run waits on before it answers, or `nil` to answer
+    /// at once.
+    private let release: TestGate?
 
     /// Makes a counter that answers from `script`, in order.
     ///
     /// - Parameters:
     ///   - script: The answers to give, one for each run, the last one
     ///     repeating. The default is a single canary that passes.
-    ///   - duration: How long each run takes. The default is `nil` — at once.
+    ///   - release: The gate that each run waits on before it answers. The
+    ///     default is `nil`: each run answers at once.
     init(
         answering script: [Result<Void, CanaryFailure>] = [.success(())],
-        taking duration: Duration? = nil
+        heldBy release: TestGate? = nil
     ) {
         self.script = script
-        self.duration = duration
+        self.release = release
     }
 
     /// How many runs this counter recorded.
@@ -232,7 +242,8 @@ private final class CanaryCounter: Sendable {
         calls.withLock { $0 }
     }
 
-    /// Runs the canary: records the call, waits, and answers from the script.
+    /// Runs the canary: records the call, waits until the release gate opens
+    /// (when there is one), and answers from the script.
     ///
     /// - Throws: The `CanaryFailure` of this entry of the script.
     func run() async throws {
@@ -240,8 +251,8 @@ private final class CanaryCounter: Sendable {
             recorded += 1
             return recorded - 1
         }
-        if let duration {
-            try? await Task.sleep(for: duration)
+        if let release {
+            try? await release.wait()
         }
         try script[min(index, script.count - 1)].get()
     }

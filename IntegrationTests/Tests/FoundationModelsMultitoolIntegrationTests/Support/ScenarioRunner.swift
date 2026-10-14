@@ -839,9 +839,12 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used in the printed lines.
 ///   - makeTools: builds the scenario's fixed tool set around the run's own call
-///     log. A builder, for `runNativeIntegrationScenario`'s reason: exactly one
-///     log exists per run, and no call site can hand the tools a different one
-///     than this runner reads back.
+///     log, and the gate this runner opens when the first answer ended. A
+///     builder, for `runNativeIntegrationScenario`'s reason: exactly one log
+///     exists per run, and no call site can hand the tools a different one than
+///     this runner reads back. A fixture that must settle after the first
+///     answer waits on the gate, and not on a sleep (see
+///     `IntegrationDelayedEchoTool`).
 ///   - prompt: the user request driving the turn.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively). Pick a value the reply
@@ -853,17 +856,18 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runInBandCollectionCanaryScenario(
     name: String,
-    tools makeTools: (ScenarioCallLog) -> [any Tool],
+    tools makeTools: (ScenarioCallLog, ScenarioGate) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String],
     groundedIn: Set<String>
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let log = ScenarioCallLog()
+        let firstAnswerEnded = ScenarioGate()
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log), on: fixture, direct: true).tools,
+            tools: try makeScenarioSurface(over: makeTools(log, firstAnswerEnded), on: fixture, direct: true).tools,
             discoveryPriming: scenarioDiscoveryPriming
         )
 
@@ -872,7 +876,17 @@ func runInBandCollectionCanaryScenario(
         let output = await SessionOutputLog.reading(session)
 
         let start = Date()
-        let turn = try await streamTurn(of: session, prompt: prompt)
+        let turn: StreamedTurn
+        do {
+            turn = try await streamTurn(of: session, prompt: prompt)
+        } catch {
+            // A fixture call that still waits must end with the run.
+            firstAnswerEnded.open()
+            throw error
+        }
+        // The first answer ended: a fixture that waits on the gate settles
+        // now, after the pending envelope, and its result comes back as mail.
+        firstAnswerEnded.open()
         let reading = await MailAnswerReading.read(output, after: turn, backgroundRunsOf: log)
         let elapsed = Date().timeIntervalSince(start)
         let answers = SubmissionLog.fold(outputs: reading.outputs)
@@ -977,18 +991,6 @@ private func usageForDisplay(_ usage: TokenUsage) -> String {
 
 // MARK: - The nested-generation probe
 
-/// How many seconds pass between two samples of the shared generation queue
-/// while the probe's turn runs.
-///
-/// Frequent enough that even a run killed at the suite's one-minute limit
-/// leaves a dozen readings, and cheap enough to be free: one sample is two
-/// reads of the queue worker's state.
-private let generationQueueSampleIntervalSeconds = 5
-
-/// How often the shared generation queue is sampled while the probe's turn
-/// runs — ``generationQueueSampleIntervalSeconds`` as a `Duration`.
-private let generationQueueSampleInterval = Duration.seconds(generationQueueSampleIntervalSeconds)
-
 /// How many leading characters of the model's reply the `NESTED-GENERATION`
 /// diagnostic line prints.
 ///
@@ -999,8 +1001,7 @@ private let generationQueueSampleInterval = Duration.seconds(generationQueueSamp
 /// call that came back is worth reading whole.
 private let nestedGenerationReplyPreviewCharacters = 200
 
-/// Prints the state of the shared generation queue of the model, once every
-/// ``generationQueueSampleInterval``, until this task is cancelled.
+/// Prints the state of the shared generation queue of the model one time.
 ///
 /// The work-queue Router replaced the old per-container `generationGate`
 /// with one FIFO `GenerationQueue` for each model. This reads the same two
@@ -1008,24 +1009,24 @@ private let nestedGenerationReplyPreviewCharacters = 200
 /// how many submissions wait for it. A nested `respond` on the same model
 /// gets `GenerationQueueError.waitInsideOpenSubmission` at once and never
 /// waits, so a healthy run never reads `waiting=1`. A run that hangs reads
-/// `running=true waiting=1` for the rest of its life, and that is the reading
-/// a run killed by the hang guard leaves.
+/// `running=true waiting=1` for the rest of its life.
 ///
-/// Sampled while the turn is in flight rather than read afterwards, because a
-/// hung run has no afterwards. The last printed reading is what a killed run
-/// leaves behind, which is why this prints rather than asserts.
+/// No test may depend on time, thus no sampler reads the queue on a timer.
+/// The queue gives no event when its state changes. Thus the probe reads it
+/// at fixed points of the run: before the turn starts, and at the end of the
+/// turn (also when the turn throws). The state at the nested call itself is
+/// what `IntegrationNestedGenerationTool` records. This prints rather than
+/// asserts, because it is evidence and not a check.
 ///
-/// - Parameter slot: the resolved slot whose resident container owns the
-///   queue.
-private func sampleGenerationQueue(on slot: RoutedLLM) async {
+/// - Parameters:
+///   - slot: the resolved slot whose resident container owns the queue.
+///   - point: the point of the run that the reading belongs to.
+private func reportGenerationQueue(on slot: RoutedLLM, at point: String) async {
     guard let queue = slot.residentGenerationQueue else {
         reportTraceLine("QUEUE none: the backend of this model names no generation queue")
         return
     }
-    while !Task.isCancelled {
-        reportTraceLine("QUEUE running=\(await queue.isRunning) waiting=\(await queue.waitingCount)")
-        try? await Task.sleep(for: generationQueueSampleInterval)
-    }
+    reportTraceLine("QUEUE [\(point)] running=\(await queue.isRunning) waiting=\(await queue.waitingCount)")
 }
 
 extension RoutedLLM {
@@ -1072,10 +1073,10 @@ extension RoutedLLM {
 /// one of them generates under a grammar on a slot of its own, and none of
 /// them is the question.
 ///
-/// **What a hang looks like from outside.** The turn stops making progress, so
-/// the hang guard of the suite, `IntegrationHangGuard.timeLimit`, is what ends
-/// it. The evidence is the `QUEUE`
-/// lines this prints throughout, and the enter record of the span the fixture
+/// **What a hang looks like from outside.** The turn stops making progress,
+/// and no time limit ends it: the person who runs the suite stops the run.
+/// The evidence is the `QUEUE` line this prints before the turn, the missing
+/// `QUEUE` line of the end of the turn, and the enter record of the span the fixture
 /// opens: the swift-log output of the run shows
 /// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the
 /// span of that call does not end for as long as the run lasts.
@@ -1103,13 +1104,15 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             tools: [IntegrationNestedGenerationTool(slot: slot, log: log, outcomes: outcomes)])
 
         let start = Date()
-        let turn = try await withThrowingTaskGroup(of: Void.self, returning: StreamedTurn.self) { group in
-            group.addTask { await sampleGenerationQueue(on: slot) }
-            // Cancelled on every exit path, so the sampler cannot outlive the
-            // turn it is sampling — including the path where the turn throws.
-            defer { group.cancelAll() }
-            return try await streamTurn(of: session, prompt: prompt)
+        await reportGenerationQueue(on: slot, at: "before the turn")
+        let turn: StreamedTurn
+        do {
+            turn = try await streamTurn(of: session, prompt: prompt)
+        } catch {
+            await reportGenerationQueue(on: slot, at: "the turn threw")
+            throw error
         }
+        await reportGenerationQueue(on: slot, at: "the end of the turn")
         let elapsed = Date().timeIntervalSince(start)
 
         let evidence = NestedGenerationEvidence(

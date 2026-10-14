@@ -557,13 +557,6 @@ public let integrationNestedGenerationToken = "READY-7Q4X"
 
 // MARK: - Scenario 9: the delayed echo of the mail collection canary (task `^nhxj8hx`)
 
-/// The count of seconds in `integrationDelayedEchoDelay`.
-///
-/// This declaration names the number directly, so no call site passes a raw
-/// literal — `integrationDelayedEchoDelay` turns it into a `Duration`. The
-/// reasons for the value stand on that constant.
-public let integrationDelayedEchoDelaySeconds = 7
-
 /// `IntegrationDelayedEchoTool`'s arguments.
 @Generable
 public struct IntegrationDelayedEchoArguments {
@@ -589,29 +582,6 @@ public struct IntegrationDelayedEchoOutput {
     public var value: String
 }
 
-/// How long `IntegrationDelayedEchoTool` holds its value before it settles.
-///
-/// **The delay must be longer than `runCode`'s inline settle grace**
-/// (`MultiToolConfiguration.defaultInlineSettleGrace`, which is `ToolMount.defaultInlineSettleGrace`). A run
-/// that settles inside the grace gives its result inline, and the deferred
-/// path goes untested (task `^nhxj8hx`). This delay keeps the run in the
-/// `running` state past the instant its `runCode` call answers, so the result
-/// must come back later, as mail.
-///
-/// Seven seconds: the grace and two seconds more. The delay was four seconds,
-/// and a live run on 2026-09-26 (task `^r77er9z`) showed the fault: the echo
-/// settled inside the grace, the model got the value inline, and no mail came.
-/// It was then ten seconds, two times the grace. Card `^3vtvrzg` made it
-/// shorter: the echo starts its delay after the `runCode` call starts its
-/// grace, so any delay longer than the grace settles after the pending
-/// envelope, and each second past that margin only lengthens the run.
-/// `ScenarioFixtureTests` makes sure that this delay stays longer than the
-/// grace: when the grace changes, that test fails until this value changes
-/// too. It stays far under `MultiToolConfiguration.executionTimeLimit`, the
-/// sandbox work clock, so a snippet that awaits the echo in line still
-/// completes.
-public let integrationDelayedEchoDelay: Duration = .seconds(integrationDelayedEchoDelaySeconds)
-
 /// How many characters `integrationDelayedEchoNonce()` returns.
 ///
 /// Twelve hex characters carry 48 random bits: enough that no two runs
@@ -633,8 +603,21 @@ public func integrationDelayedEchoNonce() -> String {
 }
 
 /// The tool the mail collection canary drives: it takes a value, hands the
-/// caller a handle at once, and settles with that value
-/// `integrationDelayedEchoDelay` later.
+/// caller a handle at once, and settles with that value only after its
+/// `release` gate opens.
+///
+/// **The value must settle after `runCode`'s inline settle grace**
+/// (`MultiToolConfiguration.defaultInlineSettleGrace`, which is
+/// `ToolMount.defaultInlineSettleGrace`). A run that settles inside the grace
+/// gives its result inline, and the deferred path goes untested (task
+/// `^nhxj8hx`). A live run on 2026-09-26 (task `^r77er9z`) showed that fault
+/// with a sleep of four seconds. The tool now waits on a gate, and no sleep:
+/// the canary runner opens the gate only after the first answer ended. The
+/// first answer ends only after the `runCode` call answered, and that call
+/// answers before the echo settles only with the pending envelope. Thus the
+/// value always comes back later, as mail, and no length of time decides it.
+/// `ScenarioFixtureTests` makes sure that the tool does not answer before the
+/// gate opens.
 ///
 /// The description says the result settles in the background, and stops
 /// there. It does not tell the model what to do while it runs: whether the
@@ -656,25 +639,33 @@ public struct IntegrationDelayedEchoTool: Tool {
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
 
+    /// The gate each call waits on before it settles. The canary runner opens
+    /// it after the first answer ended.
+    let release: ScenarioGate
+
     /// Creates the delayed-echo fixture, recording into `log`.
     ///
     /// Explicit because a `public` struct's synthesized memberwise
     /// initializer is `internal` only, and `IntegrationDelayedEchoTool` is mounted from
     /// both test targets.
     ///
-    /// - Parameter log: the scenario run's call log this tool records into.
-    public init(log: ScenarioCallLog) {
+    /// - Parameters:
+    ///   - log: the scenario run's call log this tool records into.
+    ///   - release: the gate each call waits on before it settles.
+    public init(log: ScenarioCallLog, release: ScenarioGate) {
         self.log = log
+        self.release = release
     }
 
-    /// Waits `integrationDelayedEchoDelay`, then reports the value back.
+    /// Waits until `release` opens, then reports the value back.
     ///
     /// - Parameter arguments: the value to echo.
     /// - Returns: that exact value.
-    /// - Throws: a `CancellationError` if the run is cancelled mid-delay.
+    /// - Throws: a `CancellationError` if the run is cancelled before the gate
+    ///   opens.
     public func call(arguments: IntegrationDelayedEchoArguments) async throws -> IntegrationDelayedEchoOutput {
         try await log.recordCall(to: name) {
-            try await Task.sleep(for: integrationDelayedEchoDelay)
+            try await release.wait()
             return IntegrationDelayedEchoOutput(value: arguments.value)
         }
     }

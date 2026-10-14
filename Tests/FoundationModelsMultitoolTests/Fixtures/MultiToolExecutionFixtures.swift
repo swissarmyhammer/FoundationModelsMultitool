@@ -124,12 +124,18 @@ struct CatalogEntryTool: Tool {
 
 // MARK: - Async bridge fixture (eventplan.md "Async JavaScript")
 
-/// A tool whose `call` genuinely suspends (`Task.sleep`) before returning,
-/// recording whether it observed `Thread.isMainThread` — exercises the async
-/// promise-pump bridge: the wrapped tool's real `async` work runs in its own
-/// Swift `Task` (started by `JSCInterpreter.install(asyncHostFunction:into:
-/// registry:)`) on Swift's cooperative thread pool, never on the JS-calling
-/// (dedicated interpreter worker) thread.
+/// A tool whose `call` genuinely suspends before it returns, and records
+/// whether it observed `Thread.isMainThread`. It exercises the async
+/// promise-pump bridge: the real `async` work of the wrapped tool runs in its
+/// own Swift `Task` (started by `JSCInterpreter.install(asyncHostFunction:into:
+/// registry:)`) on the cooperative thread pool of Swift, never on the
+/// JS-calling (dedicated interpreter worker) thread.
+///
+/// The call suspends on ``hold``, and not on a clock. The test opens the gate
+/// of the hold after the call came, or gives the hold a gate that the code
+/// under test opens at a fixed point (see ``SnippetEndSignalingInterpreter``).
+/// Thus the call is pending for as long as the test needs, and no test
+/// depends on the speed of the machine.
 ///
 /// `final class ... Sendable` (rather than a `struct`), the same pattern as
 /// `RecordingTool` (`ToolInvokerFixtures.swift`): recording requires shared
@@ -137,16 +143,27 @@ struct CatalogEntryTool: Tool {
 /// by an `OSAllocatedUnfairLock` so the type stays `Sendable`.
 final class DelayedTool: Tool, Sendable {
     let name = "delayed"
-    let description = "Waits briefly, then returns a fixed value."
+    let description = "Waits until the test lets it go on, then returns a fixed value."
+
+    /// The hold that each call waits on before it returns.
+    let hold: HeldCall
 
     private let ranOnMainThreadBox = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+
+    /// Creates a tool whose calls wait on `hold`.
+    ///
+    /// - Parameter hold: The hold that each call passes. The default is a new
+    ///   hold that only the test releases.
+    init(hold: HeldCall = HeldCall()) {
+        self.hold = hold
+    }
 
     /// Whether `call` observed `Thread.isMainThread` — `nil` until `call`
     /// has run at least once.
     var ranOnMainThread: Bool? { ranOnMainThreadBox.withLock { $0 } }
 
     func call(arguments: NoArguments) async throws -> String {
-        try await Task.sleep(nanoseconds: 20_000_000)
+        try await hold.pass()
         ranOnMainThreadBox.withLock { $0 = Thread.isMainThread }
         return "delayed-result"
     }
@@ -154,33 +171,35 @@ final class DelayedTool: Tool, Sendable {
 
 // MARK: - Window-recording fixture (eventplan.md "Async JavaScript")
 
-/// A tool that sleeps for a fixed duration and records the wall-clock window
-/// (`start`, `end`) its own `call` ran in.
+/// A tool that waits until the test releases it, and records the wall-clock
+/// window (`start`, `end`) its own `call` ran in.
 ///
-/// No test compares two windows to prove concurrency: that compares the speed
-/// of the machine (card `^kdtrmhv`). The `Promise.all` concurrency tests meet
-/// at a ``Rendezvous`` instead.
+/// No test waits on a window or compares two windows to prove concurrency:
+/// that compares the speed of the machine (card `^kdtrmhv`). The `Promise.all`
+/// concurrency tests meet at a ``Rendezvous`` instead. The call waits on
+/// ``hold``, and not on a clock. A test waits on the `arrival` gate of the
+/// hold to know that the call started. A hold that the test never releases is
+/// a call that never completes by itself, thus only a cancel can end it.
 ///
 /// `final class ... Sendable` (rather than a `struct`), the same pattern as
 /// `DelayedTool`: the test inspects `window` after `MultiTool.call` returns,
 /// backed by an `OSAllocatedUnfairLock` so the type stays `Sendable`.
 final class WindowRecordingTool: Tool, Sendable {
     let name: String
-    let description = "Waits for a fixed duration, recording the wall-clock window its call ran in."
+    let description = "Waits until the test releases it, recording the wall-clock window its call ran in."
 
-    private let delayNanoseconds: UInt64
+    /// The hold that each call waits on before it returns.
+    let hold = HeldCall()
+
     private let windowBox = OSAllocatedUnfairLock<(start: ContinuousClock.Instant, end: ContinuousClock.Instant)?>(
         initialState: nil
     )
 
     /// Creates a window-recording tool.
     ///
-    /// - Parameters:
-    ///   - name: this tool's `tools.*` name.
-    ///   - delayNanoseconds: how long `call` sleeps before returning.
-    init(name: String, delayNanoseconds: UInt64) {
+    /// - Parameter name: this tool's `tools.*` name.
+    init(name: String) {
         self.name = name
-        self.delayNanoseconds = delayNanoseconds
     }
 
     /// The wall-clock window `call` ran in — `nil` until it has run at least
@@ -191,7 +210,7 @@ final class WindowRecordingTool: Tool, Sendable {
 
     func call(arguments: NoArguments) async throws -> String {
         let start = ContinuousClock.now
-        try await Task.sleep(nanoseconds: delayNanoseconds)
+        try await hold.pass()
         let end = ContinuousClock.now
         windowBox.withLock { $0 = (start, end) }
         return "\(name)-result"

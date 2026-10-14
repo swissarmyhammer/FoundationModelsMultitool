@@ -33,15 +33,43 @@ public actor ConcurrencyGate {
     /// The callers parked until the holder releases the gate, in arrival order.
     private var parked: [CheckedContinuation<Void, Never>] = []
 
+    /// One wait of ``waitForWaiters(atLeast:)``: the count of parked callers
+    /// it waits for, and the continuation that ends it.
+    private struct WaiterCountWatch {
+        /// The count of parked callers that ends the wait.
+        let count: Int
+
+        /// Resumes the wait.
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    /// Each wait of ``waitForWaiters(atLeast:)`` that did not end.
+    private var waiterCountWatches: [WaiterCountWatch] = []
+
     /// Creates a gate that no caller holds.
     public init() {}
 
     /// How many callers wait for the gate.
     ///
     /// A reading, and never a promise: the count moves as callers arrive and as
-    /// the gate hands itself over. A test reads it to know that a caller it
-    /// started is parked.
+    /// the gate hands itself over. A test that must know that a caller it
+    /// started is parked waits on ``waitForWaiters(atLeast:)`` instead.
     public var waiterCount: Int { parked.count }
+
+    /// Waits until at least `count` callers wait for the gate. Returns at
+    /// once when they already do.
+    ///
+    /// This is the event that a caller parked: ``acquire()`` ends each wait
+    /// that its arrival satisfies. A test waits here, and does not read
+    /// ``waiterCount`` again and again.
+    ///
+    /// - Parameter count: The count of parked callers that ends the wait.
+    public func waitForWaiters(atLeast count: Int) async {
+        guard parked.count < count else { return }
+        await withCheckedContinuation { continuation in
+            waiterCountWatches.append(WaiterCountWatch(count: count, continuation: continuation))
+        }
+    }
 
     /// Takes the gate, and waits for the holder to give it back when another
     /// caller holds it. The caller owes a matching ``release()``.
@@ -50,7 +78,21 @@ public actor ConcurrencyGate {
             isHeld = true
             return
         }
-        await withCheckedContinuation { parked.append($0) }
+        await withCheckedContinuation { continuation in
+            parked.append(continuation)
+            resumeSatisfiedWatches()
+        }
+    }
+
+    /// Ends each wait of ``waitForWaiters(atLeast:)`` that the count of
+    /// parked callers satisfies.
+    private func resumeSatisfiedWatches() {
+        let parkedCount = parked.count
+        let satisfied = waiterCountWatches.filter { $0.count <= parkedCount }
+        waiterCountWatches.removeAll { $0.count <= parkedCount }
+        for watch in satisfied {
+            watch.continuation.resume()
+        }
     }
 
     /// Gives the gate up. It goes to the caller that waited longest, or it opens

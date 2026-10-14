@@ -16,8 +16,7 @@ import Testing
 /// Each other outcome fails the test.
 @Suite(
     "Live: the Brave results page gives stable hits",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct BraveHTMLLiveTests {
     /// The one provider of this suite.

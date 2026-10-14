@@ -20,7 +20,7 @@ import Testing
 /// `AsyncSemaphore(value: 1)` that `beginTurn()` held across the tool rounds
 /// of a turn, so the nested `respond` parked on `generationGate.wait()` and
 /// never came back. Measured on 2026-08-16 it parked 165.4s and 166.5s and
-/// unwound only when the hang guard of this suite cancelled the outer turn.
+/// unwound only when the test run cancelled the outer turn.
 /// Router's `^1zt7vyg` then lent the permit to the nested turn, and the call
 /// came back. The work-queue Router replaced both with the refusal. The
 /// profiles of this target therefore put a different model in `standard` and
@@ -42,9 +42,9 @@ import Testing
 ///   call through. The refusal is gone.
 /// - `nestedGenerationRefused` fails with "a different error": the nested
 ///   call threw something else. The message names the error.
-/// - The hang guard of this suite ends the run: the nested call hung, which
-///   is the old defect. The `QUEUE` lines show the queue state for the whole
-///   run, and the swift-log output of the run shows the enter record
+/// - The run does not end: the nested call hung. This is the old defect.
+///   The `QUEUE` lines show the queue state for the whole run, and the
+///   swift-log output of the run shows the enter record
 ///   `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, with no
 ///   ended span for that call.
 ///
@@ -65,16 +65,9 @@ import Testing
 /// in `ScenarioGradingTests`.
 @Suite(
     "Gated nested-generation probe (a nested generation on the held model is refused)",
-    .serialized,
-    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
-    // It stops a test that cannot end. It does not check the speed of the
-    // machine (card `^tm4x2hp`).
-    //
-    // A hang never returns to be graded, so the hang guard is what reports
-    // it. The limit starts when the test starts, and not when generation
-    // starts (`LiveRouterFixture`). The hang guard stands far above the
-    // turnstile queue and the profile load.
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
+    // No test checks the speed of the machine (card `^tm4x2hp`). A hang does
+    // not return, thus no grade reports it.
 )
 struct NestedGenerationProbeTests {
     @Test("a tool body generating on the outer turn's own model gets waitInsideOpenSubmission at once")

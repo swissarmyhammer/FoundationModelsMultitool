@@ -75,6 +75,14 @@ final class WebStub: Sendable {
     /// The URL of each load that the session stopped, in order.
     private let stopped = Mutex<[URL]>([])
 
+    /// The gate that the first request opens. A test waits on it with
+    /// ``waitForRequest()``, and not with a poll.
+    private let requestArrived = TestGate()
+
+    /// The gate that the first stopped load opens. A test waits on it with
+    /// ``waitForStop()``, and not with a poll.
+    private let loadStopped = TestGate()
+
     /// Makes a stub and registers it.
     ///
     /// - Parameter routes: The reply for each URL, keyed by the absolute URL
@@ -142,6 +150,7 @@ final class WebStub: Sendable {
         let record = WebStubRecord(
             url: url, headers: request.allHTTPHeaderFields ?? [:], timeoutInterval: request.timeoutInterval)
         recorded.withLock { $0.append(record) }
+        requestArrived.open()
         return routes[url.absoluteString] ?? .respond(status: Self.notFoundStatus, headers: [:], body: Data())
     }
 
@@ -150,6 +159,21 @@ final class WebStub: Sendable {
     /// - Parameter url: The URL of the stopped load.
     func recordStop(of url: URL) {
         stopped.withLock { $0.append(url) }
+        loadStopped.open()
+    }
+
+    /// Waits until the stub got its first request.
+    ///
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitForRequest() async throws {
+        try await requestArrived.wait()
+    }
+
+    /// Waits until the session stopped its first load.
+    ///
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitForStop() async throws {
+        try await loadStopped.wait()
     }
 
     /// Makes a `GET` request to a URL text.

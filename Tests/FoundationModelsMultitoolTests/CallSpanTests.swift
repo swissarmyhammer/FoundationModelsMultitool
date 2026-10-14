@@ -167,9 +167,9 @@ struct CallSpanTests {
                     try await multiTool.call(arguments: RunCodeArguments(code: gatedCodeSnippet))
                 }
             }
-            try await TestPoll.waitUntil("the enter record of the gated tools.* call") {
-                !Self.enterRecords(.toolsDispatch, in: context).isEmpty
-            }
+            // Wait for the enter record of the gated tools.* call. The capture
+            // resumes the wait when it takes the record. There is no poll.
+            await context.wait { !Self.enterRecords(.toolsDispatch, in: $0).isEmpty }
 
             #expect(Self.enterLabels(.runCode, in: context) == Self.oneBoundEnterLabel)
             #expect(Self.enterLabels(.toolsDispatch, in: context) == Self.oneBoundEnterLabel)

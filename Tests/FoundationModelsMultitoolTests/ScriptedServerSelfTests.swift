@@ -2,6 +2,8 @@ import MCP
 import MCPTestServer
 import Testing
 
+import struct Foundation.Data
+
 @testable import MultitoolTestSupport
 
 /// Self-tests that prove the scripting of `ScriptedServer` works — one test
@@ -13,8 +15,9 @@ import Testing
 /// The three detach round-trip cases of the source are not here: they drive
 /// `GetResultTool`, `CancelCallTool` and `ListCallsTool` over an
 /// `MCPServer`, and none of the four is in this package yet. The
-/// `poll(timeout:until:)` helper of the source is `TestPoll`, the one poll
-/// of the test support code.
+/// `poll(timeout:until:)` helper of the source is not here either. No test
+/// depends on time: each test waits on an event (a `TestGate`, a
+/// `TestCountdown`, or a wait of the scripted server).
 @Suite("ScriptedServerSelf")
 struct ScriptedServerSelfTests {
     /// The client name every test of this suite connects under.
@@ -33,15 +36,8 @@ struct ScriptedServerSelfTests {
     /// How many `tools/list_changed` notifications the burst test sends.
     private static let burstCount = 7
 
-    /// How long the timer test waits before its scheduled mutation.
-    private static let timedMutationDelay: Duration = .milliseconds(20)
-
     /// How many connect attempts the flaky-transport test scripts to fail.
     private static let failingConnectAttempts = 2
-
-    /// How long the transport-drop test gives the call to reach the server
-    /// and trigger the drop.
-    private static let transportDropSettleDelay: Duration = .milliseconds(150)
 
     /// The answer the elicitation test scripts the client to give.
     private static let scriptedAnswer = "42"
@@ -49,19 +45,11 @@ struct ScriptedServerSelfTests {
     /// How many steps the progress-cadence test registers.
     private static let progressSteps = 4
 
-    /// The delay between steps of the progress-cadence test.
-    private static let progressStepDelay: Duration = .milliseconds(10)
-
     /// The name of the tool the cancellation test holds in flight.
     private static let heldToolName = "held"
 
     /// The reason the cancellation test sends.
     private static let cancellationReason = "self-test cancel"
-
-    /// How long a test waits for the server to record a notification: the
-    /// shared hang guard of `TestPoll`. A hang guard, and never a speed check
-    /// (card `^kdtrmhv`: no test checks the speed of the machine).
-    private static let recordedNotificationTimeout = TestPoll.deadline
 
     /// How many steps the slow-build success test registers.
     private static let slowBuildSuccessSteps = 3
@@ -69,33 +57,102 @@ struct ScriptedServerSelfTests {
     /// How many steps the slow-build failure test registers.
     private static let slowBuildFailureSteps = 2
 
-    /// The delay between steps of the slow-build tests.
-    private static let slowBuildStepDelay: Duration = .milliseconds(5)
-
     /// Records every `notifications/progress` payload a client observes, in
     /// receipt order.
+    ///
+    /// The notification delivery of the server and the message loop of the
+    /// client run on separate tasks. Thus a test waits on ``allArrived``,
+    /// which the expected count of records opens, and not on a poll.
     private actor ProgressRecorder {
         /// The recorded payloads.
         private(set) var updates: [ProgressNotification.Parameters] = []
 
-        /// Appends one payload.
+        /// The countdown that the expected number of records opens.
+        nonisolated let allArrived: TestCountdown
+
+        /// Makes a recorder that expects `expected` payloads.
+        ///
+        /// - Parameter expected: How many records open ``allArrived``.
+        init(expected: Int) {
+            allArrived = TestCountdown(count: expected)
+        }
+
+        /// Appends one payload, and records one arrival on ``allArrived``.
         ///
         /// - Parameter update: The payload to record.
         func record(_ update: ProgressNotification.Parameters) {
             updates.append(update)
+            allArrived.arrive()
         }
     }
 
-    /// A counter of client-observed notifications, awaited through
-    /// `TestPoll` instead of a fixed sleep: the notification delivery of the
-    /// server and the message loop of the client run on separate tasks.
+    /// A counter of client-observed notifications.
+    ///
+    /// The notification delivery of the server and the message loop of the
+    /// client run on separate tasks. Thus a test waits on ``allObserved``,
+    /// which the expected count of notifications opens, and not on a poll or
+    /// a fixed sleep.
     private actor NotificationCounter {
         /// How many notifications were observed.
         private(set) var count = 0
 
-        /// Counts one notification.
+        /// The countdown that the expected number of notifications opens.
+        nonisolated let allObserved: TestCountdown
+
+        /// Makes a counter that expects `expected` notifications.
+        ///
+        /// - Parameter expected: How many notifications open
+        ///   ``allObserved``.
+        init(expected: Int) {
+            allObserved = TestCountdown(count: expected)
+        }
+
+        /// Counts one notification, and records one arrival on
+        /// ``allObserved``.
         func increment() {
             count += 1
+            allObserved.arrive()
+        }
+    }
+
+    /// A server-side transport that opens ``dropped`` when its
+    /// `disconnect()` ends.
+    ///
+    /// The transport-drop test waits on ``dropped`` to know that the tool
+    /// dropped the transport. Before, the test slept for a fixed time.
+    private actor DisconnectSignalingTransport: WrappingTransport {
+        /// The transport every operation delegates to.
+        let wrapped: any Transport
+
+        /// The receive stream of ``wrapped``, cached by the connect.
+        var wrappedReceiveStream: AsyncThrowingStream<Data, Swift.Error>?
+
+        /// The gate that opens when the disconnect of ``wrapped`` ends.
+        nonisolated let dropped = TestGate()
+
+        /// The logger of this double — a no-op.
+        nonisolated let logger = DisconnectSignalingTransport.noOpLogger(
+            label: "mcp.transport.disconnect-signaling")
+
+        /// Makes a wrapper around `wrapped`.
+        ///
+        /// - Parameter wrapped: The transport to delegate to.
+        init(wrapping wrapped: any Transport) {
+            self.wrapped = wrapped
+        }
+
+        /// Delegates the connect to the wrapped transport.
+        ///
+        /// - Throws: What the `connect()` of the wrapped transport throws.
+        func connect() async throws {
+            try await connectWrapped()
+        }
+
+        /// Delegates the disconnect to the wrapped transport, and then opens
+        /// ``dropped``.
+        func disconnect() async {
+            await wrapped.disconnect()
+            dropped.open()
         }
     }
 
@@ -116,14 +173,17 @@ struct ScriptedServerSelfTests {
     /// Connects a client to `scripted` and records every progress
     /// notification it observes.
     ///
-    /// - Parameter scripted: The server to connect to.
+    /// - Parameters:
+    ///   - scripted: The server to connect to.
+    ///   - expected: How many progress notifications open the
+    ///     `allArrived` countdown of the recorder.
     /// - Returns: The connected client and its recorder.
     /// - Throws: What the connect throws.
     private func connectRecordingProgress(
-        to scripted: ScriptedServer
+        to scripted: ScriptedServer, expecting expected: Int
     ) async throws -> (client: Client, recorder: ProgressRecorder) {
         let client = try await connect(to: scripted)
-        let recorder = ProgressRecorder()
+        let recorder = ProgressRecorder(expected: expected)
         await client.onNotification(ProgressNotification.self) { message in
             await recorder.record(message.params)
         }
@@ -170,22 +230,21 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         let client = try await connect(to: scripted)
 
-        let counter = NotificationCounter()
+        let counter = NotificationCounter(expected: Self.burstCount)
         await client.onNotification(ToolListChangedNotification.self) { _ in
             await counter.increment()
         }
 
         try await scripted.emitToolListChangedBurst(count: Self.burstCount)
 
-        let observed = await TestPoll.holds { await counter.count >= Self.burstCount }
-        #expect(observed)
+        try await counter.allObserved.wait()
         #expect(await counter.count == Self.burstCount)
         await client.disconnect()
     }
 
-    // MARK: - add/remove/re-schema on command or timer
+    // MARK: - add/remove/re-schema on command or on a scheduled trigger
 
-    @Test("tools can be added, removed, re-schema'd on command, and added on a timer")
+    @Test("tools can be added, removed, re-schema'd on command, and added on a scheduled trigger")
     func toolMutationOnCommandAndTimer() async throws {
         let scripted = ScriptedServer()
         await scripted.addTool(ScriptedServer.echoTool(named: "alpha"))
@@ -215,13 +274,18 @@ struct ScriptedServerSelfTests {
         page = try await client.listTools()
         #expect(page.tools.first?.description == "updated description")
 
-        await scripted.scheduleMutation(after: Self.timedMutationDelay) { server in
+        // The scheduled mutation runs when the test opens `trigger`, and it
+        // opens `applied` when it is done. No time sets when it runs.
+        let trigger = TestGate()
+        let applied = TestGate()
+        await scripted.scheduleMutation(after: { try? await trigger.wait() }) { server in
             await server.addTool(ScriptedServer.echoTool(named: "gamma"))
+            applied.open()
         }
-        let gammaArrived = await TestPoll.holds {
-            (try? await client.listTools().tools.map(\.name).contains("gamma")) ?? false
-        }
-        #expect(gammaArrived)
+        trigger.open()
+        try await applied.wait()
+        page = try await client.listTools()
+        #expect(page.tools.map(\.name).contains("gamma"))
         await client.disconnect()
     }
 
@@ -282,14 +346,21 @@ struct ScriptedServerSelfTests {
     func transportDropMidCall() async throws {
         let scripted = ScriptedServer()
         await scripted.addTransportDroppingTool(named: "drop")
-        let client = try await connect(to: scripted)
+        // The server end is wrapped, so the test knows when the tool dropped
+        // it. The rest is what `connect(to:)` does over an in-memory pair.
+        let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
+        let signaling = DisconnectSignalingTransport(wrapping: serverTransport)
+        try await scripted.start(transport: signaling)
+        let client = MCPTestSupport.makeClient(name: Self.clientName)
+        _ = try await client.connect(transport: clientTransport)
 
         let callTask = Task {
             try await client.callTool(name: "drop")
         }
 
-        // Give the call time to reach the server and trigger the drop.
-        try await Task.sleep(for: Self.transportDropSettleDelay)
+        // Wait until the call reached the server and the tool dropped the
+        // transport.
+        try await signaling.dropped.wait()
 
         // A disconnect resolves every request still pending with a
         // "Client disconnected" error. Had the drop not stopped the answer,
@@ -349,7 +420,7 @@ struct ScriptedServerSelfTests {
             #expect(urlParams.elicitationId == ScriptedServer.elicitURLElicitationId)
             return CreateElicitation.Result(action: .accept)
         }
-        let counter = NotificationCounter()
+        let counter = NotificationCounter(expected: 1)
         await client.onNotification(ElicitationCompleteNotification.self) { message in
             #expect(message.params.elicitationId == ScriptedServer.elicitURLElicitationId)
             await counter.increment()
@@ -359,8 +430,8 @@ struct ScriptedServerSelfTests {
         #expect(result.isError != true)
         try await scripted.sendElicitationComplete(elicitationId: ScriptedServer.elicitURLElicitationId)
 
-        let completed = await TestPoll.holds { await counter.count == 1 }
-        #expect(completed)
+        try await counter.allObserved.wait()
+        #expect(await counter.count == 1)
         await client.disconnect()
     }
 
@@ -369,17 +440,16 @@ struct ScriptedServerSelfTests {
     @Test("a long call reports progress at the scripted cadence")
     func progressCadence() async throws {
         let scripted = ScriptedServer()
-        await scripted.addProgressReportingTool(
-            named: "slow", totalSteps: Self.progressSteps, stepDelay: Self.progressStepDelay)
-        let (client, recorder) = try await connectRecordingProgress(to: scripted)
+        await scripted.addProgressReportingTool(named: "slow", totalSteps: Self.progressSteps)
+        let (client, recorder) = try await connectRecordingProgress(
+            to: scripted, expecting: Self.progressSteps)
 
         let meta = Metadata(progressToken: .string("progress-token"))
         _ = try await client.callTool(name: "slow", arguments: nil, meta: meta)
 
         // The response of the tool proves only that the server sent the last
         // notification, not that the client's message loop processed it.
-        let arrived = await TestPoll.holds { await recorder.updates.count >= Self.progressSteps }
-        #expect(arrived)
+        try await recorder.allArrived.wait()
 
         let updates = await recorder.updates
         #expect(updates.count == Self.progressSteps)
@@ -400,11 +470,10 @@ struct ScriptedServerSelfTests {
         let client = try await connect(to: scripted)
 
         let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
-        try await TestPoll.waitUntil("the call reached the server") { held.hasArrived }
+        try await held.waitForArrival()
         try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
-        let recorded = await scripted.waitForRecordedNotifications(
-            count: 1, timeout: Self.recordedNotificationTimeout)
+        let recorded = await scripted.waitForRecordedNotifications(count: 1)
         #expect(recorded.count == 1)
         #expect(recorded.first?.method == CancelledNotification.name)
         #expect(recorded.first?.reason == Self.cancellationReason)
@@ -417,14 +486,14 @@ struct ScriptedServerSelfTests {
     @Test("the slow-build tool reports progress naming its current phase, and succeeds by default")
     func slowBuildToolReportsProgressAndSucceeds() async throws {
         let scripted = ScriptedServer()
-        await scripted.addSlowBuildTool(totalSteps: Self.slowBuildSuccessSteps, stepDelay: Self.slowBuildStepDelay)
-        let (client, recorder) = try await connectRecordingProgress(to: scripted)
+        await scripted.addSlowBuildTool(totalSteps: Self.slowBuildSuccessSteps)
+        let (client, recorder) = try await connectRecordingProgress(
+            to: scripted, expecting: Self.slowBuildSuccessSteps)
 
         let meta = Metadata(progressToken: .string("slow-build-token"))
         let result = try await client.callTool(name: ServerMode.slowBuildToolName, arguments: nil, meta: meta)
 
-        let arrived = await TestPoll.holds { await recorder.updates.count >= Self.slowBuildSuccessSteps }
-        #expect(arrived)
+        try await recorder.allArrived.wait()
 
         let updates = await recorder.updates
         #expect(updates.count == Self.slowBuildSuccessSteps)
@@ -438,7 +507,7 @@ struct ScriptedServerSelfTests {
     @Test("the slow-build tool finishes as isError when told should_fail, with no reliance on wall-clock timing")
     func slowBuildToolHonorsShouldFailControl() async throws {
         let scripted = ScriptedServer()
-        await scripted.addSlowBuildTool(totalSteps: Self.slowBuildFailureSteps, stepDelay: Self.slowBuildStepDelay)
+        await scripted.addSlowBuildTool(totalSteps: Self.slowBuildFailureSteps)
         let client = try await connect(to: scripted)
 
         let result = try await client.callTool(

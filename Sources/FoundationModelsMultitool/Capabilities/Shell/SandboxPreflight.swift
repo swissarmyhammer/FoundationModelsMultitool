@@ -135,6 +135,63 @@ final class CanaryGate: Sendable {
     /// other alone.
     private let canaryRun = Mutex<Task<Void, any Error>?>(nil)
 
+    /// One wait of ``waitForWaitingCallers(atLeast:)``: the count of waiting
+    /// callers it waits for, and the continuation that ends it.
+    private struct WaitingCallersWatch {
+        /// The count of waiting callers that ends the wait.
+        let count: Int
+
+        /// Resumes the wait.
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    /// The callers that read the gate and wait on its run now, and each wait
+    /// of ``waitForWaitingCallers(atLeast:)`` that did not end.
+    private struct WaitingCallers {
+        /// How many callers read the gate and wait on its run now.
+        var count = 0
+
+        /// Each wait of ``waitForWaitingCallers(atLeast:)`` that did not end.
+        var watches: [WaitingCallersWatch] = []
+
+        /// Records one more waiting caller, and takes each wait that the new
+        /// count satisfies.
+        ///
+        /// - Returns: The continuations to resume outside the lock.
+        mutating func arrive() -> [CheckedContinuation<Void, Never>] {
+            count += 1
+            let reached = count
+            let satisfied = watches.filter { $0.count <= reached }
+            watches.removeAll { $0.count <= reached }
+            return satisfied.map(\.continuation)
+        }
+    }
+
+    /// The count of waiting callers, for the internal test hook
+    /// ``waitForWaitingCallers(atLeast:)``. No other code reads it.
+    private let waitingCallers = Mutex(WaitingCallers())
+
+    /// Waits until at least `count` callers read the gate and wait on its
+    /// run. Returns at once when they already do.
+    ///
+    /// This is an internal hook for the tests. A test of callers that overlap
+    /// must hold the canary until each caller is inside ``passOnce(_:)``, past
+    /// its read of the gate. Without this event the test cannot know that.
+    ///
+    /// - Parameter count: The count of waiting callers that ends the wait.
+    func waitForWaitingCallers(atLeast count: Int) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let reached = waitingCallers.withLock { state -> Bool in
+                if state.count >= count { return true }
+                state.watches.append(WaitingCallersWatch(count: count, continuation: continuation))
+                return false
+            }
+            if reached {
+                continuation.resume()
+            }
+        }
+    }
+
     /// Runs `canary`, unless a run before it already passed.
     ///
     /// The canary runs in an unstructured `Task` on purpose: to cancel the
@@ -152,6 +209,10 @@ final class CanaryGate: Sendable {
             stored = started
             return started
         }
+        for continuation in waitingCallers.withLock({ $0.arrive() }) {
+            continuation.resume()
+        }
+        defer { waitingCallers.withLock { $0.count -= 1 } }
         do {
             try await run.value
         } catch {

@@ -40,8 +40,7 @@ import Testing
 /// injected date.
 @Suite(
     "Gated environment scenarios: a real model reads the date through tools.environment in runCode",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct EnvironmentScenarioTests {
 

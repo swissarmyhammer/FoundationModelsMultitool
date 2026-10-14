@@ -72,10 +72,11 @@ private let mlxPackage = "mlx-swift-lm"
 /// **No test checks the speed of the machine.** By the user's decision of
 /// 2026-10-01 (card `^tm4x2hp`, web.md § "Testing"): a time check in a test
 /// uses an injected clock or an event, and never the real time that a step
-/// took. A `.timeLimit` on a model-driven test is a hang guard only. It is one
-/// shared value, `IntegrationHangGuard.timeLimit`, far above the slowest step
-/// on a busy machine. A hang guard stops a test that cannot end. It does not
-/// fail a test that makes progress.
+/// took. No test has a `.timeLimit`, and no test waits on a sleep, a clock or
+/// a poll: each wait ends on an event. A test that cannot end shows as a hang,
+/// and the person who runs the suite stops it. One wait stays on the real
+/// clock, and it waits for no fact: `Web/Support/LiveSearchSpacing.swift`
+/// spaces the live requests to an external service, to avoid HTTP 429.
 ///
 /// The two commands are:
 ///
@@ -85,9 +86,9 @@ private let mlxPackage = "mlx-swift-lm"
 /// `--no-parallel` is not a preference. Every real-model scenario here queues behind
 /// `liveProfileTurnstile`, which admits one live scenario at a time because
 /// concurrent generation destroys grounding. Swift Testing runs suites
-/// concurrently and starts a test's `.timeLimit` when the test starts, so a
-/// parallel run spends the limit on queue time and a queued suite fails in
-/// the same way as a hang. `LiveRouterFixture.swift` records the measurement.
+/// concurrently, so a parallel run makes the suites wait in that queue for a
+/// long time, and a queued suite looks the same as a hang.
+/// `LiveRouterFixture.swift` records the measurement.
 /// The live web suites of `Web/` load no model and do not queue behind the
 /// turnstile. For them, `--no-parallel` and `.serialized` on each suite keep
 /// the request rate to each web provider low.
@@ -174,8 +175,7 @@ let package = Package(
                 // `multitoolTestSupportTargetName`. The live web suites of
                 // `Web/` call each web verb through its `WebVerbCall`, and
                 // decode a `runCode` output through its `RunOutput`, the same
-                // helpers that the unit tests use. `IntegrationPoll` polls
-                // through its `TestPoll`.
+                // helpers that the unit tests use.
                 .product(name: "MultitoolTestSupport", package: productPackageName),
                 // The `@Operation` macro and `OperationTool` — see
                 // `extrasDependencyName`. The root package expands an

@@ -1,7 +1,9 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
+import os
 
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
@@ -14,19 +16,20 @@ import Testing
 /// is small and the host config is long. The sandbox of `JSCInterpreter` has
 /// no clock, thus only the engine clock can end a run.
 ///
-/// The engine clock sleeps on real time, thus a test waits for it. No test
-/// reads the time that a run took (card `^3np5yzj`: no test checks the speed
-/// of the machine). `TestPoll` and ``TestHangGuard`` are only the bound of a
-/// hang.
+/// The engine clock waits on the run clock of the session, and each session
+/// here runs on a `ManualRunClock`. A test moves that clock with
+/// `ManualRunClock.advance(by:)` only after the timer waits
+/// (`ManualRunClock.waitForSleepers(atLeast:)`), in a fixed order. No test
+/// waits on real time or reads the time that a run took (card `^3np5yzj`: no
+/// test checks the speed of the machine).
 @Suite("runCode ends at its tool-level timeout")
 struct RunCodeToolTimeoutTests {
     // MARK: - A run with no progress
 
-    @Test(
-        "a mounted runCode that spins with no progress ends as timedOut at the engine clock",
-        .timeLimit(TestHangGuard.timeLimit))
+    @Test("a mounted runCode that spins with no progress ends as timedOut at the engine clock")
     func spinningSnippetEndsAtTheEngineClock() async throws {
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeStubRun(runClock: clock).context
         let mounted = try Self.mountedRunCode(
             registry: try MultiTool.Builder().buildRegistry(),
             window: Self.stallWindowSeconds,
@@ -34,6 +37,7 @@ struct RunCodeToolTimeoutTests {
         )
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
+        await Self.endOneWindow(of: clock)
 
         // The sandbox has no clock to end the loop, thus the outcome comes
         // from the engine clock.
@@ -42,9 +46,7 @@ struct RunCodeToolTimeoutTests {
         #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
     }
 
-    @Test(
-        "a mounted runCode that awaits a tools.* call that never completes ends as timedOut at the engine clock",
-        .timeLimit(TestHangGuard.timeLimit))
+    @Test("a mounted runCode that awaits a tools.* call that never completes ends as timedOut at the engine clock")
     func pendingToolCallEndsAtTheEngineClock() async throws {
         try await Self.expectGatedCallEndsAtTheEngineClock { registry, context in
             try Self.mountedRunCode(registry: registry, window: Self.stallWindowSeconds, on: context)
@@ -52,12 +54,10 @@ struct RunCodeToolTimeoutTests {
     }
 
     /// The host gives more than the 120 seconds of the clock that inner calls
-    /// had before. A small test clock is the outer `runCode` clock, so that
-    /// the test stays fast. The run ends with the timeout text of the outer
-    /// clock, and not with a `ToolMountError.timedOut` of the inner call.
-    @Test(
-        "an inner tools.* call under a host config of more than 120 seconds ends at the outer runCode clock",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// had before. A small test clock is the outer `runCode` clock. The run
+    /// ends with the timeout text of the outer clock, and not with a
+    /// `ToolMountError.timedOut` of the inner call.
+    @Test("an inner tools.* call under a host config of more than 120 seconds ends at the outer runCode clock")
     func pendingToolCallUnderALongHostConfigEndsAtTheOuterClock() async throws {
         try await Self.expectGatedCallEndsAtTheEngineClock { registry, context in
             try Self.mountedSmallClockRunCode(registry: registry, on: context)
@@ -66,15 +66,15 @@ struct RunCodeToolTimeoutTests {
 
     /// The fetch has no clock of its own, thus only the outer `runCode` clock
     /// can end a fetch whose server never answers. The timeout cancels the
-    /// pending inner call, and the cancel stops the request at the stub.
-    @Test(
-        "a mounted runCode that awaits a tools.web.fetch whose server never answers ends as timedOut at the engine clock",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// pending inner call, and the cancel stops the request at the stub. The
+    /// clock moves only after the request arrived at the stub.
+    @Test("a mounted runCode that awaits a tools.web.fetch whose server never answers ends as timedOut at the engine clock")
     func hangingFetchEndsAtTheEngineClock() async throws {
         let stub = WebStub(routes: [Self.hangingPageURL: .hang])
         let web = WebCapability(
             configuration: .keyless, sessionConfiguration: stub.sessionConfiguration, resolver: PublicHostResolver())
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeStubRun(runClock: clock).context
         let mounted = try Self.mountedRunCode(
             registry: try MultiTool.Builder().withCapability(web).buildRegistry(),
             window: Self.stallWindowSeconds,
@@ -83,35 +83,53 @@ struct RunCodeToolTimeoutTests {
 
         let snippet = "return await tools.web.fetch({ url: \"\(Self.hangingPageURL)\" });"
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+        // The event of the stub: the request is in flight.
+        try await stub.waitForRequest()
+        await Self.endOneWindow(of: clock)
 
         let terminal = try await Self.terminal(of: rendered, on: context)
         #expect(terminal.outcome == .timedOut)
         #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
-        try await TestPoll.waitUntil("the session stopped the fetch request") {
-            stub.stoppedURLs == [Self.hangingPageURL]
-        }
+        // The event of the stub: the session stopped the request.
+        try await stub.waitForStop()
+        #expect(stub.stoppedURLs == [Self.hangingPageURL])
         #expect(stub.requestedURLs == [Self.hangingPageURL])
     }
 
     // MARK: - A run with progress
 
-    /// The pauses of the snippet fill more than one window, and a sleep is a
-    /// minimum. Thus the run is alive after the first window, and a clock that
-    /// progress does not reset ends it there as `.timedOut`. Each gap between
-    /// two progress events is one short pause, far inside the window.
-    @Test(
-        "a mounted runCode that calls progress() inside each window is not ended at the first window",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// The pauses of the snippet fill more than one window. Thus a clock that
+    /// progress does not reset ends the run as `.timedOut` at the first
+    /// window. Each gap between two progress events is one step of the clock,
+    /// far inside the window.
+    ///
+    /// The order of each turn is fixed: the progress of the turn reaches the
+    /// run (the sink of the mount gets it after the run counts it), the pause
+    /// of the turn starts, the clock moves one step, the timer waits again
+    /// when the step ended a window, and only then the pause ends. Thus the
+    /// next progress always comes after the timer started its window.
+    @Test("a mounted runCode that calls progress() inside each window is not ended at the first window")
     func progressResetsTheEngineClock() async throws {
-        let pause = WindowRecordingTool(name: "pause", delayNanoseconds: Self.pauseNanoseconds)
-        let context = try await makeOuterRunContext()
+        let pause = PacedPauseTool(name: "pause", turns: Self.turnCount)
+        let sink = ProgressSignalSink()
+        let clock = ManualRunClock()
+        let context = try await makeStubRun(runClock: clock).context
         let mounted = try Self.mountedRunCode(
             registry: try MultiTool.Builder().addTool(pause).buildRegistry(),
             window: Self.progressWindowSeconds,
-            on: context
+            on: context,
+            postingTo: sink
         )
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.progressSnippet))
+        for turn in 0..<Self.turnCount {
+            try await sink.waitForProgress(Self.progressDetail(turn: turn))
+            try await pause.hold(turn: turn).arrival.wait()
+            await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+            clock.advance(by: Self.pauseStep)
+            await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+            pause.hold(turn: turn).release.open()
+        }
 
         let terminal = try await Self.terminal(of: rendered, on: context)
         #expect(terminal.outcome == .succeeded, "terminal was: \(terminal)")
@@ -122,25 +140,23 @@ struct RunCodeToolTimeoutTests {
 
     /// The engine window of the tests with no progress, in seconds.
     ///
-    /// Small, so that the suite stays fast. A run with no progress ends after
-    /// one window.
+    /// A run with no progress ends after one window. The clock is a
+    /// `ManualRunClock`, thus the value is a number in the timeout text and
+    /// no real wait.
     private static let stallWindowSeconds: TimeInterval = 0.3
 
     /// The configured `executionTimeLimit` of the long host config, in
     /// seconds.
     ///
     /// More than the 120 seconds of the clock that inner calls had before.
-    /// The test with this config never waits for it: the small test clock of
-    /// ``SmallClockRunCode`` ends the run first.
+    /// The test with this config never moves the clock that far: the small
+    /// test clock of ``SmallClockRunCode`` ends the run first.
     private static let longHostWindowSeconds: TimeInterval = 600
 
     /// The page of the hanging fetch test. Its stub route never answers.
     private static let hangingPageURL = "https://site.example/hang"
 
     /// The engine window of the progress test, in seconds.
-    ///
-    /// Larger than ``stallWindowSeconds``, so that one pause stays far inside
-    /// the window on a loaded machine.
     private static let progressWindowSeconds: TimeInterval = 2
 
     /// How many pauses of ``progressSnippet`` fill one progress window.
@@ -151,14 +167,18 @@ struct RunCodeToolTimeoutTests {
     /// More than one, so that a clock with no reset ends the run.
     private static let windowsOfPauses = 2
 
-    /// The number of nanoseconds in one second.
-    private static let nanosecondsPerSecond: TimeInterval = 1_000_000_000
+    /// How many turns ``progressSnippet`` makes: one progress call and one
+    /// pause each.
+    private static let turnCount = pausesPerWindow * windowsOfPauses
 
-    /// How long one pause of ``progressSnippet`` sleeps, in nanoseconds: one
-    /// part of ``progressWindowSeconds`` in ``pausesPerWindow``.
-    private static var pauseNanoseconds: UInt64 {
-        UInt64(progressWindowSeconds / TimeInterval(pausesPerWindow) * nanosecondsPerSecond)
-    }
+    /// How far the clock moves while one pause holds: one part of
+    /// ``progressWindowSeconds`` in ``pausesPerWindow``.
+    private static let pauseStep: Duration = .seconds(progressWindowSeconds / Double(pausesPerWindow))
+
+    /// How many waits the run clock holds while a run is in flight: the
+    /// timeout of the run. The settle period of each mount here is `0`, thus
+    /// it adds no wait.
+    private static let timeoutSleepers = 1
 
     /// The snippet of the progress test.
     ///
@@ -167,7 +187,7 @@ struct RunCodeToolTimeoutTests {
     private static var progressSnippet: String {
         """
         let last;
-        for (let turn = 0; turn < \(pausesPerWindow * windowsOfPauses); turn++) {
+        for (let turn = 0; turn < \(turnCount); turn++) {
           progress("turn " + turn);
           last = await tools.pause();
         }
@@ -175,9 +195,26 @@ struct RunCodeToolTimeoutTests {
         """
     }
 
+    /// The progress detail that ``progressSnippet`` posts in one turn.
+    ///
+    /// - Parameter turn: The turn, from `0`.
+    /// - Returns: The detail.
+    private static func progressDetail(turn: Int) -> String {
+        "turn \(turn)"
+    }
+
     /// What `ResultRenderer` makes of the value that ``progressSnippet``
     /// returns.
     private static let renderedPauseResult = "\"pause-result\""
+
+    /// Waits until the timer of the run waits on `clock`, and then moves the
+    /// clock one full stall window, so that a timer with no progress ends.
+    ///
+    /// - Parameter clock: The run clock of the session.
+    private static func endOneWindow(of clock: ManualRunClock) async {
+        await clock.waitForSleepers(atLeast: timeoutSleepers)
+        clock.advance(by: .seconds(stallWindowSeconds))
+    }
 
     /// Mounts a `runCode` tool the way a Router session mounts every tool.
     ///
@@ -188,9 +225,12 @@ struct RunCodeToolTimeoutTests {
     ///   - registry: The registry that the snippets call into.
     ///   - window: The engine window: the configured `executionTimeLimit`.
     ///   - context: The session context that tracks the runs.
+    ///   - sink: The sink that each run of the mount posts to, or `nil` for
+    ///     the sinks of the session.
     /// - Returns: The composed, model-facing `runCode`.
     private static func mountedRunCode(
-        registry: MultiTool.Registry, window: TimeInterval, on context: ToolContext
+        registry: MultiTool.Registry, window: TimeInterval, on context: ToolContext,
+        postingTo sink: (any OperationEventSink)? = nil
     ) throws -> any Tool<RunCodeArguments, String> {
         // A settle period of 0 sends each run to the background at once, so that
         // the terminal event of the run plane holds the outcome of the clock.
@@ -199,7 +239,11 @@ struct RunCodeToolTimeoutTests {
             configuration: MultiToolConfiguration(executionTimeLimit: window, inlineSettleGrace: 0),
             interpreter: JSCInterpreter()
         )
-        return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+        guard let sink else {
+            return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+        }
+        return try #require(
+            context.mount(runCode, as: .synchronous, postingTo: sink) as? any Tool<RunCodeArguments, String>)
     }
 
     /// Mounts a ``SmallClockRunCode`` the way a Router session mounts every
@@ -233,9 +277,10 @@ struct RunCodeToolTimeoutTests {
     /// Runs a snippet that awaits a `tools.gated` call that never completes,
     /// and expects the outer clock of ``stallWindowSeconds`` to end the run.
     ///
-    /// The run ends as `.timedOut` with the timeout text of the outer
-    /// `runCode` clock. Nothing releases the gate, thus the timeout cancels
-    /// the pending inner call, and the call records that as it unwinds.
+    /// The clock moves only after the gated call started. The run ends as
+    /// `.timedOut` with the timeout text of the outer `runCode` clock.
+    /// Nothing releases the gate, thus the timeout cancels the pending inner
+    /// call, and the call records that event as it unwinds.
     ///
     /// - Parameter mount: Makes the mounted `runCode` over the registry of the
     ///   gated tool, on the session context.
@@ -244,16 +289,19 @@ struct RunCodeToolTimeoutTests {
     ) async throws {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeStubRun(runClock: clock).context
         let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
+        try await gated.waitUntilStarted()
+        await endOneWindow(of: clock)
 
         let terminal = try await Self.terminal(of: rendered, on: context)
         #expect(terminal.outcome == .timedOut)
         #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
         #expect(!latch.isReleased)
-        try await TestPoll.waitUntil("the gated call unwound") { gated.wasCancelled }
+        try await gated.waitUntilCancelled()
     }
 
     /// Waits for the terminal event of the run that a mounted call started.
@@ -315,5 +363,92 @@ private struct SmallClockRunCode: Tool, BackgroundTool {
     /// - Returns: The rendered result of the wrapped `runCode`.
     func call(arguments: RunCodeArguments) async throws -> String {
         try await wrapped.call(arguments: arguments)
+    }
+}
+
+/// A tool whose calls each wait on a hold of their own, in call order.
+///
+/// The progress test opens the hold of each turn after it moved the run
+/// clock, thus each pause ends at a point that the test chose, and no pause
+/// waits on real time.
+private final class PacedPauseTool: Tool, Sendable {
+    let name: String
+    let description = "Waits until the test lets this call go on, then returns a fixed value."
+
+    /// The hold of each call, by call index.
+    private let holds: [HeldCall]
+
+    /// The index of the next call.
+    private let nextCall = OSAllocatedUnfairLock(initialState: 0)
+
+    /// Creates a tool with one hold for each of `turns` calls.
+    ///
+    /// - Parameters:
+    ///   - name: This tool's `tools.*` name.
+    ///   - turns: How many calls get a hold. A later call passes at once.
+    init(name: String, turns: Int) {
+        self.name = name
+        self.holds = (0..<turns).map { _ in HeldCall() }
+    }
+
+    /// The hold of one call.
+    ///
+    /// - Parameter turn: The index of the call, from `0`.
+    /// - Returns: The hold.
+    func hold(turn: Int) -> HeldCall {
+        holds[turn]
+    }
+
+    func call(arguments: NoArguments) async throws -> String {
+        let index = nextCall.withLock { next -> Int in
+            defer { next += 1 }
+            return next
+        }
+        if holds.indices.contains(index) {
+            try await holds[index].pass()
+        }
+        return "\(name)-result"
+    }
+}
+
+/// A sink that a mount posts each event of its runs to, and that opens one
+/// gate for each progress detail it gets.
+///
+/// `ToolRun.post(event:)` counts a progress event for the timeout of the run
+/// before it sends the event to this sink. Thus a test that waits here knows
+/// that the run counted the progress.
+private final class ProgressSignalSink: OperationEventSink, Sendable {
+    /// The gate of each progress detail, made on the first wait or post.
+    private let gates = OSAllocatedUnfairLock<[String: TestGate]>(initialState: [:])
+
+    /// Opens the gate of the detail of a progress event.
+    ///
+    /// - Parameter event: The posted event.
+    func post(event: OperationEvent) async {
+        guard event.kind == .progress else { return }
+        gate(for: event.detail).open()
+    }
+
+    /// Waits until a progress event with `detail` arrived.
+    ///
+    /// - Parameter detail: The progress detail.
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitForProgress(_ detail: String) async throws {
+        try await gate(for: detail).wait()
+    }
+
+    /// The gate of one progress detail.
+    ///
+    /// - Parameter detail: The progress detail.
+    /// - Returns: The gate, made when it did not exist.
+    private func gate(for detail: String) -> TestGate {
+        gates.withLock { gates in
+            if let gate = gates[detail] {
+                return gate
+            }
+            let gate = TestGate()
+            gates[detail] = gate
+            return gate
+        }
     }
 }

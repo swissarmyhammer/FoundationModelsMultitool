@@ -78,15 +78,14 @@ import ScenarioGrading
 /// on its inverses, in `ScenarioGradingTests`.
 @Suite(
     "Gated mail collection canary (a settled background run comes back as mail)",
-    .serialized,
-    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
-    // It stops a turn that cannot end. It does not check the speed of the
-    // machine (card `^tm4x2hp`).
+    .serialized
+    // No test checks the speed of the machine (card `^tm4x2hp`), and no test
+    // waits on time.
     //
-    // On the mail contract, the runner stops at the shared poll hang guard
-    // `IntegrationPoll.deadline`, and grades what it read. So a run that gets
-    // no mail answer fails with a reading, inside the hang guard.
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    // On the mail contract, each wait of the runner ends on an event: a run
+    // always settles, at the latest at its run timeout, and its mail always
+    // gets one terminal. The echo settles only after the runner opens its
+    // gate, at the end of the first answer.
 )
 struct InBandCollectionCanaryTests {
     @Test("a backgrounded echo hands back a pending envelope, its value comes back through mail, and the mail answer reports it")
@@ -105,7 +104,7 @@ struct InBandCollectionCanaryTests {
         let nonce = integrationDelayedEchoNonce()
         try await runInBandCollectionCanaryScenario(
             name: "delayedEchoMechanism",
-            tools: { log in [IntegrationDelayedEchoTool(log: log)] },
+            tools: { log, firstAnswerEnded in [IntegrationDelayedEchoTool(log: log, release: firstAnswerEnded)] },
             // Names the call and its argument object, and asks for the
             // result. It does not say how the result comes back: the pending
             // envelope on the handle carries that, as it does for every host.

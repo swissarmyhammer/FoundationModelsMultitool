@@ -183,6 +183,34 @@ extension MCPServer {
                 earlier.resume()
             }
             pendingHostElicitations[elicitationId] = continuation
+            resumeHostElicitationHeldWaiters(of: elicitationId)
+        }
+    }
+
+    /// Waits until this actor holds the URL-mode flow named `elicitationId`
+    /// — the event a test waits on in place of a poll of
+    /// ``pendingHostElicitationIds``. Returns at once when the flow is
+    /// already held.
+    ///
+    /// Internal, for `@testable import`: no product code waits here.
+    ///
+    /// - Parameter elicitationId: The wire id of the flow.
+    func waitUntilHostElicitationHeld(elicitationId: String) async {
+        guard pendingHostElicitations[elicitationId] == nil else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            hostElicitationHeldWaiters.append((elicitationId, continuation))
+        }
+    }
+
+    /// Resumes each wait of ``waitUntilHostElicitationHeld(elicitationId:)``
+    /// for `elicitationId`.
+    ///
+    /// - Parameter elicitationId: The wire id of the flow that is now held.
+    private func resumeHostElicitationHeldWaiters(of elicitationId: String) {
+        let held = hostElicitationHeldWaiters.filter { $0.elicitationId == elicitationId }
+        hostElicitationHeldWaiters.removeAll { $0.elicitationId == elicitationId }
+        for waiter in held {
+            waiter.continuation.resume()
         }
     }
 

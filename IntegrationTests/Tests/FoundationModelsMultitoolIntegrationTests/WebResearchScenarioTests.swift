@@ -39,8 +39,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// environment, thus this scenario needs no API key, and it always runs, as
 /// the environment rule of `IntegrationTests/Package.swift` asks. The web
 /// requests go to the public keyless providers. The outer timeout of
-/// `runCode` bounds each snippet, and ``IntegrationHangGuard/timeLimit``
-/// bounds the test.
+/// `runCode` bounds each snippet.
 ///
 /// **The grade.** Two checks, from `web.md`:
 ///
@@ -65,8 +64,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated web research: a real model searches the web and names the Swift home page",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct WebResearchScenarioTests {
 

@@ -55,14 +55,6 @@ struct ShellExecuteTests {
     /// The exit code a command that ended with success reports.
     private static let successExitCode = 0
 
-    /// How long the long command of the background tests sleeps: one day. No
-    /// test reaches it, thus the command certainly still runs while the test
-    /// reads the run plane, and each such test ends it before it returns. A
-    /// mounted call that blocks on the command does not return while the test
-    /// runs, and ``TestHangGuard/timeLimit`` then fails the test. Thus no test
-    /// reads the real time that the call took (card `^tm4x2hp`).
-    private static let backgroundRunSleepSeconds = 86_400
-
     /// How many lines the command of the progress test writes. More than one,
     /// thus the run has output to report before it ends.
     private static let progressLineCount = 3
@@ -200,13 +192,14 @@ struct ShellExecuteTests {
     ///
     /// - Parameters:
     ///   - state: The store the verb records into.
-    ///   - clock: The clock of the runner. The default is the real clock. A
-    ///     test of the progress collection gives a `GatedClock`, thus a
-    ///     collection closes on its interval only when the test opens the
-    ///     clock.
+    ///   - clock: The clock of the runner. The default is a `GatedClock` that
+    ///     no test opens, thus no collection closes on its interval and no
+    ///     test waits on the real clock. A test of the progress collection
+    ///     gives a `GatedClock` that it opens, thus a collection closes on its
+    ///     interval only when the test opens the clock.
     /// - Returns: The verb.
     private func makeVerb(
-        over state: ShellState, pacedBy clock: any Clock<Duration> = ContinuousClock()
+        over state: ShellState, pacedBy clock: any Clock<Duration> = GatedClock()
     ) -> Execute {
         var runner = ShellRunner(state: state, registry: ProcessRegistry())
         runner.clock = clock
@@ -292,6 +285,29 @@ struct ShellExecuteTests {
     ) async throws -> String {
         try await ToolContext.$current.withValue(context) {
             try await verb.call(arguments: arguments)
+        }
+    }
+
+    /// Runs one call of a mounted engine whose command the test holds, and
+    /// moves the run clock past the settle period of `context`. Thus the call
+    /// answers with its pending envelope, and no real time passes.
+    ///
+    /// - Parameters:
+    ///   - engine: The mounted engine.
+    ///   - command: A command that does not end before the test lets it.
+    ///   - clock: The run clock of the session of `context`.
+    ///   - context: The context the engine inherits. It gives the settle
+    ///     period.
+    /// - Returns: The rendered answer.
+    /// - Throws: What the call throws.
+    private static func callHeldCommand(
+        _ engine: any Tool<ExecuteArguments, String>, command: String, on clock: ManualRunClock,
+        in context: ToolContext
+    ) async throws -> String {
+        try await callPastSettlePeriod(
+            on: clock, grace: context.inlineSettleGrace, timers: settlePeriodTimers
+        ) {
+            try await engine.call(arguments: ExecuteArguments(command: command))
         }
     }
 
@@ -596,14 +612,13 @@ struct ShellExecuteTests {
     /// Output that holds still goes out when its collection interval ends,
     /// and not only when the command ends.
     ///
-    /// The command writes one line and then sleeps for a day. The clock of
-    /// the runner is a `GatedClock`, thus the test sees the collection wait on
-    /// its interval with no event posted, opens the sleeps of that interval
-    /// alone, and then reads the event while the command still runs. The
-    /// canceler of the run ends the command after the readings, on each path.
-    @Test(
-        "output that holds still goes out when its collection interval ends",
-        .timeLimit(TestHangGuard.timeLimit))
+    /// The command writes one line and then waits on a `ShellCommandGate`
+    /// that the test never opens. The clock of the runner is a `GatedClock`,
+    /// thus the test waits until the collection asks for its interval with no
+    /// event posted, opens the sleeps of that interval alone, and then waits
+    /// for the event while the command still runs. The canceler of the run
+    /// ends the command after the readings, on each path.
+    @Test("output that holds still goes out when its collection interval ends")
     func outputGoesOutWhenItsCollectionIntervalEnds() async throws {
         let state = try makeState()
         let clock = GatedClock()
@@ -612,15 +627,16 @@ struct ShellExecuteTests {
         let context = run.context
         let stop = ShellRunner(state: state).canceler(completionToken: context.completionToken)
         let interval = OutputProgressCollector.collectionInterval
-        let command = "echo \(Self.inlineMarker); sleep \(Self.backgroundRunSleepSeconds)"
+        let gate = try ShellCommandGate()
+        let command = "echo \(Self.inlineMarker); \(gate.waitCommand)"
 
         async let answer = Self.call(verb, ExecuteArguments(command: command), under: context)
-        let isCollecting = await TestPoll.holds { clock.recordedSleeps.contains(interval) }
+        try await clock.waitForRecordedSleeps(atLeast: 1)
+        let isCollecting = clock.recordedSleeps.contains(interval)
         let progressBeforeInterval = await recordedOperationEvents(of: run, ofKind: .progress)
         clock.open(sleepsOf: interval)
-        let progressAfterInterval = await TestPoll.lastReading(
-            of: { await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail) },
-            until: { !$0.isEmpty })
+        let progressAfterInterval = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1)
+            .map(\.detail)
         _ = await stop()
         _ = try await answer
 
@@ -727,17 +743,24 @@ struct ShellExecuteTests {
     /// hands back the run's identifier, and the builtins read the run from
     /// there.
     ///
-    /// The command cannot end while the test runs, thus a call that returned
+    /// The command waits on a `ShellCommandGate` that the test never opens,
+    /// thus the command cannot end while the test runs. A call that returned
     /// at all did not block on it, and the run still stands on the run plane.
-    /// A call that blocks makes the test hang, and the hang guard fails it.
-    @Test("a mounted call answers with the run identifier and does not block", .timeLimit(TestHangGuard.timeLimit))
+    /// A call that blocks makes the test hang.
+    ///
+    /// The settle period waits on a `ManualRunClock`. The test moves that
+    /// clock past the settle period after the timer of the call waits on it
+    /// (``callPastSettlePeriod(on:grace:timers:_:)``), thus no real time
+    /// passes.
+    @Test("a mounted call answers with the run identifier and does not block")
     func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeOuterRunContext(runClock: clock)
         let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let gate = try ShellCommandGate()
 
-        let output = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
+        let output = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
 
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
@@ -747,7 +770,7 @@ struct ShellExecuteTests {
 
         // Awaited rather than deferred into a task of its own: an unstructured
         // task started at the end of a test need never run, and the command
-        // this one stops sleeps far longer than the whole suite.
+        // this one stops never ends by itself.
         _ = await context.cancel(completionToken: going.completionToken)
     }
 
@@ -756,20 +779,26 @@ struct ShellExecuteTests {
     @Test("a background run stands in the run plane under RunKind.process")
     func aBackgroundRunStandsInTheRunPlaneAsAProcess() async throws {
         let state = try makeState()
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeOuterRunContext(runClock: clock)
         let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let gate = try ShellCommandGate()
 
-        _ = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
+        _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
 
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
         #expect(going.kind == .process)
-        // The record is written by the run body, which starts after the call
-        // already answered its envelope; one read here is a race, not a check.
-        try await TestPoll.waitUntil("the store holds the record of the run") {
-            await state.record(commandID: going.completionToken) != nil
-        }
+        // The record is written by the run body, which can start after the
+        // call already answered its envelope; one read here is a race, not a
+        // check. The runner records the command before it registers the pid,
+        // and `pidToCancel` returns only after the registration (or after the
+        // end of the command). Thus the wait is an event, and the record
+        // stands after it.
+        _ = await state.pidToCancel(commandID: going.completionToken)
+        #expect(
+            await state.record(commandID: going.completionToken) != nil,
+            "the store holds no record of the run")
 
         // Awaited rather than deferred into a task of its own — see the reason
         // in the test above.
@@ -782,11 +811,12 @@ struct ShellExecuteTests {
     @Test("cancel of a background run reports .stopped")
     func cancelOfABackgroundRunReportsStopped() async throws {
         let state = try makeState()
-        let context = try await makeOuterRunContext()
+        let clock = ManualRunClock()
+        let context = try await makeOuterRunContext(runClock: clock)
         let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let gate = try ShellCommandGate()
 
-        _ = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
+        _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
         let outcome = await context.cancel(completionToken: going.completionToken)

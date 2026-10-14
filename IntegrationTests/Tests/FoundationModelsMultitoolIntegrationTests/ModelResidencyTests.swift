@@ -32,8 +32,7 @@ private let residencyScenarioName = "modelResidency"
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Model residency across the tests of one process",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct ModelResidencyTests {
     @Test("each model of a resolved profile stays resident after its fixture tears down")

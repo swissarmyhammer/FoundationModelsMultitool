@@ -25,8 +25,7 @@ import Testing
 /// provider has its own test function and all six share one helper.
 @Suite(
     "Live: each keyed provider gives hits with the key from the environment",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct KeyedProviderLiveTests {
     @Test("braveAPI gives hits with BRAVE_SEARCH_API_KEY or BRAVE_API_KEY", .enabled(whenSet: .braveAPI))

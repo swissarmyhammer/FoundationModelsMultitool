@@ -17,6 +17,10 @@ import Synchronization
 /// different length that sleep on one clock — calls ``open(sleepsOf:)``
 /// instead: it opens the clock for the sleeps of one duration only.
 ///
+/// A test that must end the bounds that are pending now, and hold each bound
+/// that the code under test asks for after them — two bounds of the same
+/// length, one after the other — calls ``openRecordedSleeps()`` instead.
+///
 /// The clock records each requested duration, in call order, so a test can
 /// read which bound the code under test chose. A sleep whose task is
 /// cancelled throws `CancellationError`, as the sleep of a real clock does.
@@ -74,6 +78,10 @@ final class GatedClock: Clock, Sendable {
         /// The durations ``open(sleepsOf:)`` opened the clock for.
         var openDurations: Set<Swift.Duration> = []
 
+        /// Each sleep whose ticket number is less than this limit ends at
+        /// once. ``openRecordedSleeps()`` sets it.
+        var openTicketLimit = 0
+
         /// The sleeps that wait for ``open()``, by ticket.
         var waiting: [Int: Sleeper] = [:]
 
@@ -116,23 +124,25 @@ final class GatedClock: Clock, Sendable {
             }
         }
 
-        /// Whether a sleep of `duration` ends at once.
+        /// Whether the sleep of `ticket` ends at once.
         ///
-        /// - Parameter duration: The duration the sleep asked for.
-        /// - Returns: `true` after ``open()``, or after ``open(sleepsOf:)``
-        ///   with this duration.
-        func isOpen(for duration: Swift.Duration) -> Bool {
-            isOpen || openDurations.contains(duration)
+        /// - Parameter ticket: The ticket of the sleep.
+        /// - Returns: `true` after ``open()``, after ``open(sleepsOf:)`` with
+        ///   the duration of the ticket, or after ``openRecordedSleeps()``
+        ///   when the ticket was taken before that call.
+        func isOpen(for ticket: Ticket) -> Bool {
+            isOpen || openDurations.contains(ticket.duration) || ticket.number < openTicketLimit
         }
 
         /// Takes every waiting sleep that `isReleased` selects out of
         /// ``waiting``, and moves the virtual instant to its deadline.
         ///
-        /// - Parameter isReleased: Selects the sleeps that end.
+        /// - Parameter isReleased: Selects the sleeps that end, by ticket
+        ///   number and sleep.
         /// - Returns: The sleeps that end, for the caller to resume outside
         ///   the lock.
-        mutating func release(where isReleased: (Sleeper) -> Bool) -> [Sleeper] {
-            let released = waiting.filter { isReleased($0.value) }
+        mutating func release(where isReleased: (Int, Sleeper) -> Bool) -> [Sleeper] {
+            let released = waiting.filter { isReleased($0.key, $0.value) }
             for (ticket, sleeper) in released {
                 waiting[ticket] = nil
                 reach(sleeper.deadline)
@@ -182,7 +192,26 @@ final class GatedClock: Clock, Sendable {
     func open() {
         let sleepers = state.withLock { current in
             current.isOpen = true
-            return current.release { _ in true }
+            return current.release { _, _ in true }
+        }
+        resume(sleepers)
+    }
+
+    /// Ends every sleep that the clock recorded before this call: the sleeps
+    /// that wait, and the sleeps that took their ticket and did not register
+    /// yet. Each sleep that the clock records after this call still waits.
+    ///
+    /// ``open()`` also ends each later sleep. Thus a bound that the code
+    /// under test asks for only after a pending bound ended also ends at
+    /// once, and the operation behind that later bound can run beside its
+    /// predecessor. A test that must hold the later bound calls this method:
+    /// it first waits with ``waitForRecordedSleeps(atLeast:)`` until the
+    /// pending bounds are recorded, and then ends them.
+    func openRecordedSleeps() {
+        let sleepers = state.withLock { current in
+            current.openTicketLimit = current.nextTicket
+            let limit = current.openTicketLimit
+            return current.release { ticket, _ in ticket < limit }
         }
         resume(sleepers)
     }
@@ -194,7 +223,7 @@ final class GatedClock: Clock, Sendable {
     func open(sleepsOf duration: Swift.Duration) {
         let sleepers = state.withLock { current in
             current.openDurations.insert(duration)
-            return current.release { $0.duration == duration }
+            return current.release { _, sleeper in sleeper.duration == duration }
         }
         resume(sleepers)
     }
@@ -287,7 +316,7 @@ final class GatedClock: Clock, Sendable {
             if current.cancelledTickets.remove(ticket.number) != nil {
                 return .cancelled
             }
-            if current.isOpen(for: ticket.duration) {
+            if current.isOpen(for: ticket) {
                 current.reach(deadline)
                 return .proceed
             }

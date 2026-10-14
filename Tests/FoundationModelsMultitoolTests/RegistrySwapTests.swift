@@ -163,7 +163,8 @@ struct RegistrySwapTests {
         let run = Task {
             try await runCode.call(arguments: RunCodeArguments(code: Self.gatedCitiesSnippet))
         }
-        try await TestPoll.waitUntil("the gated call started") { gated.hasStarted }
+        // The gated tool opens its start gate when the snippet calls it.
+        try await gated.waitUntilStarted()
 
         // The swap lands while the snippet waits on the latch. The registry
         // it swaps to has no cities verb.

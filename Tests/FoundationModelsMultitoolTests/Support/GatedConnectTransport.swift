@@ -41,12 +41,18 @@ actor GatedConnectTransport: WrappingTransport {
     /// the connect is in flight (card `^kdtrmhv`).
     private(set) var connectWasCalled = false
 
+    /// The gate that ``connect()`` opens when it is called, before it waits
+    /// on the release gate. A test waits on it to know that the connect is
+    /// in flight, and does not poll ``connectWasCalled``.
+    let connectArrival = TestGate()
+
     /// Blocks until ``release()`` is called, then delegates to the wrapped
     /// transport.
     ///
     /// - Throws: What the `connect()` of the wrapped transport throws.
     func connect() async throws {
         connectWasCalled = true
+        connectArrival.open()
         await gate.wait()
         try await connectWrapped()
     }

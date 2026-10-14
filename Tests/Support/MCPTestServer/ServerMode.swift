@@ -23,7 +23,7 @@ public enum ServerMode: String, Sendable, CaseIterable {
     case fileSystem
 
     /// Registers only an elicit-on-command tool, through
-    /// ``ScriptedServer/addElicitingTool(named:message:requestedSchema:preElicitationDelay:postElicitationStall:)``,
+    /// ``ScriptedServer/addElicitingTool(named:message:requestedSchema:)``,
     /// under ``elicitOnCommandToolName``.
     case eliciting
 
@@ -36,8 +36,8 @@ public enum ServerMode: String, Sendable, CaseIterable {
     /// ``ScriptedServer/runDynamicToolsetStages(on:)``.
     case dynamic
 
-    /// Registers only ``ScriptedServer/addSlowBuildTool(named:totalSteps:stepDelay:)``
-    /// at its default cadence of about twenty steps, about one second apart.
+    /// Registers only ``ScriptedServer/addSlowBuildTool(named:totalSteps:)``
+    /// with its default of twenty steps. The steps go out back to back.
     case longRunning
 
     /// Registers ``ScriptedServer/addLoopbackTools()`` — `echo`, `elicitEcho`

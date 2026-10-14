@@ -152,9 +152,9 @@ struct ServerModeTests {
 
         stageClock.open()
 
-        try await TestPoll.waitUntil("every stage of the dynamic scenario ran") {
-            ((try? await registeredTools(on: server)).map(Self.isFinalDynamicToolset)) ?? false
-        }
+        // The end of the last stage resumes this wait.
+        await server.waitForDynamicToolsetStages(atLeast: ScriptedServer.dynamicToolsetStageCount)
+        #expect(Self.isFinalDynamicToolset(try await registeredTools(on: server)))
         #expect(
             stageClock.recordedSleeps
                 == Array(

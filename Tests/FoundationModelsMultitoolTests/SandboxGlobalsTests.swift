@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
@@ -137,9 +138,10 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page declares the exact fields a running background run really reports")
     func theGlobalsPageMatchesTheBackgroundRunItDocuments() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        _ = try await startScriptedRun(on: context, progress: "step one")
+        _ = try await startScriptedRun(on: context, clock: clock, progress: "step one")
 
         let output = try await runSnippet(
             "return Object.keys((await status())[0]).sort();",
@@ -172,10 +174,11 @@ struct SandboxGlobalsTests {
 
     @Test("state and result never appear on one object — state is the run, result is the call")
     func stateAndResultNeverAppearOnOneObject() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let running = try await startScriptedRun(on: context, tool: "slow")
-        let finished = try await startScriptedRun(on: context, tool: "quick")
+        let running = try await startScriptedRun(on: context, clock: clock, tool: "slow")
+        let finished = try await startScriptedRun(on: context, clock: clock, tool: "quick")
         await settle(finished, on: context)
 
         let output = try await runSnippet(
@@ -209,9 +212,10 @@ struct SandboxGlobalsTests {
 
     @Test("status() with no argument lists each running run's token, op, and latest progress")
     func statusWithNoArgumentListsEveryRunningRun() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context, progress: "downloading")
+        let run = try await startScriptedRun(on: context, clock: clock, progress: "downloading")
 
         let output = try await runSnippet(
             "return (await status()).map(row => [row.completionToken, row.op, row.latestProgress]);",
@@ -223,9 +227,10 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a running run as running")
     func statusWithATokenReportsARunningRun() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context, progress: "step one")
+        let run = try await startScriptedRun(on: context, clock: clock, progress: "step one")
 
         let output = try await runSnippet(
             """
@@ -244,9 +249,10 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a finished run as complete, with its terminal outcome")
     func statusWithATokenReportsAFinishedRun() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context)
+        let run = try await startScriptedRun(on: context, clock: clock)
         await settle(run, on: context)
 
         let output = try await runSnippet(
@@ -266,9 +272,10 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a run that failed as error, and outcome says why")
     func statusWithATokenReportsAFailedRun() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context, failing: true)
+        let run = try await startScriptedRun(on: context, clock: clock, failing: true)
         await settle(run, on: context)
 
         let output = try await runSnippet(
@@ -306,9 +313,10 @@ struct SandboxGlobalsTests {
 
     @Test("a snippet that calls wait() in a session gets the repair text: return the token, and the shared pending text")
     func waitInASessionGivesTheRepairText() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context)
+        let run = try await startScriptedRun(on: context, clock: clock)
 
         let output = try await runSnippet(removedWaitCatchingSnippet, under: context)
 
@@ -347,9 +355,10 @@ struct SandboxGlobalsTests {
 
     @Test("cancel() returns the canceler's honest outcome, verbatim")
     func cancelReturnsTheHonestOutcome() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context)
+        let run = try await startScriptedRun(on: context, clock: clock)
 
         let output = try await runSnippet(
             """
@@ -368,9 +377,10 @@ struct SandboxGlobalsTests {
 
     @Test("cancel() on a run that already finished reports the retained terminal event, not an unknown token")
     func cancelOnAFinishedRunReportsItsTerminalEvent() async throws {
-        let stub = try await makeStubRun()
+        let clock = ManualRunClock()
+        let stub = try await makeStubRun(runClock: clock)
         let context = stub.context
-        let run = try await startScriptedRun(on: context)
+        let run = try await startScriptedRun(on: context, clock: clock)
         await settle(run, on: context)
 
         let output = try await runSnippet(

@@ -145,8 +145,7 @@ let agentSurfaceQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated searchTools discovery over the agent's files-and-shell surface",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct AgentSurfaceDiscoveryTests {
     @Test("the recorded queries each answer only real catalog paths, one time each, inside the limit")

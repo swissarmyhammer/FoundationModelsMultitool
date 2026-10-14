@@ -177,9 +177,7 @@ struct RegisteredJournalOpTests {
     /// background (task `^6nnykct`). So a held command holds the snippet, and
     /// its run never stands on the run plane. Only the cancel of the outer run
     /// ends it, and the cancel ends the snippet with a `CancellationError`.
-    @Test(
-        "an inner tools.shell.execute run of a held command never stands on the run plane, and the cancel ends it",
-        .timeLimit(TestHangGuard.timeLimit))
+    @Test("an inner tools.shell.execute run of a held command never stands on the run plane, and the cancel ends it")
     func anInnerShellRunStaysOffTheRunPlane() async throws {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
@@ -194,9 +192,7 @@ struct RegisteredJournalOpTests {
                 under: context)
         }
 
-        try await TestPoll.waitUntil("the run consulted its sandbox") {
-            !sandbox.observedOps.isEmpty
-        }
+        try await sandbox.waitUntilConsulted()
 
         #expect(await context.backgroundRuns().isEmpty)
         run.cancel()
@@ -228,10 +224,8 @@ struct RegisteredJournalOpTests {
             over: registry,
             under: context)
 
-        try await TestPoll.waitUntil("the run consulted its sandbox") {
-            !sandbox.observedOps.isEmpty
-        }
-
+        // A fixed order, not a wait: the inner call ran to completion before
+        // the snippet returned, thus the run consulted its sandbox already.
         let stampedOp = try #require(
             sandbox.observedOps.first, "the run never consulted its sandbox")
         #expect(stampedOp == "\(Self.executeVerb) \(Self.shellNoun)")
@@ -246,10 +240,11 @@ struct RegisteredJournalOpTests {
     /// `BackgroundRun.op` and `ToolInvocationRecord.op` are both built from.
     ///
     /// The verb is synchronous, so the snippet holds the call until the
-    /// server answers. The test runs the snippet in a task of its own and
-    /// polls the in-flight table of the server for the stamp. The held verb
-    /// answers only when the test releases it, thus the call is still in
-    /// flight when the poll reads it.
+    /// server answers. The test runs the snippet in a task of its own, waits
+    /// until the call arrives at the held verb, and then reads the stamp in
+    /// the in-flight table of the server. The held verb answers only when the
+    /// test releases it, thus the call is still in flight when the test reads
+    /// it.
     @Test("a tools.<serverName>.<verb> call of an MCP server carries the journal op \"<verb> <serverName>\" into its own call")
     func anMCPVerbCarriesThePairIntoItsOwnCall() async throws {
         let scripted = ScriptedServer()
@@ -269,11 +264,10 @@ struct RegisteredJournalOpTests {
                 under: context)
         }
 
-        var stampedOp: String?
-        try await TestPoll.waitUntil("the call reached the server") {
-            stampedOp = await server.inFlightCalls.values.first?.context?.op
-            return stampedOp != nil
-        }
+        // The server records the call in flight before it sends the request,
+        // thus when the call arrives at the held tool, the record stands.
+        try await held.waitForArrival()
+        let stampedOp = await server.inFlightCalls.values.first?.context?.op
         await held.release()
         try await run.value
 
@@ -346,9 +340,20 @@ private final class JournalOpProbeSandbox: CommandSandbox {
     /// for a call that ran under no ambient context at all.
     private let observed = Mutex<[String?]>([])
 
+    /// The gate that the first run that consults this sandbox opens.
+    private let consulted = TestGate()
+
     /// The stamp of each run that consulted this sandbox, in call order.
     var observedOps: [String?] {
         observed.withLock { $0 }
+    }
+
+    /// Waits until a run consulted this sandbox. Returns at once when a run
+    /// already consulted it.
+    ///
+    /// - Throws: `CancellationError` when the task is cancelled first.
+    func waitUntilConsulted() async throws {
+        try await consulted.wait()
     }
 
     /// Records the journal op of the run, and proves nothing about the
@@ -360,6 +365,7 @@ private final class JournalOpProbeSandbox: CommandSandbox {
     func preflight(workingDirectory: String, temporaryDirectory: String) async {
         let stampedOp = ToolContext.current?.op
         observed.withLock { $0.append(stampedOp) }
+        consulted.open()
     }
 
     /// Gives back `shellPath` and `shellArguments` unchanged.

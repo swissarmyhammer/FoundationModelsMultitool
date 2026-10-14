@@ -52,19 +52,21 @@ struct ShellSessionSweepTests {
     /// The name of the store folder inside the directory of one test.
     private static let shellStoreDirectoryName = ".shell"
 
-    /// How long each command of a background run sleeps. Long enough that the
-    /// run certainly still stands on the run plane when the sweep reaches it,
-    /// thus what ends it is the sweep and never the command ending by itself.
-    private static let backgroundRunSleepSeconds = 60
-
     /// The command each background run starts.
     ///
-    /// It is a process TREE and not one process: the shell starts one `sleep`
-    /// in the background and then runs a second one. A sweep that signalled the
-    /// leader alone would leave the background `sleep` alive, and the reading of
-    /// the process group below would still find the group.
-    private static let backgroundCommand =
-        "sleep \(backgroundRunSleepSeconds) & sleep \(backgroundRunSleepSeconds)"
+    /// It is a process TREE and not one process: the shell starts one wait on
+    /// `gate` in the background and then runs a second one. The test never
+    /// releases the gate, thus the run certainly still stands on the run plane
+    /// when the sweep reaches it, and what ends it is the sweep and never the
+    /// command ending by itself. A sweep that signalled the leader alone would
+    /// leave the background wait alive, and the wait for the end of each
+    /// process of the group below would not end.
+    ///
+    /// - Parameter gate: The FIFO that holds both waits.
+    /// - Returns: The command line.
+    private static func backgroundCommand(holdingOn gate: ShellCommandGate) -> String {
+        "\(gate.waitCommand) & \(gate.waitCommand)"
+    }
 
     /// How many runs start in the tests that read one run's terminal event.
     private static let oneBackgroundRun = 1
@@ -116,6 +118,10 @@ struct ShellSessionSweepTests {
 
         /// The process group of each background run, in the order of ``runs``.
         let groups: [pid_t]
+
+        /// The FIFO that holds the command of each run. It must live until
+        /// the sweep killed each run, thus the session keeps it.
+        let gate: ShellCommandGate
     }
 
     /// Starts `count` background shell runs in one session, and answers
@@ -137,7 +143,11 @@ struct ShellSessionSweepTests {
         let state = try ShellState(
             preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
         let registry = ProcessRegistry()
-        let run = try await makeStubRun()
+        // The run clock of the session. Each call goes to the background when
+        // the test moves this clock past the settle period, and no real time
+        // passes.
+        let clock = ManualRunClock()
+        let run = try await makeStubRun(runClock: clock)
         let context = run.context
         // A caller-supplied sink: each swept run's terminal must carry that
         // run's OWN token, and the mount's own sink re-stamps onto the
@@ -146,9 +156,17 @@ struct ShellSessionSweepTests {
         let engine = ShellRunPlane.mounted(
             Execute(runner: ShellRunner(state: state, registry: registry)),
             inheriting: context, postingTo: sink)
+        let gate = try ShellCommandGate()
 
+        // The gate holds each command, thus each call answers with its pending
+        // envelope only when the clock moves past the settle period.
+        let arguments = ExecuteArguments(command: Self.backgroundCommand(holdingOn: gate))
         for _ in 0..<count {
-            _ = try await engine.call(arguments: ExecuteArguments(command: Self.backgroundCommand))
+            _ = try await callPastSettlePeriod(
+                on: clock, grace: context.inlineSettleGrace, timers: settlePeriodTimers
+            ) {
+                try await engine.call(arguments: arguments)
+            }
         }
 
         let runs = try await ShellRunPlane.backgroundRuns(in: context, count: count)
@@ -163,33 +181,29 @@ struct ShellSessionSweepTests {
             state: state,
             registry: registry,
             runs: runs,
-            groups: groups
+            groups: groups,
+            gate: gate
         )
     }
 
     /// The process group of the run under `completionToken`, once its child
     /// registered one.
     ///
-    /// A ``TestPoll``, because the engine tracks a run as it takes it and the
-    /// child registers its pid inside the spawn, thus a read that arrives first
-    /// finds nothing. `ShellState.runningProcess(commandID:)` is the plain,
-    /// non-suspending reading, which is the one an observer takes.
+    /// The engine tracks a run as it takes it, and the child registers its pid
+    /// inside the spawn, thus a plain read that arrives first finds nothing.
+    /// `ShellState.pidToCancel(commandID:)` is the event: it returns when the
+    /// child registered its pid, or `nil` when the command ended with no pid.
     ///
     /// - Parameters:
     ///   - completionToken: The completion token of the run.
     ///   - state: The store the run recorded into.
     /// - Returns: The pid of the leader of the process group, which is also the
     ///   identifier of that group.
-    /// - Throws: When no child registers before the deadline.
+    /// - Throws: When the command ended and no child registered.
     private static func processGroup(
         of completionToken: String, in state: ShellState
     ) async throws -> pid_t {
-        var registered: pid_t?
-        let came = await TestPoll.holds {
-            registered = await state.runningProcess(commandID: completionToken)
-            return registered != nil
-        }
-        guard came, let registered else {
+        guard let registered = await state.pidToCancel(commandID: completionToken) else {
             Issue.record("The run under \(completionToken) registered no process group.")
             throw ProcessGroupAbsent()
         }
@@ -198,6 +212,29 @@ struct ShellSessionSweepTests {
 
     /// The failure ``processGroup(of:in:)`` throws when no child registers.
     private struct ProcessGroupAbsent: Error {}
+
+    /// The pids of each process that the kernel holds in the process group
+    /// `group`, read through `sysctl` with `CTL_KERN, KERN_PROC, KERN_PROC_PGRP`.
+    ///
+    /// - Parameter group: The identifier of the process group to read.
+    /// - Returns: The pids. An empty list when the group holds no process, or
+    ///   when the read fails.
+    private static func processes(inGroup group: pid_t) -> [pid_t] {
+        var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group]
+        var size = 0
+        let sized = name.withUnsafeMutableBufferPointer { buffer in
+            sysctl(buffer.baseAddress, u_int(buffer.count), nil, &size, nil, 0)
+        }
+        guard sized == 0, size > 0 else { return [] }
+        var entries = [kinfo_proc](repeating: kinfo_proc(), count: size / MemoryLayout<kinfo_proc>.stride)
+        let read = name.withUnsafeMutableBufferPointer { buffer in
+            entries.withUnsafeMutableBytes { bytes in
+                sysctl(buffer.baseAddress, u_int(buffer.count), bytes.baseAddress, &size, nil, 0)
+            }
+        }
+        guard read == 0 else { return [] }
+        return entries.prefix(size / MemoryLayout<kinfo_proc>.stride).map(\.kp_proc.p_pid)
+    }
 
     /// Whether any process still stands in the process group that `group`
     /// leads.
@@ -221,12 +258,16 @@ struct ShellSessionSweepTests {
     /// answered: a canceler that reported `.stopped` and signalled nothing
     /// would pass a test that read the word alone.
     ///
-    /// The reading is a ``TestPoll`` and the poll is real work, not slack.
-    /// `killpg` kills the tree at once, and the leader of the group then stays
-    /// an unreaped child of this process until swift-subprocess reaps it. A
-    /// group that still holds a zombie still answers the probe, thus the
-    /// reading polls until the group holds nothing at all — which is also the
-    /// proof that the child was reaped and left no orphan behind.
+    /// No reading here waits on time. `close()` waits until the body of each
+    /// run ended (`RunPlane.joinRunBodies()`), and the body ends only after
+    /// swift-subprocess reaped the leader of its group. Thus the leader is
+    /// gone when `close()` returns. Each other process of a group is a
+    /// grandchild that this process cannot reap: the system reaps it at a
+    /// time this process does not control. The test reads each process that
+    /// the group still holds after `close()`, and waits on the exit event of
+    /// the kernel for each one (``ProcessExitWait/waitUntilGone(_:)``). A
+    /// process that the sweep did not kill never exits, and that wait is the
+    /// failure of the test.
     @Test("session teardown kills the child process group of each background shell run")
     func sessionTeardownKillsTheProcessGroupOfEachBackgroundShellRun() async throws {
         let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
@@ -238,8 +279,13 @@ struct ShellSessionSweepTests {
         await session.stub.session.close()
 
         for group in session.groups {
-            let gone = await TestPoll.holds { !Self.processGroupStands(group) }
-            #expect(gone, "the sweep left the process group \(group) alive")
+            #expect(ProcessLiveness.isGone(group), "the sweep left the leader of the group \(group) unreaped")
+            for member in Self.processes(inGroup: group) {
+                await ProcessExitWait.waitUntilGone(member)
+                #expect(
+                    ProcessExitWait.hasExited(member),
+                    "the sweep left the process \(member) of the group \(group) alive")
+            }
         }
     }
 
@@ -320,7 +366,10 @@ struct ShellSessionSweepTests {
     /// `ShellRunner.run`, which is before swift-subprocess reaps the child, thus
     /// no window exists in which the registry holds a pid the kernel already
     /// gave to another process. The sweep starts that teardown and does not wait
-    /// for it, which is why the reading below polls.
+    /// for it. But `close()` then waits until the body of each run ended
+    /// (`RunPlane.joinRunBodies()`), and the body ends after the spawn closure
+    /// deregistered its pid. Thus one reading after `close()` is the check, in
+    /// the order that the product makes.
     @Test("the sweep drains the process registry, thus the atexit backstop finds nothing to kill")
     func theSweepDrainsTheProcessRegistry() async throws {
         let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
@@ -329,7 +378,6 @@ struct ShellSessionSweepTests {
 
         await session.stub.session.close()
 
-        let drained = await TestPoll.holds { registry.registeredPids.isEmpty }
-        #expect(drained, "the registry still held \(registry.registeredPids)")
+        #expect(registry.registeredPids.isEmpty, "the registry still held \(registry.registeredPids)")
     }
 }

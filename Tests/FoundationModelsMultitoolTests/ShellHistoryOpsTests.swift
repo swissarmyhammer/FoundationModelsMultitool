@@ -48,14 +48,8 @@ struct ShellHistoryOpsTests {
     /// The rendered call path of the `grepHistory` verb.
     private static let grepHistoryPath = "shell.grepHistory"
 
-    /// The text the still-running command writes before it goes to sleep.
+    /// The text the still-running command writes before it waits on its gate.
     private static let liveMarker = "partial"
-
-    /// How long the still-running command sleeps after it wrote its one line:
-    /// one day. No test reaches it, thus the read below lands while the run
-    /// goes on, however slow the machine is, and the test kills the run as
-    /// soon as it read what it came for (card `^tm4x2hp`).
-    private static let liveRunSleepSeconds = 86_400
 
     /// The text each line of the limit test carries, thus one pattern matches
     /// every one of them.
@@ -120,25 +114,30 @@ struct ShellHistoryOpsTests {
         return token
     }
 
-    /// Starts a command that writes one line and then sleeps for a long time.
+    /// Starts a command that writes one line and then waits on a
+    /// `ShellCommandGate` that the test never opens.
     ///
     /// Thus a read that lands after the line arrived certainly lands while the
-    /// run is still going, and the test never races the end of the run.
+    /// run is still going, and the test never races the end of the run. The
+    /// test keeps the gate until it stopped the run.
     ///
     /// - Parameter state: The store the run records into.
-    /// - Returns: The completion token of the run, and the task that runs it.
+    /// - Returns: The completion token of the run, the task that runs it, and
+    ///   the gate that holds it.
+    /// - Throws: What `ShellCommandGate.init` throws.
     private func startLiveRun(
         in state: ShellState
-    ) -> (token: String, run: Task<ShellRunner.Outcome, Error>) {
+    ) throws -> (token: String, run: Task<ShellRunner.Outcome, Error>, gate: ShellCommandGate) {
         let runner = ShellRunner(state: state, registry: ProcessRegistry())
         let token = ToolContext.makeCompletionToken()
+        let gate = try ShellCommandGate()
         let run = Task {
             try await runner.run(
                 .init(
-                    command: "echo \(Self.liveMarker); sleep \(Self.liveRunSleepSeconds)",
+                    command: "echo \(Self.liveMarker); \(gate.waitCommand)",
                     completionToken: token))
         }
-        return (token, run)
+        return (token, run, gate)
     }
 
     /// Kills a live run and waits for its child to go away, thus nothing of
@@ -150,23 +149,26 @@ struct ShellHistoryOpsTests {
         _ = try? await run.value
     }
 
-    /// Reads again and again until the answer satisfies `isReady`.
+    /// Waits until the store holds the one line of the live run, and then
+    /// reads one answer.
     ///
     /// The read goes through the verb under test, because what a live test
     /// proves is that the VERB answers for a run that still goes. The wait is
-    /// for an event: the answer that satisfies `isReady`. Its only deadline is
-    /// ``TestPoll/deadline``, a hang guard and not a speed check (card
-    /// `^tm4x2hp`).
+    /// for an event: `ShellState.waitForStoredLines` ends when the store wrote
+    /// the line. The command waits on its gate after the line, thus the run
+    /// still goes when the read lands.
     ///
     /// - Parameters:
+    ///   - token: The completion token of the live run.
+    ///   - state: The store the run records into.
     ///   - read: How to read one answer.
-    ///   - isReady: What the answer must satisfy.
-    /// - Returns: The last answer the poll read.
+    /// - Returns: The answer.
     /// - Throws: What `read` throws.
-    private func poll<Answer>(
-        read: () async throws -> Answer, until isReady: (Answer) -> Bool
+    private func readAfterTheLine<Answer>(
+        of token: String, in state: ShellState, read: () async throws -> Answer
     ) async throws -> Answer {
-        try await TestPoll.lastReading(of: read, until: isReady)
+        await state.waitForStoredLines(commandID: token, atLeast: 1)
+        return try await read()
     }
 
     // MARK: - The rendered surface
@@ -205,12 +207,12 @@ struct ShellHistoryOpsTests {
     func getLinesAnswersWithTheOutputARunWroteBeforeItEnded() async throws {
         let state = try makeState()
         let verb = GetLines(state: state)
-        let live = startLiveRun(in: state)
+        let live = try startLiveRun(in: state)
         defer { live.run.cancel() }
 
-        let result = try await poll(
-            read: { try await verb.call(arguments: GetLinesArguments(commandID: live.token)) },
-            until: { !$0.lines.isEmpty })
+        let result = try await readAfterTheLine(of: live.token, in: state) {
+            try await verb.call(arguments: GetLinesArguments(commandID: live.token))
+        }
 
         #expect(result.lines == ["1: \(Self.liveMarker)"])
         #expect(result.status == CommandStatus.running.rawValue)
@@ -309,12 +311,12 @@ struct ShellHistoryOpsTests {
     func grepHistoryFindsTheOutputARunWroteBeforeItEnded() async throws {
         let state = try makeState()
         let verb = GrepHistory(state: state)
-        let live = startLiveRun(in: state)
+        let live = try startLiveRun(in: state)
         defer { live.run.cancel() }
 
-        let result = try await poll(
-            read: { try await verb.call(arguments: GrepHistoryArguments(pattern: Self.liveMarker)) },
-            until: { $0.total > 0 })
+        let result = try await readAfterTheLine(of: live.token, in: state) {
+            try await verb.call(arguments: GrepHistoryArguments(pattern: Self.liveMarker))
+        }
 
         #expect(result.total == 1)
         #expect(result.matches.map(\.text) == [Self.liveMarker])

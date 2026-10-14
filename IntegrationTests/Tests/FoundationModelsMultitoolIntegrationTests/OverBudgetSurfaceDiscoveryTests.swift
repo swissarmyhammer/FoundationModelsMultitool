@@ -86,8 +86,7 @@ private let overBudgetQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated searchTools discovery over a surface above the selection budget",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct OverBudgetSurfaceDiscoveryTests {
     @Test("a surface above the budget answers spliced-once, unique, in-limit matches from its slices")

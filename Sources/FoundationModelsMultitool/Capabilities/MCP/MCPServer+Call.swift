@@ -357,6 +357,28 @@ extension MCPServer {
             metadata: [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(inFlightCalls.count)"])
         recordEventOnInFlightCalls(.mcpTransportDropped)
         failInFlightCalls(underlying: Self.transportDroppedDescription)
+        resumeTransportDropWaiters()
+    }
+
+    /// Waits until ``isTransportDropped`` is `true` — the event a test waits
+    /// on in place of a poll of the flag. Returns at once when the flag is
+    /// already set.
+    ///
+    /// Internal, for `@testable import`: no product code waits here.
+    func waitUntilTransportDropped() async {
+        guard !isTransportDropped else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            transportDropWaiters.append(continuation)
+        }
+    }
+
+    /// Resumes each wait of ``waitUntilTransportDropped()``.
+    private func resumeTransportDropWaiters() {
+        let waiters = transportDropWaiters
+        transportDropWaiters = []
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     /// The error a call ends with, given what the client threw.

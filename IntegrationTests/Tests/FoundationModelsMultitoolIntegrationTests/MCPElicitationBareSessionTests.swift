@@ -26,8 +26,7 @@ import Testing
 /// `IntegrationTests` package.
 @Suite(
     "An MCP elicitation on a bare LanguageModelSession",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct MCPElicitationBareSessionTests {
 

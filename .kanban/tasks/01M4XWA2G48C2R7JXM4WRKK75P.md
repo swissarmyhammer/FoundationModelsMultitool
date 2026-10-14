@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m4y05enxwrxe2ztdhac5dh3c
+  text: 'Owner instruction: before the final runs of T4, move both packages (root and IntegrationTests) to Router 906c2b17 with Extras b68a5d4 (swift package update of the family pins). Router 906c2b17 fixes a rare lock-order deadlock in the session output hub; no public API change. No hung run was seen before this.'
+  timestamp: 2026-10-14T20:02:54.269647+00:00
+- actor: claude-code
+  id: 01m4y426kwdyc7k44rdxgjem2w
+  text: 'New heads for the final runs (owner, replaces 906c2b17): Router 3f3ba209 (906c2b17 plus a test fix, no API change) and Extras 7f530ff. Extras 7f530ff adds elicitation reasons: ElicitationResponse.reason, .decline(reason:), .cancel(reason:). A run cancel, a sweep and a close now end open questions with .cancel(reason: RunPlane.runCancelledReason); a duplicate id gives .cancel(reason: RunPlane.duplicateElicitationIdReason). If a Multitool test checks a bare .cancel of a run-plane question, change it to the reason form and name it in the report.'
+  timestamp: 2026-10-14T21:11:02.012725+00:00
 depends_on:
 - 01M4XW9N4S2W8WTPXZDE9ASE3A
 position_column: todo

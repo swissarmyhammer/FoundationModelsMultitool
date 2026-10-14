@@ -30,28 +30,30 @@ import ULID
 /// `SessionConfiguration`, so the session mount, the outbox and the mail pump
 /// are the real ones. The backend records the prompt of each submission,
 /// which is where mail arrives (see `MailProbeFixtures.swift`).
+///
+/// No test waits on real time. Each session runs on a `ManualRunClock`, thus
+/// a settle period ends only when the test moves the clock past it. A command
+/// that must run "long" blocks on a ``ShellCommandGate`` until the test
+/// releases it. A test that needs "ends inside the settle period" releases the
+/// command while the clock stands still. A test that needs "runs longer than
+/// the settle period" moves the clock past the period first, and releases the
+/// command after the call answered with its pending envelope.
 @Suite("a background call that ends inside the settle period answers with its own result")
 struct BackgroundSettleGraceTests {
 
     // MARK: - Fixtures
 
     /// A short settle period, in seconds, for a test that needs the period to
-    /// elapse.
+    /// elapse. The test moves the run clock past it.
     private static let shortGrace: TimeInterval = 2
 
     /// The settle period of the "host that sets one second" test.
     private static let oneSecondGrace: TimeInterval = 1
 
-    /// A command that ends inside the default settle period but not inside
+    /// How far the clock moves while the command of the "default host" test
+    /// runs: three seconds, inside the default settle period and not inside
     /// one second.
-    private static let threeSecondCommand = "sleep 3; echo done"
-
-    /// A command that runs longer than ``shortGrace``.
-    private static let longCommand = "sleep 4; echo done"
-
-    /// A command that ends well inside the default settle period, but not at
-    /// once, so a snippet that does not await it ends first.
-    private static let shortCommand = "sleep 1; echo done"
+    private static let threeSecondRun: Duration = .seconds(3)
 
     /// The line that the long command of
     /// ``awaitedLongExecuteGivesTheRealResult()`` writes into its file.
@@ -69,6 +71,24 @@ struct BackgroundSettleGraceTests {
 
     /// The journal `op` of the shell verb that the notice names.
     private static let executeOp = "execute shell"
+
+    /// How many waits the run clock holds while a mounted `runCode` call
+    /// waits for its settle period: the timeout of the run
+    /// (`executionTimeLimit`) and the settle period.
+    private static let runCodeSleepers = 2
+
+    /// How many waits the run clock holds while a top-level `execute` call
+    /// waits for its settle period: only the settle period, because
+    /// `execute` declares no timeout.
+    private static let executeSleepers = 1
+
+    /// A command that blocks on `gate`, then prints `done`.
+    ///
+    /// - Parameter gate: The gate the command waits on.
+    /// - Returns: The command.
+    private static func heldCommand(_ gate: ShellCommandGate) -> String {
+        "\(gate.waitCommand); echo done"
+    }
 
     /// The `execute` verb and the `getLines` verb over one store, with a
     /// process-group registry private to this test.
@@ -114,18 +134,54 @@ struct BackgroundSettleGraceTests {
     /// A `runCode` whose snippets reach `tools.shell.execute` and
     /// `tools.shell.getLines`.
     ///
-    /// - Parameter grace: The settle period of `runCode`, or `nil` for the
-    ///   stock value.
+    /// - Parameters:
+    ///   - grace: The settle period of `runCode`, or `nil` for the stock
+    ///     value.
+    ///   - snippetEnded: The gate to open when the code of a snippet ends, or
+    ///     `nil` for the stock interpreter (see
+    ///     ``SnippetEndSignalingInterpreter``).
     /// - Returns: The tool, and the store of its shell commands.
     /// - Throws: When the store does not prepare, or the surface does not
     ///   render.
-    private static func shellRunCode(grace: TimeInterval? = nil) throws -> (runCode: MultiTool, state: ShellState) {
+    private static func shellRunCode(
+        grace: TimeInterval? = nil, snippetEnded: TestGate? = nil
+    ) throws -> (runCode: MultiTool, state: ShellState) {
         let verbs = try shellVerbs()
         let registry = try MultiTool.Builder()
             .addGroup(named: "shell", [verbs.execute, verbs.getLines])
             .buildRegistry()
         let configuration = grace.map { MultiToolConfiguration(inlineSettleGrace: $0) } ?? .default
-        return (MultiTool(registry: registry, configuration: configuration), verbs.state)
+        let interpreter = snippetEnded.map { SnippetEndSignalingInterpreter(opening: $0) }
+        return (
+            MultiTool(registry: registry, configuration: configuration, interpreter: interpreter), verbs.state
+        )
+    }
+
+    /// Makes a Router session over a mail probe backend, as
+    /// `makeMailProbeSession(mounting:inlineSettleGrace:prompts:step:)` does,
+    /// on the run clock `clock`.
+    ///
+    /// - Parameters:
+    ///   - tools: The tools the session mounts.
+    ///   - inlineSettleGrace: The settle period of the session, in seconds.
+    ///   - prompts: Where the backend records each prompt.
+    ///   - step: What each submission does.
+    ///   - clock: The run clock of the session.
+    /// - Returns: The session.
+    /// - Throws: What resolving the stub profile throws.
+    private static func session(
+        mounting tools: [any Tool],
+        inlineSettleGrace: TimeInterval = ToolMount.defaultInlineSettleGrace,
+        prompts: MailProbePrompts,
+        step: @escaping MailProbeToolsStep,
+        clock: ManualRunClock
+    ) async throws -> any RoutedSession {
+        let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: step))
+        let profile = try await makeStubProfile(
+            loader: loader, standardModel: ModelRef(stringLiteral: "stub/mailprobe-\(ULID.generate())"),
+            runClock: clock)
+        return profile.standard.makeSession(
+            configuration: SessionConfiguration(tools: tools, inlineSettleGrace: inlineSettleGrace))
     }
 
     /// The step of a session whose first submission runs `snippet` in
@@ -207,17 +263,31 @@ struct BackgroundSettleGraceTests {
         }
     }
 
-    /// Runs `snippet` in `runCode` with the stock settle period, and answers
-    /// with the inline result.
+    /// Runs a snippet that starts a held command with no `await`, with the
+    /// stock settle period, and answers with the inline result.
     ///
-    /// - Parameter snippet: The snippet to run.
+    /// The command ends after the code of the snippet ended, in a fixed
+    /// order: the interpreter opens a gate when the snippet code ends (see
+    /// ``SnippetEndSignalingInterpreter``), and the test releases the command
+    /// only after that gate opened. The clock of the session never moves,
+    /// thus the call answers inline when the run settles.
+    ///
+    /// - Parameter snippet: Makes the snippet from the held command.
     /// - Returns: The result, and the store of the shell commands.
     /// - Throws: When the session does not start or the call fails.
-    private static func inlineResult(of snippet: String) async throws -> (result: String, state: ShellState) {
-        let probe = try shellRunCode()
-        let session = try await makeMailProbeSession(
-            mounting: [probe.runCode], prompts: MailProbePrompts(), step: runningSnippet(snippet))
-        let result = try await session.respond(to: "run the snippet")
+    private static func inlineResultOfFloatingCall(
+        _ snippet: (_ command: String) -> String
+    ) async throws -> (result: String, state: ShellState) {
+        let gate = try ShellCommandGate()
+        let snippetEnded = TestGate()
+        let probe = try shellRunCode(snippetEnded: snippetEnded)
+        let session = try await Self.session(
+            mounting: [probe.runCode], prompts: MailProbePrompts(),
+            step: runningSnippet(snippet(heldCommand(gate))), clock: ManualRunClock())
+        async let responded = session.respond(to: "run the snippet")
+        try await snippetEnded.wait()
+        try await gate.release()
+        let result = try await responded
         #expect(!PendingRunEnvelope.isRendered(text: result), "the snippet went to the background: \(result)")
         return (result, probe.state)
     }
@@ -227,10 +297,11 @@ struct BackgroundSettleGraceTests {
     @Test("a snippet that runs echo hi through tools.shell.execute reads r.exitCode as 0, and no mail comes")
     func snippetExecuteAnswersWithItsOwnResult() async throws {
         let prompts = MailProbePrompts()
-        let session = try await makeMailProbeSession(
+        let session = try await Self.session(
             mounting: [try Self.shellRunCode().runCode], prompts: prompts,
             step: Self.runningSnippet(
-                "const r = await tools.shell.execute({command: \"echo hi\"}); return [r.exitCode, r.commandID];"))
+                "const r = await tools.shell.execute({command: \"echo hi\"}); return [r.exitCode, r.commandID];"),
+            clock: ManualRunClock())
         let log = await SessionOutputLog.reading(session)
 
         let result = try await log.ask("run echo hi").reply
@@ -256,8 +327,8 @@ struct BackgroundSettleGraceTests {
     func topLevelExecuteAnswersWithItsReport() async throws {
         let prompts = MailProbePrompts()
         let verbs = try Self.shellVerbs()
-        let session = try await makeMailProbeSession(
-            mounting: [verbs.execute], prompts: prompts, step: Self.executing("echo hi"))
+        let session = try await Self.session(
+            mounting: [verbs.execute], prompts: prompts, step: Self.executing("echo hi"), clock: ManualRunClock())
         let log = await SessionOutputLog.reading(session)
 
         let report = try await log.ask("run echo hi").reply
@@ -281,24 +352,34 @@ struct BackgroundSettleGraceTests {
 
     // MARK: - An awaited inner call gives the snippet its real result
 
+    /// The first command holds until the test releases it. The test moves the
+    /// clock past the settle period while the command holds, thus the call
+    /// answers with the pending envelope, and the test releases the command
+    /// only after that answer.
     @Test("a snippet that awaits a long execute that writes a file, then reads and deletes it, reads the full output, and the result comes back as mail")
     func awaitedLongExecuteGivesTheRealResult() async throws {
         let prompts = MailProbePrompts()
+        let gate = try ShellCommandGate()
+        let clock = ManualRunClock()
         let logPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("multitool-await-\(ULID.generate()).log").path
         let snippet = """
-            await tools.shell.execute({command: "sleep 4; echo \(Self.fullOutputLine) > \(logPath)"});
+            await tools.shell.execute({command: "\(gate.waitCommand); echo \(Self.fullOutputLine) > \(logPath)"});
             const read = await tools.shell.execute({command: "cat \(logPath); rm \(logPath)"});
             return read.output;
             """
-        let session = try await makeMailProbeSession(
+        let session = try await Self.session(
             mounting: [try Self.shellRunCode(grace: Self.shortGrace).runCode], inlineSettleGrace: Self.shortGrace,
-            prompts: prompts, step: Self.runningSnippet(snippet))
+            prompts: prompts, step: Self.runningSnippet(snippet), clock: clock)
         let log = await SessionOutputLog.reading(session)
 
-        let answer = try await log.ask("run the long command").reply
+        async let asked = log.ask("run the long command")
+        await clock.waitForSleepers(atLeast: Self.runCodeSleepers)
+        clock.advance(by: .seconds(Self.shortGrace))
+        let answer = try await asked.reply
 
         let envelope = try mailProbeEnvelope(answer)
+        try await gate.release()
         let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
         #expect(runMail.event.detail.contains(Self.fullOutputLine), "run mail: \(runMail.event.detail)")
         #expect(runMail.answer.mailIds.contains(runMail.id))
@@ -310,10 +391,11 @@ struct BackgroundSettleGraceTests {
     @Test("a short snippet that awaits a short execute still answers inline with the real result, and no mail comes")
     func shortSnippetStillAnswersInline() async throws {
         let prompts = MailProbePrompts()
-        let session = try await makeMailProbeSession(
+        let session = try await Self.session(
             mounting: [try Self.shellRunCode(grace: Self.shortGrace).runCode], inlineSettleGrace: Self.shortGrace,
             prompts: prompts,
-            step: Self.runningSnippet("return (await tools.shell.execute({command: \"echo hi\"})).output;"))
+            step: Self.runningSnippet("return (await tools.shell.execute({command: \"echo hi\"})).output;"),
+            clock: ManualRunClock())
         let log = await SessionOutputLog.reading(session)
 
         let result = try await log.ask("run echo hi").reply
@@ -329,22 +411,31 @@ struct BackgroundSettleGraceTests {
 
     // MARK: - A call that the snippet did not await
 
+    /// The command holds until the test releases it. The test moves the clock
+    /// past the settle period while the command holds, and releases the
+    /// command only after the call answered with the pending envelope.
     @Test("a snippet that starts a long execute without await and ends sends mail that names that call")
     func unawaitedLongExecuteIsNamedInTheMail() async throws {
         let prompts = MailProbePrompts()
+        let gate = try ShellCommandGate()
+        let clock = ManualRunClock()
         let probe = try Self.shellRunCode(grace: Self.shortGrace)
         let snippet = """
-            tools.shell.execute({command: "\(Self.longCommand)"});
+            tools.shell.execute({command: "\(Self.heldCommand(gate))"});
             return { started: 1 };
             """
-        let session = try await makeMailProbeSession(
+        let session = try await Self.session(
             mounting: [probe.runCode], inlineSettleGrace: Self.shortGrace, prompts: prompts,
-            step: Self.runningSnippet(snippet))
+            step: Self.runningSnippet(snippet), clock: clock)
         let log = await SessionOutputLog.reading(session)
 
-        let answer = try await log.ask("run the long command").reply
+        async let asked = log.ask("run the long command")
+        await clock.waitForSleepers(atLeast: Self.runCodeSleepers)
+        clock.advance(by: .seconds(Self.shortGrace))
+        let answer = try await asked.reply
 
         let envelope = try mailProbeEnvelope(answer)
+        try await gate.release()
         let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
         #expect(runMail.answer.mailIds.contains(runMail.id))
         let mail = try #require(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).first)
@@ -355,18 +446,27 @@ struct BackgroundSettleGraceTests {
 
     @Test("a snippet that starts a short execute without await and ends inside the settle period gets a result that names that call")
     func unawaitedShortExecuteIsNamedInline() async throws {
-        let run = try await Self.inlineResult(
-            of: "tools.shell.execute({command: \"\(Self.shortCommand)\"}); return { started: 1 };")
+        let run = try await Self.inlineResultOfFloatingCall { command in
+            "tools.shell.execute({command: \"\(command)\"}); return { started: 1 };"
+        }
 
         let commandID = try await Self.onlyCommandID(in: run.state)
         Self.expectNamesUnawaitedExecute(commandID, in: run.result)
     }
 
+    /// The command of the nested snippet must end after the code of the
+    /// nested snippet ended. A nested `tools.runCode` runs on the interpreter
+    /// of the outer `MultiTool`, thus ``SnippetEndSignalingInterpreter`` also
+    /// sees the end of the nested snippet code. The nested snippet ends before
+    /// the outer one, thus it opens the gate first, and the test releases the
+    /// held command only then. The settle period waits on a stopped
+    /// `ManualRunClock`, thus no settle period can end by time.
     @Test("a nested tools.runCode that starts an execute without await gets an outer result that names that call")
     func nestedUnawaitedExecuteIsNamedInTheOuterResult() async throws {
-        let nestedSnippet = "tools.shell.execute({command: \"\(Self.shortCommand)\"}); return { remaining: 1 };"
-        let run = try await Self.inlineResult(
-            of: "const nested = await tools.runCode({code: `\(nestedSnippet)`}); return nested.remaining;")
+        let run = try await Self.inlineResultOfFloatingCall { command in
+            let nestedSnippet = "tools.shell.execute({command: \"\(command)\"}); return { remaining: 1 };"
+            return "const nested = await tools.runCode({code: `\(nestedSnippet)`}); return nested.remaining;"
+        }
 
         #expect(try Self.returnedValue(of: run.result) == .number(1), "result: \(run.result)")
         let commandID = try await Self.onlyCommandID(in: run.state)
@@ -375,8 +475,9 @@ struct BackgroundSettleGraceTests {
 
     @Test("a snippet that starts an execute without await and then throws gets an error that names that call")
     func failedSnippetNamesTheUnawaitedCall() async throws {
-        let run = try await Self.inlineResult(
-            of: "tools.shell.execute({command: \"\(Self.shortCommand)\"}); throw new Error(\"stopped\");")
+        let run = try await Self.inlineResultOfFloatingCall { command in
+            "tools.shell.execute({command: \"\(command)\"}); throw new Error(\"stopped\");"
+        }
 
         #expect(run.result.contains("stopped"), "result: \(run.result)")
         let commandID = try await Self.onlyCommandID(in: run.state)
@@ -388,8 +489,9 @@ struct BackgroundSettleGraceTests {
     @Test("a runCode snippet that ends inside the settle period answers with its own value, with no envelope")
     func shortSnippetAnswersWithItsOwnValue() async throws {
         let prompts = MailProbePrompts()
-        let session = try await makeMailProbeSession(
-            mounting: [try Self.shellRunCode().runCode], prompts: prompts, step: Self.runningSnippet("return 1 + 1;"))
+        let session = try await Self.session(
+            mounting: [try Self.shellRunCode().runCode], prompts: prompts, step: Self.runningSnippet("return 1 + 1;"),
+            clock: ManualRunClock())
         let log = await SessionOutputLog.reading(session)
 
         let result = try await log.ask("add").reply
@@ -403,19 +505,28 @@ struct BackgroundSettleGraceTests {
 
     // MARK: - The host setting
 
+    /// The command holds while the test moves the clock past the settle
+    /// period of one second, thus the call answers with the pending envelope.
+    /// The test then releases the command, and its report comes back as mail.
     @Test("a host that sets the settle period to one second gets a pending envelope for sleep 3, and the report comes back as one mail")
     func oneSecondHostGetsAPendingEnvelope() async throws {
         let prompts = MailProbePrompts()
         let verbs = try Self.shellVerbs()
-        let session = try await makeMailProbeSession(
+        let gate = try ShellCommandGate()
+        let clock = ManualRunClock()
+        let session = try await Self.session(
             mounting: [verbs.execute], inlineSettleGrace: Self.oneSecondGrace, prompts: prompts,
-            step: Self.executing(Self.threeSecondCommand))
+            step: Self.executing(Self.heldCommand(gate)), clock: clock)
         let log = await SessionOutputLog.reading(session)
 
-        let answer = try await log.ask("run the command").reply
+        async let asked = log.ask("run the command")
+        await clock.waitForSleepers(atLeast: Self.executeSleepers)
+        clock.advance(by: .seconds(Self.oneSecondGrace))
+        let answer = try await asked.reply
 
         let envelope = try mailProbeEnvelope(answer)
         #expect(envelope.pending)
+        try await gate.release()
         let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
         let followUp = try await log.ask(Self.followUpMessage)
         #expect(await log.runMailIds(settling: envelope.completionToken) == [runMail.id])
@@ -424,14 +535,23 @@ struct BackgroundSettleGraceTests {
         #expect(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).count == 1)
     }
 
+    /// The command holds while the test moves the clock three seconds, inside
+    /// the default settle period. The test then releases the command, and the
+    /// call answers with the report.
     @Test("a host that keeps the default settle period gets the report of sleep 3 in the answer")
     func defaultHostGetsTheInlineReport() async throws {
         let prompts = MailProbePrompts()
         let verbs = try Self.shellVerbs()
-        let session = try await makeMailProbeSession(
-            mounting: [verbs.execute], prompts: prompts, step: Self.executing(Self.threeSecondCommand))
+        let gate = try ShellCommandGate()
+        let clock = ManualRunClock()
+        let session = try await Self.session(
+            mounting: [verbs.execute], prompts: prompts, step: Self.executing(Self.heldCommand(gate)), clock: clock)
 
-        let report = try await session.respond(to: "run the command")
+        async let responded = session.respond(to: "run the command")
+        await clock.waitForSleepers(atLeast: Self.executeSleepers)
+        clock.advance(by: Self.threeSecondRun)
+        try await gate.release()
+        let report = try await responded
 
         #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
         guard case .object(let fields) = try Self.returnedValue(of: report) else {

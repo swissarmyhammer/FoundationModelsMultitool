@@ -199,12 +199,16 @@ struct MCPElicitationTests {
 
     /// Waits for the elicitation event of the run on `sink`, and returns it.
     ///
+    /// The wait is an event: the recorder of the run resumes it when it
+    /// records the elicitation event. It reads no clock and does not poll.
+    ///
     /// - Parameter run: The run to read.
     /// - Returns: The event.
-    /// - Throws: When no elicitation event arrives.
+    /// - Throws: When no elicitation event arrives before the task is
+    ///   cancelled.
     private static func elicitationEvent(on run: BoundRun) async throws -> OperationEvent {
-        try await TestPoll.waitUntil("the elicitation event") {
-            await !recordedOperationEvents(of: run.stub, ofKind: .elicitation).isEmpty
+        _ = await run.stub.recorder.waitUntil { events in
+            events.contains { $0.kind == .elicitation }
         }
         return try #require(
             await recordedOperationEvents(of: run.stub, ofKind: .elicitation).first)
@@ -348,9 +352,8 @@ struct MCPElicitationTests {
         let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
         let call = Task { try await Self.bareCall(tool) }
-        try await TestPoll.waitUntil("the held URL flow") {
-            await server.pendingHostElicitationIds == [ScriptedServer.elicitURLElicitationId]
-        }
+        await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+        #expect(await server.pendingHostElicitationIds == [ScriptedServer.elicitURLElicitationId])
         #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
         await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
         let output = try await call.value

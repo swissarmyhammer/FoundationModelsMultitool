@@ -43,6 +43,7 @@ extension MCPServer {
     /// one re-list once it goes quiet.
     func handleToolListChangedNotification() {
         toolListChangedGeneration += 1
+        resumeToolListChangedGenerationWaiters()
         record(.mcpToolListChanged, level: .debug)
         guard !isCoalescingToolListChanged else { return }
         isCoalescingToolListChanged = true
@@ -74,6 +75,32 @@ extension MCPServer {
         finishCoalescing()
         if lastRelistSucceeded {
             emitCatalogSnapshot()
+        }
+    }
+
+    /// Waits until ``toolListChangedGeneration`` reached `generation` — the
+    /// event a test of the coalesce window waits on in place of a poll of
+    /// the count. Returns at once when the count already reached it.
+    ///
+    /// Internal, for `@testable import`: no product code waits here.
+    ///
+    /// - Parameter generation: The count of `tools/list_changed`
+    ///   notifications that ends the wait.
+    func waitUntilToolListChangedGeneration(reaches generation: Int) async {
+        guard toolListChangedGeneration < generation else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            toolListChangedGenerationWaiters.append((generation, continuation))
+        }
+    }
+
+    /// Resumes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
+    /// whose count ``toolListChangedGeneration`` reached.
+    private func resumeToolListChangedGenerationWaiters() {
+        let current = toolListChangedGeneration
+        let reached = toolListChangedGenerationWaiters.filter { $0.generation <= current }
+        toolListChangedGenerationWaiters.removeAll { $0.generation <= current }
+        for waiter in reached {
+            waiter.continuation.resume()
         }
     }
 

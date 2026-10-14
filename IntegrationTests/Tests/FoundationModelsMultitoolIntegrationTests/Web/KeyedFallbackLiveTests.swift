@@ -18,8 +18,7 @@ import Testing
 /// `braveAPI` is checked in both outcomes, and the key is not in the result.
 @Suite(
     "Live: a refused Brave Search API key falls back to a keyless provider",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct KeyedFallbackLiveTests {
     /// The key that the Brave Search API refuses.

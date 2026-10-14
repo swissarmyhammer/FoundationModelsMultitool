@@ -304,7 +304,7 @@ struct ScenarioFixtureTests {
 
     // MARK: - The fixture the mail collection canary drives (task `^nhxj8hx`)
 
-    @Test("the delayed echo returns its exact input, and only after its delay, which outlasts the inline settle grace")
+    @Test("the delayed echo returns its exact input, and only after its release gate opens")
     func theDelayedEchoReturnsItsExactInputAfterItsDelay() async throws {
         // The premise the canary rests on: the value settles after the inline
         // settle grace ends. A tool that settles inside the grace gives its
@@ -312,22 +312,30 @@ struct ScenarioFixtureTests {
         // the hole the immediate rebuild fixture left open (task `^nhxj8hx`).
         // A live run on 2026-09-26 (task `^r77er9z`) showed it: a four-second
         // echo settled inside the five-second grace, and no mail came.
-        #expect(
-            integrationDelayedEchoDelay
-                > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))
-        )
-
+        //
+        // The echo waits on a gate, and no sleep. The canary runner opens the
+        // gate only after the first answer ended, thus after the grace. This
+        // test checks the same fact with events: the call reached its wait on
+        // the gate and did not answer, and it answers only after the gate
+        // opened.
         let log = ScenarioCallLog()
         let nonce = integrationDelayedEchoNonce()
-        let clock = ContinuousClock()
+        let release = ScenarioGate()
 
-        let start = clock.now
-        let echoed = try await IntegrationDelayedEchoTool(log: log)
-            .call(arguments: IntegrationDelayedEchoArguments(value: nonce))
-        let elapsed = clock.now - start
+        // The task gives back the echoed string, because the output type of
+        // the tool is not `Sendable`.
+        let call = Task {
+            try await IntegrationDelayedEchoTool(log: log, release: release)
+                .call(arguments: IntegrationDelayedEchoArguments(value: nonce))
+                .value
+        }
+        await release.waitForWaiter()
+        #expect(await log.returnedPaths.isEmpty, "the echo answered before its gate opened")
 
-        #expect(echoed.value == nonce)
-        #expect(elapsed >= integrationDelayedEchoDelay)
+        release.open()
+        let echoed = try await call.value
+
+        #expect(echoed == nonce)
         #expect(await log.returnedPaths == [IntegrationDelayedEchoTool.path])
     }
 

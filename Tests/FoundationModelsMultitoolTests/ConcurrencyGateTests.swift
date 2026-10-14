@@ -9,11 +9,11 @@ import TestConcurrency
 /// The two cases are the whole contract of the gate. One caller holds it at a
 /// time, and a caller that waits gets it in arrival order.
 ///
-/// The time limit bounds a gate that never hands itself over: a defect of that
-/// shape parks every caller for ever, and a parked task fails as a hang and not
-/// as an assertion. The limit is ``TestHangGuard/timeLimit``, a hang guard and
-/// not a speed check (card `^tm4x2hp`).
-@Suite("ConcurrencyGate", .timeLimit(TestHangGuard.timeLimit))
+/// A gate that never hands itself over parks every caller for ever, and a
+/// parked task shows as a hang and not as an assertion. Each case waits on
+/// events and never on a time. No test checks the speed of the machine (card
+/// `^tm4x2hp`).
+@Suite("ConcurrencyGate")
 struct ConcurrencyGateTests {
     /// How many callers each case starts.
     private static let callerCount = 8
@@ -91,9 +91,7 @@ struct ConcurrencyGateTests {
                     await log.append(index)
                     await gate.release()
                 })
-            try await TestPoll.waitUntil("caller \(index) waiting for the gate") {
-                await gate.waiterCount == index + 1
-            }
+            await gate.waitForWaiters(atLeast: index + 1)
         }
 
         await gate.release()

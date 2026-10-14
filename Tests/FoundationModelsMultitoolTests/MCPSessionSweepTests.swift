@@ -74,11 +74,6 @@ struct MCPSessionSweepTests {
     /// it, whatever the speed of the machine.
     private static let heldToolName = "held"
 
-    /// How long a test waits for the scripted server to record a
-    /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
-    /// not a speed check (card `^tm4x2hp`).
-    private static let notificationTimeout = TestPoll.deadline
-
     /// How many recorded notifications the cancel cases wait for.
     private static let oneNotification = 1
 
@@ -170,12 +165,18 @@ struct MCPSessionSweepTests {
 
     /// Waits until the held call of `ground` is on the wire.
     ///
+    /// The wait is an event, not a poll: it waits until the held tool on the
+    /// server gets the call. `WireRecordingTransport.send(_:)` records the
+    /// request before it sends it, thus a call that reached the server is in
+    /// the ledger. The expectation after the wait checks that fact.
+    ///
     /// - Parameter ground: The ground whose wire to read.
-    /// - Throws: When no call reaches the wire before the deadline.
+    /// - Throws: `CancellationError` when the task is cancelled before the
+    ///   call reaches the server.
     private static func waitForTheCall(on ground: SweepGround) async throws {
-        try await TestPoll.waitUntil("the call reached the wire") {
-            await ground.wire.holds(callEntry)
-        }
+        try await ground.held.waitForArrival()
+        let ledger = await ground.wire.ledger
+        #expect(ledger.contains(callEntry), "the call is not on the wire: \(ledger)")
     }
 
     /// Asserts that `first` stands before `second` in the ledger of `wire`.
@@ -199,8 +200,7 @@ struct MCPSessionSweepTests {
     ///
     /// - Parameter scripted: The server to read.
     private static func expectServerReceivedTheCancel(from scripted: ScriptedServer) async {
-        let recorded = await scripted.waitForRecordedNotifications(
-            count: oneNotification, timeout: notificationTimeout)
+        let recorded = await scripted.waitForRecordedNotifications(count: oneNotification)
         #expect(recorded.first?.method == CancelledNotification.name, "recorded: \(recorded)")
     }
 

@@ -126,25 +126,42 @@ struct SurfaceRefresherTests {
     /// How many lines one failed rebuild writes to the log.
     private static let oneLogLine = 1
 
-    /// How long a case waits, after the change it expects nothing from, to
-    /// prove that no stage follows — a fixed, bounded interval, because the
-    /// whole point is that nothing happens.
-    private static let noFurtherStageSettleDelay = Duration.milliseconds(200)
-
     // MARK: - The ground of one test
 
-    /// A `RegistryStaging` that counts each staged registry and passes it on
-    /// to the staging the mounted session vended.
+    /// A `RegistryStaging` that records the paths of each staged registry,
+    /// passes the registry on to the staging the mounted session vended, and
+    /// then resumes each wait that the stages now satisfy.
     ///
-    /// The count is what a case reads to learn that a rebuild finished: a
-    /// stage is the last step of the watcher's work for one snapshot.
+    /// A stage is what a case waits for to learn that a rebuild finished: a
+    /// stage is the last step of the watcher's work for one snapshot. The
+    /// wait ends on the stage itself, not on a timer.
     private final class RecordingStaging: RegistryStaging {
+        /// One caller of ``waitUntil(_:)`` that waits, with its condition.
+        private struct Waiter {
+            /// The condition on the paths of every staged registry, in stage
+            /// order, that ends the wait.
+            let isSatisfied: @Sendable ([[String]]) -> Bool
+
+            /// The continuation that the stage which satisfies the condition
+            /// resumes.
+            let continuation: CheckedContinuation<Void, Never>
+        }
+
+        /// What the lock guards.
+        private struct State {
+            /// The paths of every staged registry, in stage order.
+            var stagedPaths: [[String]] = []
+
+            /// Each caller of ``waitUntil(_:)`` that waits.
+            var waiters: [Waiter] = []
+        }
+
         /// The staging of the mounted session, which every staged registry is
         /// passed on to.
         private let mounted: any RegistryStaging
 
-        /// How many registries were staged so far.
-        private let stages = Mutex(0)
+        /// The staged paths and the waiters.
+        private let state = Mutex(State())
 
         /// Creates a staging that records, and then passes on to `mounted`.
         ///
@@ -155,15 +172,56 @@ struct SurfaceRefresherTests {
 
         /// How many registries this staging recorded so far.
         var count: Int {
-            stages.withLock { $0 }
+            state.withLock { $0.stagedPaths.count }
         }
 
-        /// Records `registry`, and then stages it on the mounted staging.
+        /// Records `registry`, stages it on the mounted staging, and then
+        /// resumes each waiter whose condition the stages now satisfy.
+        ///
+        /// The resume comes after the mounted stage, so a resumed case that
+        /// ticks the session sees this registry.
         ///
         /// - Parameter registry: The registry to stage.
         func stage(_ registry: MultiTool.Registry) {
-            stages.withLock { $0 += 1 }
+            let paths = registry.surface.entries.map(\.path)
+            let reached = state.withLock { state -> [Waiter] in
+                state.stagedPaths.append(paths)
+                var reached: [Waiter] = []
+                var waiting: [Waiter] = []
+                for waiter in state.waiters {
+                    if waiter.isSatisfied(state.stagedPaths) {
+                        reached.append(waiter)
+                    } else {
+                        waiting.append(waiter)
+                    }
+                }
+                state.waiters = waiting
+                return reached
+            }
             mounted.stage(registry)
+            for waiter in reached {
+                waiter.continuation.resume()
+            }
+        }
+
+        /// Waits until the paths of the staged registries satisfy
+        /// `isSatisfied`. Returns at once when they already do.
+        ///
+        /// - Parameter isSatisfied: The condition on the paths of every
+        ///   staged registry, in stage order.
+        func waitUntil(_ isSatisfied: @escaping @Sendable ([[String]]) -> Bool) async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let satisfiedNow = state.withLock { state -> Bool in
+                    if isSatisfied(state.stagedPaths) {
+                        return true
+                    }
+                    state.waiters.append(Waiter(isSatisfied: isSatisfied, continuation: continuation))
+                    return false
+                }
+                if satisfiedNow {
+                    continuation.resume()
+                }
+            }
         }
     }
 
@@ -246,18 +304,48 @@ struct SurfaceRefresherTests {
         }
     }
 
-    /// Waits until `staging` has recorded at least `count` stages.
+    /// Waits until `staging` has recorded at least `count` stages. The stage
+    /// that reaches `count` ends the wait.
     ///
     /// - Parameters:
     ///   - count: The number of stages to wait for.
     ///   - staging: The staging to read.
-    /// - Throws: `TestPoll.ConditionNeverHeld` when the deadline passes.
     private static func waitForStages(
         _ count: Int, on staging: RecordingStaging
-    ) async throws {
-        try await TestPoll.waitUntil("the refresher staged \(count) registries") {
-            staging.count >= count
+    ) async {
+        await staging.waitUntil { $0.count >= count }
+    }
+
+    /// Waits until `staging` has recorded a registry that holds `path`. The
+    /// stage of that registry ends the wait.
+    ///
+    /// - Parameters:
+    ///   - path: The rendered path to look for.
+    ///   - staging: The staging to read.
+    private static func waitForStage(
+        holding path: String, on staging: RecordingStaging
+    ) async {
+        await staging.waitUntil { stagedPaths in
+            stagedPaths.contains { $0.contains(path) }
         }
+    }
+
+    /// Waits until `server` counted one more `tools/list_changed`
+    /// notification than `generationBefore`, and its re-list for that
+    /// notification ended.
+    ///
+    /// The server starts its coalescing task, or keeps the one that runs, in
+    /// the same actor step that counts the notification. That task re-lists
+    /// until no notification arrived during a round trip, and only then
+    /// ends. Thus the end of that task is the end of the re-list.
+    ///
+    /// - Parameters:
+    ///   - server: The server that re-lists.
+    ///   - generationBefore: The notification count before the change.
+    private static func waitForRelist(of server: MCPServer, after generationBefore: Int) async {
+        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + oneNotification)
+        let relist = await server.coalescingTask
+        await relist?.value
     }
 
     /// Publishes `tool` on `scripted` and tells the client the list changed.
@@ -304,13 +392,13 @@ struct SurfaceRefresherTests {
         await scripted.startDynamicToolsetScenario()
 
         try await Self.withStartedRefresher(named: Self.dynamicServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
             #expect(try await helpPaths(of: ground.runCode) == [Self.counterPath])
 
             // Stage one of the scenario adds the greeter and sends
             // `tools/list_changed`. No host action follows it.
             #expect(await scripted.advanceDynamicToolsetScenario())
-            try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
             await ground.runCode.submissionWillBegin()
 
             #expect(try await helpPaths(of: ground.runCode) == [Self.counterPath, Self.greeterPath])
@@ -331,10 +419,10 @@ struct SurfaceRefresherTests {
             // The three stages of the scenario are add, re-schema, remove.
             // Each stage runs only after the refresher staged the one before
             // it, thus each stage gets a rebuild of its own.
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
             for stage in 1...ScriptedServer.dynamicToolsetStageCount {
                 #expect(await scripted.advanceDynamicToolsetScenario())
-                try await Self.waitForStages(Self.stagesAfterConnect + stage, on: ground.staging)
+                await Self.waitForStages(Self.stagesAfterConnect + stage, on: ground.staging)
             }
             #expect(ground.staging.count == Self.stagesAfterThreeChanges)
             await ground.runCode.submissionWillBegin()
@@ -355,14 +443,14 @@ struct SurfaceRefresherTests {
         let echoPath = Self.path(of: ScriptedServer.echoToolName, on: Self.burstServerName)
 
         try await Self.withStartedRefresher(named: Self.burstServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
 
             try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
             try await Self.publish(ScriptedServer.echoTool(named: Self.betaToolName), on: scripted)
-            try await Self.waitForStages(Self.stagesAfterTwoChanges, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterTwoChanges, on: ground.staging)
             try await Self.publish(ScriptedServer.echoTool(named: Self.gammaToolName), on: scripted)
-            try await Self.waitForStages(Self.stagesAfterThreeChanges, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterThreeChanges, on: ground.staging)
 
             // Three registries are staged, and not one of them is current:
             // only a tick swaps.
@@ -396,16 +484,19 @@ struct SurfaceRefresherTests {
         // refresher alone.
         try await TelemetryCapture.run(forbidding: []) { context in
             try await Self.withStartedRefresher(named: Self.failureServerName, serving: scripted) { ground in
-                try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+                await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
 
                 // The verb fails the renderer's own identifier check, so the
                 // rebuild throws and nothing is staged.
                 try await Self.publish(
                     ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted)
-                try await TestPoll.waitUntil("the failed rebuild reached the log") {
+                // The capture resumes this wait when the refresher writes its
+                // record. The record is the last step of the failed apply of
+                // that snapshot, and that apply staged nothing. Thus the
+                // count below is a fact and not a race.
+                await context.wait { context in
                     Self.rebuildFailureRecords(of: Self.failureServerName, in: context).count >= Self.oneLogLine
                 }
-                try await Task.sleep(for: Self.noFurtherStageSettleDelay)
                 await ground.runCode.submissionWillBegin()
 
                 let records = Self.rebuildFailureRecords(of: Self.failureServerName, in: context)
@@ -422,7 +513,17 @@ struct SurfaceRefresherTests {
                 await scripted.removeTool(named: Self.illegalVerb)
                 try await Self.publish(
                     ScriptedServer.echoTool(named: Self.recoveredToolName), on: scripted)
-                try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
+                let recoveredPath = Self.path(of: Self.recoveredToolName, on: Self.failureServerName)
+                await Self.waitForStage(holding: recoveredPath, on: ground.staging)
+                // The refresher applies the snapshots of one server in
+                // order. Thus when the recovered registry is staged, each
+                // snapshot before it was applied. The stages and the records
+                // between the failure and this stage are exactly these: no
+                // stage, and no second record.
+                #expect(ground.staging.count == Self.stagesAfterOneChange)
+                #expect(
+                    Self.rebuildFailureRecords(of: Self.failureServerName, in: context).count
+                        == Self.oneLogLine)
                 await ground.runCode.submissionWillBegin()
 
                 #expect(
@@ -441,7 +542,7 @@ struct SurfaceRefresherTests {
         await scripted.addEchoTool()
 
         try await Self.withStartedRefresher(named: Self.stoppedServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
             #expect(ground.refresher.isWatching)
 
             // `stop()` returns only once the task it cancelled has ended, so
@@ -449,12 +550,13 @@ struct SurfaceRefresherTests {
             await ground.refresher.stop()
 
             #expect(!ground.refresher.isWatching)
+            let generationBefore = await ground.server.toolListChangedGeneration
             try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            try await TestPoll.waitUntil("the server re-listed the added tool") {
-                await ground.server.tool(named: Self.alphaToolName) != nil
-            }
-            try await Task.sleep(for: Self.noFurtherStageSettleDelay)
+            await Self.waitForRelist(of: ground.server, after: generationBefore)
+            #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
 
+            // Only the watch task stages, and `stop()` ended that task before
+            // the change. Thus no stage can follow the re-list.
             #expect(ground.staging.count == Self.stagesAfterConnect)
         }
     }
@@ -468,10 +570,10 @@ struct SurfaceRefresherTests {
 
         // No refresher is started. `makeSessionToolsAndStaging` starts no task
         // of its own, so nothing watches the stream.
+        let generationBefore = await ground.server.toolListChangedGeneration
         try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-        try await TestPoll.waitUntil("the server re-listed the added tool") {
-            await ground.server.tool(named: Self.alphaToolName) != nil
-        }
+        await Self.waitForRelist(of: ground.server, after: generationBefore)
+        #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
         await ground.runCode.submissionWillBegin()
 
         #expect(ground.staging.count == 0)
@@ -489,7 +591,7 @@ struct SurfaceRefresherTests {
         await lateScripted.addEchoTool()
 
         try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
             let late = try await MCPTestSupport.connectedMCPServer(
                 to: lateScripted, over: .inMemory, name: Self.lateServerName, clock: ManualClock())
 
@@ -513,19 +615,22 @@ struct SurfaceRefresherTests {
         await lateScripted.addEchoTool()
 
         try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
             let late = try await MCPTestSupport.connectedMCPServer(
                 to: lateScripted, over: .inMemory, name: Self.lateServerName, clock: ManualClock())
             try await ground.refresher.addServer(late)
 
             try await Self.publish(
                 ScriptedServer.echoTool(named: Self.alphaToolName), on: lateScripted)
-            try await TestPoll.waitUntil("the late server's change reached the surface") {
-                await ground.runCode.submissionWillBegin()
-                let paths = try? await helpPaths(of: ground.runCode)
-                return paths?.contains(Self.path(of: Self.alphaToolName, on: Self.lateServerName))
-                    ?? false
-            }
+            // The refresher stages a registry with the new verb when the late
+            // server re-lists. `addServer(_:)` staged its own registry before
+            // it returned, and the refresher applies the snapshots of the
+            // late server in order. Thus each stage after this one holds the
+            // new verb too, and the tick swaps in a registry that holds it.
+            let alphaPath = Self.path(of: Self.alphaToolName, on: Self.lateServerName)
+            await Self.waitForStage(holding: alphaPath, on: ground.staging)
+            await ground.runCode.submissionWillBegin()
+            #expect(try await helpPaths(of: ground.runCode).contains(alphaPath))
             withExtendedLifetime(lateScripted) {}
         }
     }

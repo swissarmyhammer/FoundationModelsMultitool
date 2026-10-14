@@ -18,8 +18,7 @@ import FoundationModelsMultitool
 /// `IntegrationTests` package.
 @Suite(
     "A shell command on a bare LanguageModelSession",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct ShellBareSessionTests {
 

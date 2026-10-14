@@ -32,6 +32,16 @@ actor DisposableSpyTransport: WrappingTransport, DisposableTransport {
     /// Whether `dispose()` was ever called on this instance.
     private(set) var disposeWasCalled = false
 
+    /// The gate that `connect()` opens when it is called. A test waits on it
+    /// to know that the transport was connected, and does not poll
+    /// ``connectWasCalled``.
+    let connectArrival = TestGate()
+
+    /// The gate that `dispose()` opens when it is called. A test waits on it
+    /// to know that the transport was disposed, and does not poll
+    /// ``disposeWasCalled``.
+    let disposeArrival = TestGate()
+
     /// The logger of this double — a no-op.
     nonisolated let logger = DisposableSpyTransport.noOpLogger(
         label: "mcp.transport.disposable-spy")
@@ -48,6 +58,7 @@ actor DisposableSpyTransport: WrappingTransport, DisposableTransport {
     /// - Throws: What the `connect()` of the wrapped transport throws.
     func connect() async throws {
         connectWasCalled = true
+        connectArrival.open()
         try await connectWrapped()
     }
 
@@ -55,5 +66,6 @@ actor DisposableSpyTransport: WrappingTransport, DisposableTransport {
     /// double.
     func dispose() async {
         disposeWasCalled = true
+        disposeArrival.open()
     }
 }

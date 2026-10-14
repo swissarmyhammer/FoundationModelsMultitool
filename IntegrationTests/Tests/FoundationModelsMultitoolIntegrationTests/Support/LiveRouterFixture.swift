@@ -576,12 +576,12 @@ let agentDiscoveryProfile = ProfileDefinition(
 ///
 /// The reason is not GPU contention — this turnstile already
 /// admits one live profile at a time, across suite boundaries. The reason is
-/// **what the clock counts**. Swift Testing runs suites concurrently by default
-/// and starts a test's `.timeLimit` when the test starts; every scenario takes
-/// the turnstile from *inside* its own test body, by way of
-/// `LiveRouterFixture.resolve()`. So a suite's reported duration is its own
-/// work plus however long it queued behind the other suites, and its hang
-/// guard counts both.
+/// **what the reported duration counts**. Swift Testing runs suites
+/// concurrently by default, and every scenario takes the turnstile from
+/// *inside* its own test body, by way of `LiveRouterFixture.resolve()`. So a
+/// suite's reported duration is its own work plus however long it queued
+/// behind the other suites. No test has a time limit, thus the queue fails no
+/// test, but a queued suite looks the same as a hang.
 ///
 /// Measured on 2026-08-16, the same commit both ways:
 ///

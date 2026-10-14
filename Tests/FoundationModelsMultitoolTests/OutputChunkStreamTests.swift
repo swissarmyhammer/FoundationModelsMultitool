@@ -67,11 +67,6 @@ struct OutputChunkStreamTests {
     /// the budget of that test, thus each chunk after the first one goes away.
     private static let overflowChunkBytes = 4096
 
-    /// How long the cancel test lets its consumer reach the suspension point
-    /// inside `next()`. A cancel of a task that did not suspend yet does not
-    /// exercise the path under test.
-    private static let consumerSuspendDelay: Duration = .milliseconds(100)
-
     /// One kibibyte, which `defaultPendingByteCapIsOneMebibyte` multiplies to
     /// state the default budget in the units a reader knows.
     private static let bytesPerKibibyte = 1024
@@ -428,11 +423,19 @@ struct OutputChunkStreamTests {
     /// and no call gives it back. The stream must read that as its own end. If
     /// it does not, the producer keeps budget for bytes that no consumer can
     /// take, and the budget stays spent for the life of the object.
+    ///
+    /// The test cancels the consumer only after the consumer reached its wait
+    /// in `Iterator.next()`: the internal hook of the stream opens a gate
+    /// there. Thus the cancel reaches a consumer that waits, and no sleep
+    /// makes that order.
     @Test func aCancelOfTheConsumerTaskEndsTheStream() async throws {
-        let stream = ShellOutputChunkStream()
+        let consumerWaits = TestGate()
+        let stream = ShellOutputChunkStream(
+            maxPendingBytes: ShellOutputChunkStream.defaultMaxPendingBytes,
+            onConsumerWait: { consumerWaits.open() })
 
         let consuming = Task { for await _ in stream {} }
-        try await Task.sleep(for: Self.consumerSuspendDelay)
+        try await consumerWaits.wait()
         consuming.cancel()
         _ = await consuming.value
 

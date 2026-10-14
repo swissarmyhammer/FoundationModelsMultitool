@@ -49,10 +49,6 @@ struct LostCallTests {
     /// The name of the tool that hangs forever.
     private static let hangingToolName = "idempotent-hang"
 
-    /// How long the hanging tool sleeps once invoked — long enough that it
-    /// never returns during the lifetime of this test.
-    private static let hangingToolSleep = Duration.seconds(3600)
-
     /// The marker the no-auto-retry case puts in the wire ledger after the
     /// lost call threw and before the reconnect starts.
     private static let reconnectMarker = "reconnect starts"
@@ -74,11 +70,17 @@ struct LostCallTests {
     // MARK: - Helpers
 
     /// The hanging tool, annotated idempotent so a retry would be "safe";
-    /// `counter` ticks once per invocation of its handler.
+    /// `counter` ticks once per invocation of its handler, and the handler
+    /// then opens `arrival`.
     ///
-    /// - Parameter counter: The oracle of the no-auto-retry case.
+    /// The handler waits on a gate that no one opens. Thus it never returns,
+    /// and only a cancel of its task ends it.
+    ///
+    /// - Parameters:
+    ///   - counter: The oracle of the no-auto-retry case.
+    ///   - arrival: The gate the handler opens when it runs.
     /// - Returns: The scripted tool.
-    private static func hangingTool(counting counter: CallCounter) -> ScriptedTool {
+    private static func hangingTool(counting counter: CallCounter, arrival: TestGate) -> ScriptedTool {
         ScriptedTool(
             definition: MCP.Tool(
                 name: hangingToolName,
@@ -87,7 +89,8 @@ struct LostCallTests {
                 annotations: MCP.Tool.Annotations(idempotentHint: true))
         ) { _ in
             counter.increment()
-            try await Task.sleep(for: hangingToolSleep)
+            arrival.open()
+            try await TestGate().wait()
             return CallTool.Result(content: [])
         }
     }
@@ -130,9 +133,7 @@ struct LostCallTests {
             on: try await makeOuterRunContext(), postingTo: sink)
 
         await respawning.disconnect()
-        try await TestPoll.waitUntil("the server noticed the drop") {
-            await server.isTransportDropped
-        }
+        await server.waitUntilTransportDropped()
         let thrown = await MCPCallProbe.thrownError {
             _ = try await engine.call(arguments: NoArguments())
         }
@@ -179,9 +180,10 @@ struct LostCallTests {
     @Test("no call is re-sent after reconnect, even for a tool annotated idempotentHint: true")
     func noAutoRetryAfterReconnectEvenForIdempotentHintedTool() async throws {
         let counter = CallCounter()
+        let arrival = TestGate()
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
             let scripted = ScriptedServer()
-            await scripted.addTool(Self.hangingTool(counting: counter))
+            await scripted.addTool(Self.hangingTool(counting: counter, arrival: arrival))
             await scripted.addEchoTool()
             return scripted
         }
@@ -195,7 +197,8 @@ struct LostCallTests {
                 try await server.call(name: Self.hangingToolName, arguments: nil)
             }
         }
-        try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneInvocation }
+        try await arrival.wait()
+        #expect(counter.count == Self.oneInvocation)
         await respawning.disconnect()
 
         let thrown = await MCPCallProbe.thrownError {

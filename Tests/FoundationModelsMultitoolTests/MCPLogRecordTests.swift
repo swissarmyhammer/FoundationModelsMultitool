@@ -36,9 +36,6 @@ struct MCPLogRecordTests {
     /// The name of the tool that does not answer.
     private static let hangingToolName = "hanging-tool"
 
-    /// How long the tool that does not answer sleeps: longer than the test.
-    private static let hangingToolSleep = Duration.seconds(3600)
-
     /// How many connect attempts the flaky transport fails: more than the
     /// policy allows.
     private static let manyFailingAttempts = 10
@@ -68,11 +65,16 @@ struct MCPLogRecordTests {
     }
 
     /// The tool that does not answer. `counter` counts the calls of its
-    /// handler.
+    /// handler, and the handler then opens `arrival`.
     ///
-    /// - Parameter counter: The counter of the calls.
+    /// The handler waits on a gate that no one opens. Thus it never answers,
+    /// and only a cancel of its task ends it.
+    ///
+    /// - Parameters:
+    ///   - counter: The counter of the calls.
+    ///   - arrival: The gate the handler opens when it runs.
     /// - Returns: The scripted tool.
-    private static func hangingTool(counting counter: CallCounter) -> ScriptedTool {
+    private static func hangingTool(counting counter: CallCounter, arrival: TestGate) -> ScriptedTool {
         ScriptedTool(
             definition: MCP.Tool(
                 name: hangingToolName,
@@ -80,7 +82,8 @@ struct MCPLogRecordTests {
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
             counter.increment()
-            try await Task.sleep(for: hangingToolSleep)
+            arrival.open()
+            try await TestGate().wait()
             return CallTool.Result(content: [])
         }
     }
@@ -155,9 +158,10 @@ struct MCPLogRecordTests {
     @Test("a transport drop under a tool call logs a warning with the server name and the call count, and not the argument")
     func transportDropUnderACallLogsAWarning() async throws {
         let counter = CallCounter()
+        let arrival = TestGate()
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
             let scripted = ScriptedServer()
-            await scripted.addTool(Self.hangingTool(counting: counter))
+            await scripted.addTool(Self.hangingTool(counting: counter, arrival: arrival))
             return scripted
         }
 
@@ -169,9 +173,11 @@ struct MCPLogRecordTests {
                     name: Self.hangingToolName,
                     arguments: [Self.argumentName: .string(Self.argumentMarker)])
             }
-            try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneCallInFlight }
+            try await arrival.wait()
+            #expect(counter.count == Self.oneCallInFlight)
             await respawning.disconnect()
-            try await TestPoll.waitUntil("the server noticed the drop") { await server.isTransportDropped }
+            // The server writes the drop record when it notices the drop.
+            await context.wait { !LogReadback.records(.mcpTransportDropped, in: $0).isEmpty }
             await #expect(throws: MCPServerError.self) {
                 _ = try await call.value
             }

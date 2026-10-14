@@ -12,7 +12,7 @@ extension ScriptedServer {
     /// The name of the form-mode eliciting loopback tool: it elicits a form
     /// mid-call and reflects the answer in its result. Registered by
     /// ``addLoopbackTools()`` through
-    /// ``addElicitingTool(named:message:requestedSchema:preElicitationDelay:postElicitationStall:)``.
+    /// ``addElicitingTool(named:message:requestedSchema:)``.
     ///
     /// A name this package coins; the source had no fixed name for the tool.
     public static let elicitEchoToolName = "elicitEcho"

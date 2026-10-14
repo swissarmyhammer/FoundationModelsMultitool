@@ -149,7 +149,30 @@ extension MCPServer {
             return try await operation()
         }
         clientQueueTail = Task<Void, Never> { _ = try? await task.value }
+        let tailWaiters = clientQueueTailWaiters
+        clientQueueTailWaiters = []
+        for waiter in tailWaiters {
+            waiter.resume()
+        }
         return task
+    }
+
+    /// Waits until an operation entered the client queue after `tail` was
+    /// its tail — the event a test of the queue waits on in place of a poll
+    /// of ``clientQueueTail``. Returns at once when the tail is no longer
+    /// `tail`.
+    ///
+    /// Internal, for `@testable import`: no product code waits here. Each
+    /// call of `enqueueClientOperation(kind:_:)` sets a new tail, thus each
+    /// call ends every wait.
+    ///
+    /// - Parameter tail: The tail the caller read before it started the
+    ///   operation it waits for.
+    func waitUntilClientQueueTailChanges(from tail: Task<Void, Never>) async {
+        guard clientQueueTail == tail else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            clientQueueTailWaiters.append(continuation)
+        }
     }
 
     /// Waits its turn in the queue, then — when `generation` is still

@@ -71,9 +71,8 @@ enum MCPTestSupport {
     ///   - kind: The transport to connect over.
     /// - Returns: The client end of the transport.
     /// - Throws: What `ScriptedServer.start(transport:)` or
-    ///   `LoopbackHTTPServer.start(hangBound:)` throws. A `.http` transport
-    ///   takes `TestHangGuard.seconds` as its hang bound: the loopback ends
-    ///   no request that the hang guard of a test lets run.
+    ///   `LoopbackHTTPServer.start()` throws. A `.http` transport has no
+    ///   timeout: the loopback ends each request on the event of its response.
     static func clientTransport(
         serving scripted: ScriptedServer, over kind: MCPTransportKind
     ) async throws -> any Transport {
@@ -82,7 +81,7 @@ enum MCPTestSupport {
             return try await scripted.startOnInMemoryPair()
         case .http:
             let loopback = LoopbackHTTPServer(serving: scripted)
-            let (endpoint, configuration) = try await loopback.start(hangBound: TestHangGuard.seconds)
+            let (endpoint, configuration) = try await loopback.start()
             return LoopbackClosingTransport(
                 wrapping: HTTPClientTransport(endpoint: endpoint, configuration: configuration),
                 stopping: loopback)
@@ -158,9 +157,11 @@ enum MCPTestSupport {
     /// `GatedClock`, opens it when the attempt is in flight, and reads the
     /// recorded duration.
     ///
-    /// The default of `callTimeoutClock` is also a `GatedClock` that no test
-    /// opens. Thus no bare call of the server times out. A test of the
-    /// bare-call timeout gives its own clock.
+    /// The defaults of `callTimeoutClock` and `clientQueueClock` are also
+    /// `GatedClock`s that no test opens. Thus no bare call of the server
+    /// times out, and each queued client operation waits for the one before
+    /// it to end. A test of the bare-call timeout or of the queue bound gives
+    /// its own clock.
     ///
     /// - Parameters:
     ///   - name: The name of the server, and so its identity.
@@ -170,7 +171,8 @@ enum MCPTestSupport {
     ///     backoff schedule gives its own `ManualClock` and reads
     ///     `recordedSleeps`.
     ///   - clientQueueClock: The clock each bounded wait of the
-    ///     client-operation queue sleeps on. Defaults to a real clock.
+    ///     client-operation queue sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect sleeps on. Defaults to a `GatedClock` that no test opens.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
@@ -187,7 +189,7 @@ enum MCPTestSupport {
     static func makeServer(
         name: String,
         clock: any Clock<Duration> = ManualClock(),
-        clientQueueClock: any Clock<Duration> = ContinuousClock(),
+        clientQueueClock: any Clock<Duration> = GatedClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeoutClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,

@@ -30,8 +30,7 @@ import Testing
 /// empty content, and it passes with those checks.
 @Suite(
     "Live: the search-then-fetch snippet of web.md runs through runCode",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct WebRunCodeLiveTests {
     /// The snippet of web.md § "Goal", with two changes: one added line

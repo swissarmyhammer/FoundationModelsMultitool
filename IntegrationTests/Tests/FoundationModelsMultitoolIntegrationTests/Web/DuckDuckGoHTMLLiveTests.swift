@@ -19,8 +19,7 @@ import Testing
 /// does not retry.
 @Suite(
     "Live: the DuckDuckGo HTML results page gives stable hits",
-    .serialized,
-    .timeLimit(IntegrationHangGuard.timeLimit)
+    .serialized
 )
 struct DuckDuckGoHTMLLiveTests {
     /// The one provider of this suite.

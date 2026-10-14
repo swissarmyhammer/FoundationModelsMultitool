@@ -38,16 +38,20 @@ struct LoopbackHTTPServerTests {
     private static let elicitingCapabilities = Client.Capabilities(
         elicitation: Client.Capabilities.Elicitation(form: .init(), url: .init()))
 
-    /// A counter of client-observed notifications, awaited through
-    /// `TestPoll`: the SSE delivery of the server and the message loop of
-    /// the client run on separate tasks.
+    /// A counter of client-observed notifications. The SSE delivery of the
+    /// server and the message loop of the client run on separate tasks, so
+    /// the test waits on ``firstObserved`` and not on a poll.
     private actor NotificationCounter {
         /// How many notifications were observed.
         private(set) var count = 0
 
-        /// Counts one notification.
+        /// The gate that the first notification opens.
+        nonisolated let firstObserved = TestGate()
+
+        /// Counts one notification, and opens ``firstObserved``.
         func increment() {
             count += 1
+            firstObserved.open()
         }
     }
 
@@ -81,20 +85,18 @@ struct LoopbackHTTPServerTests {
     ///   - scripted: The server to serve.
     ///   - capabilities: The client capabilities to advertise.
     /// - Returns: The loopback and the connected client.
-    /// - Throws: What the start, the connect, or the wait throws.
+    /// - Throws: What the start or the connect throws.
     private func connect(
         to scripted: ScriptedServer,
         advertising capabilities: Client.Capabilities = .init()
     ) async throws -> Connection {
         let loopback = LoopbackHTTPServer(serving: scripted)
-        let (endpoint, configuration) = try await loopback.start(hangBound: TestHangGuard.seconds)
+        let (endpoint, configuration) = try await loopback.start()
         do {
             let client = MCPTestSupport.makeClient(name: Self.clientName, capabilities: capabilities)
             _ = try await client.connect(
                 transport: HTTPClientTransport(endpoint: endpoint, configuration: configuration))
-            try await TestPoll.waitUntil("the standalone SSE stream") {
-                await loopback.isServingEventStream
-            }
+            await loopback.waitUntilServingEventStream()
             return Connection(loopback: loopback, client: client)
         } catch {
             await loopback.stop()
@@ -162,8 +164,8 @@ struct LoopbackHTTPServerTests {
         }
         try await scripted.emitToolListChanged()
 
-        let observed = await TestPoll.holds { await counter.count == 1 }
-        #expect(observed)
+        try await counter.firstObserved.wait()
+        #expect(await counter.count == 1)
     }
 
     // MARK: - one case over both transports

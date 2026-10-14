@@ -315,13 +315,34 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
     ///   `defaultMaxPendingBytes`. It must be positive: a budget of zero or
     ///   less would make each chunk go away for ever, and the stream would give
     ///   nothing but gaps.
-    public init(maxPendingBytes: Int = ShellOutputChunkStream.defaultMaxPendingBytes) {
+    public convenience init(maxPendingBytes: Int = ShellOutputChunkStream.defaultMaxPendingBytes) {
+        self.init(maxPendingBytes: maxPendingBytes, onConsumerWait: nil)
+    }
+
+    /// Makes a stream with the budget of pending bytes it must hold, and a
+    /// hook that runs each time a consumer starts to wait for an event.
+    ///
+    /// This is an internal hook for the tests. A test that must cancel a
+    /// consumer while it waits in `Iterator.next()` needs the event that the
+    /// consumer reached that wait. The hook runs in `Iterator.next()`, just
+    /// before the wait on the underlying `AsyncStream`.
+    ///
+    /// - Parameters:
+    ///   - maxPendingBytes: The bytes that may stand delivered and unread
+    ///     before a chunk goes away. It must be positive.
+    ///   - onConsumerWait: The hook, or `nil` for none.
+    init(maxPendingBytes: Int, onConsumerWait: (@Sendable () -> Void)?) {
         precondition(maxPendingBytes > 0, "maxPendingBytes must be positive, got \(maxPendingBytes)")
         self.maxPendingBytes = maxPendingBytes
+        self.onConsumerWait = onConsumerWait
         let (base, continuation) = AsyncStream<ShellOutputEvent>.makeStream()
         self.base = base
         self.continuation = continuation
     }
+
+    /// The hook that runs each time a consumer starts to wait for an event,
+    /// or `nil` for none. See ``init(maxPendingBytes:onConsumerWait:)``.
+    fileprivate let onConsumerWait: (@Sendable () -> Void)?
 
     deinit {
         continuation.finish()
@@ -409,6 +430,7 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
         ///
         /// - Returns: The next event in delivery order, or `nil` at the end.
         public mutating func next() async -> ShellOutputEvent? {
+            owner.onConsumerWait?()
             guard let event = await base.next() else {
                 owner.finish()
                 return nil
