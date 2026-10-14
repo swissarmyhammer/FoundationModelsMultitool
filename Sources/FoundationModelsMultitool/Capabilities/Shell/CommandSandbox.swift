@@ -126,7 +126,7 @@ public protocol CommandSandbox: Sendable {
     /// it.** The capability recognizes the error type of the confining
     /// implementation this package ships, and it gives corrective text for that
     /// type. A thrown value of any other type travels up, is erased, and stops
-    /// the turn exactly as a throw at spawn time does. Thus a conformer written
+    /// the answer exactly as a throw at spawn time does. Thus a conformer written
     /// outside this module that wants its refusal to reach the model as
     /// readable text throws that same type, and a conformer that throws an
     /// error type of its own chooses the stop.

@@ -98,7 +98,7 @@ extension MultiTool {
         ///
         /// `searchTools` comes first and `runCode` second. A session's tool
         /// list is read as a whole before the model picks its opening move, so
-        /// the list is itself the first statement of what a turn looks like
+        /// the list is itself the first statement of what an answer looks like
         /// here: discover what exists, then execute against what came back.
         /// Presenting `runCode` first states the opposite — that execution is
         /// the primary affordance and discovery an aside — which is the
@@ -452,7 +452,7 @@ public struct MultiTool: Tool {
     /// A snippet composing a nested run needs one level; a nested run that
     /// itself composes needs two. Three leaves room for that and still bounds
     /// a snippet that recurses without a base case, which would otherwise
-    /// spend the whole turn's time limit before returning anything.
+    /// spend the whole time limit of the run before returning anything.
     static let maxRunCodeDepth = 3
 
     /// What a nested `tools.runCode` run gets from the run that called it.
@@ -1261,7 +1261,7 @@ public struct MultiTool: Tool {
     /// reaches the mounted discovery tool by.
     ///
     /// The model reached for this path unprompted and got an invented-path
-    /// error, burning a whole turn (task `bwk7knm`). It is a real binding now.
+    /// error, and the answer lost a whole submission (task `bwk7knm`). It is a real binding now.
     /// Named the same on both sides so the preamble reads as the identity it
     /// is. Nothing reserves the name: a registry that mounts its own tool
     /// called `searchTools` binds over this one, because the preamble emits
@@ -1498,7 +1498,7 @@ public struct MultiTool: Tool {
     ///
     /// Synchronous, and installed *inside* the sandbox, so a snippet can
     /// confirm the surface and keep going in the same call. Every recorded
-    /// plan-and-stop happens at the `searchTools` → `runCode` turn boundary,
+    /// plan-and-stop happens at the `searchTools` → `runCode` submission boundary,
     /// and this path removes the boundary.
     ///
     /// Internal, not `private`: `RegistryBundle.init` builds the pair.

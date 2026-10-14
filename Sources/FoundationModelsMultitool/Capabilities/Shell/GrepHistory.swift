@@ -22,8 +22,8 @@
 //
 // A search the store cannot make stays IN BAND, as a `correction` beside no
 // match. It is never thrown: a pattern that does not compile, and a token no
-// command ran under, are each a mistake the model corrects inside the turn, and
-// a thrown error would end the turn instead.
+// command ran under, are each a mistake the model corrects inside the same
+// answer. A thrown error would end the answer instead.
 
 import FoundationModels
 
@@ -136,7 +136,7 @@ extension GrepHistory {
                 matches: matches, shown: matches.count, total: found.total, correction: nil)
         } catch ShellStateError.invalidRegex(let pattern, let underlyingMessage) {
             // The pattern is the model's own text, thus it can rephrase it
-            // inside the turn. The correction carries the message of the
+            // inside the same answer. The correction carries the message of the
             // compiler exactly as `ShellState` took it.
             return Self.corrected(
                 ShellStateError.invalidRegex(pattern: pattern, underlyingMessage: underlyingMessage)

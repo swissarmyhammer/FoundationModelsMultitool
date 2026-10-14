@@ -61,7 +61,8 @@
 // A diff the verb cannot make stays IN BAND, as a `correction` beside no
 // change. It is never thrown: a missing argument, a path outside the root, an
 // unknown ref, an unknown path, a file that is not text, and a root in no
-// repository are each a mistake or a fact the model reads inside the turn.
+// repository are each a mistake or a fact the model reads inside the same
+// answer.
 //
 // Each type here is `internal`, and the declaration says so. The host gets
 // the verb only through `GitCapability.tools` (`[any Tool]`), the same as the

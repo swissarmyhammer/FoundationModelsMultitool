@@ -16,7 +16,7 @@
 // 1. The `ToolContext` the calling run captured — `MCPServer.call(name:arguments:)`
 //    records it in the in-flight table, and the request is attributed to the
 //    sole call in flight, never a guess among several. `context.elicit(_:)`
-//    suspends the run in the session's mailbox; the turn is not held.
+//    suspends the run on the run plane of the session. The answer is not held.
 // 2. Else the host's `elicitationHandler` — the bare-session path. Apple's
 //    tool call holds the turn while the user answers: the ordinary cost of a
 //    plain tool on a plain session.

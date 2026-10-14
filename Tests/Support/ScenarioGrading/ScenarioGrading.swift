@@ -291,7 +291,7 @@ public struct MailCollectionEvidence {
     /// The `tools.*` paths a fixture tool handed a value back from.
     public let returnedPaths: Set<String>
 
-    /// How many tool outputs of the turn were exactly the rendered pending
+    /// How many tool outputs of the answer were exactly the rendered pending
     /// envelope — the outputs Router's own `PendingRunEnvelope.isRendered`
     /// recognizes.
     ///
@@ -323,7 +323,7 @@ public struct MailCollectionEvidence {
     /// - Parameters:
     ///   - answer: the reply of the last answer.
     ///   - returnedPaths: the `tools.*` paths a fixture tool handed a value back from.
-    ///   - pendingEnvelopes: how many tool outputs of the turn were the
+    ///   - pendingEnvelopes: how many tool outputs of the answer were the
     ///     rendered pending envelope.
     ///   - mailAnswers: how many answers mail alone started.
     ///   - backgroundRunsAtLastAnswer: the tools owning the runs still going
@@ -349,7 +349,7 @@ public struct MailCollectionEvidence {
 /// `mailCollection` is the canary proper, and its failure message says what a
 /// failure means rather than only what was expected, because that reading is
 /// the whole reason the scenario is run. `pendingEnvelope` grades the handle
-/// the model got first: some `runCode` output of the turn was exactly the
+/// the model got first: some `runCode` output of the answer was exactly the
 /// rendered pending envelope. The background-in-code-mode scenario graded that
 /// condition until card `^3vtvrzg` merged it into the canary. The other three
 /// keep the canary from asserting that nothing happened: the answer must be a
@@ -418,8 +418,8 @@ public func mailCollectionChecks(
 /// outer submission still runs on the queue, and before any job waits behind
 /// it: the queue throws before it queues anything. A nested call that the
 /// queue takes waits behind the outer submission, which cannot end while its
-/// own tool body waits. That is the old defect, and the hang guard of the
-/// probe suite reports it.
+/// own tool body waits. That is the old defect. Then the probe run does not
+/// end, and that hang is the failure.
 ///
 /// Plain values, for `MailCollectionEvidence`'s reason: the grading rule is
 /// then exercised without live inference.
@@ -450,8 +450,8 @@ public struct GenerationQueueReading: Equatable, Sendable {
 /// Router refuses a `respond` on a model from inside an open submission of the
 /// same model, with `GenerationQueueError.waitInsideOpenSubmission(model:)`.
 /// The probe tool records which of these three ends its nested call got. A
-/// nested call that hangs records nothing, and the hang guard of the probe
-/// suite reports it.
+/// nested call that hangs records nothing. Then the probe run does not end,
+/// and that hang is the failure.
 public enum NestedGenerationOutcome: Equatable, Sendable {
     /// Router refused the nested call with `waitInsideOpenSubmission`. The
     /// value is what the generation queue of the model read at that instant,

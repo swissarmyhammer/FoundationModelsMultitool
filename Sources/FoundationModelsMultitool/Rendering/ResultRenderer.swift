@@ -58,7 +58,7 @@ public struct ResultRendererLimits: Sendable, Equatable {
     /// `capped(_:limit:label:)` feeds these limits straight into
     /// `String.prefix(_:)`, whose documented precondition is `maxLength >= 0`:
     /// it traps on a negative length rather than throwing. The clamp here keeps
-    /// a stray negative configuration value from crashing a `runCode` turn, and
+    /// a stray negative configuration value from crashing a `runCode` call, and
     /// matches this package's posture of degrading at a boundary rather than
     /// trapping (`ArgumentMarshaler` degrades a non-finite number to `null`).
     /// A clamped `0` limit still renders correctly: `capped` truncates to an

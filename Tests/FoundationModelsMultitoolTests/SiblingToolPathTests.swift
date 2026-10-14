@@ -7,7 +7,7 @@ import Testing
 /// own entries.
 ///
 /// A real-model discovery run wrote `tools.searchTools(...)` in a snippet, got an
-/// invented-path error, and spent the whole turn thrashing (task `bwk7knm`).
+/// invented-path error, and spent the whole answer thrashing (task `bwk7knm`).
 /// The guess was reasonable, so the surface accepts it: both siblings are real
 /// bindings, reachable the same way every catalog tool is.
 @Suite("Sibling tools.* paths")
@@ -36,6 +36,29 @@ struct SiblingToolPathTests {
         )
 
         #expect(output == "3")
+    }
+
+    /// A nested run uses the interpreter of the outer `MultiTool`, and each run
+    /// of an interpreter gets a new sandbox. Thus a global that one snippet sets
+    /// is not in the other snippet: the nested snippet does not see the global
+    /// of the outer snippet, and the outer snippet does not see the global of
+    /// the nested snippet after the nested call returned.
+    @Test("a nested runCode and its outer snippet each run in a new sandbox, with no global of the other")
+    func nestedRunCodeRunsInItsOwnSandbox() async throws {
+        let multiTool = MultiTool(registry: try Self.registry())
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(
+                code: #"""
+                    globalThis.outerMarker = "outer";
+                    const inner = await tools.runCode(
+                      "globalThis.innerMarker = 'inner'; return typeof globalThis.outerMarker;");
+                    return [inner, typeof globalThis.innerMarker, globalThis.outerMarker];
+                    """#
+            )
+        )
+
+        #expect(output == #"["undefined","undefined","outer"]"#)
     }
 
     @Test("recursion past the depth cap ends in a repairable error naming the cap, rather than running away")

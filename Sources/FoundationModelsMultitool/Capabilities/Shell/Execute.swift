@@ -30,7 +30,7 @@
 // and it asks BEFORE the run — see `CommandSandbox.preflight`, whose own doc
 // comment names this verb as its caller: a confinement failure raised inside
 // the runner is erased to a string on the way out, and a failure the model
-// cannot read stops the turn instead of being repaired inside it.
+// cannot read stops the answer. The model cannot repair it inside the answer.
 //
 // **The background is a declaration of the verb, and never a choice of the
 // call.** A command can run for hours, so the verb declares the background
@@ -63,7 +63,7 @@
 // thrown: a blank command, a command over the length cap, an environment that
 // is not a JSON object of strings, an environment value the verb refuses, and a
 // confinement the sandbox refuses are each a mistake the model corrects inside
-// the turn, and a thrown error would end the turn instead.
+// the same answer. A thrown error would end the answer instead.
 //
 // **The cap on the length of a command and the cap on the length of an
 // environment value stand HERE.** `ShellRunner.run(_:)` states that they belong
@@ -342,7 +342,7 @@ extension Execute {
     ///
     /// Only `SeatbeltSandboxError` is rendered. A `preflight` that throws
     /// anything else is choosing its own error type, and that value travels on
-    /// and stops the turn, exactly as a throw at spawn time does. To fold every
+    /// and stops the answer, exactly as a throw at spawn time does. To fold every
     /// error into corrective text here would turn a cancel and a programmer
     /// mistake into advice to try something else, which hides a defect behind a
     /// suggestion.

@@ -1,8 +1,8 @@
 // `MultiTool.RegistryBundle` — everything a `runCode` run derives from one
 // `Registry`, built in one function so a swap replaces all of it at once.
 //
-// eventplan.md § "Consolidation of the siblings": "Then MultiTool swaps it in
-// atomically at the next turn boundary." Before the swap existed, `MultiTool`
+// eventplan.md § "Consolidation of the siblings": MultiTool swaps it in
+// atomically at the next submission boundary. Before the swap existed, `MultiTool`
 // held the registry and the four values precomputed from it as separate
 // `let`s set in `init`. A swap that replaced them one at a time could let a
 // run see a preamble from one registry and live tools from another. One

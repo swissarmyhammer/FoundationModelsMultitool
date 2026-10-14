@@ -7,7 +7,7 @@ import FoundationModelsExtras
 // the text that tells the model to call the paths `searchTools` returned
 // sends the model to a tool that does not exist. CI run 36951032341 recorded
 // the result: the model guessed a call, the snippet failed, and the run lost
-// one full model turn to learn the signature from the correction (task
+// one full submission of the model to learn the signature from the correction (task
 // `^bwa2p6c`). Thus the text changes with the mode of the current registry.
 
 extension MultiTool {
@@ -17,7 +17,7 @@ extension MultiTool {
     /// Together with `SearchToolsTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
     /// entire integration: a `Tool` conformance's description goes into the
-    /// prompt on every turn, but a session instruction is optional and a host
+    /// prompt of each submission, but a session instruction is optional and a host
     /// can supply none. So nothing load-bearing can live outside these two
     /// strings. `searchTools` owns the discovery mandate; this side owns the
     /// snippet, the provenance rule, and the error-recovery contract.
@@ -27,7 +27,7 @@ extension MultiTool {
     /// invoked.
     ///
     /// The ambient globals' *contract* is the one part deliberately not
-    /// carried here. This text is read on every turn, alongside every tool
+    /// carried here. This text is read in each submission, alongside every tool
     /// schema, so everything in it competes with the discovery mandate for
     /// the model's attention — and the globals are the part a snippet needs
     /// only once it is already writing a snippet. So this names them, closes
@@ -62,7 +62,7 @@ extension MultiTool {
     ///
     /// The list holds each ``APISurface/Entry/declarationBlock``, and not
     /// the full block with its doc comment and its example, because this
-    /// text goes into the prompt on every turn. A snippet reads the full
+    /// text goes into the prompt of each submission. A snippet reads the full
     /// block of one entry with `docs("<path>")`.
     ///
     /// - Parameter surface: The catalog whose entries the text declares.

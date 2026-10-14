@@ -8,15 +8,15 @@ import Synchronization
 //
 // `ToolContext.current` is the ONLY route to a session's run plane. Router
 // publishes no `backgroundRuns`, no `wait(completionToken:)` and no
-// `cancel(completionToken:)` on `RoutedSession`; `RoutedSessionActor` and every
-// run-plane member of `SessionMailbox` are internal to that package. So a
+// `cancel(completionToken:)` on `RoutedSession`; `RoutedSessionActor` and its
+// `runPlane` property are internal to that package. So a
 // scenario that has to read what a live session's shell run is doing needs a
 // tool to hand it a context, and there is exactly one place a tool does that.
 //
 // `Execute` asks its sandbox to `preflight` from INSIDE its own call, before it
 // spawns anything (`CommandSandbox.preflight`, whose own documentation names
 // that verb as its caller). `ToolContext.current` there is the SHELL run's own
-// context — its completion token, its session and its mailbox. The root
+// context — its completion token, its session and its run plane. The root
 // package's `RegisteredJournalOpTests` already reads the journal op through this
 // same seam, with the same shape of probe.
 //
@@ -32,7 +32,7 @@ import Synchronization
 /// starts as it starts with no sandbox at all and the probe changes only what is
 /// observed. That matters twice over here: a gated run must not depend on
 /// `/usr/bin/sandbox-exec` being present, and a Seatbelt profile refusing the
-/// scenario's command would end the turn instead of the run this suite grades.
+/// scenario's command would end the answer instead of the run this suite grades.
 ///
 /// A locked reference type rather than an actor, because `wrap` is a
 /// SYNCHRONOUS requirement of `CommandSandbox`, which an actor answers only from

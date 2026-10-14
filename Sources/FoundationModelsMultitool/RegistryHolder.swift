@@ -1,10 +1,10 @@
 // `MultiTool.RegistryHolder` — the reference box that holds the current
 // `RegistryBundle` and the newest staged `Registry`.
 //
-// eventplan.md § "Consolidation of the siblings": "Then MultiTool swaps it in
-// atomically at the next turn boundary — the same boundary where the outbox
-// folds in events. Nothing changes below a snippet that runs. An in-flight
-// run keeps the registry that it started with."
+// eventplan.md § "Consolidation of the siblings": MultiTool swaps it in
+// atomically at the next submission boundary. That is the same boundary where
+// the outbox folds in events. Nothing changes below a snippet that runs. An
+// in-flight run keeps the registry that it started with.
 //
 // `MultiTool` is a copyable struct, and `Mutex` is `~Copyable`, so the lock
 // cannot be a stored property of the struct. The lock lives in this box, and

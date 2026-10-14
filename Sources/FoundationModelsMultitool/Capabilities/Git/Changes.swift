@@ -46,7 +46,7 @@
 // A changes call the verb cannot answer stays IN BAND, as a `correction`
 // beside no file. It is never thrown: a bad range, an unknown branch, a root
 // in no repository, and a failed read are each a mistake or a fact the model
-// reads inside the turn, and a thrown error would end the turn instead.
+// reads inside the same answer. A thrown error would end the answer instead.
 
 import Foundation
 import FoundationModels

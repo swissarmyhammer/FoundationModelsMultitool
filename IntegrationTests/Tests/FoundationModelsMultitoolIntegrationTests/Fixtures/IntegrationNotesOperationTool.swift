@@ -29,7 +29,7 @@ struct IntegrationNote: Encodable, Sendable, Equatable {
 ///
 /// An `actor`, because `OperationTool.call(arguments:)` can run for more
 /// than one call at a time, and every change to the notes needs one
-/// synchronized home. A test reads the store after the turn to grade what
+/// synchronized home. A test reads the store after the answer to grade what
 /// the snippets really did.
 actor IntegrationNotesStore {
     /// The prefix of every note id. The store appends a counter to it.

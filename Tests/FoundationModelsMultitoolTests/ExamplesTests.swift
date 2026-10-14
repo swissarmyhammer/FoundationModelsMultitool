@@ -58,7 +58,7 @@ struct ExamplesTests {
     /// An offline stand-in for a real model, conforming to `FoundationModels
     /// .LanguageModel`/`LanguageModelExecutor` — the same pluggable-model
     /// seam `MLXLanguageModel` fills in production, where Router's
-    /// `LiveModelLoader` builds it and a `RoutedSession` runs the turn over
+    /// `LiveModelLoader` builds it and a `RoutedSession` runs each answer over
     /// it. `LanguageModelSession` drives its own real native multi-turn
     /// tool-calling loop against this stub exactly as it would against a
     /// real model: it calls

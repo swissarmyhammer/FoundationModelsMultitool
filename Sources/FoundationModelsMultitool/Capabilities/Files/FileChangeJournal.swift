@@ -20,7 +20,7 @@
 // **The same envelope also rides `ToolContext.attach(_:)`, and that is the
 // LIVE half.** A Router session keeps a `.progress` event off its live surface:
 // the event is the model-facing preamble and the durable recording, so a host
-// that must show a diff DURING the turn cannot wait for it. A record attached
+// that must show a diff DURING the answer cannot wait for it. A record attached
 // to a call makes ONE tool call report (`ToolCallReport`, FoundationModelsExtras)
 // when that call closes, under the run's own correlation. The host gets that
 // report live. It is the carrier that was built for exactly this

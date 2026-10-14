@@ -17,9 +17,9 @@ import Testing
 /// The session gets no instructions: the tool descriptions are the whole
 /// product surface.
 ///
-/// **The scenario.** One short prompt, thus one model turn (task `^k6wzrxn`):
-/// the diff of the function that the work folder renames. Each model turn
-/// costs approximately 100 s on the CI runner, and the CI integration job must
+/// **The scenario.** One short prompt, thus one message and one answer (task
+/// `^k6wzrxn`): the diff of the function that the work folder renames. Each
+/// answer costs approximately 100 s on the CI runner, and the CI integration job must
 /// stay in 20 minutes. The unit tests of each verb call each verb without a
 /// model, and `GitGoalSnippetTests` runs the goal snippet of git.md word for
 /// word. The scenario runs one time on each push. There is no skip and no
@@ -28,7 +28,7 @@ import Testing
 /// **The grade asserts code properties only** (the user's rule: a test does
 /// not assert a fixed model score):
 ///
-/// 1. A `runCode` snippet of the turn called `git.diff`. The record is
+/// 1. A `runCode` snippet of the answer called `git.diff`. The record is
 ///    `StreamedTurn.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
 /// 2. No `runCode` output holds a `correction`. A correction is the in-band
 ///    answer of a verb that could not answer, thus an output with one shows a
@@ -83,7 +83,7 @@ struct GitScenarioTests {
         let repository = try GitScenarioHistory.make()
         let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
         // The release of `repository` removes its work folder, thus the
-        // repository must live until the turn ends.
+        // repository must live until the answer ends.
         defer { withExtendedLifetime(repository) {} }
         try await runGatedTurnScenario(
             named: Self.scenarioName,
@@ -103,7 +103,7 @@ struct GitScenarioTests {
     /// The conditions that the scenario is graded on: the verbs, then the
     /// corrections.
     ///
-    /// - Parameter turn: The streamed turn, with each session tool call it
+    /// - Parameter turn: The streamed answer, with each session tool call it
     ///   made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
     private static func checks(turn: StreamedTurn) -> [ScenarioCheck] {
@@ -118,7 +118,7 @@ struct GitScenarioTests {
     /// token usage, the snippet verbs, the score, the priming, and the failed
     /// calls.
     ///
-    /// - Parameter turn: The streamed turn.
+    /// - Parameter turn: The streamed answer.
     /// - Returns: The fields, in print order.
     private static func readings(of turn: StreamedTurn) -> [String] {
         let namedFacts = answerFacts.filter { turn.answer.localizedCaseInsensitiveContains($0) }

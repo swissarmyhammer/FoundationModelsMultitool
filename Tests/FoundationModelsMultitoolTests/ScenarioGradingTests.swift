@@ -165,7 +165,7 @@ struct ScenarioGradingTests {
     @Test("a run where no runCode call handed back a pending envelope fails the canary on pendingEnvelope alone")
     func noPendingEnvelopeFailsTheCanary() {
         // The check the background-in-code-mode scenario made before card
-        // `^3vtvrzg` merged it into the canary: some tool output of the turn
+        // `^3vtvrzg` merged it into the canary: some tool output of the answer
         // was the rendered pending envelope. A run that got its value some
         // other way fails on that condition and on nothing else.
         let nonce = integrationDelayedEchoNonce()
@@ -270,7 +270,7 @@ struct ScenarioGradingTests {
     @Test("a nested generation that came back fails the probe on the refusal")
     func aNestedGenerationThatReturnedFailsTheProbe() {
         // The old reading, from the Router that lent its permit to a nested
-        // turn. On the work-queue Router it means the refusal is gone.
+        // answer. On the work-queue Router it means the refusal is gone.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,

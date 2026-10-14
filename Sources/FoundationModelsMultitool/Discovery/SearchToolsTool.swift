@@ -45,7 +45,7 @@ public struct SearchToolsTool: Tool {
     /// Together with `MultiTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
     /// entire integration: a `Tool` conformance's description goes into the
-    /// prompt on every turn, but a session instruction is optional and a host
+    /// prompt of each submission, but a session instruction is optional and a host
     /// can supply none. So nothing load-bearing can live outside these two
     /// strings. `searchTools` owns the discovery mandate.
     ///
@@ -498,7 +498,7 @@ extension SearchToolsTool: BackgroundTool {
     /// weather data". Under the stock 120-second work clock, that clock
     /// cancelled it instead —
     /// `ToolMountError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
-    /// the turn dead in its first call.
+    /// and the answer stopped in its first call.
     ///
     /// `runCode` declares the background mount for itself, and this tool
     /// declares run-to-completion. One session, two policies, each stated by

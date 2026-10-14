@@ -115,7 +115,7 @@ struct ToolReturnLedgerTests {
     @Test("a snippet that returns the value its tool call gave it gets the value alone")
     func aSnippetThatReportsGetsNoNotice() async throws {
         // The passing shape. A notice here would be a false claim, and would
-        // send a model that answered correctly back around for another turn.
+        // send a model that answered correctly back around for another answer.
         let output = try await Self.run("return (await tools.getIssueCount({ repo: 'demo' })).count;")
 
         #expect(output == "42")

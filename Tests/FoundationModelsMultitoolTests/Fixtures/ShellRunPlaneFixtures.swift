@@ -9,7 +9,7 @@ import Testing
 // MARK: - The run plane of a shell run
 //
 // A `tools.shell.execute` call reaches the run plane only through the shared
-// engine of Router: `BackgroundToolRunner` tracks the run in the session mailbox, and
+// engine of Router: `BackgroundToolRunner` tracks the run in the run plane of the session, and
 // the ambient `ToolContext` reports it. Thus a suite that examines a background
 // shell run takes two steps before it can assert anything — mount the verb on
 // that engine, and read the run on the plane. Both steps stand here,
@@ -23,7 +23,7 @@ enum ShellRunPlane {
     /// How many runs ``backgroundRun(in:)`` reads.
     private static let oneRun = 1
 
-    /// Mounts `verb` on the shared engine over one mailbox, the way
+    /// Mounts `verb` on the shared engine over one run plane, the way
     /// `RunBinding` mounts every inner `tools.*` call.
     ///
     /// The configuration is `RunBinding.innerCallMount` on purpose: the verb's

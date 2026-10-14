@@ -32,7 +32,7 @@ struct AmbientObservation: Sendable, Equatable {
     /// name for one registered with none.
     ///
     /// This is the one stamp both run-plane readings are made from:
-    /// `SessionMailbox.track(tool:op:...)` fills `BackgroundRun.op` from it, and
+    /// `RunPlane.start(tool:op:...)` fills `BackgroundRun.op` from it, and
     /// `ToolInvocationRecord` carries it too. The event journal of an enclosing
     /// snippet never shows it, because `ToolContext.post(_:)` re-stamps every
     /// forwarded event with the outer run's own identity.
@@ -130,7 +130,7 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// call — the context `MultiTool` captures into its `RunBinding`.
 ///
 /// Taken from a real session over the stub model, because `ToolContext` has no
-/// public initializer and `SessionMailbox` is internal to Router. See
+/// public initializer and the run plane of a session is internal to Router. See
 /// `StubRouterFixtures.swift` for the stack that stands the session up.
 ///
 /// - Parameter runClock: the run clock of the session, or `nil` for the real

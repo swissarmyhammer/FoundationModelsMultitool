@@ -13,7 +13,7 @@
 //      waits for each notice of step 1 to reach the wire, then closes the
 //      transport; `StdioServerProcess.shutdown()` then ends the subprocess.
 //
-// Servers are infrastructure with session lifetime. No mailbox tracks them,
+// Servers are infrastructure with session lifetime. The run plane does not track them,
 // no `status()` lists them, and they get no `completionToken`. The shell store
 // of the same session is released the same way — with the session, and never
 // through the run plane — and this pool is the MCP side of that release.

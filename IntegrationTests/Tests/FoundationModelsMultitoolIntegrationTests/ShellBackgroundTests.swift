@@ -4,7 +4,7 @@ import Testing
 /// shell capability is the reference emitter, and that "its detached commands
 /// prove the background path end to end."
 ///
-/// One live turn on the shipped configuration: `MultiTool.Builder().withShell()`
+/// One live message and its answer on the shipped configuration: `MultiTool.Builder().withShell()`
 /// vended through `makeSessionTools(selection:embedder:sampleModel:)` and mounted on a
 /// `RoutedSession`. The model discovers `tools.shell.execute` and starts a
 /// never-ending command from a `runCode` snippet. Under the settle-period rule
@@ -25,7 +25,7 @@ import Testing
 ///   shell run would fail.
 /// - `oneJournaledTerminal` needs a LOADED MODEL. It is the half task `^1hq8xny`
 ///   left to this card by design, recorded on both: `RoutedSessionActor.close()`
-///   journals exactly what `SessionMailbox.sweep()` answers with, through
+///   journals exactly what `RunPlane.sweep()` answers with, through
 ///   `SessionOutbox.journalWithoutStaging(event:)`, before it returns. That half
 ///   lives in Router and can only be driven through a real session, which is why
 ///   the unit suite proves the sweep and this one proves the journal.
@@ -41,8 +41,8 @@ import Testing
     .serialized
     // No test checks the speed of the machine (card `^tm4x2hp`).
     //
-    // No step waits on time. When the turn never gets to
-    // `tools.shell.execute`, the watcher stops on the event that the turn
+    // No step waits on time. When the answer never gets to
+    // `tools.shell.execute`, the watcher stops on the event that the answer
     // ended. Then the harness reports what it read.
 )
 struct ShellBackgroundTests {

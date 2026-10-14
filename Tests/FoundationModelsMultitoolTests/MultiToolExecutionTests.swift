@@ -540,7 +540,7 @@ struct MultiToolExecutionTests {
 
     /// Records the fix of task `^11cfnx0` for the finding of task `^q4jrnd0`.
     /// A run that the sandbox `wait()` global collected was ALSO delivered as
-    /// mail, because `SessionMailbox.wait` does not withdraw the staged
+    /// mail, because `RunPlane.wait` does not withdraw the staged
     /// terminal event. Thus the model read the result two times. The global is
     /// removed. A snippet that calls `wait()` now gets the repair text at once,
     /// with no result in it, and the run comes back one time only, as mail.

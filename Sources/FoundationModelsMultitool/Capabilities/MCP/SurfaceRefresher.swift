@@ -3,10 +3,10 @@
 // new registry at the side when a catalog moved, and stages that registry for
 // the next submission boundary.
 //
-// eventplan.md § "Consolidation of the siblings": "A late server, a reconnect,
+// eventplan.md § "Consolidation of the siblings": a late server, a reconnect,
 // or an MCP `tools/list_changed` starts a full rebuild. MultiTool renders the
 // new registry complete at the side. Then MultiTool swaps it in atomically at
-// the next turn boundary." `RegistrySource.rebuildRegistry()` is the render,
+// the next submission boundary. `RegistrySource.rebuildRegistry()` is the render,
 // and `MultiTool.submissionWillBegin()` is the swap. This file is what runs between
 // them.
 //

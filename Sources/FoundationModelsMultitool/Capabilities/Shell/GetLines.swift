@@ -31,8 +31,8 @@
 //
 // A read the store cannot make stays IN BAND, as a `correction` beside an empty
 // range. It is never thrown: a token no command ran under, and a line range
-// that reads nothing, are each a mistake the model corrects inside the turn,
-// and a thrown error would end the turn instead.
+// that reads nothing, are each a mistake the model corrects inside the same
+// answer. A thrown error would end the answer instead.
 
 import FoundationModels
 

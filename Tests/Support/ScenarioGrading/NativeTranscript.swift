@@ -16,7 +16,7 @@ import FoundationModelsRouter
 /// Two readers, one set of questions. A `FoundationModels.Transcript` is what
 /// the `Transcript`-taking helpers read. The shipped scenarios run on a
 /// `RoutedSession`, which publishes no transcript, so they read the same
-/// evidence off the turn's event stream through the `StreamedCall`-taking
+/// evidence off the event stream of the answer through the `StreamedCall`-taking
 /// twins below. Each pair answers the identical question from whichever
 /// record its caller holds.
 ///

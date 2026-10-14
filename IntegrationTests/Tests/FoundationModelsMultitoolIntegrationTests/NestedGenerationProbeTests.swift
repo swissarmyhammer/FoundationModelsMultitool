@@ -1,10 +1,10 @@
 import Testing
 
 /// The gated probe that holds Router to refusing a nested generation on the
-/// model that the outer turn holds open.
+/// model that the outer answer holds open.
 ///
-/// **The contract.** `searchTools` generates from inside the outer turn's
-/// tool call. When one model serves the outer turn and the nested call, the
+/// **The contract.** `searchTools` generates from inside a tool call of the
+/// outer answer. When one model serves the outer answer and the nested call, the
 /// nested call needs a model that the outer submission holds open. The
 /// work-queue Router refuses that nested call at once with
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`: its queue sees
@@ -18,10 +18,10 @@ import Testing
 /// **What it replaced.** Before the work-queue Router, the same nested call
 /// hung for ever: the old `RoutedModel.generationGate` was an
 /// `AsyncSemaphore(value: 1)` that `beginTurn()` held across the tool rounds
-/// of a turn, so the nested `respond` parked on `generationGate.wait()` and
+/// of an answer, so the nested `respond` parked on `generationGate.wait()` and
 /// never came back. Measured on 2026-08-16 it parked 165.4s and 166.5s and
-/// unwound only when the test run cancelled the outer turn.
-/// Router's `^1zt7vyg` then lent the permit to the nested turn, and the call
+/// unwound only when the test run cancelled the outer answer.
+/// Router's `^1zt7vyg` then lent the permit to the nested generation, and the call
 /// came back. The work-queue Router replaced both with the refusal. The
 /// profiles of this target therefore put a different model in `standard` and
 /// `flash` (`LiveRouterFixture`), and `ProfileSlotSeparationTests` holds that.

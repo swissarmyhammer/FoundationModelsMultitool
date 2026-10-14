@@ -14,7 +14,7 @@ import ULID
 
 /// The mount a Router session applies to every tool it holds.
 enum SessionMount {
-    /// Mounts `tool` on the shared engine of Router over `mailbox`, with
+    /// Mounts `tool` on the shared engine of Router over the run plane of `context`, with
     /// `sink` as the upstream sink, under `ToolMount.synchronous` — the one
     /// configuration `RoutedModel.makeSession` applies.
     ///

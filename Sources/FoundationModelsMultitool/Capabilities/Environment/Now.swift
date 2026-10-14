@@ -19,8 +19,8 @@
 // Thus the text does not change with the locale or the calendar of the user.
 //
 // An unknown time zone stays IN BAND, as a `correction` beside empty fields. It
-// is never thrown: it is a mistake that the model can correct inside the turn,
-// and a thrown error would end the turn instead.
+// is never thrown: it is a mistake that the model can correct inside the same
+// answer. A thrown error would end the answer instead.
 
 import Foundation
 import FoundationModels

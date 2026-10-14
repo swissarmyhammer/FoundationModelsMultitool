@@ -10,14 +10,14 @@ import FoundationModelsRouter
 //
 // The background runs a snippet's `status()`/`cancel()` observe are
 // the session's own runs, and the answer its `elicit()` waits for arrives
-// through the same session mailbox. Both are scripted here rather than
-// simulated: a real mailbox, a real background run, and a real elicitation
+// through the same run plane of the session. Both are scripted here rather than
+// simulated: a real run plane, a real background run, and a real elicitation
 // reply — so what these tests exercise is the actual Router surface, not a
 // stand-in.
 //
 // A run goes to the background the way a real one does. The site mounts the
 // call in the background, so the mount engine backgrounds it and hands back
-// the pending envelope. Nothing here registers a run by hand: the mailbox's
+// the pending envelope. Nothing here registers a run by hand: the run plane's
 // bookkeeping is Router's own wiring, and a host reads it only through
 // `ToolContext` (Router task ^k0mecjp).
 
@@ -80,10 +80,10 @@ struct ScriptedRun: Sendable {
 let scriptedRunCancelOutcome: OperationOutcome = .cancelled
 
 /// The deadline a fixture gives `ToolContext.wait(completionToken:seconds:)`
-/// when it waits for a mailbox to record a settlement: `nil`, no deadline.
+/// when it waits for a run plane to record a settlement: `nil`, no deadline.
 ///
 /// This is a synchronization point, not a timing assertion — the wait
-/// resolves the instant the mailbox records the terminal event. No clock ends
+/// resolves the instant the run plane records the terminal event. No clock ends
 /// it (card `^tm4x2hp`: no test checks the speed of the machine). A run that
 /// never settles makes the test hang, and that hang is the failure.
 let scriptedRunSettlementSeconds: Double? = nil
@@ -179,7 +179,7 @@ final class GatedScriptedTool: Tool, Sendable {
         if let progress {
             // Only once the run is in the background. The mount engine
             // records a progress detail against the run's status row
-            // (`SessionMailbox.updateProgress`). `SessionMailbox.track` makes
+            // (`RunPlane.updateProgress`). `RunPlane.start` makes
             // that row, and a post that arrives before it updates nothing.
             // `BackgroundToolRunner` holds this body on a start gate until
             // after it tracks the run, so that order already holds. This gate
@@ -200,11 +200,11 @@ final class GatedScriptedTool: Tool, Sendable {
 }
 
 // The run plane is read through the `ToolContext` a stub session hands out.
-// `SessionMailbox` is internal to Router, so a test cannot own one; what it
-// owns instead is a real session, and the context that session binds around a
+// The run plane of a session is internal to Router, so a test cannot own it.
+// What the test owns instead is a real session, and the context that session binds around a
 // tool call reads that session's own run plane. See `StubRouterFixtures.swift`.
 
-/// Starts a scripted background run in `mailbox` and returns the handle a test
+/// Starts a scripted background run on the run plane of `context` and returns the handle a test
 /// drives it through.
 ///
 /// The run keeps going — and so stays visible to `status()` — until
@@ -302,7 +302,7 @@ private func expectProgress(
     }
 }
 
-/// Settles a scripted background run and returns only once the mailbox has
+/// Settles a scripted background run and returns only once the run plane has
 /// recorded its terminal event — a synchronization point, so a following
 /// `status()` or `cancel()` assertion never races the settlement.
 ///

@@ -21,8 +21,8 @@
 //
 // A branch list the verb cannot read stays IN BAND, as a `correction` beside
 // no branch. It is never thrown: a root in no repository and a list that
-// libgit2 cannot read are each a fact the model reads inside the turn, and a
-// thrown error would end the turn instead.
+// libgit2 cannot read are each a fact the model reads inside the same answer.
+// A thrown error would end the answer instead.
 
 import Foundation
 import FoundationModels

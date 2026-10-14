@@ -17,7 +17,7 @@ import TestConcurrency
 /// suite resolves — plan.md M6.5: "small tool-calling-capable instruct
 /// models." The suite drives the shipped host contract — the vended tools
 /// mounted on a `RoutedSession`, whose own native tool-calling loop runs the
-/// turn (the retired `MultiToolAgent`'s prompted-text
+/// answer (the retired `MultiToolAgent`'s prompted-text
 /// `ACTION:`/`TASK:`/`CODE:` convention is gone), so the pinned `standard`
 /// model must be genuinely trained for native function calling, not merely
 /// instruction-following.
@@ -27,15 +27,15 @@ import TestConcurrency
 /// own `TinyModels`): empirically, on this suite's live-hardware run
 /// (`exbtj1n`'s real-model pass), that 135M model could not reliably follow even
 /// the single-tool `ACTION:`/`TASK:`/`CODE:` convention — its `tolerantParse`
-/// turns degenerated into unrelated hallucinated prose (and, in one repair
+/// answers degenerated into unrelated hallucinated prose (and, in one repair
 /// scenario, thousands of repeated `0` characters) rather than ever emitting
-/// an `ACTION:` line, and its `.guided` turns looped calling `searchTools` with
-/// a nonsense `task` value instead of ever reaching a `final`/`runCode` turn.
+/// an `ACTION:` line, and its `.guided` answers looped calling `searchTools` with
+/// a nonsense `task` value instead of ever reaching a `final`/`runCode` answer.
 /// A first step up, `Qwen2.5-0.5B-Instruct-4bit`, was a large improvement
 /// (reliable `ACTION:` lines, coherent single-tool scenarios) but still
-/// occasionally ran on past a natural stop point on harder multi-turn
-/// scenarios and, under `.guided`, sometimes populated the wrong optional
-/// field (`text` instead of `code`) for a `runCode` turn.
+/// occasionally ran on past a natural stop point on harder scenarios of many
+/// answers and, under `.guided`, sometimes populated the wrong optional
+/// field (`text` instead of `code`) for a `runCode` answer.
 /// `Qwen2.5-1.5B-Instruct-4bit` was, for a time, the settled choice: still
 /// squarely in plan.md's "few-hundred-MB-to-low-GB instruct model" range
 /// (~870MB in 4-bit), and empirically the most reliable of the three at this
@@ -228,14 +228,14 @@ import TestConcurrency
 ///
 /// **The cause was Router's `generationGate`, and it is now understood, fixed
 /// and covered.** A resident container carries one `AsyncSemaphore(value: 1)`.
-/// `beginTurn()` takes its single permit and holds it for the whole turn,
+/// `beginTurn()` takes its single permit and holds it for the whole answer,
 /// tool rounds included. `searchTools` generates from *inside* a tool call on
-/// that same container, so it waited for a permit only the turn's end could
-/// free, and the turn could not end until the tool returned. Sampled directly
+/// that same container, so it waited for a permit only the end of the answer
+/// could free, and the answer could not end until the tool returned. Sampled directly
 /// with `@testable import FoundationModelsRouter`: `permits=0 waiters=1` for
 /// the life of the run, across 33 samples.
 ///
-/// Router fixed it on their `^1zt7vyg` by lending the permit to a nested turn
+/// Router fixed it on their `^1zt7vyg` by lending the permit to a nested generation
 /// on another session rather than releasing it, so the count stays exact.
 /// Verified from here: `NestedGenerationProbeTests` — which holds no grammar
 /// anywhere, and so isolates the gate and nothing else — parked 165.4s and
@@ -300,9 +300,9 @@ import TestConcurrency
 /// against the shipped build rather than assumed. `TranscriptEvent` meters
 /// `tokensIn`, `tokensOut` and `ms` and nothing else — no skipped-token
 /// count, no cache-hit count, no prefill time. `tokensIn` is the whole
-/// rendered prompt of the turn: Router subtracts two cumulative
-/// `usage.input.totalTokenCount` snapshots, and that delta is the turn's own
-/// whole render only because every fork on this path is a fresh session
+/// rendered prompt of the submission: Router subtracts two cumulative
+/// `usage.input.totalTokenCount` snapshots, and that delta is the whole render
+/// of that submission only because every fork on this path is a fresh session
 /// starting at zero. Either way it reads the same whether a prefix was
 /// reused or re-prefilled. The one figure that would answer the question,
 /// `usage.input.cachedTokenCount`, is dropped by Router's live conformer,
@@ -348,7 +348,7 @@ import TestConcurrency
 /// merged into `discoveryUnderDistractors`; `mlx-swift-lm` `a1f77ad`,
 /// Router `8821ccc`) read: call 1 `rendered=945 reused=0 fed=945 rule=cold`,
 /// call 2 `rendered=1228 reused=1016 fed=212 rule=splice`, call 3
-/// `rendered=1412 reused=1284 fed=128 rule=splice`. Thus each turn of a
+/// `rendered=1412 reused=1284 fed=128 rule=splice`. Thus each submission of a
 /// session after the first feeds only its new tokens on the 27B. The Router
 /// transcript cannot show it: its `generationCall` entry writes "fed N
 /// tokens" for the whole context, because Router reads only
@@ -406,7 +406,7 @@ let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 ///
 /// `nil` context, not a number: resolve the model's own context window rather
 /// than impose one. A pinned figure is always wrong on the wrong side — too
-/// small, and a generation turn loses the tool definitions and the discovery
+/// small, and a generation submission loses the tool definitions and the discovery
 /// output it must act on. `ProfileDefinition.defaultContext` is the fallback
 /// when the lookup fails, so this cannot resolve to nothing.
 ///

@@ -14,7 +14,7 @@ public struct ScenarioObservation {
     /// The model's final reply text.
     public var reply: String
 
-    /// How many tool calls the turn made, of any tool.
+    /// How many tool calls the answer made, of any tool.
     public var toolCallCount: Int
 
     /// The `tools.*` paths the model's `runCode` snippets **wrote**.
@@ -39,7 +39,7 @@ public struct ScenarioObservation {
     /// Whether a `searchTools` call preceded the first `runCode` call.
     public var searchedToolsFirst: Bool
 
-    /// Whether this run could observe the turn's *route* at all — the ordered
+    /// Whether this run could observe the *route* of the answer at all — the ordered
     /// tool calls, their typed paths, and their outputs.
     ///
     /// `false` on the `respond(to:)` path, which returns only the final answer:
@@ -50,8 +50,8 @@ public struct ScenarioObservation {
     /// `priming=ok` printed when priming was never requested.
     public var routeObservable: Bool
 
-    /// The scalar values the tools genuinely returned to the model this
-    /// turn — see `NativeTranscript.returnedValues(in:)`.
+    /// The scalar values the tools genuinely returned to the model in this
+    /// answer — see `NativeTranscript.returnedValues(in:)`.
     public var returnedValues: Set<String>
 
     /// Whether the reply carried the form the scenario grades on.
@@ -65,12 +65,12 @@ public struct ScenarioObservation {
     ///
     /// - Parameters:
     ///   - reply: the model's final reply text.
-    ///   - toolCallCount: how many tool calls the turn made.
+    ///   - toolCallCount: how many tool calls the answer made.
     ///   - typedPaths: the `tools.*` paths the snippets wrote.
     ///   - invokedPaths: the `tools.*` paths a fixture tool entered.
     ///   - catalogPaths: every `tools.*` path the mounted catalog defines.
     ///   - searchedToolsFirst: whether discovery came before the first snippet.
-    ///   - routeObservable: whether this run could observe the turn's route.
+    ///   - routeObservable: whether this run could observe the route of the answer.
     ///   - returnedValues: the scalars the tools returned to the model.
     ///   - isValidAnswer: whether the reply carried the form the scenario grades on.
     public init(
@@ -106,12 +106,12 @@ public struct ScenarioObservation {
 /// and why it is the same floor for every scenario this runner drives.
 public let scenarioMinimumToolCalls = 2
 
-/// How far past `scenarioMinimumToolCalls` a turn may go before it counts
+/// How far past `scenarioMinimumToolCalls` an answer may go before it counts
 /// as thrashing.
 ///
 /// Doubling the floor leaves room for the repair loop the scenarios
 /// deliberately provoke — a mis-called tool, its repairable error, and the
-/// corrected call — while still separating "repaired once" from a turn
+/// corrected call — while still separating "repaired once" from an answer
 /// going around the same loop over and over.
 public let scenarioThrashFactor = 2
 
@@ -132,14 +132,14 @@ private let scenarioGroundingValueMinimumLength = 2
 /// alongside the existing grade, never in place of it, so a run yields many
 /// signals instead of one.
 public struct ScenarioFailureModes {
-    /// The reply denied access or capability and the turn called nothing at
+    /// The reply denied access or capability and the answer called nothing at
     /// all.
     public let isOverRefusal: Bool
 
     /// The reply answered substantively while no `tools.*` path ever ran.
     public let answeredWithoutCalling: Bool
 
-    /// The reply announced what the model was about to do, and the turn
+    /// The reply announced what the model was about to do, and the answer
     /// then ended without doing it.
     public let didAnnounceThenStop: Bool
 
@@ -157,7 +157,7 @@ public struct ScenarioFailureModes {
     /// ``ScenarioObservation/routeObservable``.
     public let routeObservable: Bool
 
-    /// The turn made more calls than `scenarioThrashFactor` times the
+    /// The answer made more calls than `scenarioThrashFactor` times the
     /// minimum the scenario needs.
     public let didThrash: Bool
 
@@ -165,7 +165,7 @@ public struct ScenarioFailureModes {
     /// the form the scenario grades on.
     public let isGroundedButWrongForm: Bool
 
-    /// How many tool calls the turn made — the denominator `didThrash` is read
+    /// How many tool calls the answer made — the denominator `didThrash` is read
     /// against, carried so a reader need not recompute it.
     public let toolCallCount: Int
 
@@ -265,8 +265,8 @@ public struct ScenarioFailureModes {
     /// The phrasings that count as announcing a next step rather than
     /// taking it.
     ///
-    /// The recorded shape is a turn that opens "Let me first find…" and
-    /// ends there — see `runInBandCollectionCanaryScenario`'s note that a turn
+    /// The recorded shape is an answer that opens "Let me first find…" and
+    /// ends there — see `runInBandCollectionCanaryScenario`'s note that a message
     /// asked only to start a job "gets an announcement and no `runCode` call
     /// at all".
     private static let announcementPhrases = [

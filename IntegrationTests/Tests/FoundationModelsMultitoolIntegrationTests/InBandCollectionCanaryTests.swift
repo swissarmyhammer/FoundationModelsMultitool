@@ -31,14 +31,14 @@ import ScenarioGrading
 /// **The prompt gives the call.** The direct-mode description of `runCode`
 /// names no signature (card `^bwa2p6c`), so in CI run `36951032341` the model
 /// first called `tools.docs(...)`, which does not exist, and generated 531
-/// tokens before its first real call: one full model turn of approximately
+/// tokens before its first real call: one full model submission of approximately
 /// 40 s on `mini` that the subject of this test does not need. The prompt
 /// therefore names the call with its argument object. It still does not say
 /// how the result comes back: the pending envelope on the handle carries
 /// that, as it does for every host.
 ///
 /// **What changed on the work-queue Router, and why this suite stays.** The
-/// old Router drained the background runs of a turn inside `respond(to:)`, and
+/// old Router drained the background runs of an answer inside `respond(to:)`, and
 /// the old surface mounted a `wait` tool that the model called to collect a
 /// run in band. This suite then graded in-band collection: a `wait` call, and
 /// nothing still running at the answer. The work-queue Router removed the
@@ -92,7 +92,7 @@ struct InBandCollectionCanaryTests {
     func theDelayedEchoRoundTripsThroughMail() async throws {
         // The shortest sequence that still passes through the real machinery:
         // call the named tool, take the handle, do nothing more, get the mail,
-        // report. Direct mode removes discovery, so no `searchTools` turn runs
+        // report. Direct mode removes discovery, so no `searchTools` call runs
         // at all.
         //
         // The nonce is minted fresh for this run, so no prior run and no

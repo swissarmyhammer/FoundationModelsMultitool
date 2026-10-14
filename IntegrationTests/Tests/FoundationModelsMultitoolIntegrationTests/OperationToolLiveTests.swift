@@ -89,8 +89,8 @@ let operationToolQueries = [
 ///    holds one note with the title and the tag the prompt gave, and the
 ///    reply names the id of that note. `ScenarioCallLog` is not the record
 ///    here, because it holds fixture tool calls only; `searchTools` and
-///    `runCode` are session tools, and the turn stream is where they are
-///    recorded.
+///    `runCode` are session tools, and the stream of the answer records
+///    them.
 ///
 /// **Why the shipped profile.** Both tests grade a capability claim about the
 /// configuration a host really gets, so both resolve `multitoolTinyProfile`,
@@ -139,8 +139,8 @@ struct OperationToolLiveTests {
     /// order: the route, the store, and the reply.
     ///
     /// - Parameters:
-    ///   - turn: the streamed turn, with every session tool call it made.
-    ///   - stored: the notes the fixture store holds after the turn.
+    ///   - turn: the streamed answer, with every session tool call it made.
+    ///   - stored: the notes the fixture store holds after the answer.
     /// - Returns: every condition, for `grade(scenario:checks:)`.
     private static func searchThenCallChecks(turn: StreamedTurn, stored: [IntegrationNote]) -> [ScenarioCheck] {
         let callNames = turn.calls.map(\.name)

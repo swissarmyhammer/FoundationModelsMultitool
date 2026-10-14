@@ -142,7 +142,7 @@ struct SearchToolsToolTests {
         // The full essence of the retired system prompt, verified clause by
         // clause so a future paraphrase can't silently drop a load-bearing
         // line. `sessionInstructions` is gone (task tkrdwb8): a `Tool`
-        // description is serialized into the prompt on every turn, while a
+        // description is serialized into the prompt on every answer, while a
         // session instruction is optional and a host may never pass one, so
         // every guarantee that instruction carried is asserted here instead.
         // The set is not knowable in advance, and searchTools is the only way in.
@@ -153,7 +153,7 @@ struct SearchToolsToolTests {
         // the user's own request, not to the model's confidence: an "if you are
         // unsure" trigger is one a confident model always passes, which is the
         // failure this line exists to close. It aims at the dominant recorded
-        // failure, a turn ending with toolCalls=0 (task 9zk44z6).
+        // failure, an answer ending with toolCalls=0 (task 9zk44z6).
         #expect(description.contains("Call searchTools before you answer any request"))
         #expect(description.contains("passing the"))
         #expect(description.contains("user's own request as the query"))

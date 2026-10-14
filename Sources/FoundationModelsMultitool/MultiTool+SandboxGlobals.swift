@@ -61,7 +61,7 @@ import ULID
 ///
 /// File-private: only the sandbox globals of this file report a run.
 private enum RunState {
-    /// The run is registered with the mailbox and has not finished.
+    /// The run is registered with the run plane and has not finished.
     static let running = "running"
 
     /// The run finished and delivered its result; the object carries its
@@ -119,11 +119,11 @@ private enum CallResult {
     static let cancelled = "cancelled"
 }
 
-/// The deadline a lifecycle lookup gives the mailbox: none at all.
+/// The deadline a lifecycle lookup gives the run plane: none at all.
 ///
 /// `RunPlane.wait(completionToken:seconds:)` resolves immediately for a
 /// finished or unknown token and reports its deadline elapsed for a run that is
-/// still going, so a zero-second wait is the mailbox's own lifecycle probe — it
+/// still going, so a zero-second wait is the lifecycle probe of the run plane — it
 /// never suspends the calling snippet.
 private let lifecycleProbeSeconds: Double = 0
 
@@ -381,7 +381,7 @@ extension MultiTool {
     }
 
     /// `status()`'s implementation: with no argument, every run the session's
-    /// mailbox still has going; with a completion token, that one run's report.
+    /// run plane still has going; with a completion token, that one run's report.
     ///
     /// - Parameters:
     ///   - argument: the call's first argument — a completion-token string,
@@ -413,7 +413,7 @@ extension MultiTool {
             return .object(backgroundRunFields(of: going))
         }
         // Absent from the snapshot above, so the run either already finished
-        // — the mailbox retains its terminal event — or the token names
+        // — the run plane keeps its terminal event — or the token names
         // nothing at all. A zero-second wait separates exactly those two
         // without suspending.
         switch await context.wait(completionToken: token, seconds: lifecycleProbeSeconds) {
@@ -475,7 +475,7 @@ extension MultiTool {
     /// FoundationModelsExtras gives the row, and it is what this package
     /// calls the row too.
     ///
-    /// - Parameter run: the mailbox's own snapshot row.
+    /// - Parameter run: the snapshot row of the run plane.
     /// - Returns: the object's fields.
     private static func backgroundRunFields(of run: BackgroundRun) -> [String: InterpreterValue] {
         [
@@ -554,8 +554,8 @@ extension MultiTool {
 
     // MARK: - elicit()
 
-    /// `elicit()`'s implementation: suspends the snippet on the session's
-    /// mailbox through `ToolContext.elicit` — the same background path every
+    /// `elicit()`'s implementation: suspends the snippet on the run plane of
+    /// the session through `ToolContext.elicit` — the same background path every
     /// other elicitor takes — and resumes with the user's answer.
     ///
     /// - Parameters:
@@ -588,7 +588,7 @@ extension MultiTool {
     /// subset every other elicitor does — a snippet cannot widen it.
     ///
     /// The `elicitationId` is minted here, never taken from the snippet: it is
-    /// the key the mailbox holds the continuation under, and a snippet-chosen
+    /// the key the run plane holds the continuation under, and a snippet-chosen
     /// id could collide with a pending one.
     ///
     /// - Parameter argument: the call's first argument.
@@ -752,7 +752,7 @@ extension MultiTool {
 /// no case repeats it.
 enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// The enclosing `runCode` invocation captured no ambient `ToolContext`,
-    /// so there is no session mailbox to read and no user to ask — a
+    /// so there is no run plane of a session to read and no user to ask — a
     /// `MultiTool` constructed and called directly, outside any session.
     case noSession
 

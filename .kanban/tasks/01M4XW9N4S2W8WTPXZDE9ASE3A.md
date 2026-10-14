@@ -20,8 +20,8 @@ comments:
   timestamp: 2026-10-14T19:47:17.716108+00:00
 depends_on:
 - 01M4XW9AT79H485N08AS57YT6F
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffe380
 title: 'Mail step 5 T3: remove each .timeLimit, sleep, clock wait and poll from Tests and IntegrationTests'
 ---
 Step 5 of the mail work. Read mailbox.md (sections 3, 4 and 5, the signals table, section 8 rows 2 to 5, and the Progress table). All items in mailbox.md are decisions. This task starts after T2.

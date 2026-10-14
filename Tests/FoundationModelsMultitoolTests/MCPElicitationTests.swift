@@ -17,7 +17,7 @@ import ULID
 /// and `ElicitationCompleteTests.swift` of
 /// `../FoundationModelsMCP/Tests/FoundationModelsMCPTests/`. The sibling
 /// routed every request to a stubbed `ElicitationCoordinator`; here the
-/// answerer is a bound `ToolContext` over a real `SessionMailbox`, the host's
+/// answerer is a bound `ToolContext` over a real `RunPlane`, the host's
 /// handler, or nothing at all, in that order. The cases of the source that
 /// are not here, and why:
 ///
@@ -141,7 +141,7 @@ struct MCPElicitationTests {
     /// The pieces of one run bound around a call: the session the test answers
     /// through, and the context it binds.
     ///
-    /// A test cannot own a mailbox or inject a sink — both are internal to
+    /// A test cannot own the run plane of a session or inject a sink — both are internal to
     /// Router — so it owns a stub session instead. The elicitation event is
     /// read off that session's recorded transcript, and the answer is
     /// delivered through `RoutedSession.respond(elicitationId:response:)`.
@@ -180,7 +180,7 @@ struct MCPElicitationTests {
     }
 
     /// Starts one call of `tool` on `server` under `context`, in a task the
-    /// test resumes through the mailbox.
+    /// test resumes through the run plane.
     ///
     /// - Parameters:
     ///   - server: The server to call.

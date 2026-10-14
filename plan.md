@@ -11,7 +11,7 @@ The host contract, in one sentence, so no passage below can send a reader the
 wrong way: build a registry, mount what
 `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends
 on the `RoutedSession` that `profile.standard.makeSession(tools:)` returns, and
-drive one turn by draining `streamEvents(to:)`. The discovery seams take no
+drive one answer to a message by draining `streamEvents(to:)`. The discovery seams take no
 Router type: `RouterDiscoverySeams` in `Sources/MultitoolCLI` makes them from
 `profile.flash` and `profile.embedding`. `Sources/MultitoolCLI/CLIRunner.swift`
 does exactly that, and every integration scenario drives the same wiring.
@@ -53,7 +53,7 @@ says they are retired:
   substance, and the design sections below now use the shipped name. Four
   places keep the old spelling on purpose, because each is a record of what
   was written at the time rather than a description of what runs: the retired
-  `MultiToolAgent` pseudocode and its turn formats, the retired
+  `MultiToolAgent` pseudocode and its answer formats, the retired
   **`MultiToolAgent`** entry under **Components**, the **Milestones** list
   (with its own as-built note), and **Findings (research)**. `FindAPITool` and
   `FoundAPIs` appear in the M6 milestone alone and never shipped under any
@@ -115,12 +115,12 @@ sibling `FoundationModelsMCP` bridge does, with token-level argument guarantees)
 It scales badly along three axes that a *code* surface fixes for free:
 
 1. **Schema bloat.** N tool schemas in the instructions cost tokens, latency, and
-   selection accuracy on *every* turn, whatever the window. The MultiTool puts
+   selection accuracy on *every* answer, whatever the window. The MultiTool puts
    **zero** tool schemas in the main session — only `searchTools` and
    `runCode`, the two the registry vends — and
    keeps the derived API surface out in the interpreter and the discovery tier,
-   so the cost is paid once, not per turn.
-2. **Chaining overhead.** With one-tool-per-turn calling, every intermediate result
+   so the cost is paid once, not for each answer.
+2. **Chaining overhead.** With one tool call for each model step, every intermediate result
    is copied *through the model* to feed the next call. In a snippet, the model
    writes the pipeline once; intermediates **stay in the sandbox** and only the
    final return value re-enters the context.
@@ -419,8 +419,8 @@ loaded. A host never builds that by hand. It calls
 .makeSessionTools(selection: seams.selection, embedder: seams.embedder))`**,
 with `seams = RouterDiscoverySeams(librarian: profile.flash, embedder:
 profile.embedding)` — `searchTools` presented before `runCode` — and drives
-one turn by draining
-`streamEvents(to:)`; this package drives no turn loop of its own. The
+one answer to a message by draining
+`streamEvents(to:)`. This package has no loop of its own that sends messages. The
 production wiring is `Sources/MultitoolCLI/CLIRunner.swift` (`runDemo`, which
 passes no session instructions at all); the offline call-pattern reference is
 `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. The session type is
@@ -446,17 +446,17 @@ loop:                                            // RETIRED — kept for the rec
     · findAPIs(task)  → ask the librarian (guided), splice the returned blocks in
     · runCode(code)   → JSCInterpreter runs it; tools.X() → native Swift tool.call
     · final           → return to the caller
-  feed the tool result back as the next turn; repeat
+  feed the tool result back as the next message; repeat
 ```
 
-It had two turn formats, both Router-native — **guided turns** (a `@Generable`
+It had two answer formats, both Router-native — **guided answers** (a `@Generable`
 union of `{ findAPIs(task) | runCode(code) | final(text) }` via
 `respond(to:generating:)`, parseable by construction) and a **prompted
-ReAct-style convention with a tolerant parse** plus bounded repair turns — and
+ReAct-style convention with a tolerant parse** plus bounded repair messages — and
 both were green in unit tests. On real hardware, neither held up: the
 real-model integration suite (documented on archived task `exbtj1n`) showed the
 hand-rolled loop was **unreliable regardless of model size** — under guided
-turns the model intermittently left the `kind`-matching field blank (xgrammar
+answers the model intermittently left the `kind`-matching field blank (xgrammar
 cannot express a conditionally-required field), under tolerant parse it
 rambled past token budgets before emitting a final action, and snippets
 sometimes hardcoded plausible answers instead of calling the discovered
@@ -464,7 +464,7 @@ sometimes hardcoded plausible answers instead of calling the discovered
 multi-turn tool-calling fix landed upstream) provided the better-founded
 mechanism: the native loop Apple ships, driving the same Router-resolved
 weights, with real token-level tool-call generation instead of a
-parse-what-the-model-typed convention. `MultiToolAgent` — its turn grammar,
+parse-what-the-model-typed convention. `MultiToolAgent` — its answer grammar,
 tolerant parser, repair budget, and `maxAgentTurns`/`maxRepairTurns` knobs —
 was deleted in its favor. The pivot was a rewiring, not a rewrite: the Router
 stayed loop-free as designed, and `multiTool`/`searchToolsTool` were already
@@ -639,7 +639,7 @@ These two `description`s *are* the prompt that makes the model search-then-code 
 fixed strings, not per-tool, handed to the vended session the same way any
 tool's description is. They are the *whole* prompt: the shipped session — and
 the real-model integration suite alike — passes no session-level instructions,
-because a `Tool` description is serialized into the prompt on every turn while
+because a `Tool` description is serialized into the prompt for every answer while
 a session instruction is optional and a host may never pass one. Each clause
 targets an empirically observed small-model failure mode. This is the search
 affordance:
@@ -902,7 +902,7 @@ run the call a second time.
 > **As-built note.** The milestones below are kept as originally planned — the
 > historical record. Where the design later pivoted, the rewritten sections
 > above are authoritative: M4's `MultiToolAgent` loop (and its
-> guided-vs-tolerant turn-format question) was built, proved unreliable on
+> guided-vs-tolerant answer-format question) was built, proved unreliable on
 > real hardware, and was retired for the vended session's own native
 > tool-calling (see **Router integration**); M6's `Librarian`/`FoundAPIs`
 > shapes landed as `FoundationModelsMetadataRegistry`'s
@@ -931,7 +931,7 @@ run the call a second time.
   third-party-style `@Generable` tools** (no source modification), install
   `tools.*`, and drive them through the `MultiToolAgent` loop over a Router
   `RoutedSession` (`profile.standard`) that composes their results in one snippet.
-  Settle the turn format (guided grammar vs. tolerant parse — Router integration).
+  Settle the answer format (guided grammar vs. tolerant parse — Router integration).
 - [ ] **M5 — `ResultRenderer` + repair loop.** Serialize/cap/trim; repairable
   errors; verify the model fixes a bad tool call from the error.
 - [ ] **M6 — Librarian + `findAPIs` on Router.** `FindAPITool` + librarian on the
@@ -967,11 +967,11 @@ run the call a second time.
 
 > **As-built note.** This strategy predates the agent-loop retirement (see
 > **Router integration**): the shipped integration suite drives the host contract via
-> `ScenarioRunner` — vended tools on a `RoutedSession`, one turn drained
-> through `streamEvents(to:)` — and grades each run on its answer and on what
+> `ScenarioRunner` — vended tools on a `RoutedSession`, one message sent
+> through `mail(_:)`, and its answer read to the end — and grades each run on its answer and on what
 > that answer is grounded in, not on the deleted
 > `MultiToolAgent.respond(to:)`. The loop-observability assertions below
-> survive as route diagnostics read off the turn's own event stream.
+> survive as route diagnostics read from the event stream of that answer.
 
 The unit suites above run without a model. But the *whole thesis* — that a small
 open-weight model will reliably **search (`searchTools`) and then call (`runCode`)**
@@ -992,11 +992,11 @@ search-then-code loop actually work?"
   The root `swift test` runs the unit tests and nothing else, because the root
   manifest declares no integration target for it to find — a structural split
   rather than a remembered flag, and nothing reads the environment to decide
-  which suite runs. `--no-parallel` is required: Swift Testing starts a test's
-  `.timeLimit` when the test starts, while every scenario queues behind the
-  suite's own `liveProfileTurnstile` — the gate that admits one live scenario
-  at a time, because concurrent generation measurably destroys grounding — so
-  a parallel run spends the limit on queue time. The turnstile is a test-suite
+  which suite runs. `--no-parallel` is required. Each scenario waits behind the
+  suite's own `liveProfileTurnstile`. This gate lets only one live scenario run
+  at a time, because concurrent generation measurably destroys grounding. Thus
+  a parallel run gives no gain: its tests only wait in that queue. No test has
+  a time limit. The turnstile is a test-suite
   rule, not a Router limit: Router residency is pooled.
 
   The suite resolves a `ProfileDefinition` of tool-calling-capable models —
@@ -1020,10 +1020,10 @@ search-then-code loop actually work?"
       asserts `searchTools` returns the right minimal set and the snippet uses exactly
      those (the fused-surface selection-accuracy claim).
   4. **repair** — a tool the model tends to mis-call; asserts the repair loop
-     recovers from the returned error within a bounded number of turns.
+     recovers from the returned error within a bounded number of answers.
 - **Assert on the loop, not just the final string.** Because `MultiToolAgent` owns
   the loop, the test harness can observe each step — which is the point. Router also
-  records every turn to a JSONL transcript (`RecordingLevel.full`), so assertions
+  records every answer to a JSONL transcript (`RecordingLevel.full`), so assertions
   can check *that* `searchTools` was called before `runCode`, *which* functions the
   librarian returned, and *which* `tools.*` the snippet actually invoked — turning
   "did it search then call?" into a checkable trace rather than a vibe.
@@ -1042,12 +1042,12 @@ tests and fails when aggregate behavior drops below a threshold. The mapping:
   `makeSamples(…, targetCount:)` can synthesize distractor/paraphrase variants from a
   seed set to widen coverage.
 - **Graders = quantitative `Evaluator`s over the recorded loop.** Because the loop is
-  observable (and Router records every turn to a JSONL transcript), the important
+  observable (and Router records every answer to a JSONL transcript), the important
   assertions are deterministic pass/fail `Evaluator`s, no judge needed:
   `Metric("SearchedThenCalled")` — `searchTools` before `runCode`;
   `Metric("CalledExpectedTools")` — the snippet invoked exactly the expected
   `tools.*`; `Metric("RepairedWithinN")` — recovered from a bad call within a bounded
-  turn count. Each evaluator returns `metric.passing(rationale:)` /
+  answer count. Each evaluator returns `metric.passing(rationale:)` /
   `metric.failing(rationale:)` (or `metric.score(_)`), aggregated in
   `aggregateMetrics(using:)` via `computeMean`/`computeStandardDeviation`.
 - **Optional `ModelJudgeEvaluator`** for softer answer-quality ("is the final answer
@@ -1105,7 +1105,7 @@ a supported subject.)*
    cost, latency, and selection accuracy, not because of a hard cap.
 6. **Prefix reuse is a Router/MLX property, not Apple `prewarm()`.** The librarian's
    stable instruction prefix is cheap only if the MLX backend reuses its KV cache
-   across turns of one reused session. Apple's `prewarm()`/transcript-diffing is for
+   across answers of one reused session. Apple's `prewarm()`/transcript-diffing is for
    the built-in model, which we don't use — so treat librarian prefix reuse as a
    **Router/MLX capability to confirm**, not a given.
 7. **FoundationModelsRouter is the model source for everything (per the user), and

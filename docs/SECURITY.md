@@ -37,7 +37,7 @@ anything.
 
 `status()`, `cancel()`, `elicit()`, `notify()`, and `progress()`
 reach exactly one thing: the ambient `ToolContext` the session bound around
-this `runCode` call — its own `SessionMailbox` and its own upstream event
+this `runCode` call — its own `RunPlane` and its own upstream event
 sink, never another session's. Each is bounded by what that surface itself
 allows:
 
@@ -49,7 +49,7 @@ allows:
   `status()` reports
   a running run's token, op, kind, and latest progress, never its output. An
   unknown completion token is a reportable no-op, not a throw: one snippet
-  cannot probe another session's tokens, because the mailbox it reaches is
+  cannot probe another session's tokens, because the run plane it reaches is
   its own session's.
 - `elicit()` asks the user a question mid-snippet through
   `ToolContext.elicit`, the same path a wrapped `Tool` uses. The request is
@@ -194,11 +194,12 @@ this package are the only bound on it:
 `MultiToolExecutionTests` and `ShellExecuteTests` prove each bound with a run
 that writes ten times too much output.
 
-Turn budgeting is no longer this package's to bound: the retired hand-rolled
-ReAct loop's `maxAgentTurns`/`maxRepairTurns` knobs were removed with it, and
-the session's own native tool-calling loop — the shipped main loop, running
-inside the `RoutedSession` a host mounts the vended tools on — owns how many
-`searchTools`/`runCode` turns a request may take.
+This package does not set a limit on the steps of an answer. The retired
+hand-rolled ReAct loop had the settings `maxAgentTurns` and `maxRepairTurns`.
+We removed these settings with that loop. The native tool-calling loop of the
+session sets the limit. This loop is the shipped main loop. It runs in the
+`RoutedSession` that a host mounts the vended tools on. It sets how many
+`searchTools` and `runCode` calls one answer to a message can use.
 
 ## What is NOT guaranteed
 

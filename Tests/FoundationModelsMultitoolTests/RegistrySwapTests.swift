@@ -6,11 +6,11 @@ import Testing
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
 
-/// Coverage for the second half of rebuild-and-swap. eventplan.md
-/// § "Consolidation of the siblings": "Then MultiTool swaps it in atomically
-/// at the next turn boundary — the same boundary where the outbox folds in
-/// events. Nothing changes below a snippet that runs. An in-flight run keeps
-/// the registry that it started with."
+/// Coverage for the second half of rebuild-and-swap (eventplan.md
+/// § "Consolidation of the siblings"). MultiTool swaps the new registry in
+/// atomically at the next submission boundary. The outbox folds in events at
+/// the same boundary. Nothing changes below a snippet that runs. An in-flight
+/// run keeps the registry that it started with.
 ///
 /// Router gives this boundary through `submissionWillBegin()`. The Router
 /// calls it before each submission, and a continuation of one answer is a

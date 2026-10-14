@@ -15,7 +15,7 @@
 // empty envelope fields. It is never thrown: a read-only session, a path
 // outside the root, an absent parent with `parents: false`, a file at the
 // path, and a failed create are each a mistake the model corrects inside the
-// turn, and a thrown error would end the turn instead.
+// same answer. A thrown error would end the answer instead.
 //
 // The verb records no change in the session's `FileChangeJournal`: a patch
 // cannot show an empty directory. Thus it also does not read the ambient

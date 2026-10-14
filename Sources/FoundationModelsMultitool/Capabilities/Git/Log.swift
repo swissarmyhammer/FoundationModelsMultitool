@@ -18,8 +18,8 @@
 // A log the verb cannot make stays IN BAND, as a `correction` beside no
 // commit. It is never thrown: a limit out of range, an unknown ref, a path
 // outside the root, a root in no repository, and a failed walk are each a
-// mistake or a fact the model reads inside the turn, and a thrown error would
-// end the turn instead.
+// mistake or a fact the model reads inside the same answer. A thrown error
+// would end the answer instead.
 
 import Foundation
 import FoundationModels

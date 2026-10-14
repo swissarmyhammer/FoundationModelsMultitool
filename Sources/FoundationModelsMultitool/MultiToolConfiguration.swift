@@ -9,9 +9,9 @@ import FoundationModelsExtras
 /// in memory (see `JSCInterpreter`), so the machine bounds that number, and
 /// no constant in code does.
 ///
-/// This type carries no turn budget. A host mounts the vended tools on a
-/// session of its own (for example a Router session), and that session's own
-/// tool-calling loop owns turn budgeting. The retired `MultiToolAgent` knobs
+/// This type carries no budget for the submissions of an answer. A host mounts
+/// the vended tools on a session of its own (for example a Router session).
+/// The tool-calling loop of that session owns that budget. The retired `MultiToolAgent` knobs
 /// `maxAgentTurns` and `maxRepairTurns` went with it, and only the
 /// `runCode`-sandbox limits stay.
 public struct MultiToolConfiguration: Sendable, Equatable {
@@ -105,7 +105,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
 
     /// Creates a hardening configuration. Each limit is clamped up to at
     /// least `0`. A stray negative value in a host's configuration thus
-    /// cannot disable a bound or crash a `runCode` turn.
+    /// cannot disable a bound or crash a `runCode` call.
     ///
     /// - Parameters:
     ///   - executionTimeLimit: see ``executionTimeLimit``.

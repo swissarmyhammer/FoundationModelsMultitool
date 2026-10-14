@@ -481,14 +481,11 @@ is removed, and its suites are in `IntegrationTests/`.)
 
 **No test checks the speed of the machine. (Decided by the user, 2026-10-01, card `^tm4x2hp`.)**
 A time check in a test uses an injected clock or an event, and never the real
-time that a step took. A `.timeLimit` on a model-driven test is a hang guard
-only: one shared value, `IntegrationHangGuard.timeLimit` in
-`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationHangGuard.swift`,
-far above the slowest step on a busy machine. A hang guard stops a test that
-cannot end; it does not fail a test that makes progress. The rule is for each
-run of the integration package, not only for the web suites. In the root
-package, `TestHangGuard.timeLimit` and `TestPoll.deadline`
-(`Tests/Support/MultitoolTestSupport/`) are the hang guards of the unit tests.
+time that a step took. No test has a time limit. No test waits on a sleep or
+does a poll. Each wait of a test ends on an event, a gate, a fixed order, or a
+manual clock. A test that cannot end shows as a hang, and the person who runs
+the suite stops it. The rule is for each run of the integration package and
+of the root package, not only for the web suites.
 
 ### Level 1: unit tests, no network (root package)
 
@@ -555,8 +552,7 @@ package (`swift test --package-path IntegrationTests --no-parallel`, the run of
 CI) also includes each of them.
 
 `--no-parallel`, and `.serialized` on each suite, keep the request rate low.
-Each test has `.timeLimit(IntegrationHangGuard.timeLimit)`, the shared hang
-guard of the integration package (see the rule above).
+No test has a time limit (see the rule above).
 
 **The search spacing. (Decided, 2026-09-30, card `^kghyac5`.)** Two live
 requests to the Brave results page 0.6 s apart gave HTTP 429 to the second

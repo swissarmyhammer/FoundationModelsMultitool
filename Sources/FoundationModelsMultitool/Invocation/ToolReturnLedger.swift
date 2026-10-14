@@ -56,7 +56,7 @@ final class ToolReturnLedger: Sendable {
     ///
     /// Two facts set it. The comparison below is quadratic in the worst case —
     /// every value on one side read against every value on the other — so an
-    /// unbounded pair of large results could cost a turn's time. And a snippet
+    /// unbounded pair of large results could cost the time of an answer. And a snippet
     /// that read thousands of distinct values is summarizing rather than
     /// reporting, which is the case this notice is least able to judge. Past
     /// the bound the ledger therefore reports nothing at all, which is the one
@@ -75,7 +75,7 @@ final class ToolReturnLedger: Sendable {
     /// The action is the one clause held under a condition, and the condition
     /// is what keeps the notice honest on a snippet that computed its answer
     /// deliberately. "Are these the values the answer needs" is a question the
-    /// model can settle from its own turn and this ledger cannot settle at all,
+    /// model can settle from its own answer and this ledger cannot settle at all,
     /// so it is asked rather than assumed. Everything before it is stated
     /// flat, because everything before it was measured.
     ///

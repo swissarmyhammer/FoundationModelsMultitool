@@ -8,7 +8,7 @@ import Testing
 /// reply, and left no forensic record: the recordings root was a fresh
 /// directory under `FileManager.default.temporaryDirectory`, which no CI step
 /// uploads and which does not survive the runner. The one artifact that shows
-/// the literal dispatched prompt and the generation activity of a hung turn
+/// the literal dispatched prompt and the generation activity of a hung answer
 /// was gone before anyone could read it (card `^hht0009`).
 ///
 /// The structural fix is a recordings root INSIDE the workspace —

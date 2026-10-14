@@ -99,7 +99,7 @@ public struct APISurface: Sendable, Equatable {
         /// entry, because direct mode mounts no `searchTools` and the model
         /// must read each signature before its first snippet. The doc
         /// comment and the example stay out, because the description goes
-        /// into the prompt on every turn; `docs("<path>")` in a snippet gives
+        /// into the prompt of each submission; `docs("<path>")` in a snippet gives
         /// the full ``block``.
         var declarationBlock: String {
             "\(banner)\n\(descriptor.declaration)"

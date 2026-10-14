@@ -19,8 +19,8 @@
 // A search the engine cannot make stays IN BAND, as a `correction` beside
 // zero counts. It is never thrown: a bad regular expression, a bad `glob`
 // filter, an unknown `type`, an unknown `outputMode`, and a missing path
-// are each a mistake the model corrects inside the turn, and a thrown
-// error would end the turn instead.
+// are each a mistake the model corrects inside the same answer. A thrown
+// error would end the answer instead.
 
 import FoundationModels
 

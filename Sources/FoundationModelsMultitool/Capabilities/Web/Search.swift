@@ -12,7 +12,7 @@
 //
 // A bad argument and a failed search stay IN BAND, as a `correction` beside
 // no results. The verb never throws for them: each one is a mistake that the
-// model corrects inside the turn, and a thrown error would end the turn.
+// model corrects inside the same answer. A thrown error would end the answer.
 
 import Foundation
 import FoundationModels

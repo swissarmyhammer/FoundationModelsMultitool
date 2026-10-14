@@ -23,8 +23,8 @@
 // empty envelope fields. It is never thrown: a payload that cannot
 // normalize, a path outside the root, a missing or binary file, a
 // read-only target, a read-only session, and a failed commit are each a
-// mistake the model corrects inside the turn, and a thrown error would end
-// the turn instead. The structured retryable outcomes (`ambiguous`,
+// mistake the model corrects inside the same answer. A thrown error would end
+// the answer instead. The structured retryable outcomes (`ambiguous`,
 // `nearMiss`, `alreadyApplied`, `consumedTarget`) are not corrections:
 // they ride in the result's `status` and `outcomes`, and they leave the
 // file byte-identical.

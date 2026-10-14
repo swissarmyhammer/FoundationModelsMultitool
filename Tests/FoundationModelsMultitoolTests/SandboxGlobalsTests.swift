@@ -31,7 +31,7 @@ private let removedWaitCatchingSnippet = """
 /// that goes into Swift effects returns a promise… these calls are
 /// synchronous: `help()` and `docs()`… and `notify()` / `progress()`").
 ///
-/// Every background-run assertion drives a real `SessionMailbox` — a real
+/// Every background-run assertion drives a real `RunPlane` — a real
 /// background run, a real settlement, a real elicitation reply — under an ambient
 /// `ToolContext` the test owns, so what is exercised is the actual Router
 /// surface rather than a stand-in for it.

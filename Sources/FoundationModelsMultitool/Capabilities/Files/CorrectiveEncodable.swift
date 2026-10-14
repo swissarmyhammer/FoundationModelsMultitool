@@ -27,7 +27,7 @@ private enum CorrectiveCodingKey: String, CodingKey {
 ///
 /// The glob and grep outputs are each a two-case enum — a `content` case
 /// carrying the successful result, or a `corrective` case carrying a
-/// message the model reads and acts on within the turn — and both encode
+/// message the model reads and acts on within the same answer — and both encode
 /// identically: the result's own fields inline on success, or a single
 /// `corrective` field on a recoverable failure. Conforming to this protocol
 /// shares that one ``encode(to:)`` (and its `corrective` coding key) rather

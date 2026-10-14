@@ -4,7 +4,7 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The offline checks of the shared `RESULT` line of a gated turn:
+/// The offline checks of the shared `RESULT` line of a gated answer:
 /// `gatedResultLine(of:elapsed:readings:replyPreviewCharacters:)` and the
 /// field readings that the gated suites give to it.
 ///
@@ -14,19 +14,19 @@ import Testing
 @Suite("Gated result line: the route, the readings of the scenario, then the start of the reply")
 struct GatedResultLineTests {
 
-    /// The snippet of the turn of each check. It calls one verb.
+    /// The snippet of the answer of each check. It calls one verb.
     private static let snippetArguments = #"{"code":"return await tools.git.diff({})"}"#
 
-    /// The reply of the turn of each check.
+    /// The reply of the answer of each check.
     private static let reply = "The function area is now surface."
 
     /// How many characters of the reply each check shows.
     private static let replyPreviewCharacters = 12
 
-    /// How long the turn of each check took, in seconds.
+    /// How long the answer of each check took, in seconds.
     private static let elapsed: TimeInterval = 2.5
 
-    /// A turn with one `runCode` call, one failed call, a priming failure, and
+    /// An answer with one `runCode` call, one failed call, a priming failure, and
     /// a reply.
     private static var turn: StreamedTurn {
         var turn = StreamedTurn()

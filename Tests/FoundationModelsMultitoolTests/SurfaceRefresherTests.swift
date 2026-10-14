@@ -9,14 +9,14 @@ import Testing
 @testable import MultitoolTestSupport
 
 /// Coverage for `SurfaceRefresher` — the watcher that joins the two halves of
-/// rebuild-and-swap. eventplan.md § "Consolidation of the siblings": "A late
+/// rebuild-and-swap (eventplan.md § "Consolidation of the siblings"). A late
 /// server, a reconnect, or an MCP `tools/list_changed` starts a full rebuild.
 /// MultiTool renders the new registry complete at the side. Then MultiTool
-/// swaps it in atomically at the next turn boundary."
+/// swaps it in atomically at the next submission boundary.
 ///
 /// `RegistryRebuildTests` covers the rebuild and `RegistrySwapTests` covers the
-/// swap. This suite covers the watcher between them, and it drives the turn
-/// tick by hand with `MultiTool.submissionWillBegin()`, the way a `RoutedSession`
+/// swap. This suite covers the watcher between them, and it drives the tick
+/// before each submission by hand with `MultiTool.submissionWillBegin()`, the way a `RoutedSession`
 /// drives it.
 ///
 /// Seven facts carry this suite:

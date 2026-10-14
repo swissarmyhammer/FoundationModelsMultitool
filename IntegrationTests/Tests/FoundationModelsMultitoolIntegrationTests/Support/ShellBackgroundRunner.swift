@@ -11,7 +11,7 @@ import ScenarioGrading
 // eventplan.md § "Phases", phase 2: "Shell is the reference emitter. Its
 // detached commands prove the background path end to end."
 //
-// One live turn sends the run to the background, and the harness reads the run
+// One live message and its answer send the run to the background, and the harness reads the run
 // plane while the run is still going. The split is deliberate, and it is the
 // split the product itself makes:
 //
@@ -33,10 +33,10 @@ import ScenarioGrading
 //   canceler `cancel()` invokes (`ToolContext.cancel(completionToken:)`), and
 //   the session's own run journal.
 //
-// **The mailbox's retained outcome is never read here.** Router's ^vbja15j:
+// **The retained outcome of the run plane is never read here.** Router's ^vbja15j:
 // `ToolRun` builds its terminal from `terminalFacts(for:)`, which
 // sees only whether the wrapped Swift call returned. A `.process` run stopped by
-// `killpg` lets `Execute.call` return normally, so the mailbox retains
+// `killpg` lets `Execute.call` return normally, so the run plane retains
 // `OperationOutcome.succeeded` for a run a SIGKILL ended. `wait(completionToken:)`
 // and a late `cancel(completionToken:)` both answer with that retained value, so
 // an assertion on either would be asserting the defect. What this scenario reads
@@ -132,7 +132,7 @@ private let backgroundReportsPerRun = 1
 
 /// How many terminal events one swept run gets.
 ///
-/// `SessionMailbox.sweep()` states the invariant: exactly one for each run,
+/// `RunPlane.sweep()` states the invariant: exactly one for each run,
 /// never two. `RoutedSessionActor.close()` journals exactly that list.
 private let terminalEventsPerRun = 1
 
@@ -152,10 +152,11 @@ private let runCodeToolName = "runCode"
 /// under Router's own per-session tool wiring, so a bare session would have no
 /// background path to prove.
 ///
-/// The turn is streamed rather than driven through `respond(to:)`, for the
-/// reason `runNativeIntegrationScenario` states at length: `respond` blocks and
-/// drains, so a backgrounded run is collected before the caller sees it and the
-/// background run this scenario reads would not stand on the run plane.
+/// The answer is streamed. It is not driven through `respond(to:)`, for the
+/// reason that `runNativeIntegrationScenario` states: `respond(to:)` gives one
+/// final text and nothing else, and it returns only when the answer ends. The
+/// stream gives each event while the answer goes on, and the harness reads the
+/// run plane in that time.
 ///
 /// **Skip, not failure.** Identical to every other runner here: a
 /// `GenerationError.notWiredForLiveInference` prints a note and records no
@@ -187,9 +188,9 @@ func runShellBackgroundScenario(name: String) async throws {
         let sweptGate = try ShellCommandGate()
         let turnEnded = ScenarioGate()
 
-        // Started before the turn and read after it. The run plane has to be
-        // read WHILE the run is going — a reading taken after the turn would
-        // find whatever Router's own end-of-turn handling left, which is a
+        // Started before the answer and read after it. The run plane has to be
+        // read WHILE the run is going — a reading taken after the answer would
+        // find whatever Router's own handling at the end of the answer left, which is a
         // different question from the one this scenario asks.
         let watcher = Task {
             await observeShellRunPlane(
@@ -209,14 +210,14 @@ func runShellBackgroundScenario(name: String) async throws {
         turnEnded.open()
         let elapsed = Date().timeIntervalSince(start)
         var plane = await watcher.value
-        // The cancel comes after the turn. Until its settle period ends, the
-        // `runCode` call of the turn waits for the snippet in band, and a
-        // cancel then would end that call of the turn and not a background
+        // The cancel comes after the answer. Until its settle period ends, the
+        // `runCode` call of the answer waits for the snippet in band, and a
+        // cancel then would end that call of the answer and not a background
         // run.
         await cancelSnippetRun(observed: &plane, probe: probe)
 
         // The journal half of task ^1hq8xny's split: `RoutedSessionActor.close()`
-        // journals exactly what `SessionMailbox.sweep()` answers with, through
+        // journals exactly what `RunPlane.sweep()` answers with, through
         // `SessionOutbox.journalWithoutStaging(event:)`, before it returns. That
         // half needs a loaded model to drive, which is why it stands here.
         await session.close()
@@ -331,15 +332,16 @@ struct ShellRunPlaneObservation: Sendable {
     var sweptRunToken: String?
 }
 
-/// Reads the run plane of the live session while the model's turn is going.
+/// Reads the run plane of the live session while the answer of the model goes
+/// on.
 ///
 /// No step waits on time. Each step waits on an event, or reads once at a
 /// point where the product already made the reading true:
 ///
 /// - The context of the model's shell run comes with the event of the probe
 ///   (``ShellRunContextProbe/waitForFirstContext()``). A model that never
-///   starts the run gives no such event, thus the wait also ends when the turn
-///   ended (`turnEnded`), and the step leaves its reading unset.
+///   starts the run gives no such event, thus the wait also ends when the
+///   answer ended (`turnEnded`), and the step leaves its reading unset.
 /// - The `runCode` run stands on the run plane before its body runs:
 ///   `RunPlane.start` adds the run in the same step of its actor that creates
 ///   the task of the body, and the shell run is inside that body. Thus one
@@ -357,7 +359,7 @@ struct ShellRunPlaneObservation: Sendable {
 ///     `tools.shell.getLines` verb over the same store.
 ///   - declaredJournalOp: the op the registration site declared for
 ///     `tools.shell.execute`, which the swept run stands under.
-///   - turnEnded: the gate the runner opens when the turn ended.
+///   - turnEnded: the gate the runner opens when the answer ended.
 ///   - sweptGate: the FIFO the command of the swept run waits on.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
@@ -393,17 +395,17 @@ private func observeShellRunPlane(
     return observation
 }
 
-/// The ambient context of the model's first shell run, or `nil` when the turn
+/// The ambient context of the model's first shell run, or `nil` when the answer
 /// ended with no shell run.
 ///
 /// Two events race, and the first one decides: the probe sees the first shell
 /// run (``ShellRunContextProbe/waitForFirstContext()``), or the runner opens
-/// `turnEnded`. After the turn ended, the probe is read one time, thus a run
-/// that came at the same time as the end of the turn is not lost.
+/// `turnEnded`. After the answer ended, the probe is read one time, thus a run
+/// that came at the same time as the end of the answer is not lost.
 ///
 /// - Parameters:
 ///   - probe: the sandbox the shell capability was built with.
-///   - turnEnded: the gate the runner opens when the turn ended.
+///   - turnEnded: the gate the runner opens when the answer ended.
 /// - Returns: the context of the first shell run, or `nil`.
 private func firstShellRunContext(
     of probe: ShellRunContextProbe, orAfter turnEnded: ScenarioGate
@@ -423,14 +425,14 @@ private func firstShellRunContext(
 /// Cancels the background `runCode` run of the model, and reads whether the
 /// cancel reached the inner shell run.
 ///
-/// Called after the turn, when the `runCode` call of the turn already answered
+/// Called after the answer, when the `runCode` call of the answer already answered
 /// with its pending envelope, so the cancel ends a background run.
 ///
 /// - Parameters:
 ///   - observation: what the harness read off the run plane; the outcome of the
 ///     cancel and the state of the process group go into it.
 ///   - probe: the sandbox the shell capability was built with, whose first
-///     context carries the session's mailbox.
+///     context carries the run plane of the session.
 private func cancelSnippetRun(
     observed observation: inout ShellRunPlaneObservation, probe: ShellRunContextProbe
 ) async {
@@ -500,7 +502,7 @@ private func processGroup(in lines: [String]) -> pid_t? {
 /// Starts one more background shell run on the same session, and answers with
 /// its completion token.
 ///
-/// The verb is mounted on the session's own mailbox through the context of the
+/// The verb is mounted on the own run plane of the session through the context of the
 /// model's shell run, the way a session mounts a tool. `Execute.mount` declares
 /// a background mount, and the command waits on `gate` past the settle period,
 /// so the run goes to the background as a `RunKind.process` run. A `runCode`
@@ -519,11 +521,11 @@ private func processGroup(in lines: [String]) -> pid_t? {
 ///
 /// - Parameters:
 ///   - context: the ambient context of the model's own shell run, which carries
-///     the session's mailbox.
+///     the run plane of the session.
 ///   - other: the completion token of the model's background run, so the new
 ///     one is told apart from it on the plane.
 ///   - registry: the registry the session was mounted over, which is what makes
-///     the new run stand on the same store and the same mailbox.
+///     the new run stand on the same store and the same run plane.
 ///   - op: the op the new run stands under: the declared op of the verb.
 ///   - gate: the FIFO the command waits on.
 /// - Returns: the new run's completion token, or `nil` when it never went to
@@ -543,7 +545,7 @@ private func startSweptRun(
 /// The outcome a cancel reported, or `nil` when there was nothing to report.
 ///
 /// Only `CancelOutcome.reported` is read. `.alreadySettled` hands back the
-/// mailbox's RETAINED terminal event, which Router's ^vbja15j makes wrong for a
+/// RETAINED terminal event of the run plane, which Router's ^vbja15j makes wrong for a
 /// killed run — `ToolRun` builds it from `terminalFacts(for:)`, and
 /// a `.process` run stopped by `killpg` lets the wrapped call return normally,
 /// so the retained outcome reads `succeeded` for a run a SIGKILL ended. Reading
@@ -564,7 +566,7 @@ private func cancelReport(of outcome: CancelOutcome) -> OperationOutcome? {
 /// terminal has landed.
 ///
 /// The journal is where BOTH of this scenario's event assertions are read, and
-/// it is the only plane that can carry either one. The turn's own stream cannot:
+/// it is the only plane that can carry either one. The stream of the answer cannot:
 /// `SessionEvent.toolStatus(.running, summary:)` arrives with an empty summary
 /// for a background call, so a run that reported its background handoff and one
 /// that went silent read identically there. Measured on 2026-08-25 — the
@@ -572,7 +574,7 @@ private func cancelReport(of outcome: CancelOutcome) -> OperationOutcome? {
 /// stream's summary held nothing.
 ///
 /// Read after `close()`, so one snapshot carries the whole run: the background
-/// report the turn wrote, and the terminal the sweep wrote.
+/// report the answer wrote, and the terminal the sweep wrote.
 ///
 /// One read, and no poll: `close()` journals before it returns. The drain of
 /// `close()` awaits the journal write of each swept terminal

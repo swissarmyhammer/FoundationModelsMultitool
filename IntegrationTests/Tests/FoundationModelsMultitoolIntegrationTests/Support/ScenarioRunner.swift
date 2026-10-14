@@ -19,7 +19,7 @@ import ScenarioGrading
 /// primed one that worked. That is the exact confusion this field exists to
 /// prevent.
 ///
-/// - Parameter turn: the streamed turn to describe.
+/// - Parameter turn: the streamed answer to describe.
 /// - Returns: `off` when no seeding was requested, `ok` when it ran, or
 ///   `FAILED(reason)` when Router reported it downgraded.
 func primingLabel(_ turn: StreamedTurn) -> String {
@@ -30,9 +30,9 @@ func primingLabel(_ turn: StreamedTurn) -> String {
 /// Router's pre-discovery seeding opt-in for these scenarios — **off**.
 ///
 /// Seeding runs a real `searchTools` call host-side before the model's first
-/// token, so the turn it resumes already holds the discovery call and the typed
+/// token, so the answer it resumes already holds the discovery call and the typed
 /// signatures it returned. RESOLUTION B (task `tkrdwb8`) predicted that would
-/// eliminate the turn-with-no-snippet failure, because nothing would be left
+/// eliminate the failure of an answer with no snippet, because nothing would be left
 /// for the model to decide.
 ///
 /// Measured, it did the opposite. With seeding on, all four scenarios scored
@@ -51,7 +51,7 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 
 /// Runs one gated scenario end to end against a freshly-resolved live
 /// profile, using the session-driven design — no `MultiToolAgent`, no
-/// `TurnFormat`, no hand-rolled turn parsing. Mounts what the registry vends
+/// `TurnFormat`, no hand-rolled parse of answers. Mounts what the registry vends
 /// on a `RoutedSession` the resolved `.standard` slot vends
 /// (`makeSession(tools:discoveryPriming:)`) — the exact wiring a Router host
 /// makes, never a reimplementation of it — with
@@ -185,7 +185,7 @@ func runNativeIntegrationScenario(
         //
         // **`respond(to:)` gives one final text and nothing else.** The
         // stream gives each tool call, each tool status and each submission
-        // of the turn, and the grading and the route diagnostics read them.
+        // of the answer, and the grading and the route diagnostics read them.
         // A gated suite driven through `respond` would see the answer and not
         // the route: whether `searchTools` preceded `runCode`, and what each
         // call returned.
@@ -268,13 +268,13 @@ func runNativeIntegrationScenario(
 /// fields.
 private let nativeReplyPreviewCharacters = 80
 
-/// Everything one streamed turn produced that a scenario grades or reports.
+/// Everything one streamed answer produced that a scenario grades or reports.
 struct StreamedTurn {
     /// The id of the user message, or `nil` before `streamTurn` sent it.
     var mailId: MailID?
 
-    /// The turn's reply text: `SessionAnswer.reply` of the `answered` event
-    /// that ended the turn, or the empty string when no answer ended it.
+    /// The reply text of the answer: `SessionAnswer.reply` of the `answered`
+    /// event that ended the answer, or the empty string when no answer ended.
     ///
     /// Taken from `answered` and not joined from the `textDelta` fragments.
     /// Router states that `SessionAnswer.reply` is character-equal to what
@@ -288,7 +288,7 @@ struct StreamedTurn {
     /// ``answer``.
     var streamedText = ""
 
-    /// How many tool calls the model made during the turn.
+    /// How many tool calls the model made during the answer.
     var toolCallCount = 0
 
     /// Each completed tool call's own output text, in completion order.
@@ -309,19 +309,19 @@ struct StreamedTurn {
 
     /// Each answer superseded by a `.textReset`, oldest first.
     ///
-    /// Kept rather than dropped: a turn that restarted its answer is a turn
+    /// Kept rather than dropped: an answer that restarted its text is an answer
     /// whose first pass is evidence — it is what the model said before it had
     /// tool output — and a non-empty list is the direct signal that the tool
     /// loop re-entered generation.
     var supersededAnswers: [String] = []
 
-    /// Every compaction the session performed during this turn.
+    /// Every compaction the session performed during this answer.
     ///
-    /// Non-empty means the turn was rewritten mid-flight; a scored run that
+    /// Non-empty means the answer was rewritten mid-flight; a scored run that
     /// compacted is not measuring the same prompt the scenario set up.
     var compactions: [String] = []
 
-    /// The turn's token usage, as the session reported it — **output only**.
+    /// The token usage of the answer, as the session reported it — **output only**.
     ///
     /// The input half is not a measurement and must not be read as one. The
     /// fork's `MLXLanguageModel.emitUsage` hands usage to a test-only
@@ -339,21 +339,22 @@ struct StreamedTurn {
     /// measurement of an empty prompt. `contextFill` is suspect for the same
     /// reason if it derives from the input count. Two consumers observed this
     /// independently: `FoundationModelsRouter`'s
-    /// `LanguageModelSessionBackendTests` off a completed turn, and this
+    /// `LanguageModelSessionBackendTests` off a completed answer, and this
     /// runner off the stream.
     ///
     /// Rendered by ``usageForDisplay`` rather than printed raw, so a gated
     /// diagnostic never states a number nobody measured.
     var tokenUsage: String?
 
-    /// The submissions of the answer that ended this turn, as
+    /// The submissions of this answer, as
     /// `<submission ids>/<cause>` — for example `1,2/message` for a first
     /// submission and one continuation.
     ///
     /// Router reports one `submissionStarted` for each SDK call of the chain
     /// (`generation-queue.md`, section 5.6). The cause is the cause of the
-    /// first submission: `message` for the prompt of this turn, `mail` for an
-    /// answer that no caller asked for. `nil` when no answer ended the turn.
+    /// first submission: `message` for the prompt that started this answer,
+    /// `mail` for an answer that no caller asked for. `nil` when no answer
+    /// ended the stream.
     var submissionIdentity: String?
 
     /// Every progress report a still-running call made, as `name: detail`.
@@ -361,7 +362,7 @@ struct StreamedTurn {
     /// The direct measure of the product goal: a slow tool must not go silent.
     /// It reports that it is in process and keeps streaming events until it is
     /// done, so a client can show a live view of work it did not have to poll
-    /// for. An empty list on a turn that took minutes is the failure this
+    /// for. An empty list on an answer that took minutes is the failure this
     /// records.
     ///
     /// Only the streaming surface can carry these. `respond(to:)` is
@@ -371,11 +372,11 @@ struct StreamedTurn {
 
     /// Every tool call the session reported as failed, as `name: detail`.
     ///
-    /// Kept because its absence hid a whole class of run: a turn whose calls
-    /// all failed produced the same diagnostics as a turn that made none.
+    /// Kept because its absence hid a whole class of run: an answer whose calls
+    /// all failed produced the same diagnostics as an answer that made none.
     var failedCalls: [String] = []
 
-    /// Why Router's pre-discovery seeding did not run this turn, or `nil` when
+    /// Why Router's pre-discovery seeding did not run for this answer, or `nil` when
     /// it ran (or was never asked for).
     ///
     /// Reported alongside the run's diagnostics: a scored run whose priming
@@ -392,7 +393,7 @@ private let scenarioTraceLimit = 600
 /// Puts one call's arguments or output on a single greppable line.
 ///
 /// The `RESULT` line reports what a run *scored*. It cannot report why a run
-/// scored that: a turn that called `runCode` 19 times, failed no call, and
+/// scored that: an answer that called `runCode` 19 times, failed no call, and
 /// still answered "I am unable to retrieve" prints `typed=[] invoked=[]
 /// returned=[]` and says nothing about what the snippets asked for or what came
 /// back. This is that missing evidence, so one gated run is enough to find the
@@ -515,27 +516,27 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
             let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
             turn.failedCalls.append("\(name): \(summary ?? "no detail")")
         case .discoveryPrimingFailed(let reason):
-            // Seeding is best-effort in Router: a failure downgrades the turn
+            // Seeding is best-effort in Router: a failure downgrades the answer
             // to an unprimed one rather than failing it. Silence here would
             // read as "priming was on and did not help", so it is printed —
             // a run whose priming never happened must not be scored as one
             // that did.
             turn.discoveryPrimingFailure = "\(reason)"
         case .compaction(let result):
-            // Swallowed until now, like `.toolStatus(.failed)` was. A turn that
+            // Swallowed until now, like `.toolStatus(.failed)` was. An answer that
             // compacted mid-flight can lose the tool definitions and the
             // discovery output it is meant to act on, which looks from the
             // outside exactly like a model that will not use its tools.
             turn.compactions.append("\(result)")
         case .compactionStarted(let start):
             // Router announces a compaction before it runs. The start is
-            // kept with the finished ones, so a turn that began a compaction
+            // kept with the finished ones, so an answer that began a compaction
             // and never finished it shows both facts.
             turn.compactions.append("started \(start)")
         case .compactionFailed(let failure):
             // A compaction that failed leaves the session context as it was.
-            // It is kept with the other compactions, so a turn that lost
-            // the chance to shrink its context is not read as a clean turn.
+            // It is kept with the other compactions, so an answer that lost
+            // the chance to shrink its context is not read as a clean answer.
             turn.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
@@ -580,12 +581,12 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
 
 extension StreamedTurn {
     /// Takes the graded reply, the submission identity and the token usage
-    /// from the answer chain of the message of the turn, found by its
+    /// from the answer chain of the message, found by its
     /// `MailID`.
     ///
     /// **The end of the reply is `answered`, not `submissionEnded`.** The
-    /// event the old Router sent at the end of a turn meant "the reply of this
-    /// turn ended", so the three
+    /// event the old Router sent at the end of an answer meant "the reply of
+    /// this answer ended", so the three
     /// fields read the `answered` event of the chain: its reply, and its usage,
     /// which is the sum over each `submissionEnded` of the chain. One
     /// `submissionEnded` is the end of one SDK call only, and a chain that
@@ -679,8 +680,8 @@ struct ScenarioSurface {
 /// attempts, so every `searchTools` call paid two large-model generations
 /// instead of one. Once discovery stopped backgrounding — it is a synchronous
 /// prerequisite and must never background — that cost stopped being hidden by a
-/// thrashing turn and became a hard failure: `ToolMountError.timedOut(tool:
-/// "searchTools", timeoutSeconds: 120.0)`, the whole turn dead in its first
+/// thrashing answer and became a hard failure: `ToolMountError.timedOut(tool:
+/// "searchTools", timeoutSeconds: 120.0)`, the whole answer dead in its first
 /// call (task `h773bed`).
 ///
 /// The arm was never worth its cost anyway. A gated n=5 (task `9zk44z6`) graded
@@ -794,18 +795,19 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// `registry.directMode()` vends, so the run pays for no discovery. A pending envelope on the discovery surface is graded by
 /// `ShellBackgroundTests`.
 ///
-/// **One turn, not two.** Splitting a background scenario into a "start it"
-/// turn and a "collect it" turn was tried on real hardware and is worse in
-/// both halves: a turn that only asks to start the job gets an announcement
-/// and no `runCode` call at all, and a second turn asked to report the result
+/// **One message, not two.** Splitting a background scenario into a "start it"
+/// message and a "collect it" message was tried on real hardware and is worse in
+/// both halves: an answer to a message that only asks to start the job gives an
+/// announcement and no `runCode` call at all, and the answer to a second message
+/// that asks to report the result
 /// re-scans or invents a code rather than reading the background run (one run
-/// answered the right code in the opening turn and a made-up `8472` in the
-/// closing one). The single turn is also the honest unit of the claim — the
+/// answered the right code in the opening answer and a made-up `8472` in the
+/// closing one). The single message is also the honest unit of the claim — the
 /// model receives the pending envelope and still finishes the job it was
 /// given.
 ///
-/// **What changed, and why.** The old Router drained the background runs of a
-/// turn inside `respond(to:)`, and the old surface mounted a `wait` tool that
+/// **What changed, and why.** The old Router drained the background runs of an
+/// answer inside `respond(to:)`, and the old surface mounted a `wait` tool that
 /// the model called to collect a run in band. The work-queue Router removed
 /// the drain and the `wait` tool. A run that settles after the answer ends now
 /// sends its result to the session as mail, and the session starts a new
@@ -845,7 +847,7 @@ private let mailCanaryReplyPreviewCharacters = 120
 ///     this runner reads back. A fixture that must settle after the first
 ///     answer waits on the gate, and not on a sleep (see
 ///     `IntegrationDelayedEchoTool`).
-///   - prompt: the user request driving the turn.
+///   - prompt: the user request that starts the answer.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively). Pick a value the reply
 ///     cannot carry unless the run really happened: the canary uses a fresh
@@ -973,7 +975,7 @@ private struct MailAnswerReading {
     }
 }
 
-/// Renders a turn's usage for a gated diagnostic line, without stating a
+/// Renders the usage of an answer for a gated diagnostic line, without stating a
 /// number nobody measured.
 ///
 /// The output count is real. The input count never reaches the framework
@@ -983,7 +985,7 @@ private struct MailAnswerReading {
 /// time on it. `contextFill` is carried through with the same caveat, since it
 /// may derive from the missing input count.
 ///
-/// - Parameter usage: the usage the turn reported.
+/// - Parameter usage: the usage the answer reported.
 /// - Returns: the display string for the `tokens=` field.
 private func usageForDisplay(_ usage: TokenUsage) -> String {
     "out:\(usage.tokensOut) in:unavailable(^z2996cp) contextFill:\(usage.contextFill)?"
@@ -1013,8 +1015,8 @@ private let nestedGenerationReplyPreviewCharacters = 200
 ///
 /// No test may depend on time, thus no sampler reads the queue on a timer.
 /// The queue gives no event when its state changes. Thus the probe reads it
-/// at fixed points of the run: before the turn starts, and at the end of the
-/// turn (also when the turn throws). The state at the nested call itself is
+/// at fixed points of the run: before the answer starts, and at the end of the
+/// answer (also when the answer throws). The state at the nested call itself is
 /// what `IntegrationNestedGenerationTool` records. This prints rather than
 /// asserts, because it is evidence and not a check.
 ///
@@ -1044,11 +1046,11 @@ extension RoutedLLM {
     }
 }
 
-/// Runs the nested-generation probe: one turn whose single mounted tool
-/// generates, without any grammar, on the very model that turn is running on.
+/// Runs the nested-generation probe: one answer whose single mounted tool
+/// generates, without any grammar, on the very model that the answer runs on.
 ///
-/// **The question.** `searchTools` generates from inside the outer turn's tool
-/// call. When the nested generation needs the model that the outer submission
+/// **The question.** `searchTools` generates from inside a tool call of the
+/// outer answer. When the nested generation needs the model that the outer submission
 /// holds open, the work-queue Router must refuse it at once with
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`. This run makes
 /// exactly that nested call and grades how it ended, through
@@ -1058,13 +1060,13 @@ extension RoutedLLM {
 ///
 /// **What it replaced.** The old Router's `RoutedModel.generationGate` — an
 /// `AsyncSemaphore(value: 1)` per resident container, taken by `beginTurn()`
-/// and held across the tool rounds of the turn — parked the same nested call
+/// and held across the tool rounds of the answer — parked the same nested call
 /// for ever. Measured on 2026-08-16 with both slots on
 /// `mlx-community/Muse-Glimmer-30B-4bit`: the gate read
 /// `permits=0 waiters=1` to the end of the run, and the unified log read
 /// `enter nestedRespond` at 08:15:49.698 and
 /// `exit nestedRespond threw CancellationError()` at 08:18:34.135 — 165
-/// seconds, unwound only when the hang guard cancelled the outer turn.
+/// seconds, unwound only when the test run cancelled the outer answer.
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
@@ -1073,17 +1075,17 @@ extension RoutedLLM {
 /// one of them generates under a grammar on a slot of its own, and none of
 /// them is the question.
 ///
-/// **What a hang looks like from outside.** The turn stops making progress,
+/// **What a hang looks like from outside.** The answer stops making progress,
 /// and no time limit ends it: the person who runs the suite stops the run.
-/// The evidence is the `QUEUE` line this prints before the turn, the missing
-/// `QUEUE` line of the end of the turn, and the enter record of the span the fixture
+/// The evidence is the `QUEUE` line this prints before the answer, the missing
+/// `QUEUE` line of the end of the answer, and the enter record of the span the fixture
 /// opens: the swift-log output of the run shows
 /// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the
 /// span of that call does not end for as long as the run lasts.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the run, used in the printed lines.
-///   - prompt: the user request driving the turn.
+///   - prompt: the user request that starts the answer.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runNestedGenerationProbe(name: String, prompt: String) async throws {
     // `plumbingProbeProfile`, not the shipped pin every other runner in this

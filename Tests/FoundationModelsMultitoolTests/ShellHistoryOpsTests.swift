@@ -252,7 +252,7 @@ struct ShellHistoryOpsTests {
     }
 
     /// A token no command of this session ran under is a mistake the model can
-    /// correct inside the turn. Thus the verb answers with a correction in
+    /// correct inside the answer. Thus the verb answers with a correction in
     /// band, and it never throws.
     @Test("getLines corrects a token no command of this session ran under")
     func getLinesCorrectsATokenNoCommandRanUnder() async throws {
@@ -377,7 +377,7 @@ struct ShellHistoryOpsTests {
     }
 
     /// A pattern that does not compile is an expected failure the model can
-    /// recover from inside the turn, because it can rephrase the pattern.
+    /// recover from inside the answer, because it can rephrase the pattern.
     /// Thus the verb answers with a correction in band, and it never throws.
     @Test("grepHistory corrects a pattern that does not compile")
     func grepHistoryCorrectsAPatternThatDoesNotCompile() async throws {

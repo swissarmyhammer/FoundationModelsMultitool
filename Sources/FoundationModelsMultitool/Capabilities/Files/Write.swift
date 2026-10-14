@@ -20,8 +20,8 @@
 // A write the verb cannot make stays IN BAND, as a `correction` beside
 // empty envelope fields. It is never thrown: an over-cap content, a path
 // outside the root, a read-only target, a read-only session, and a failed
-// write are each a mistake the model corrects inside the turn, and a
-// thrown error would end the turn instead.
+// write are each a mistake the model corrects inside the same answer. A
+// thrown error would end the answer instead.
 
 import Foundation
 import FoundationModels

@@ -13,8 +13,8 @@
 // A rejected path stays IN BAND. Every entry point returns a `Result`:
 // `.success` with the resolved absolute URL, or `.failure` with a
 // `PathViolation` that carries a corrective message. Nothing here throws. The
-// model reads the message and corrects the path inside the same turn; a
-// thrown error would end the turn instead.
+// model reads the message and corrects the path inside the same answer. A
+// thrown error would end the answer instead.
 //
 // The stack is itself a Swift port of the Rust `swissarmyhammer-tools`
 // `shared_utils` validation stack (`FilePathValidator`, `validate_file_path`,
@@ -31,7 +31,7 @@ import Foundation
 ///
 /// The validation stack follows the *return-don't-throw* pattern: a
 /// violation comes back as a `Result` failure, never raised, thus a language
-/// model can read the message and correct the path within the same turn. The
+/// model can read the message and correct the path within the same answer. The
 /// type conforms to `Error` only so it can be a `Result` failure — no code
 /// throws it.
 struct PathViolation: Error, Equatable, Sendable, CustomStringConvertible {

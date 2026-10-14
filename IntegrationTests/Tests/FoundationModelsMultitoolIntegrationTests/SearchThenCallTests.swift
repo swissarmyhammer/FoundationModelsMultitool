@@ -65,8 +65,8 @@ private let discoveryPrompt =
 /// ScenarioRunner.swift`), which mounts the vended tools on the
 /// `RoutedSession` a resolved profile slot vends and lets that session's own
 /// native tool-calling loop decide when to call `searchTools` vs `runCode`,
-/// reading the turn off `streamEvents(to:)`. There is no turn-format
-/// matrix anymore — `.tolerantParse`/`.guided` were `MultiToolAgent`-specific
+/// reading the answer off `streamEvents(to:)`. There is no matrix of answer
+/// formats anymore — `.tolerantParse`/`.guided` were `MultiToolAgent`-specific
 /// prompted-text conventions with no equivalent in native tool-calling — so
 /// each scenario runs once, not twice.
 ///

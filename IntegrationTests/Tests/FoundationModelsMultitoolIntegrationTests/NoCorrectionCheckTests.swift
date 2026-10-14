@@ -5,7 +5,7 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// The offline checks of `ScenarioCheck.noCorrection(named:in:)`, the shared
-/// condition that no `runCode` output of a gated turn holds a `correction`.
+/// condition that no `runCode` output of a gated answer holds a `correction`.
 ///
 /// Each check makes a `StreamedTurn` by hand. No check loads a model. Thus
 /// each check always runs.
@@ -24,11 +24,11 @@ struct NoCorrectionCheckTests {
     /// A `runCode` output with a correction that has a value.
     private static let correctedOutput = #"{"date":"","correction":"the time zone Not/AZone is not known"}"#
 
-    /// A turn with one `runCode` call for each output.
+    /// An answer with one `runCode` call for each output.
     ///
     /// - Parameter outputs: The output of each call, or `nil` for a call
     ///   that did not complete.
-    /// - Returns: The turn.
+    /// - Returns: The answer.
     private static func turn(outputs: [String?]) -> StreamedTurn {
         var turn = StreamedTurn()
         turn.calls = outputs.map {

@@ -1,7 +1,7 @@
 // `OutputBuffer` — the capture store of one shell run.
 //
 // eventplan.md § "Consolidation of the siblings" keeps the run plane and the
-// content plane apart. The mailbox carries envelopes only, and it never carries
+// content plane apart. The run plane carries envelopes only, and it never carries
 // bulk output. The captured output of a run stays in the store of the
 // capability that owns the run. This buffer is that store for the shell
 // capability: it takes the bytes the child writes, it keeps them under one byte

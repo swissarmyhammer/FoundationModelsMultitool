@@ -21,8 +21,8 @@
 // line. It is never thrown: a bad line range, a path outside the root, a
 // missing, unreadable, or binary file, an unknown rev, a file that the commit
 // of the rev does not hold, a root in no repository, and a failed blame are
-// each a mistake or a fact the model reads inside the turn, and a thrown
-// error would end the turn instead.
+// each a mistake or a fact the model reads inside the same answer. A thrown
+// error would end the answer instead.
 
 import Foundation
 import FoundationModels

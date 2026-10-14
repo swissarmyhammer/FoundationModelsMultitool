@@ -2,8 +2,8 @@ import FoundationModelsExtras
 
 // MARK: - The submission boundary (eventplan.md § "Consolidation of the siblings")
 //
-// "Then MultiTool swaps it in atomically at the next turn boundary — the same
-// boundary where the outbox folds in events." The host supplies the boundary
+// MultiTool swaps it in atomically at the next submission boundary. That is the
+// same boundary where the outbox folds in events. The host supplies the boundary
 // through `SubmissionBoundaryTool.submissionWillBegin()` of
 // FoundationModelsExtras: a Router session calls it one time before each
 // submission, after the session takes the waiting messages and before the

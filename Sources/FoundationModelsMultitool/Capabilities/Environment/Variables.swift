@@ -15,8 +15,8 @@
 //
 // A name that is not set, and `name` with `prefix` together, stay IN BAND, as
 // a `correction` beside no variable. They are never thrown: each one is a
-// mistake that the model can correct inside the turn, and a thrown error
-// would end the turn instead.
+// mistake that the model can correct inside the same answer. A thrown error
+// would end the answer instead.
 
 import Foundation
 import FoundationModels

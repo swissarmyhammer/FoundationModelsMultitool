@@ -44,9 +44,9 @@ struct GlobMatches: Encodable, Sendable {
 /// convention ``PathViolation`` and ``ParseFailure`` embody): an over-length
 /// pattern, an invalid glob, an unscoped broad pattern, a rejected search
 /// root, or a missing directory is surfaced as a ``corrective(_:)`` message
-/// the model reads and acts on within the turn, never thrown. A thrown error
-/// is fatal to the turn, so every recoverable condition returns a value
-/// instead.
+/// the model reads and acts on within the same answer. The engine never
+/// throws it. A thrown error ends the answer. Thus every recoverable
+/// condition returns a value instead.
 enum GlobOutput: CorrectiveEncodable, Sendable {
     /// A successful glob carrying the ``GlobMatches``.
     case content(GlobMatches)

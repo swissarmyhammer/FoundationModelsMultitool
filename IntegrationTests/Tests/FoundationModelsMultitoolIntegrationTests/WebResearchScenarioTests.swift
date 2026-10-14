@@ -22,7 +22,7 @@ private let swiftHomePageHost = "swift.org"
 /// `tools.` prefix, thus this is `tools.web.search` as a snippet writes it.
 private let webSearchPath = "web.search"
 
-/// The label of the check that a `runCode` snippet of the turn called
+/// The label of the check that a `runCode` snippet of the answer called
 /// `tools.web.search`.
 private let searchedTheWebCheckName = "searchedTheWeb"
 
@@ -43,7 +43,7 @@ private let webResearchReplyPreviewCharacters = 120
 ///
 /// **The grade.** Two checks, from `web.md`:
 ///
-/// 1. A `runCode` snippet of the turn called `tools.web.search`. The record
+/// 1. A `runCode` snippet of the answer called `tools.web.search`. The record
 ///    is `StreamedTurn.calls`, the record that `streamTurn` keeps of each
 ///    session tool call. `ScenarioCallLog` is not the record here, because
 ///    it holds the calls of fixture tools only, and `tools.web.search` is a
@@ -91,7 +91,7 @@ struct WebResearchScenarioTests {
     /// The conditions that the web research run is graded on, in reporting
     /// order: the route, then the answer.
     ///
-    /// - Parameter turn: the streamed turn, with each session tool call it
+    /// - Parameter turn: the streamed answer, with each session tool call it
     ///   made.
     /// - Returns: each condition, for `grade(scenario:checks:)`.
     private static func webResearchChecks(turn: StreamedTurn) -> [ScenarioCheck] {

@@ -154,7 +154,7 @@ enum EditEngine {
     /// A count mismatch (unequal `find`/`replace` counts with no single-replace
     /// broadcast), an empty `find` set, or a `find == replace` no-op is surfaced
     /// as a ``corrective(_:)`` message the model reads and acts on within the
-    /// turn, following the upstream *return-don't-throw* convention.
+    /// same answer. This follows the upstream *return-don't-throw* convention.
     enum Normalization: Equatable, Sendable {
         /// The successfully shaped find/replace pairs, in order.
         case pairs([Pair])
@@ -681,8 +681,8 @@ enum EditEngine {
     /// A literal `find` that was present in the pre-batch `original` but is now
     /// absent from `working` was consumed by an earlier pair
     /// (``Resolution/consumedTarget``). A `find` that was never in the original
-    /// while the non-empty `replace` is already present looks like a prior-turn
-    /// idempotent re-run (``Resolution/alreadyApplied``).
+    /// while the non-empty `replace` is already present looks like an
+    /// idempotent re-run of an earlier call (``Resolution/alreadyApplied``).
     ///
     /// - Parameters:
     ///   - pair: the pair whose no-match to reclassify.

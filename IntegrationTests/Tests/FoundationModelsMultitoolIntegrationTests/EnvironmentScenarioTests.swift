@@ -20,8 +20,8 @@ import Testing
 /// from the date of each run, thus a model that does not call the verb
 /// cannot know it. The `os` verb reads the real host.
 ///
-/// **The scenario.** One short prompt, thus one model turn. Each model turn
-/// costs approximately 100 s on the CI runner, and the CI integration job
+/// **The scenario.** One short prompt, thus one message and one answer. Each
+/// answer costs approximately 100 s on the CI runner, and the CI integration job
 /// must stay in 20 minutes. The unit tests of each verb call each verb
 /// without a model. The scenario runs one time on each push. There is no
 /// skip and no second round.
@@ -29,7 +29,7 @@ import Testing
 /// **The grade asserts code properties only** (the user's rule: a test does
 /// not assert a fixed model score):
 ///
-/// 1. A `runCode` snippet of the turn called `environment.now`. The record is
+/// 1. A `runCode` snippet of the answer called `environment.now`. The record is
 ///    `StreamedTurn.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
 /// 2. No `runCode` output holds a `correction`.
 /// 3. The answer holds the injected date: the injected weekday or the
@@ -91,7 +91,7 @@ struct EnvironmentScenarioTests {
     /// The conditions that the scenario is graded on: the verbs, the
     /// corrections, then the date in the answer.
     ///
-    /// - Parameter turn: The streamed turn, with each session tool call it
+    /// - Parameter turn: The streamed answer, with each session tool call it
     ///   made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
     private static func checks(turn: StreamedTurn) -> [ScenarioCheck] {
@@ -107,7 +107,7 @@ struct EnvironmentScenarioTests {
     /// token usage, the snippet verbs, the injected date, the priming, and
     /// the failed calls.
     ///
-    /// - Parameter turn: The streamed turn.
+    /// - Parameter turn: The streamed answer.
     /// - Returns: The fields, in print order.
     private static func readings(of turn: StreamedTurn) -> [String] {
         [
@@ -158,7 +158,7 @@ enum InjectedDate {
     /// The condition that the answer holds the injected date: the weekday or
     /// the `yyyy-MM-dd` date, in each letter case.
     ///
-    /// - Parameter turn: The streamed turn.
+    /// - Parameter turn: The streamed answer.
     /// - Returns: The condition, for `grade(scenario:checks:)`.
     static func answerCheck(of turn: StreamedTurn) -> ScenarioCheck {
         ScenarioCheck(
@@ -174,10 +174,10 @@ enum InjectedDate {
 @Suite("Injected date: the clock of the environment scenario, and the check of the answer")
 struct InjectedDateTests {
 
-    /// A turn with one reply and no call.
+    /// An answer with one reply and no call.
     ///
-    /// - Parameter answer: The reply of the turn.
-    /// - Returns: The turn.
+    /// - Parameter answer: The reply of the answer.
+    /// - Returns: The answer.
     private static func turn(answer: String) -> StreamedTurn {
         var turn = StreamedTurn()
         turn.answer = answer

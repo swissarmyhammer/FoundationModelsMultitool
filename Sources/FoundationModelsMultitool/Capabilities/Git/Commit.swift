@@ -21,7 +21,8 @@
 // A commit the verb cannot read stays IN BAND, as a `correction` beside no
 // commit. It is never thrown: an unknown ref, a ref that names no commit, a
 // root in no repository, and a failed read are each a mistake or a fact the
-// model reads inside the turn, and a thrown error would end the turn instead.
+// model reads inside the same answer. A thrown error would end the answer
+// instead.
 
 import Foundation
 import FoundationModels

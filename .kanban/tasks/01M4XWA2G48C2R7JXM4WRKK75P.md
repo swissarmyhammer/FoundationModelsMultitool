@@ -12,8 +12,8 @@ comments:
   timestamp: 2026-10-14T21:11:02.012725+00:00
 depends_on:
 - 01M4XW9N4S2W8WTPXZDE9ASE3A
-position_column: todo
-position_ordinal: '8480'
+position_column: doing
+position_ordinal: '80'
 title: 'Mail step 5 T4: docs and comments, final suite run, final commit and final report'
 ---
 Step 5 of the mail work. Read mailbox.md (sections 3, 4 and 5, the signals table, section 8 rows 2 to 5, and the Progress table). All items in mailbox.md are decisions. This task starts after T3.

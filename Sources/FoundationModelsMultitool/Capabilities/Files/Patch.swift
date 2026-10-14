@@ -22,7 +22,7 @@
 // add onto an existing file, a delete of a missing file, a binary update
 // target, a cross-file conflict, a read-only session, and a failed
 // stage/commit/unlink are each a mistake the model corrects inside the
-// turn, and a thrown error would end the turn instead. The structured
+// same answer. A thrown error would end the answer instead. The structured
 // retryable outcomes (`ambiguous`, `nearMiss`, `alreadyApplied`,
 // `consumedTarget`) are not corrections: they ride in the result's
 // `status` and `outcome`, and they leave every file byte-identical.

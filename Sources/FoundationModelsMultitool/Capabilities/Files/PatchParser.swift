@@ -20,7 +20,7 @@ import Foundation
 /// Follows the upstream *return-don't-throw* pattern shared with ``PathViolation``:
 /// a malformed patch is returned as a `Result` failure, never raised, so a
 /// language model can read the message, fix the envelope, and retry within the
-/// same turn. The type conforms to `Error` only so it can be a `Result` failure
+/// same answer. The type conforms to `Error` only so it can be a `Result` failure
 /// — it is never thrown. The ``line`` is a 1-based physical line number into the
 /// patch text, so a corrective can point the model at the exact offending line.
 struct ParseFailure: Error, Equatable, Sendable, CustomStringConvertible {

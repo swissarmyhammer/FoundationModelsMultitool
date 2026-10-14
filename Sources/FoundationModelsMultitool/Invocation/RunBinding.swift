@@ -26,7 +26,7 @@ import FoundationModelsExtras
 /// ## What it holds
 ///
 /// The captured ``context`` carries the whole session scope the engine needs:
-/// the session identity, the mailbox reference, the upstream sink, and the
+/// the session identity, the run plane reference, the upstream sink, and the
 /// outer run's own `completionToken` (`context.completionToken`) — the
 /// correlation the enclosing `runCode` operation posts under. Nothing is
 /// copied back out of it, so the binding can never disagree with the context
@@ -49,8 +49,8 @@ import FoundationModelsExtras
 /// still owns correlation, events, and outcomes for inner calls: it mints
 /// each one a fresh `completionToken` and re-binds `ToolContext.$current`
 /// explicitly around it, which is what lets two parallel calls under a snippet's
-/// `Promise.all` correlate independently while posting to the one session's
-/// mailbox and sink.
+/// `Promise.all` correlate independently while posting to the run plane and
+/// the sink of the one session.
 struct RunBinding: Sendable {
     /// The code-mode mount: run to completion, with no clock. Inner
     /// `tools.*` calls run to completion — the constraint boundary
@@ -70,7 +70,7 @@ struct RunBinding: Sendable {
     static let innerCallMount = ToolMount(mode: .runToCompletion)
 
     /// The ambient context captured at the top of the enclosing `runCode`
-    /// invocation — its session identity, mailbox, upstream sink, the outer
+    /// invocation — its session identity, run plane, upstream sink, the outer
     /// run's `completionToken`, and the settle period of each background call
     /// that a tool mounts on this context from inside an inner call.
     let context: ToolContext

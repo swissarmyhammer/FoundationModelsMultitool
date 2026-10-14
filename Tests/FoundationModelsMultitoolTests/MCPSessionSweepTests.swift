@@ -26,16 +26,16 @@ import Testing
 /// and makes no distinction, and there are two:
 ///
 /// 1. **Parked** — the call runs inside a background `runCode` run. The
-///    session sweep, `SessionMailbox.sweep()`, cancels the run; the Task
+///    session sweep, `RunPlane.sweep()`, cancels the run; the Task
 ///    cancellation reaches `MCPServer.call`, which sends
 ///    `notifications/cancelled` and throws; the sweep synthesizes the terminal
 ///    `.cancelled` of the run.
 /// 2. **Native** — the `MCPTool` is mounted directly on a `RoutedSession`, as
 ///    a plain run-to-completion call, and it is never parked. No run-plane
 ///    entry exists, thus the sweep has nothing to cancel. What ends the call
-///    at session end is the cancellation of the in-flight turn task
-///    (`RoutedSession.cancel()`), which cancels the model call the
-///    tool runs inside; the same cancellation reaches `MCPServer.call` the
+///    at session end is the cancellation of the task of the open answer
+///    (`RoutedSession.cancelAll()` stops it). That cancellation stops the
+///    model call that the tool runs inside; the same cancellation reaches `MCPServer.call` the
 ///    same way, and the advisory cancel still goes out before the transport
 ///    closes.
 ///
@@ -77,7 +77,7 @@ struct MCPSessionSweepTests {
     /// How many recorded notifications the cancel cases wait for.
     private static let oneNotification = 1
 
-    /// How many terminal events one swept run gets. `SessionMailbox.sweep()`
+    /// How many terminal events one swept run gets. `RunPlane.sweep()`
     /// states the invariant: exactly one for each run, never two.
     private static let terminalEventsPerRun = 1
 
@@ -231,8 +231,8 @@ struct MCPSessionSweepTests {
 
         // `RoutedSession.close()` runs the sweep — it cancels every background
         // run, rejects every pending elicitation, and journals the terminal
-        // events before it returns. A consumer cannot call the mailbox's own
-        // sweep, so this is the public route to the same behaviour.
+        // events before it returns. A consumer cannot call the sweep of the run
+        // plane of the session, so this is the public route to the same behaviour.
         await run.session.close()
         let terminals = await recordedOperationEvents(
             of: run, ofKind: .completed,
@@ -267,7 +267,7 @@ struct MCPSessionSweepTests {
 
     /// The `MCPTool` mounted directly on a session runs to completion, and it
     /// is never parked: no run-plane entry exists, thus the sweep has nothing
-    /// to cancel. The cancellation of the in-flight turn task is what reaches
+    /// to cancel. The cancellation of the task of the open answer is what reaches
     /// `MCPServer.call`, and the advisory cancel still goes out before the
     /// pool closes the transport.
     @Test("native shape: the cancelled turn sends the advisory cancel before the transport closes")

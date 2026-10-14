@@ -45,7 +45,7 @@ struct RouterDiscoverySeams: Sendable {
     /// Makes the seams over the Router handles of a resolved profile.
     ///
     /// **The librarian must be a model other than the model of the session
-    /// whose turn calls `searchTools`. That is a correctness requirement, not
+    /// whose answer calls `searchTools`. That is a correctness requirement, not
     /// a cost preference.** `searchTools` is synchronous, so its body runs
     /// inside the open submission of the calling session. The model pool runs
     /// the work of each model in order on one generation queue, and the

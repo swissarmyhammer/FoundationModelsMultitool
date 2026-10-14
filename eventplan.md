@@ -37,7 +37,7 @@ technical names also.
 >   model must be different from the model of the calling session.
 
 Router owns the host substrate. The substrate contains the event vocabulary, the
-outbox, the mailbox, and the ambient `ToolContext`. Router is one package with
+outbox, the run plane (`RunPlane`), and the ambient `ToolContext`. Router is one package with
 one product. The substrate is in a `Hosting/` source folder adjacent to
 `Session/`.
 
@@ -76,7 +76,7 @@ cost to ignore them.
 
 `OperationEvent`, `OperationEventKind`, `OperationOutcome`, and
 `OperationEventSink` move out of OperationTool into Router. The host owns the
-vocabulary. The host also owns the outbox, the mailbox, and the ambient
+vocabulary. The host also owns the outbox, the run plane, and the ambient
 `ToolContext`. (`EventEmittingTool` moved too, and the propagation probe then
 deleted it — see "Phases".)
 
@@ -117,7 +117,7 @@ the mode.
 The background engine is at the `FoundationModels.Tool` protocol level, in
 Router's `Hosting/` folder. It is not in the code-mode bridge. The wrapper
 wraps `any Tool`. A background tool call starts the work, tracks the run in
-the session mailbox, and returns the pending envelope —
+the run plane of the session, and returns the pending envelope —
 `{ pending: true, completionToken: "01…" }` — as the rendered output, at
 once, on every call. The wrapper's `Output` is the rendered value. As a
 result, a typed wrapped `Output` does not need to represent the pending case.
@@ -157,16 +157,16 @@ The token is a ULID. It is the same value as the run's event `correlationID`.
 The word is always `completionToken`. Do not write "token" alone. That word
 collides with LLM tokens in every other document.
 
-The mailbox is an actor in Router, adjacent to `SessionOutbox`. It has the same
-scope: one mailbox for each session. A `runCode` sandbox is per-call and new
-for each call. A parked item must not stay in it. `ForkableTool` composition
-applies: a fork gets its own mailbox. `SessionOutbox` already obeys the same
-rule.
+The run plane (`RunPlane`) is an actor in Router, adjacent to `SessionOutbox`.
+It has the same scope: one run plane for each session. A `runCode` sandbox is
+per-call and new for each call. A parked item must not stay in it.
+`ForkableTool` composition applies: a fork gets its own run plane.
+`SessionOutbox` already obeys the same rule.
 
 **Parked runs die with the session.** A detached run exists to unblock the
-turn; it does not continue after the conversation. A child that continues after
+answer; it does not continue after the conversation. A child that continues after
 its session has no observer, and its state becomes a manufactured `.lost`.
-Session teardown does one deterministic sweep of the mailbox. It processes each
+Session teardown does one deterministic sweep of the run plane. It processes each
 kind with that kind's own semantics:
 
 - Shell runs get `killpg(SIGKILL)` and post `.stopped`.
@@ -179,7 +179,7 @@ orphans and no holes in the durable record. Work that must continue after a
 session is a different feature (an explicit daemon or a job store). We do not
 build that feature until a need exists.
 
-The crash edge: teardown did not run, and the memory-only mailbox is gone.
+The crash edge: teardown did not run, and the memory-only run plane is gone.
 Restoration marks journaled runs that have no terminal event as `.lost`. This
 is the only place where `.lost` appears outside an MCP transport drop.
 
@@ -192,7 +192,7 @@ MultiTool wires no emitter protocol. The propagation probe deleted
 
 Router binds the context around native `respond()` with the session outbox as
 the sink. `ToolInvoker` binds it for each `tools.*` call with MultiTool's own
-sink. MultiTool's sink updates the mailbox first and then sends the event
+sink. MultiTool's sink updates the run plane first and then sends the event
 upstream. One binding point, two consumers, no protocol.
 
 If a background run has no events of its own, the engine makes the events.
@@ -217,7 +217,7 @@ has to a page. Swift's mechanism is `@TaskLocal`:
 ```swift
 struct ToolContext: Sendable {
     @TaskLocal static var current: ToolContext?
-    // session-scoped: mailbox, upstream sink, session identity, cancellation
+    // session-scoped: run plane, upstream sink, session identity, cancellation
     // per-run: completionToken (minted by the invoker at each binding)
 }
 ```
@@ -232,12 +232,12 @@ session scope. The correlation has run scope. The capabilities are:
 - `elicit(_ request:) async throws -> ElicitationResponse` — a question to the
   user in the middle of a run. The run suspends as a pending promise. The
   elicitation request goes upstream through the same event chain. The answer
-  comes down through the mailbox and resumes the suspended continuation. An elicitation is a long-running operation. Its completion is a
+  comes down through the run plane and resumes the suspended continuation. An elicitation is a long-running operation. Its completion is a
   user reply. There is no second machinery.
 - Cancellation, the run's `completionToken`, and the session identity.
 
 The host verb for answers is `respond(elicitationId, response)` on
-`RoutedSession` (app host → Router → mailbox → resume). Answers address the
+`RoutedSession` (app host → Router → run plane → resume). Answers address the
 elicitation. They never address the run, because one run can hold more than one
 pending elicitation at the same time. Elicitation requests ride the event chain
 as their own event kind, adjacent to `progress` and `completed`. The section
@@ -369,7 +369,7 @@ time.
 
 There is one `RunBinding` for each `runCode` invocation. `ElevatingTool`
 captures it when it binds the ambient context. The binding holds the
-`ToolContext` (session identity, mailbox reference, sink), the outer
+`ToolContext` (session identity, run plane reference, sink), the outer
 `completionToken`, and the serial executor of the interpreter. Each promise
 carries the binding.
 
@@ -377,14 +377,14 @@ Each parallel inner call runs in a Task. The closure of that Task sets the
 ambient context again from the binding, explicitly. It never trusts
 inheritance. It mints its own per-call `completionToken` from the captured
 context. As a result, parallel runs correlate independently. They post to the
-mailbox of the same session.
+run plane of the same session.
 
-The mailbox is an actor: affinity is possession of the reference, not a
+The run plane is an actor: affinity is possession of the reference, not a
 position in a tree. A Task that settles resolves its promise on the binding's
 executor, keyed by the promise id. Two sessions that share one registry can
 never cross-route, because each invocation captured its own binding. The
 inbound route uses no task locals: `respond` / `complete` → `RoutedSession` →
-that session's mailbox → the run entry → its resolver, with a hop to the
+the run plane of that session → the run entry → its resolver, with a hop to the
 binding's executor. The route holds references the full way.
 
 ## The elicitation envelope, fixed to the MCP spec
@@ -418,7 +418,7 @@ addresses the elicitation, not the run. Form answers come down through
 
 URL mode resolves in two steps. The accept means only that the user agrees to
 open the URL. The completion arrives separately through
-`complete(elicitationId)`. The mailbox holds the run open for the completion,
+`complete(elicitationId)`. The run plane holds the run open for the completion,
 and it ignores unknown ids and completed ids, per the spec. Tools must process
 decline and cancel. A declined elicitation is not a cancelled run.
 
@@ -462,7 +462,7 @@ It suspends and resumes through the same background path as every other call.
 The snippet awaits it. The control flow gets the answer. No OS thread is held
 while the user thinks.
 
-The model's turn is also not held. The outer `runCode` run returns the
+The answer of the model is also not held. The outer `runCode` run returns the
 pending envelope when its settle period ends. The pending items are a
 promise plus a suspended JSC context. `respond` resolves them, and the snippet
 continues from the next statement.
@@ -546,7 +546,7 @@ Shelltool has `RunSupervisor` / `ShellRunner`. It contains:
 - a capture-at-start sink that posts detached events.
 
 As a result, consolidation is promotion, not construction. One background
-engine goes in `ToolInvoker` plus the Router mailbox. We delete the two local designs.
+engine goes in `ToolInvoker` plus the Router run plane. We delete the two local designs.
 
 The engine keeps one clock. A per-call `timeout` limits *the work itself*.
 Progress resets it. The `waitSeconds` block-clock is removed together with the
@@ -623,13 +623,13 @@ serves the two directions: server-initiated `elicitation/create` and
 agent-initiated. It already specifies the hard case: URL mode is a
 three-message flow, and its `notifications/elicitation/complete` arrives
 separately from the accept response. `ToolContext.elicit` gets this protocol
-without change. The Router mailbox must hold a URL-mode elicitation open past
+without change. The Router run plane must hold a URL-mode elicitation open past
 the accept, until `complete(elicitationId:)` arrives. The host app keeps
 ownership of the presenting UI, exactly as the coordinator contract states
 today.
 
 **The run plane and the content plane are different surfaces. One identifier
-joins them.** The mailbox carries envelopes and outcomes. It never carries bulk
+joins them.** The run plane carries envelopes and outcomes. It never carries bulk
 output. `status()` / `wait()` answer lifecycle questions only.
 
 Captured content lives in the store of the capability that owns it. Shell
@@ -676,7 +676,7 @@ submission (`SubmissionBoundaryTool.submissionWillBegin()`) — the same
 boundary where the outbox folds in events.
 
 Nothing changes below a snippet that runs. An in-flight run keeps the registry
-that it started with. The swap does not touch parked runs, because the mailbox
+that it started with. The swap does not touch parked runs, because the run plane
 has session scope in Router, not registry scope. The rendered surface is cheap
 to rebuild. The transcript is the part that persists.
 
@@ -772,7 +772,7 @@ part.
 The "available tools" block that goes to the system prompt is two schemas —
 `runCode` and `findAPIs` — plus their description text. It is small and
 constant, independent of the number of capabilities and servers in the
-registry. Constant means cacheable. Prefix reuse works across turns and
+registry. Constant means cacheable. Prefix reuse works across answers and
 sessions. The block fits the 4,096-token on-device window, with space for
 work.
 
@@ -810,7 +810,7 @@ MultiTool). The scope:
   ambiguous types. The shim pulls MLX transitively into the builds of the
   doomed packages. This is temporary build weight only, and we schedule
   each payer for deletion. The shim itself dies in phase 5.
-- The mailbox actor adjacent to `SessionOutbox`.
+- The run plane actor (`RunPlane`) adjacent to `SessionOutbox`.
 - The `ElevatingTool` engine at the `Tool` protocol level, with the two-clocks
   model. Router mounts it for native sessions. `ToolInvoker` mounts it for
   `tools.*` dispatch.
@@ -894,7 +894,7 @@ FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 > 2. **The verbs of files, shell, and MCP are plain `FoundationModels.Tool`
 >    conformers** that work on a bare `LanguageModelSession`. Background and
 >    non-blocking elicitation are what Router adds. On a bare session, MCP
->    elicitation goes to a host handler on `MCPServer`, and the turn waits.
+>    elicitation goes to a host handler on `MCPServer`, and the answer waits.
 > 3. **Router supplies the submission boundary** through
 >    `SubmissionBoundaryTool.submissionWillBegin()`, which Router calls before
 >    the next submission. MultiTool stages a rebuilt registry and applies it
@@ -912,9 +912,9 @@ FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 > `MCPElicitationTool` of the sibling package are gone.
 > `MCPServer+Elicitation.swift` sends each question to three answerers, in one
 > order: first the `ToolContext` of the calling run, where
-> `ToolContext.elicit(_:)` holds that run in Router's `SessionMailbox` and the
-> turn goes on; else the host's `MCPServer.ElicitationHandler` closure, which
-> is the seam of a bare session, where the turn waits; else `cancel` to the
+> `ToolContext.elicit(_:)` holds that run in Router's `RunPlane` and the
+> answer continues; else the host's `MCPServer.ElicitationHandler` closure, which
+> is the seam of a bare session, where the answer waits; else `cancel` to the
 > server. URL mode is in the code, as the phase text says. It is a flow of
 > three messages, and each answerer holds the accept until
 > `complete(elicitationId:)` ends the flow.

@@ -12,7 +12,7 @@ import FoundationModelsExtras
 // The fixtures of this target need a real `ToolContext`: the run plane, the
 // elicitation round trip and the mount arbitration all live on one. Router
 // makes no context publicly — `ToolContext` has no public initializer, and
-// `SessionMailbox`, `ToolMounting` and the `OperationEventSink` typealias are
+// the run plane of a session, `ToolMounting` and the `OperationEventSink` typealias are
 // all internal to that package.
 //
 // The route that works is to take a real context from a real session. Router
@@ -25,7 +25,7 @@ import FoundationModelsExtras
 // A session made over that backend mounts each tool through Router's own
 // engine, and the engine binds `ToolContext.$current` around the call. A tool
 // that reads `ToolContext.current` from inside its own `call(arguments:)`
-// therefore receives a genuine context, over a genuine mailbox, with no model
+// therefore receives a genuine context, over a genuine run plane, with no model
 // and no download. The router session measured the same shape at 0.029 s.
 //
 // **The container writes all four session factories on purpose.** The public
@@ -267,13 +267,13 @@ struct StubMachine: MachineProbe {
 ///
 /// The two are handed out together because the fixtures need both and they
 /// must belong to each other: the context reads the run plane of this
-/// session's mailbox, and the session is what answers an elicitation the
+/// session, and the session is what answers an elicitation the
 /// context raised.
 struct StubRun {
     /// The session every run and every elicitation belongs to.
     let session: any RoutedSession
 
-    /// A real context over that session's mailbox.
+    /// A real context over the run plane of that session.
     let context: ToolContext
 
     /// Where every recorded transcript event of this session is kept.

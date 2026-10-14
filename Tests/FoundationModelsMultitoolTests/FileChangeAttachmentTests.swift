@@ -7,7 +7,7 @@
 // and the Router does not put a `.progress` event on a live stream at all. The
 // live carrier is `ToolContext.attach(_:)`: a call that closes with at least one
 // record makes ONE `SessionEvent.toolCallReport`, and this suite reads that
-// event off the turn's own stream.
+// event off the stream of that answer.
 //
 // **Why the ground is a tool that runs the snippet itself.** The report of a
 // call reaches a host only through `SessionEvent`, and a record attached after
@@ -66,7 +66,7 @@ struct FileChangeAttachmentTests {
     /// How many records one mutating verb call attaches.
     private static let attachmentsPerCall = 1
 
-    /// How many tool calls the host sees this turn make.
+    /// How many tool calls the host sees this answer make.
     ///
     /// One: the mounted `runSnippet` call. `ToolContext.mount(_:op:as:)`
     /// swallows the invocation records of each verb call the snippet makes
@@ -79,16 +79,16 @@ struct FileChangeAttachmentTests {
 
     // MARK: - The ground of one test
 
-    /// One turn of a session that mounts a snippet-running tool: the files
-    /// ground the snippet ran over, and every event the turn delivered.
+    /// One answer of a session that mounts a snippet-running tool: the files
+    /// ground the snippet ran over, and every event the answer delivered.
     private struct Turn {
         /// The files registry and the change journal the snippet ran over.
         let ground: FilesRun
 
-        /// Every event the turn delivered, in arrival order.
+        /// Every event the answer delivered, in arrival order.
         let events: [SessionEvent]
 
-        /// The reports the turn delivered, in arrival order.
+        /// The reports the answer delivered, in arrival order.
         var reports: [ToolCallReport] {
             events.compactMap { event in
                 if case .toolCallReport(let report) = event { return report }
@@ -96,7 +96,7 @@ struct FileChangeAttachmentTests {
             }
         }
 
-        /// The close invocation record of each call the turn made, in arrival order.
+        /// The close invocation record of each call the answer made, in arrival order.
         var closeRecords: [ToolInvocationRecord] {
             events.compactMap { event in
                 if case .toolInvocation(let record, _) = event, record.closedAt != nil { return record }
@@ -105,11 +105,11 @@ struct FileChangeAttachmentTests {
         }
     }
 
-    /// Runs one snippet inside a live session call and reads the turn's stream.
+    /// Runs one snippet inside a live session call and reads the stream of the answer.
     ///
     /// - Parameter code: the snippet to run.
-    /// - Returns: the turn.
-    /// - Throws: whatever standing up the session, or the turn itself, throws.
+    /// - Returns: the answer.
+    /// - Throws: whatever standing up the session, or the answer itself, throws.
     private static func runTurn(_ code: String) async throws -> Turn {
         let ground = try await makeFilesRun(named: testDirectoryName, recordsChanges: true)
         let stub = try await makeStubSession(
@@ -123,7 +123,7 @@ struct FileChangeAttachmentTests {
 
     /// Runs the write snippet of this suite inside a live session call.
     ///
-    /// - Returns: the turn.
+    /// - Returns: the answer.
     /// - Throws: whatever ``runTurn(_:)`` throws.
     private static func runWriteTurn() async throws -> Turn {
         try await runTurn(writeVerbSnippet(writing: writtenFileName, content: writtenContent))

@@ -17,7 +17,7 @@
 //
 // A directory the verb cannot remove stays IN BAND, as a `correction` beside
 // empty envelope fields. It is never thrown: each refusal is a mistake the
-// model corrects inside the turn, and a thrown error would end the turn
+// model corrects inside the same answer. A thrown error would end the answer
 // instead.
 
 import Foundation

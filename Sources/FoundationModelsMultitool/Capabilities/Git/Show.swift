@@ -20,8 +20,8 @@
 // A file the verb cannot show stays IN BAND, as a `correction` beside no
 // content. It is never thrown: an unknown ref, an unknown path, a folder path,
 // a binary file, a path outside the root, and a root in no repository are each
-// a mistake or a fact the model reads inside the turn, and a thrown error
-// would end the turn instead.
+// a mistake or a fact the model reads inside the same answer. A thrown error
+// would end the answer instead.
 
 import Foundation
 import FoundationModels

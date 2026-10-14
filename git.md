@@ -91,7 +91,7 @@ and `web.md`.
 3. A builder short form (`MultiTool.Builder.withFiles(root:...)`). The
    capability is off by default.
 4. A mistake that the model can correct does not throw. It comes back in band
-   as a `correction` field in the result. A thrown error ends the turn.
+   as a `correction` field in the result. A thrown error ends the answer to the message.
 5. A path goes through `PathGuard`. A path cannot go out of the session root.
 6. `GitPatch.swift` already renders a `FileChangeSet` as a git-format patch.
    It is internal to the `files` capability.

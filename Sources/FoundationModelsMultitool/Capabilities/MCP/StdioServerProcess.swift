@@ -11,7 +11,7 @@
 // **Server subprocesses are infrastructure.** eventplan.md: "Server
 // subprocesses are infrastructure. They have session lifetime, they are never
 // runs, and they never get a `completionToken`." A spawned server is not a run
-// on the run plane: no mailbox tracks it, no `status()` lists it, and no
+// on the run plane: the run plane does not track it, no `status()` lists it, and no
 // `cancel(completionToken)` reaches it. `shutdown()` and `respawn()` are the
 // host's own calls, and they stay as they are.
 //

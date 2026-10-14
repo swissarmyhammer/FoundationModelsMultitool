@@ -18,7 +18,7 @@
 // empty content. It is never thrown: an out-of-range `offset` or `limit`,
 // an unknown `format`, a path outside the root, a missing or unreadable
 // file, and a binary file are each a mistake the model corrects inside
-// the turn, and a thrown error would end the turn instead.
+// the same answer. A thrown error would end the answer instead.
 
 import Foundation
 import FoundationModels

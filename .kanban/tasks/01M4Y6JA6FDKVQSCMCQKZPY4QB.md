@@ -1,8 +1,13 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8580'
+comments:
+- actor: claude-code
+  id: 01m4y7e2j85gd0gbz19rn34w2j
+  text: 'Fixed in 60df8af. Cause: freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod called queueClock.open(), which also ended later bounds. A connect and a disconnect then ran together on one MCP.Client; the late disconnect closed the new connection; the retry sent initialize on a disconnected in-memory transport; the attempt timeout slept on a never-opened GatedClock, so the wait stayed forever. Fix: GatedClock.openRecordedSleeps() ends only the recorded bounds; the test waits for the 7 recorded bounds first, so the order is fixed. One run of the suite: 13 tests pass. The product window is recorded as task 01M4Y7ARA96T32DGQFARW7H5EP.'
+  timestamp: 2026-10-14T22:09:56.808060+00:00
+position_column: done
+position_ordinal: ffffe280
 title: 'Bad test: ResilienceTests hung one time (a wait that never resumes)'
 ---
 Found in mail step 5, T3, 2026-10-14.

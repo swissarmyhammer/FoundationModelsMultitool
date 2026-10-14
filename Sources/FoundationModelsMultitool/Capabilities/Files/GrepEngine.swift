@@ -78,8 +78,8 @@ struct GrepMatches: Encodable, Sendable {
 /// regular expression, an unknown file type, an unknown output mode, an
 /// invalid `glob` filter, a rejected search root, or a missing path is
 /// surfaced as a ``corrective(_:)`` message the model reads and acts on
-/// within the turn, never thrown. A thrown error is fatal to the turn, so
-/// every recoverable condition returns a value instead.
+/// within the same answer. The engine never throws it. A thrown error ends
+/// the answer. Thus every recoverable condition returns a value instead.
 enum GrepOutput: CorrectiveEncodable, Sendable {
     /// A successful grep carrying the ``GrepMatches``.
     case content(GrepMatches)

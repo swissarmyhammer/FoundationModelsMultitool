@@ -16,8 +16,8 @@
 // A search the engine cannot make stays IN BAND, as a `correction` beside
 // an empty match list. It is never thrown: a bad pattern, a broad pattern
 // with no `path`, a bad `path`, and a missing directory are each a mistake
-// the model corrects inside the turn, and a thrown error would end the
-// turn instead.
+// the model corrects inside the same answer. A thrown error would end the
+// answer instead.
 
 import FoundationModels
 

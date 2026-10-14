@@ -9,15 +9,15 @@ import Testing
 
 /// Coverage for the session-end sweep of a background shell run — eventplan.md:
 /// *"Background runs die with the session."* Teardown does one deterministic
-/// sweep of the mailbox, and it processes each kind with that kind's own
+/// sweep of the run plane, and it processes each kind with that kind's own
 /// semantics: *"Shell runs get `killpg(SIGKILL)` and post `.stopped`."*
 ///
 /// The route this suite proves has three owners:
 ///
 /// 1. `Execute` declares, through `BackgroundTool`, that its runs
 ///    are `RunKind.process` and that `ShellRunner.canceler(completionToken:)`
-///    stops one. `BackgroundToolRunner` hands both to `SessionMailbox.track`.
-/// 2. `SessionMailbox.sweep()` walks the background runs in the order they
+///    stops one. `BackgroundToolRunner` hands both to `RunPlane.start`.
+/// 2. `RunPlane.sweep()` walks the background runs in the order they
 ///    were tracked, awaits each canceler, and answers exactly one terminal
 ///    event for each run.
 /// 3. `RoutedSessionActor.close()` journals that whole list before it returns.
@@ -27,7 +27,7 @@ import Testing
 /// that answers one terminal event for each background run and leaves the run
 /// plane empty is a durable record with no hole and no orphan.
 ///
-/// **`SessionMailbox.sweep()` is `internal` to Router**, thus this file takes
+/// **The run plane of a session is `internal` to Router**, thus this file takes
 /// `@testable import FoundationModelsRouter`. The other route to the sweep is
 /// `RoutedSession.close()`, which needs a loaded model, and a unit test must
 /// not need one.
@@ -75,7 +75,7 @@ struct ShellSessionSweepTests {
     /// background run and not for the first one alone.
     private static let twoBackgroundRuns = 2
 
-    /// How many terminal events one swept run gets. `SessionMailbox.sweep()`
+    /// How many terminal events one swept run gets. `RunPlane.sweep()`
     /// states the invariant: exactly one for each run, never two.
     private static let terminalEventsPerRun = 1
 
@@ -97,7 +97,7 @@ struct ShellSessionSweepTests {
     private struct BackgroundSession {
 
         /// The stub run the runs are tracked on. `RoutedSession.close()` is
-        /// the teardown: it runs the mailbox's own sweep and journals the
+        /// the teardown: it runs the sweep of the run plane and journals the
         /// terminal events, and a consumer cannot call that sweep directly.
         let stub: StubRun
 
@@ -250,7 +250,7 @@ struct ShellSessionSweepTests {
     // MARK: - The sweep kills the process group of each background run
 
     /// eventplan.md: *"Shell runs get `killpg(SIGKILL)`."* The background run
-    /// declares `RunKind.process`, thus the mailbox holds the canceler that
+    /// declares `RunKind.process`, thus the run plane holds the canceler that
     /// sends that signal, and the sweep sends it to each background run in
     /// turn.
     ///
@@ -309,7 +309,7 @@ struct ShellSessionSweepTests {
         // no replay, and `close()` finishes every open subscription, so a
         // stream opened after the sweep sees nothing at all.
         // The sweep's terminal reaches the JOURNAL, not the mounted run's own
-        // sink: `close()` sweeps through the mailbox, which is not the run
+        // sink: `close()` sweeps through the run plane, which is not the run
         // posting an event of its own. With a caller-supplied sink in the mount
         // there is no re-stamping layer, so the journaled terminal carries the
         // run's own token — measured.
@@ -340,7 +340,7 @@ struct ShellSessionSweepTests {
 
         // Subscribed BEFORE the sweep; see the sibling test for why.
         // The sweep's terminal reaches the JOURNAL, not the mounted run's own
-        // sink: `close()` sweeps through the mailbox, which is not the run
+        // sink: `close()` sweeps through the run plane, which is not the run
         // posting an event of its own. With a caller-supplied sink in the mount
         // there is no re-stamping layer, so the journaled terminal carries the
         // run's own token — measured.

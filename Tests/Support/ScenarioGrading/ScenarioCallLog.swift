@@ -77,7 +77,7 @@ public actor ScenarioCallLog {
     /// Read off ``calls``, which is appended to when a call completes — so a
     /// call still running, or one that will never finish, is in neither this
     /// set nor ``returnedPaths``. Every scenario that reads this grades a run
-    /// after its turn is over, where the distinction cannot arise; a scenario
+    /// after its answer is complete, where the distinction cannot arise; a scenario
     /// that has to tell "never called" from "called and never came back" reads
     /// ``enteredPaths`` instead.
     public var invokedPaths: Set<String> {
@@ -105,7 +105,7 @@ public actor ScenarioCallLog {
     /// `nil` when no fixture tool has been entered yet.
     ///
     /// Kept so a scenario can read the session's **background runs** after its
-    /// turn is over. A `ToolContext` is the only route to them (Router task
+    /// answer is complete. A `ToolContext` is the only route to them (Router task
     /// `^k0mecjp`), it exists only inside a tool call, and every context bound
     /// during one session names that session's own runs — so the first one a
     /// fixture tool saw is a usable handle to them afterwards.
