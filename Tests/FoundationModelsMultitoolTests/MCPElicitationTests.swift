@@ -153,7 +153,7 @@ struct MCPElicitationTests {
         var context: ToolContext { stub.context }
 
         /// The session the answer is delivered through.
-        var session: RoutedSession { stub.session }
+        var session: any RoutedSession { stub.session }
 
         /// Builds a fresh run.
         ///

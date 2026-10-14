@@ -1,7 +1,7 @@
 import Testing
 
-// `@testable`: `MessageID` (Extras) and `SubmissionID` (Router) have
-// internal initializers only, and a scripted submission chain needs both.
+// `@testable`: `SubmissionID` (Router) has an internal initializer only, and
+// a scripted submission chain needs it.
 @testable import FoundationModelsExtras
 @testable import FoundationModelsMultitool
 @testable import FoundationModelsRouter
@@ -11,8 +11,8 @@ import ScenarioGrading
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:readingContainsOneOf:groundedIn:)`
 /// `mailCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
 /// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift` — and for
-/// `SubmissionLog.fold(events:)`, which gives those runners each answer of a
-/// session from its events.
+/// `SubmissionLog.fold(outputs:)`, which gives those runners each answer of a
+/// session from its output, by the mail id of the answer.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
 /// which is a weaker question than the one a scenario asks. Recorded on task
@@ -326,27 +326,29 @@ struct ScenarioGradingTests {
 
     @Test("two submissions and one answered event fold to one answer with both submission ids")
     func twoSubmissionsFoldToOneAnswer() throws {
-        let message = MessageID()
+        let message = MailID()
         let first = SubmissionID(Self.firstSubmissionNumber)
         let continuation = SubmissionID(Self.secondSubmissionNumber)
         let firstUsage = TokenUsage(tokensIn: Self.firstTokensIn, tokensOut: Self.firstTokensOut, contextFill: 0)
         let answer = Self.answer(reply: Self.foldedReply, to: message)
 
-        let records = SubmissionLog.fold(events: [
-            .submissionStarted(SubmissionStart(submissionId: first, messageIds: [message], cause: .message)),
+        let records = SubmissionLog.fold(outputs: Self.outputs(of: message, [
+            .submissionStarted(SubmissionStart(submissionId: first, mailIds: [message], cause: .message)),
             .textDelta(Self.foldedReply),
             .submissionEnded(SubmissionEnd(submissionId: first, usage: firstUsage, finishReason: .maxTokens)),
             .submissionStarted(
-                SubmissionStart(submissionId: continuation, messageIds: [message], cause: .continuation)),
+                SubmissionStart(submissionId: continuation, mailIds: [message], cause: .continuation)),
             .submissionEnded(SubmissionEnd(submissionId: continuation, usage: nil, finishReason: .completed)),
             .answered(answer),
-        ])
+        ]))
 
         let record = try #require(records.first)
         #expect(records.count == 1)
+        #expect(record.origin == [message])
+        #expect(record.answers(message))
         #expect(record.submissionIds == [first, continuation])
         #expect(record.submissions.map { $0.start?.cause } == [.message, .continuation])
-        #expect(record.submissions.map { $0.start?.messageIds } == [[message], [message]])
+        #expect(record.submissions.map { $0.start?.mailIds } == [[message], [message]])
         #expect(record.submissions.map { $0.end?.finishReason } == [.maxTokens, .completed])
         #expect(record.submissions.first?.end?.usage == firstUsage)
         #expect(record.cause == .message)
@@ -356,15 +358,15 @@ struct ScenarioGradingTests {
 
     @Test("an answerFailed event folds to a failed answer with no reply")
     func answerFailedFoldsToAFailedAnswer() throws {
-        let message = MessageID()
+        let message = MailID()
         let submission = SubmissionID(Self.firstSubmissionNumber)
-        let failure = AnswerFailure(messageIds: [message], reason: .cancelled)
+        let failure = AnswerFailure(mailIds: [message], reason: .cancelled)
 
-        let records = SubmissionLog.fold(events: [
-            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .message)),
+        let records = SubmissionLog.fold(outputs: Self.outputs(of: message, [
+            .submissionStarted(SubmissionStart(submissionId: submission, mailIds: [message], cause: .message)),
             .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed)),
             .answerFailed(failure),
-        ])
+        ]))
 
         let record = try #require(records.first)
         #expect(records.count == 1)
@@ -375,7 +377,7 @@ struct ScenarioGradingTests {
 
     @Test("a repetitionStopped event is recorded on the answer it stopped")
     func repetitionStoppedIsRecorded() throws {
-        let message = MessageID()
+        let message = MailID()
         let submission = SubmissionID(Self.firstSubmissionNumber)
         let stop = RepetitionStop(
             generatedTokens: Self.stoppedGeneratedTokens,
@@ -386,12 +388,12 @@ struct ScenarioGradingTests {
             recovery: nil
         )
 
-        let records = SubmissionLog.fold(events: [
-            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .mail)),
+        let records = SubmissionLog.fold(outputs: Self.outputs(of: message, [
+            .submissionStarted(SubmissionStart(submissionId: submission, mailIds: [message], cause: .mail)),
             .repetitionStopped(stop),
             .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .repeatedLines)),
             .answered(Self.answer(reply: Self.foldedReply, to: message)),
-        ])
+        ]))
 
         let record = try #require(records.first)
         #expect(record.repetitionStops == [stop])
@@ -401,27 +403,80 @@ struct ScenarioGradingTests {
 
     @Test("a chain with no answered or answerFailed event is still open and folds to no answer")
     func anOpenChainFoldsToNoAnswer() {
+        let message = MailID()
         let submission = SubmissionID(Self.firstSubmissionNumber)
 
-        let records = SubmissionLog.fold(events: [
-            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [MessageID()], cause: .message))
-        ])
+        let records = SubmissionLog.fold(outputs: Self.outputs(of: message, [
+            .submissionStarted(SubmissionStart(submissionId: submission, mailIds: [message], cause: .message))
+        ]))
 
         #expect(records.isEmpty)
     }
 
-    @Test("only answered and answerFailed end an answer chain")
-    func onlyTheTwoFinalEventsEndAChain() {
-        let message = MessageID()
-        let submission = SubmissionID(Self.firstSubmissionNumber)
+    /// Two answers whose events mix in the output: the fold finds the chain of
+    /// each event by its origin, so neither answer takes the submissions of
+    /// the other, and an event that no mail started is in no answer.
+    @Test("two answers whose events mix fold to two answers, each with its own submissions")
+    func mixedAnswersFoldByOrigin() throws {
+        let message = MailID()
+        let runMail = MailID()
+        let first = SubmissionID(Self.firstSubmissionNumber)
+        let second = SubmissionID(Self.secondSubmissionNumber)
+        let messageAnswer = Self.answer(reply: Self.foldedReply, to: message)
+        let runMailAnswer = Self.answer(reply: Self.otherReply, to: runMail)
 
-        #expect(SubmissionLog.endsAnswer(event: .answered(Self.answer(reply: Self.foldedReply, to: message))))
+        let outputs = [
+            SessionOutput(
+                origin: .mail([message]),
+                event: .submissionStarted(SubmissionStart(submissionId: first, mailIds: [message], cause: .message))),
+            SessionOutput(
+                origin: .mail([runMail]),
+                event: .submissionStarted(SubmissionStart(submissionId: second, mailIds: [runMail], cause: .mail))),
+            SessionOutput(
+                origin: .system,
+                event: .submissionEnded(SubmissionEnd(submissionId: first, usage: nil, finishReason: .completed))),
+            SessionOutput(
+                origin: .mail([runMail]),
+                event: .submissionEnded(SubmissionEnd(submissionId: second, usage: nil, finishReason: .completed))),
+            SessionOutput(origin: .mail([runMail]), event: .answered(runMailAnswer)),
+            SessionOutput(
+                origin: .mail([message]),
+                event: .submissionEnded(SubmissionEnd(submissionId: first, usage: nil, finishReason: .maxTokens))),
+            SessionOutput(origin: .mail([message]), event: .answered(messageAnswer)),
+        ]
+
+        #expect(SubmissionLog.fold(outputs: outputs).count == 2)
+        let forRunMail = try #require(SubmissionLog.answer(to: runMail, in: outputs))
+        let forMessage = try #require(SubmissionLog.answer(to: message, in: outputs))
+        #expect(forRunMail.submissionIds == [second])
+        #expect(forRunMail.cause == .mail)
+        #expect(forRunMail.reply == Self.otherReply)
+        #expect(forMessage.submissionIds == [first])
+        #expect(forMessage.submissions.first?.end?.finishReason == .maxTokens)
+        #expect(forMessage.reply == Self.foldedReply)
+    }
+
+    @Test("only answered and answerFailed of the chain of the mail end its answer")
+    func onlyTheTwoFinalEventsEndAChain() {
+        let message = MailID()
+        let other = MailID()
+        let submission = SubmissionID(Self.firstSubmissionNumber)
+        let ofMessage = { (event: SessionEvent) in SessionOutput(origin: .mail([message]), event: event) }
+
         #expect(
-            SubmissionLog.endsAnswer(event: .answerFailed(AnswerFailure(messageIds: [message], reason: .cancelled))))
+            SubmissionLog.endsAnswer(ofMessage(.answered(Self.answer(reply: Self.foldedReply, to: message))), of: message))
+        #expect(
+            SubmissionLog.endsAnswer(
+                ofMessage(.answerFailed(AnswerFailure(mailIds: [message], reason: .cancelled))), of: message))
         #expect(
             !SubmissionLog.endsAnswer(
-                event: .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed))))
-        #expect(!SubmissionLog.endsAnswer(event: .textDelta(Self.foldedReply)))
+                ofMessage(.submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed))),
+                of: message))
+        #expect(!SubmissionLog.endsAnswer(ofMessage(.textDelta(Self.foldedReply)), of: message))
+        #expect(
+            !SubmissionLog.endsAnswer(
+                SessionOutput(origin: .mail([other]), event: .answered(Self.answer(reply: Self.otherReply, to: other))),
+                of: message))
     }
 
     // MARK: - Building the graded evidence
@@ -585,15 +640,29 @@ struct ScenarioGradingTests {
     /// The reply of each scripted answer the fold tests make.
     private static let foldedReply = "NYC is warmest"
 
-    /// A scripted final answer to one caller message.
+    /// The reply of the second answer of the test with two answers.
+    private static let otherReply = "the run settled"
+
+    /// A scripted final answer to one mail.
     ///
     /// - Parameters:
     ///   - reply: the final reply of the answer.
-    ///   - message: the caller message the answer answers.
+    ///   - message: the mail the answer answers.
     /// - Returns: the answer, with no usage, compaction or tool call.
-    private static func answer(reply: String, to message: MessageID) -> SessionAnswer {
+    private static func answer(reply: String, to message: MailID) -> SessionAnswer {
         SessionAnswer(
-            reply: reply, messageIds: [message], usage: nil, compactions: [], toolCalls: [], toolInvocations: [])
+            reply: reply, mailIds: [message], usage: nil, compactions: [], toolCalls: [], toolInvocations: [])
+    }
+
+    /// The session output of a scripted chain of one answer: each event has
+    /// the origin of the answer to `message`.
+    ///
+    /// - Parameters:
+    ///   - message: the mail whose answer sent the events.
+    ///   - events: the events of the chain, in order.
+    /// - Returns: the output.
+    private static func outputs(of message: MailID, _ events: [SessionEvent]) -> [SessionOutput] {
+        events.map { SessionOutput(origin: .mail([message]), event: $0) }
     }
 
     /// Picks one graded condition out of a run's verdict by name.

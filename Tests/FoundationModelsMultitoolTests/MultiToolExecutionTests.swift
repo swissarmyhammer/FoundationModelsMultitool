@@ -482,6 +482,7 @@ struct MultiToolExecutionTests {
     func settledRunComesBackAsOneMail() async throws {
         let gate = ReleaseGate()
         let prompts = MailProbePrompts()
+        let pending = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
         let session = try await makeMailProbeSession(
             mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
             prompts: prompts
@@ -490,23 +491,40 @@ struct MultiToolExecutionTests {
             // more, as the pending envelope tells the model to do when no
             // other work can be done. Every later submission only answers.
             guard index == 0 else { return "answered" }
-            _ = try mailProbeEnvelope(
+            let envelope = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
+            pending.withLock { $0 = envelope }
             return "the result comes back later"
         }
+        let log = await SessionOutputLog.reading(session)
 
-        _ = try await session.respond(to: "start the snippet")
+        let first = try await log.ask("start the snippet")
+        let token = try #require(pending.withLock { $0 }).completionToken
         await gate.release()
-        let afterMail = await prompts.awaiting(2)
+        let runMail = try await log.deliveredRunMail(settling: token)
+        let afterMail = prompts.all
         // One more caller message after the mail: mail that stays in the
         // outbox, or a second copy of it, goes into this submission.
-        _ = try await session.respond(to: "one more message")
-        let all = await prompts.awaiting(3)
+        let followUp = try await log.ask("one more message")
+        let all = prompts.all
 
+        // The run mail starts its own answer. That answer delivers the run
+        // mail, and no mail other than run mail of the same run (a progress
+        // or message mail of the run can wait in the queue and go with it).
+        // The follow-up answer delivers only the follow-up.
+        let mailOfTheRun = Set(await log.allRunMailIds(of: token))
+        #expect(first.answer.mailIds == [first.id])
+        #expect(runMail.answer.mailIds.contains(runMail.id))
+        #expect(
+            Set(runMail.answer.mailIds).isSubset(of: mailOfTheRun),
+            "the run mail answer delivered: \(runMail.answer.mailIds), run mail: \(mailOfTheRun)")
+        #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
+        #expect(followUp.answer.mailIds == [followUp.id])
+        #expect(await log.runMailIds(settling: token) == [runMail.id])
+        #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
         #expect(afterMail.count == 2)
+        #expect(all.count == 3)
         #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
-        #expect(all.count >= 2 && all[1].contains(mailProbeResultCode))
-        #expect(all.count == 3 && !all[2].contains(mailProbeResultCode))
     }
 
     /// Records the fix of task `^11cfnx0` for the finding of task `^q4jrnd0`.
@@ -520,6 +538,7 @@ struct MultiToolExecutionTests {
         let gate = ReleaseGate()
         let prompts = MailProbePrompts()
         let refused = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let token = OSAllocatedUnfairLock<String?>(initialState: nil)
         let collectorMount = try #require(
             try await makeOuterRunContext().mount(
                 Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
@@ -536,6 +555,7 @@ struct MultiToolExecutionTests {
             // after it.
             let pending = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
+            token.withLock { $0 = pending.completionToken }
             let collector = "return (await wait(\"\(pending.completionToken)\", "
                 + "\(Self.removedWaitSecondsArgument))).detail;"
             let answer = try await collectorMount.call(arguments: RunCodeArguments(code: collector))
@@ -543,16 +563,22 @@ struct MultiToolExecutionTests {
             await gate.release()
             return "the result comes back later"
         }
+        let log = await SessionOutputLog.reading(session)
 
-        _ = try await session.respond(to: "start the snippet and try to collect it")
-        _ = await prompts.awaiting(2)
-        _ = try await session.respond(to: "one more message")
-        let all = await prompts.awaiting(3)
+        _ = try await log.ask("start the snippet and try to collect it")
+        let completionToken = try #require(token.withLock { $0 })
+        let runMail = try await log.deliveredRunMail(settling: completionToken)
+        let followUp = try await log.ask("one more message")
+        let all = prompts.all
 
         let collector = try #require(refused.withLock { $0 })
         #expect(!PendingRunEnvelope.isRendered(text: collector))
         #expect(collector.contains(SandboxGlobalError.waitRemoved.description))
         #expect(!collector.contains(mailProbeResultCode))
+        #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
+        #expect(await log.runMailIds(settling: completionToken) == [runMail.id])
+        #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
+        #expect(followUp.answer.mailIds == [followUp.id])
         #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
 

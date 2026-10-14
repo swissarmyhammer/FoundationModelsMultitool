@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m4xxgt70v93ts6bpvhqapzmd
+  text: 'Decision G1 (owner, T0): no Router change. Use `@testable import FoundationModelsRouter` and call the internal Router.useRunClock(_:), as ACPAgent does in Support/ManualClockProfile.swift. If this does not work for the stub Router session of StubRouterFixtures, tell the owner why. Count: 53 .timeLimit traits; also remove TestHangGuard and IntegrationHangGuard.'
+  timestamp: 2026-10-14T19:16:40.800529+00:00
 depends_on:
 - 01M4XW9AT79H485N08AS57YT6F
 position_column: todo

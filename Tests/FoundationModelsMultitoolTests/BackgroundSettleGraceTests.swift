@@ -176,6 +176,36 @@ struct BackgroundSettleGraceTests {
         prompts.dropFirst().filter { $0.contains(text) }
     }
 
+    /// Records an issue when the model got run mail: when the session
+    /// delivered mail other than the user messages of the test, or when the
+    /// answer to a user message delivered other mail.
+    ///
+    /// A call that ends inside the settle period still posts its terminal
+    /// event, and the session queues it as run mail. The mount then withdraws
+    /// that mail, and the session ends it with `cancelled`. Thus each run
+    /// mail of the session must end `cancelled`, with no `mailDelivered`.
+    ///
+    /// - Parameters:
+    ///   - log: The output of the session.
+    ///   - followUp: The last user message of the test, and its answer.
+    private static func expectNoRunMail(in log: SessionOutputLog, followUp: AnsweredMail) async {
+        let userMessages = await log.askedMails
+        #expect(userMessages.last?.id == followUp.id)
+        let userIds = userMessages.map(\.id)
+        let delivered = await log.deliveredMailIds
+        #expect(delivered == userIds, "the session delivered: \(delivered)")
+        for message in userMessages {
+            #expect(message.answer.mailIds == [message.id], "the answer delivered: \(message.answer.mailIds)")
+        }
+        for runMail in await log.allRunMailIds {
+            await log.waitForTerminal(of: runMail)
+            guard case .cancelled = await log.terminal(of: runMail) else {
+                Issue.record("run mail \(runMail) ended with \(String(describing: await log.terminal(of: runMail)))")
+                continue
+            }
+        }
+    }
+
     /// Runs `snippet` in `runCode` with the stock settle period, and answers
     /// with the inline result.
     ///
@@ -200,10 +230,11 @@ struct BackgroundSettleGraceTests {
             mounting: [try Self.shellRunCode().runCode], prompts: prompts,
             step: Self.runningSnippet(
                 "const r = await tools.shell.execute({command: \"echo hi\"}); return [r.exitCode, r.commandID];"))
+        let log = await SessionOutputLog.reading(session)
 
-        let result = try await session.respond(to: "run echo hi")
-        _ = try await session.respond(to: Self.followUpMessage)
-        let all = await prompts.awaiting(2)
+        let result = try await log.ask("run echo hi").reply
+        let followUp = try await log.ask(Self.followUpMessage)
+        let all = prompts.all
 
         #expect(!PendingRunEnvelope.isRendered(text: result), "answer was: \(result)")
         guard case .array(let values) = try Self.returnedValue(of: result), values.count == 2,
@@ -215,6 +246,7 @@ struct BackgroundSettleGraceTests {
         #expect(values[0] == .number(0))
         #expect(all.count == 2, "a mail submission came: \(all)")
         #expect(Self.laterPrompts(containing: commandID, in: all).isEmpty)
+        await Self.expectNoRunMail(in: log, followUp: followUp)
     }
 
     // MARK: - Acceptance 2: a short top-level execute answers with its report
@@ -225,10 +257,11 @@ struct BackgroundSettleGraceTests {
         let verbs = try Self.shellVerbs()
         let session = try await makeMailProbeSession(
             mounting: [verbs.execute], prompts: prompts, step: Self.executing("echo hi"))
+        let log = await SessionOutputLog.reading(session)
 
-        let report = try await session.respond(to: "run echo hi")
-        _ = try await session.respond(to: Self.followUpMessage)
-        let all = await prompts.awaiting(2)
+        let report = try await log.ask("run echo hi").reply
+        let followUp = try await log.ask(Self.followUpMessage)
+        let all = prompts.all
 
         #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
         guard case .object(let fields) = try Self.returnedValue(of: report),
@@ -242,6 +275,7 @@ struct BackgroundSettleGraceTests {
         #expect(fields["output"] == .array([.string("1: hi")]))
         #expect(all.count == 2, "a mail submission came: \(all)")
         #expect(Self.laterPrompts(containing: commandID, in: all).isEmpty)
+        await Self.expectNoRunMail(in: log, followUp: followUp)
     }
 
     // MARK: - An awaited inner call gives the snippet its real result
@@ -259,13 +293,14 @@ struct BackgroundSettleGraceTests {
         let session = try await makeMailProbeSession(
             mounting: [try Self.shellRunCode(grace: Self.shortGrace).runCode], inlineSettleGrace: Self.shortGrace,
             prompts: prompts, step: Self.runningSnippet(snippet))
+        let log = await SessionOutputLog.reading(session)
 
-        let answer = try await session.respond(to: "run the long command")
+        let answer = try await log.ask("run the long command").reply
 
         let envelope = try mailProbeEnvelope(answer)
-        try await TestPoll.waitUntil("the result of the snippet comes back as mail") {
-            !Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).isEmpty
-        }
+        let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
+        #expect(runMail.event.detail.contains(Self.fullOutputLine), "run mail: \(runMail.event.detail)")
+        #expect(runMail.answer.mailIds.contains(runMail.id))
         let mail = try #require(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).first)
         #expect(mail.contains(Self.fullOutputLine), "mail: \(mail)")
         #expect(!FileManager.default.fileExists(atPath: logPath))
@@ -278,15 +313,17 @@ struct BackgroundSettleGraceTests {
             mounting: [try Self.shellRunCode(grace: Self.shortGrace).runCode], inlineSettleGrace: Self.shortGrace,
             prompts: prompts,
             step: Self.runningSnippet("return (await tools.shell.execute({command: \"echo hi\"})).output;"))
+        let log = await SessionOutputLog.reading(session)
 
-        let result = try await session.respond(to: "run echo hi")
-        _ = try await session.respond(to: Self.followUpMessage)
-        let all = await prompts.awaiting(2)
+        let result = try await log.ask("run echo hi").reply
+        let followUp = try await log.ask(Self.followUpMessage)
+        let all = prompts.all
 
         #expect(!PendingRunEnvelope.isRendered(text: result), "answer was: \(result)")
         #expect(try Self.returnedValue(of: result) == .array([.string("1: hi")]), "answer was: \(result)")
         #expect(!result.contains(PendingInnerCalls.noticeLead), "answer was: \(result)")
         #expect(all.count == 2, "a mail submission came: \(all)")
+        await Self.expectNoRunMail(in: log, followUp: followUp)
     }
 
     // MARK: - A call that the snippet did not await
@@ -302,15 +339,16 @@ struct BackgroundSettleGraceTests {
         let session = try await makeMailProbeSession(
             mounting: [probe.runCode], inlineSettleGrace: Self.shortGrace, prompts: prompts,
             step: Self.runningSnippet(snippet))
+        let log = await SessionOutputLog.reading(session)
 
-        let answer = try await session.respond(to: "run the long command")
+        let answer = try await log.ask("run the long command").reply
 
         let envelope = try mailProbeEnvelope(answer)
-        try await TestPoll.waitUntil("the result of the snippet comes back as mail") {
-            !Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).isEmpty
-        }
+        let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
+        #expect(runMail.answer.mailIds.contains(runMail.id))
         let mail = try #require(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).first)
         let commandID = try await Self.onlyCommandID(in: probe.state)
+        Self.expectNamesUnawaitedExecute(commandID, in: runMail.event.detail)
         Self.expectNamesUnawaitedExecute(commandID, in: mail)
     }
 
@@ -351,13 +389,15 @@ struct BackgroundSettleGraceTests {
         let prompts = MailProbePrompts()
         let session = try await makeMailProbeSession(
             mounting: [try Self.shellRunCode().runCode], prompts: prompts, step: Self.runningSnippet("return 1 + 1;"))
+        let log = await SessionOutputLog.reading(session)
 
-        let result = try await session.respond(to: "add")
-        _ = try await session.respond(to: Self.followUpMessage)
-        let all = await prompts.awaiting(2)
+        let result = try await log.ask("add").reply
+        let followUp = try await log.ask(Self.followUpMessage)
+        let all = prompts.all
 
         #expect(result == "2")
         #expect(all.count == 2, "a mail submission came: \(all)")
+        await Self.expectNoRunMail(in: log, followUp: followUp)
     }
 
     // MARK: - The host setting
@@ -369,15 +409,17 @@ struct BackgroundSettleGraceTests {
         let session = try await makeMailProbeSession(
             mounting: [verbs.execute], inlineSettleGrace: Self.oneSecondGrace, prompts: prompts,
             step: Self.executing(Self.threeSecondCommand))
+        let log = await SessionOutputLog.reading(session)
 
-        let answer = try await session.respond(to: "run the command")
+        let answer = try await log.ask("run the command").reply
 
         let envelope = try mailProbeEnvelope(answer)
         #expect(envelope.pending)
-        try await TestPoll.waitUntil("the report of the command comes back as mail") {
-            !Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).isEmpty
-        }
-        _ = try await session.respond(to: Self.followUpMessage)
+        let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
+        let followUp = try await log.ask(Self.followUpMessage)
+        #expect(await log.runMailIds(settling: envelope.completionToken) == [runMail.id])
+        #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
+        #expect(followUp.answer.mailIds == [followUp.id])
         #expect(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).count == 1)
     }
 

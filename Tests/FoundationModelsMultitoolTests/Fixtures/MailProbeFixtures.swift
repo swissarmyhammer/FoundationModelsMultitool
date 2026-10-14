@@ -110,23 +110,13 @@ final class MailProbePrompts: Sendable {
     }
 
     /// The prompts so far, in order.
+    ///
+    /// The backend records the prompt of a submission before it answers.
+    /// Thus when the answer of a mail ended, its prompts are here. A test
+    /// waits for that answer by its `MailID` (see `SessionOutputLog`), not
+    /// for a number of prompts.
     var all: [String] {
         prompts.withLock { $0 }
-    }
-
-    /// Waits until at least `count` prompts are recorded, or until
-    /// `TestPoll.deadline` passes.
-    ///
-    /// - Parameter count: How many prompts to wait for.
-    /// - Returns: The prompts at that time.
-    func awaiting(_ count: Int) async -> [String] {
-        let deadline = ContinuousClock.now.advanced(by: TestPoll.deadline)
-        var current = all
-        while current.count < count, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: TestPoll.interval)
-            current = all
-        }
-        return current
     }
 }
 
@@ -261,7 +251,7 @@ struct MailProbeContainer: LoadedLLMContainer {
 /// - Throws: What resolving the stub profile throws.
 func makeMailProbeSession(
     mounting runCode: MultiTool, prompts: MailProbePrompts, step: @escaping MailProbeStep
-) async throws -> RoutedSession {
+) async throws -> any RoutedSession {
     let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: runCodeStep(step)))
     return try await makeStubSession(
         mounting: [runCode], loader: loader, standardModel: ModelRef(stringLiteral: "stub/mailprobe-\(ULID.generate())")
@@ -318,7 +308,7 @@ func makeMailProbeSession(
     inlineSettleGrace: TimeInterval = ToolMount.defaultInlineSettleGrace,
     prompts: MailProbePrompts,
     step: @escaping MailProbeToolsStep
-) async throws -> RoutedSession {
+) async throws -> any RoutedSession {
     let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: step))
     let profile = try await makeStubProfile(
         loader: loader, standardModel: ModelRef(stringLiteral: "stub/mailprobe-\(ULID.generate())"))

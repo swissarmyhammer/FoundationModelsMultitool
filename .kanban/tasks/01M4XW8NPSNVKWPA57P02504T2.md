@@ -26,8 +26,8 @@ comments:
 
     Count: the tests have 53 .timeLimit traits (27 root, 26 IntegrationTests) and 17 more mentions in comments, not 83.
   timestamp: 2026-10-14T19:15:58.825393+00:00
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffde80
 title: 'Mail step 5 T0: check Router steps 2 to 4 from Multitool and list each break'
 ---
 Step 5 of the mail work. Read first: /Users/wballard/github/swissarmyhammer/mailbox.md (sections 3, 4 and 5, the signals table, section 8 rows 2 to 5, and the Progress table). All items in mailbox.md are decisions.

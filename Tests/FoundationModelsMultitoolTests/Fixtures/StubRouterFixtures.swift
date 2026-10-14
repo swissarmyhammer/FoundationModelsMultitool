@@ -268,7 +268,7 @@ struct StubMachine: MachineProbe {
 /// context raised.
 struct StubRun {
     /// The session every run and every elicitation belongs to.
-    let session: RoutedSession
+    let session: any RoutedSession
 
     /// A real context over that session's mailbox.
     let context: ToolContext
@@ -342,7 +342,7 @@ func makeStubSession(
     standardModel: ModelRef = stubStandardModel,
     in directory: URL = FileManager.default.temporaryDirectory
         .appendingPathComponent("multitool-stub-\(ULID.generate())")
-) async throws -> (session: RoutedSession, recorder: CollectingTranscriptRecorder) {
+) async throws -> (session: any RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
     let profile = try await makeStubProfile(
         recorder: recorder, loader: loader, standardModel: standardModel, in: directory)
