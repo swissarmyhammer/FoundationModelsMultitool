@@ -97,8 +97,8 @@ struct SuspendedContextTests {
         await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers)
         harness.clock.advance(by: Self.aliveWindow)
 
-        // Alive: the mailbox still holds the background run, and the promise
-        // the snippet is awaiting has not been torn down under it.
+        // Alive: the run plane still holds the background run, and the
+        // promise that the snippet awaits is still there.
         let backgrounded = await harness.run.context.backgroundRuns()
         #expect(backgrounded.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
@@ -231,8 +231,8 @@ struct SuspendedContextTests {
 
     /// One `runCode` tool mounted the way Router's native session mounts it.
     ///
-    /// Carries the gated tool its snippets call, and the session mailbox its
-    /// runs background and post on.
+    /// Carries the gated tool that its snippets call, and the stub run whose
+    /// run plane holds its background runs.
     private struct Harness {
         /// The gated tool `gatedSnippet` calls.
         let gated: GatedTool
@@ -320,7 +320,7 @@ struct SuspendedContextTests {
         try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
     }
 
-    /// Awaits a background run's settlement through the mailbox.
+    /// Waits until a background run settles on the run plane.
     ///
     /// - Parameters:
     ///   - completionToken: the background run's token.
