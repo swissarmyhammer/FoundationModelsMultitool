@@ -232,6 +232,13 @@ extension MCPServer {
     /// client. Every call still in flight ends as `MCPServerError.lost`: the
     /// answer it waited for can no longer arrive. A later `connect(via:)` is
     /// what drives the next transition.
+    ///
+    /// This method returns when the transport that the client used is
+    /// closed, or when the client had no transport to close. No clock bounds
+    /// this wait. Thus a transport whose own `disconnect()` never returns
+    /// makes this method, and the next connect attempt, wait for it. Such a
+    /// transport has a defect. The built-in stdio and in-memory transports
+    /// return from `disconnect()`.
     public func disconnect() async {
         await cancellationNotices.drain()
         connectGeneration += 1
