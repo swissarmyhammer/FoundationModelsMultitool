@@ -10,10 +10,14 @@ comments:
   id: 01m4y426kwdyc7k44rdxgjem2w
   text: 'New heads for the final runs (owner, replaces 906c2b17): Router 3f3ba209 (906c2b17 plus a test fix, no API change) and Extras 7f530ff. Extras 7f530ff adds elicitation reasons: ElicitationResponse.reason, .decline(reason:), .cancel(reason:). A run cancel, a sweep and a close now end open questions with .cancel(reason: RunPlane.runCancelledReason); a duplicate id gives .cancel(reason: RunPlane.duplicateElicitationIdReason). If a Multitool test checks a bare .cancel of a run-plane question, change it to the reason form and name it in the report.'
   timestamp: 2026-10-14T21:11:02.012725+00:00
+- actor: claude-code
+  id: 01m4y9en9gsp172tey65zrt8te
+  text: 'T4 result (commit bc12ada): comments and docs changed in 94 files (90 mailbox/SessionMailbox, 1 drain(), 1 cancel() with no id, about 292 "turn" for Router work, 6 deleted helper names); identifiers with "turn" kept (list in the report). New test nestedRunCodeRunsInItsOwnSandbox. Pins Router 3f3ba209, Extras 278e9cb (code of 7f530ff); finding 8 confirmed (bare .cancel builds). Root swift test: 2378 tests pass (1 run). Models complete in the cache (27B: 3 of 3 shards). IntegrationTests live run (1 run): 115 tests, 113 pass, 2 fail: environmentWeekdayAndOperatingSystem (calledTheVerbs: the model called environment.os, not environment.now; the answer held the date) and webResearch (searchedTheWeb: the model made no tool call; the answer was valid). Row 5: no test function removed (2426 test functions at 845aa22, all still present); +3 new tests.'
+  timestamp: 2026-10-14T22:45:13.136680+00:00
 depends_on:
 - 01M4XW9N4S2W8WTPXZDE9ASE3A
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffe480
 title: 'Mail step 5 T4: docs and comments, final suite run, final commit and final report'
 ---
 Step 5 of the mail work. Read mailbox.md (sections 3, 4 and 5, the signals table, section 8 rows 2 to 5, and the Progress table). All items in mailbox.md are decisions. This task starts after T3.
