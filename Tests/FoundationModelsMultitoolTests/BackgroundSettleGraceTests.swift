@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsRouter
+import ScenarioGrading
 import Testing
 import ULID
 

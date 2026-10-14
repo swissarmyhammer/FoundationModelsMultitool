@@ -1,5 +1,4 @@
 import FoundationModels
-import FoundationModelsExtras
 import FoundationModelsRouter
 
 // MARK: - The output of a session, read by mail id
@@ -11,42 +10,48 @@ import FoundationModelsRouter
 // them by the text of a prompt or by the order of the answers.
 //
 // The log reads `streamSessionEvents()` from before the first mail. A test
-// waits on the events in the log, and not on a clock.
+// waits on the events in the log, and not on a clock. The root unit tests and
+// the gated scenarios of the nested package both read a session this way, so
+// the log stands in this test-support product, which both link.
 
 /// One user message that a test sent, and the answer that it got.
-struct AnsweredMail: Sendable {
+public struct AnsweredMail: Sendable {
     /// The id of the user message.
-    let id: MailID
+    public let id: MailID
 
     /// The answer of the session to the message.
-    let answer: SessionAnswer
+    public let answer: SessionAnswer
 
     /// The final text of the answer: the text that `respond(to:)` returns for
     /// the same message.
-    var reply: String { answer.reply }
+    public var reply: String { answer.reply }
 }
 
 /// The run mail of a settled background run, and the answer that delivered
 /// it to the model.
-struct DeliveredRunMail: Sendable {
+public struct DeliveredRunMail: Sendable {
     /// The id of the run mail.
-    let id: MailID
+    public let id: MailID
 
     /// The terminal event of the run that the mail holds.
-    let event: OperationEvent
+    public let event: OperationEvent
 
     /// The answer whose submissions delivered the mail.
-    let answer: SessionAnswer
+    public let answer: SessionAnswer
 }
 
 /// The output events of one Router session, in the order the session sent
 /// them, with waits on those events.
-actor SessionOutputLog {
+public actor SessionOutputLog {
     /// The session that the log reads.
-    let session: any RoutedSession
+    public let session: any RoutedSession
 
     /// Each output event so far, in the order the session sent it.
-    private(set) var outputs: [SessionOutput] = []
+    public private(set) var outputs: [SessionOutput] = []
+
+    /// Each user message that ``ask(_:)`` sent and that got its answer, in
+    /// the order the test sent them.
+    public private(set) var askedMails: [AnsweredMail] = []
 
     /// The waits that are not satisfied yet.
     private var waiters: [Waiter] = []
@@ -74,7 +79,7 @@ actor SessionOutputLog {
     ///
     /// - Parameter session: The session to read.
     /// - Returns: The log.
-    static func reading(_ session: any RoutedSession) async -> SessionOutputLog {
+    public static func reading(_ session: any RoutedSession) async -> SessionOutputLog {
         let log = SessionOutputLog(session: session)
         let stream = await session.streamSessionEvents()
         Task { [weak log] in
@@ -106,7 +111,7 @@ actor SessionOutputLog {
     /// Waits until `condition` is true for the events in the log.
     ///
     /// - Parameter condition: The condition on all events so far.
-    func wait(until condition: @escaping @Sendable ([SessionOutput]) -> Bool) async {
+    public func wait(until condition: @escaping @Sendable ([SessionOutput]) -> Bool) async {
         if condition(outputs) { return }
         await withCheckedContinuation { continuation in
             waiters.append(Waiter(condition: condition, continuation: continuation))
@@ -122,7 +127,7 @@ actor SessionOutputLog {
     /// - Parameter text: The text of the message.
     /// - Returns: The id of the message and its answer.
     /// - Throws: What `send(_:)` throws, and the error of a failed answer.
-    func ask(_ text: String) async throws -> AnsweredMail {
+    public func ask(_ text: String) async throws -> AnsweredMail {
         let id = try session.send(Transcript.Prompt(segments: [.text(Transcript.TextSegment(content: text))]))
         let answer = try await session.awaitAnswer(of: id)
         await waitForTerminal(of: id)
@@ -131,15 +136,19 @@ actor SessionOutputLog {
         return asked
     }
 
-    /// Each user message that ``ask(_:)`` sent and that got its answer, in
-    /// the order the test sent them.
-    private(set) var askedMails: [AnsweredMail] = []
-
     /// Waits until the log holds the terminal event of the mail `id`.
     ///
     /// - Parameter id: The id of one mail.
-    func waitForTerminal(of id: MailID) async {
+    public func waitForTerminal(of id: MailID) async {
         await wait { outputs in outputs.contains { Self.isTerminal($0.event, of: id) } }
+    }
+
+    /// The terminal event of the mail `id`, when the log holds it.
+    ///
+    /// - Parameter id: The id of one mail.
+    /// - Returns: The first terminal event of `id`, or `nil`.
+    public func terminal(of id: MailID) -> SessionEvent? {
+        outputs.lazy.map(\.event).first { Self.isTerminal($0, of: id) }
     }
 
     /// Waits for the run mail that holds the terminal of the background run
@@ -150,7 +159,7 @@ actor SessionOutputLog {
     ///
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The id of the run mail.
-    func runMail(settling completionToken: String) async -> MailID {
+    public func runMail(settling completionToken: String) async -> MailID {
         await wait { outputs in Self.runMailIds(settling: completionToken, in: outputs).first != nil }
         return Self.runMailIds(settling: completionToken, in: outputs)[0]
     }
@@ -160,7 +169,7 @@ actor SessionOutputLog {
     ///
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The ids. A run that settled one time gives one id.
-    func runMailIds(settling completionToken: String) -> [MailID] {
+    public func runMailIds(settling completionToken: String) -> [MailID] {
         Self.runMailIds(settling: completionToken, in: outputs)
     }
 
@@ -169,7 +178,7 @@ actor SessionOutputLog {
     /// - Parameter id: The id of one run mail.
     /// - Returns: The event of the `runSettled` output whose origin is `id`,
     ///   or `nil` when the log has no such event.
-    func settledRun(in id: MailID) -> OperationEvent? {
+    public func settledRun(in id: MailID) -> OperationEvent? {
         outputs.lazy.compactMap { output -> OperationEvent? in
             guard case .runSettled(let event) = output.event, output.origin.contains(id) else { return nil }
             return event
@@ -183,7 +192,7 @@ actor SessionOutputLog {
     /// - Returns: The id of the run mail, the terminal event of the run that
     ///   it holds, and the answer that delivered it.
     /// - Throws: The error of a failed answer.
-    func deliveredRunMail(settling completionToken: String) async throws -> DeliveredRunMail {
+    public func deliveredRunMail(settling completionToken: String) async throws -> DeliveredRunMail {
         let id = await runMail(settling: completionToken)
         let answer = try await session.awaitAnswer(of: id)
         await waitForTerminal(of: id)
@@ -195,7 +204,7 @@ actor SessionOutputLog {
 
     /// The id of each run mail in the log: each `runSettled`, `runMessage` and
     /// `runProgress` event that has a mail origin.
-    var allRunMailIds: [MailID] {
+    public var allRunMailIds: [MailID] {
         outputs.flatMap { output -> [MailID] in Self.runMailIds(of: output, completionToken: nil) }
     }
 
@@ -205,16 +214,16 @@ actor SessionOutputLog {
     ///
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The ids, in event order.
-    func allRunMailIds(of completionToken: String) -> [MailID] {
+    public func allRunMailIds(of completionToken: String) -> [MailID] {
         outputs.flatMap { output -> [MailID] in Self.runMailIds(of: output, completionToken: completionToken) }
     }
 
-    /// The terminal event of the mail `id`, when the log holds it.
-    ///
-    /// - Parameter id: The id of one mail.
-    /// - Returns: The first terminal event of `id`, or `nil`.
-    func terminal(of id: MailID) -> SessionEvent? {
-        outputs.lazy.map(\.event).first { Self.isTerminal($0, of: id) }
+    /// The id of each `mailDelivered` event in the log, in event order.
+    public var deliveredMailIds: [MailID] {
+        outputs.compactMap { output in
+            guard case .mailDelivered(let id) = output.event else { return nil }
+            return id
+        }
     }
 
     /// The run mail ids that one output event carries.
@@ -235,14 +244,6 @@ actor SessionOutputLog {
         guard case .mail(let ids) = output.origin else { return [] }
         if let completionToken, event.correlationID != completionToken { return [] }
         return Array(ids)
-    }
-
-    /// The id of each `mailDelivered` event in the log, in event order.
-    var deliveredMailIds: [MailID] {
-        outputs.compactMap { output in
-            guard case .mailDelivered(let id) = output.event else { return nil }
-            return id
-        }
     }
 
     /// The `runSettled` events of the run `completionToken` that have a mail

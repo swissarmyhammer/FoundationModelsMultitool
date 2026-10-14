@@ -270,6 +270,9 @@ private let nativeReplyPreviewCharacters = 80
 
 /// Everything one streamed turn produced that a scenario grades or reports.
 struct StreamedTurn {
+    /// The id of the user message, or `nil` before `streamTurn` sent it.
+    var mailId: MailID?
+
     /// The turn's reply text: `SessionAnswer.reply` of the `answered` event
     /// that ended the turn, or the empty string when no answer ended it.
     ///
@@ -404,19 +407,27 @@ private func traceExcerpt(_ text: String) -> String {
     return "\(flattened.prefix(scenarioTraceLimit))…[+\(flattened.count - scenarioTraceLimit) more]"
 }
 
-/// Drives one turn of a mounted session and harvests it.
+/// Sends one user message to a mounted session and harvests its answer.
+///
+/// The message goes in as mail with a `MailID`. The runner reads the
+/// subscription of that id: each output event whose origin holds the id, up to
+/// the terminal event of the id. Thus the runner reads the answer to its own
+/// message, and not the next answer of the session.
 ///
 /// - Parameters:
 ///   - session: the mounted session to drive.
-///   - prompt: the user request driving this turn.
-/// - Returns: the turn's reply, tool-call count, and tool outputs.
-/// - Throws: whatever the session's event stream throws.
-func streamTurn(of session: RoutedSession, prompt: String) async throws -> StreamedTurn {
+///   - prompt: the user request of the message.
+/// - Returns: the reply, tool-call count, and tool outputs of the answer.
+/// - Throws: what `mail(_:)` throws, and the error of a failed answer.
+func streamTurn(of session: any RoutedSession, prompt: String) async throws -> StreamedTurn {
     var turn = StreamedTurn()
-    var events: [SessionEvent] = []
-    for try await event in await session.streamEvents(to: prompt) {
-        events.append(event)
-        switch event {
+    var outputs: [SessionOutput] = []
+    let subscription = try await session.mail(
+        Mail(sender: .user, body: .userMessage(prompt: prompt, options: UserMessageOptions(mode: .stream))))
+    turn.mailId = subscription.id
+    for await output in subscription {
+        outputs.append(output)
+        switch output.event {
         case .generationStalled(let stall):
             // Router reports a stall rather than imposing a timeout
             // (`^z6xcmnh`): a signal a host may act on, never a cancellation.
@@ -529,7 +540,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
             .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused,
-            .toolDisplay:
+            .toolDisplay, .mailDelivered, .cancelled, .signalDone, .lost:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -553,16 +564,24 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // posts for a host, and this runner grades no display content.
             // The submission and answer events are read after
             // the loop, as one fold — see `settle(from:)`.
+            // `.mailDelivered` says the model got a mail, and `.cancelled`,
+            // `.signalDone` and `.lost` are terminals of mail and signals that
+            // these scenarios do not send; the terminal of this message is
+            // read by its id after the loop.
             break
         }
     }
-    turn.settle(from: SubmissionLog.fold(events: events))
+    // The subscription ends at the terminal event of the message. A failed
+    // answer throws its original error here, as the stream of the message did.
+    _ = try await session.awaitAnswer(of: subscription.id)
+    turn.settle(from: SubmissionLog.answer(to: subscription.id, in: outputs))
     return turn
 }
 
 extension StreamedTurn {
     /// Takes the graded reply, the submission identity and the token usage
-    /// from the last answer chain that ended in the turn.
+    /// from the answer chain of the message of the turn, found by its
+    /// `MailID`.
     ///
     /// **The end of the reply is `answered`, not `submissionEnded`.** The
     /// event the old Router sent at the end of a turn meant "the reply of this
@@ -574,14 +593,14 @@ extension StreamedTurn {
     /// identity names each submission of the chain, from its
     /// `submissionStarted` events.
     ///
-    /// - Parameter records: every answer chain that ended in the turn, in
-    ///   the order the chains ended.
-    mutating func settle(from records: [AnswerRecord]) {
-        guard let last = records.last else { return }
-        answer = last.reply ?? ""
-        let ids = last.submissionIds.map(\.description).joined(separator: ",")
-        submissionIdentity = "\(ids)/\(last.cause?.rawValue ?? "none")"
-        guard case .answered(let final) = last.outcome, let usage = final.usage else { return }
+    /// - Parameter record: the answer chain of the message, or `nil` when no
+    ///   chain of the message ended.
+    mutating func settle(from record: AnswerRecord?) {
+        guard let record else { return }
+        answer = record.reply ?? ""
+        let ids = record.submissionIds.map(\.description).joined(separator: ",")
+        submissionIdentity = "\(ids)/\(record.cause?.rawValue ?? "none")"
+        guard case .answered(let final) = record.outcome, let usage = final.usage else { return }
         // Output only, and the input half relabelled — see `tokenUsage`.
         tokenUsage = usageForDisplay(usage)
     }
@@ -791,20 +810,24 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// the drain and the `wait` tool. A run that settles after the answer ends now
 /// sends its result to the session as mail, and the session starts a new
 /// answer for it, whose first submission reports
-/// `SubmissionStart.cause == .mail`. So this runner no longer stops at the end
-/// of the first answer: it reads the session events until an answer that mail
-/// started ends, or until the shared poll hang guard `IntegrationPoll.deadline`.
-/// That bound is a hang guard and never a speed check (card `^kdtrmhv`): a
-/// run that gets no mail answer fails `mailCollection` with a reading, inside
-/// `IntegrationHangGuard.timeLimit`.
+/// `SubmissionStart.cause == .mail`. So this runner does not stop at the end of
+/// the first answer. It finds the mail by id: the pending envelope names the
+/// completion token of the run, the `runSettled` event of that run has the
+/// `MailID` of its run mail, and the runner reads up to the terminal of that
+/// `MailID`. The wait ends on events only: a background run always settles,
+/// at the latest at its run timeout, and its mail always gets one terminal.
+/// When the first answer gave no pending envelope, no run mail can come, and
+/// the runner grades at once: the run fails `pendingEnvelope` and
+/// `mailCollection`.
 ///
 /// **What is graded.** Some tool output of the first answer must be exactly
 /// `PendingRunEnvelope.rendered`, checked with Router's own byte-shape
-/// recognizer. The last answer the runner read must be a valid answer that
-/// carries the value, grounded in the fixture's own return; at least one
-/// answer must start from mail; and no background run may still be going when
-/// that last answer ends. The value reaches the model only through the settled
-/// run, so an answer that carries it proves the mail brought it.
+/// recognizer. The answer that delivered the run mail (the first answer when
+/// no run mail came) must be a valid answer that carries the value, grounded
+/// in the fixture's own return; at least one answer must start from mail; and
+/// no background run may still be going when that answer ends. The value
+/// reaches the model only through the settled run, so an answer that carries
+/// it proves the mail brought it.
 ///
 /// The first answer is driven through `streamTurn(of:prompt:)` and not
 /// through `respond(to:)`, because only the stream carries the tool outputs
@@ -844,22 +867,20 @@ func runInBandCollectionCanaryScenario(
             discoveryPriming: scenarioDiscoveryPriming
         )
 
-        // Subscribed on this task, before the turn starts. A subscription
-        // opened later could register after an answer had already ended, and
-        // the reading would then miss it.
-        let sessionEvents = await session.streamSessionEvents()
-        async let mailReading = MailAnswerReading.read(
-            sessionEvents, backgroundRunsOf: log, within: IntegrationPoll.deadline)
+        // Read on this task, before the message goes in. A read that started
+        // later could miss the output of an answer that already ended.
+        let output = await SessionOutputLog.reading(session)
 
         let start = Date()
         let turn = try await streamTurn(of: session, prompt: prompt)
-        let reading = await mailReading
+        let reading = await MailAnswerReading.read(output, after: turn, backgroundRunsOf: log)
         let elapsed = Date().timeIntervalSince(start)
-        let answers = SubmissionLog.fold(events: reading.events)
+        let answers = SubmissionLog.fold(outputs: reading.outputs)
 
         let evidence = MailCollectionEvidence(
-            // The last answer is the answer that mail started, when one ran.
-            answer: answers.last?.reply ?? "",
+            // The answer that delivered the run mail, or the first answer
+            // when no run mail came.
+            answer: reading.mailAnswer?.reply ?? turn.answer,
             returnedPaths: await log.returnedPaths,
             pendingEnvelopes: turn.toolOutputs.filter(PendingRunEnvelope.isRendered).count,
             mailAnswers: answers.filter { $0.cause == .mail }.count,
@@ -884,73 +905,57 @@ func runInBandCollectionCanaryScenario(
     }
 }
 
-/// What the canary read at the end of the answer that mail started.
+/// What the canary read at the end of the answer that delivered the run mail.
 private struct MailAnswerReading {
-    /// The session events through the end of the first answer that mail
-    /// started, or every event before the deadline when no such answer ended.
-    let events: [SessionEvent]
+    /// The session output through the terminal of the run mail, or through the
+    /// end of the first answer when no run mail came.
+    let outputs: [SessionOutput]
+
+    /// The answer that delivered the run mail of the pending call, or `nil`
+    /// when the first answer gave no pending envelope, or when the answer of
+    /// the run mail failed.
+    let mailAnswer: SessionAnswer?
 
     /// The background runs still going at the instant the reading ended.
     let backgroundRuns: [BackgroundRun]
 
-    /// Reads the session events until an answer that mail started ends, or
-    /// until `limit` passes, and then snapshots the background runs.
+    /// Waits for the run mail of the first pending call of `turn` and for the
+    /// answer that delivers it, by id, and then snapshots the background runs.
     ///
-    /// Two child tasks race: one reads the events, and one sleeps `limit`.
-    /// When the sleep wins, the reader is cancelled, and an `AsyncStream`
-    /// ends its iteration on cancellation, so the reader gives back the
-    /// events it read so far.
+    /// The completion token of the pending envelope names the run. The
+    /// `runSettled` event of the run carries the `MailID` of its run mail,
+    /// and the answer that delivers that mail ends with the terminal of the
+    /// `MailID`. Each wait ends on an event: a run always settles, at the
+    /// latest at its run timeout.
     ///
     /// - Parameters:
-    ///   - events: the session's own event feed, subscribed before the turn
-    ///     started.
+    ///   - output: the session output, read from before the message went in.
+    ///   - turn: the first answer, as `streamTurn` harvested it.
     ///   - log: the run's call log, which holds the handle onto the session's
     ///     background runs.
-    ///   - limit: how long to wait, counted from this call.
-    /// - Returns: the events read, and the runs still going at that instant.
+    /// - Returns: the output read, the answer of the run mail, and the runs
+    ///   still going at that instant.
     static func read(
-        _ events: AsyncStream<SessionEvent>,
-        backgroundRunsOf log: ScenarioCallLog,
-        within limit: Duration
+        _ output: SessionOutputLog,
+        after turn: StreamedTurn,
+        backgroundRunsOf log: ScenarioCallLog
     ) async -> MailAnswerReading {
-        let collected = await withTaskGroup(of: [SessionEvent]?.self) { group in
-            group.addTask { await eventsThroughMailAnswer(in: events) }
-            group.addTask {
-                try? await Task.sleep(for: limit)
-                return nil
-            }
-            var read: [SessionEvent] = []
-            for await finished in group {
-                group.cancelAll()
-                if let finished {
-                    read = finished
-                    break
-                }
-            }
-            return read
+        var mailAnswer: SessionAnswer?
+        if let token = turn.toolOutputs.lazy.compactMap(pendingCompletionToken).first {
+            mailAnswer = try? await output.deliveredRunMail(settling: token).answer
         }
-        return MailAnswerReading(events: collected, backgroundRuns: await log.backgroundRuns())
+        return MailAnswerReading(
+            outputs: await output.outputs, mailAnswer: mailAnswer, backgroundRuns: await log.backgroundRuns())
     }
 
-    /// Reads events until an answer chain that mail started ends.
+    /// The completion token of a tool output that is a pending envelope.
     ///
-    /// "The end of the answer" is `answered` — or `answerFailed` in its place
-    /// — and never one `submissionEnded`, which ends one SDK call only. See
-    /// `SubmissionLog.endsAnswer(event:)`.
-    ///
-    /// - Parameter events: the session's own event feed.
-    /// - Returns: the events through the end of the first answer that mail
-    ///   started, or every event read when the feed ended or the task was
-    ///   cancelled first.
-    private static func eventsThroughMailAnswer(in events: AsyncStream<SessionEvent>) async -> [SessionEvent] {
-        var collected: [SessionEvent] = []
-        for await event in events {
-            collected.append(event)
-            if SubmissionLog.endsAnswer(event: event), SubmissionLog.fold(events: collected).last?.cause == .mail {
-                break
-            }
-        }
-        return collected
+    /// - Parameter text: one tool output of the first answer.
+    /// - Returns: the token, or `nil` when the output is not a pending
+    ///   envelope.
+    private static func pendingCompletionToken(in text: String) -> String? {
+        guard PendingRunEnvelope.isRendered(text: text) else { return nil }
+        return (try? JSONDecoder().decode(PendingRunEnvelope.self, from: Data(text.utf8)))?.completionToken
     }
 }
 

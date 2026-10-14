@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import FoundationModelsRouter
+import ScenarioGrading
 import Testing
 import os
 
