@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m4y9hcr3tq4x7fnptwnbprvp
+  text: |-
+    Evidence check (owner decision 3): the whole session journal of each failed run was read (IntegrationTests/.build/recordings/FMMultitoolIntegration-ABA09365-0492-43A6-A808-1EFA11D9638F and FMMultitoolIntegration-0DCA9731-F3D6-4DE3-9CBD-7B3117040C37, transcript.jsonl).
+    - Environment: one prompt in the session, so one answer; 3 tool calls (runCode, searchTools, runCode). The snippet took the weekday from JavaScript `new Date()` and called tools.environment.os. `environment.now` is in no entry of the session.
+    - Web research: one prompt and one response in the session; no toolCalls entry at all.
+    Thus no tool call happened in another answer: the grade read the right answer. This is the model's choice. FIRST BASELINE (2026-10-14, Router 3f3ba209, Extras 278e9cb, standard Qwen3.8-27B-mxfp4): environmentWeekdayAndOperatingSystem FAIL (calledTheVerbs), webResearch FAIL (searchedTheWeb). These two results do not block the push (owner decision).
+  timestamp: 2026-10-14T22:46:42.691666+00:00
 position_column: todo
 position_ordinal: '8780'
 title: 'Live run: two graded scenarios fail on a model choice'

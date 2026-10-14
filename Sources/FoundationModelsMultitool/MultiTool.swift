@@ -362,6 +362,11 @@ public struct MultiTool: Tool {
     ///     `tools.*`.
     ///   - configuration: see ``init(holder:configuration:interpreter:limits:searchTools:depth:enclosingRun:)``.
     ///   - interpreter: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    ///     This interpreter runs the outer snippet and also each nested
+    ///     `tools.runCode` snippet. Thus it can get two runs at the same time:
+    ///     a nested run starts while the outer run waits for it. Each run must
+    ///     get a new sandbox. `JSCInterpreter` keeps no state between runs,
+    ///     and it runs each run on its own job queue.
     ///   - limits: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
     ///   - searchTools: the mounted discovery tool a snippet reaches as
     ///     `tools.searchTools`. Defaults to `nil`, which binds no such path.
