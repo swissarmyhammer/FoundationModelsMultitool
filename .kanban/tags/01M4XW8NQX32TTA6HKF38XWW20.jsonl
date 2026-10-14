@@ -1,0 +1,1 @@
+{"id":"01M4XW8NREMABAXDT836X511T6","timestamp":"2026-10-14T18:54:45.518724Z","op":"create","item_id":"01M4XW8NQX32TTA6HKF38XWW20","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: bfd4f2\n+tag_name: mail-step-5\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: bfd4f2\n-tag_name: mail-step-5\n","transaction_id":null}
