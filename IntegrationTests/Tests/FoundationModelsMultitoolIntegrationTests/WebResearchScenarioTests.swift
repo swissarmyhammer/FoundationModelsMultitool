@@ -44,7 +44,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// **The grade.** Two checks, from `web.md`:
 ///
 /// 1. A `runCode` snippet of the answer called `tools.web.search`. The record
-///    is `StreamedTurn.calls`, the record that `streamTurn` keeps of each
+///    is `StreamedAnswer.calls`, the record that `streamAnswer` keeps of each
 ///    session tool call. `ScenarioCallLog` is not the record here, because
 ///    it holds the calls of fixture tools only, and `tools.web.search` is a
 ///    product verb. `OperationToolLiveTests` reads its route from the same
@@ -73,17 +73,19 @@ struct WebResearchScenarioTests {
         let registry = try MultiTool.Builder()
             .withWeb(configuration: .keyless)
             .buildRegistry()
-        try await runGatedTurnScenario(
+        try await runGatedAnswerScenario(
             named: webResearchScenarioName,
             prompt: webResearchPrompt,
             tools: { try makeSessionTools(of: registry, on: $0) },
-            reading: { turn, elapsed in
-                GatedTurnReading(
-                    checks: Self.webResearchChecks(turn: turn),
+            reading: { answer, elapsed in
+                GatedAnswerReading(
+                    checks: Self.webResearchChecks(answer: answer),
                     resultLine: gatedResultLine(
-                        of: turn,
+                        of: answer,
                         elapsed: elapsed,
-                        readings: [typedPathsReading(of: turn), primingReading(of: turn), failedCallsReading(of: turn)],
+                        readings: [
+                            typedPathsReading(of: answer), primingReading(of: answer), failedCallsReading(of: answer),
+                        ],
                         replyPreviewCharacters: webResearchReplyPreviewCharacters))
             })
     }
@@ -91,11 +93,11 @@ struct WebResearchScenarioTests {
     /// The conditions that the web research run is graded on, in reporting
     /// order: the route, then the answer.
     ///
-    /// - Parameter turn: the streamed answer, with each session tool call it
+    /// - Parameter answer: the streamed answer, with each session tool call it
     ///   made.
     /// - Returns: each condition, for `grade(scenario:checks:)`.
-    private static func webResearchChecks(turn: StreamedTurn) -> [ScenarioCheck] {
-        [calledTheVerbsCheck(named: searchedTheWebCheckName, verbPaths: [webSearchPath], in: turn)]
-            + answerChecks(turn.answer, containsOneOf: [swiftHomePageHost], mustNotContain: [])
+    private static func webResearchChecks(answer: StreamedAnswer) -> [ScenarioCheck] {
+        [calledTheVerbsCheck(named: searchedTheWebCheckName, verbPaths: [webSearchPath], in: answer)]
+            + answerChecks(answer.answer, containsOneOf: [swiftHomePageHost], mustNotContain: [])
     }
 }

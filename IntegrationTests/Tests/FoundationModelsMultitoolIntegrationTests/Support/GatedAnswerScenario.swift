@@ -6,7 +6,7 @@ import ScenarioGrading
 
 /// The conditions that one gated answer is graded on, and the `RESULT` line
 /// that it prints.
-struct GatedTurnReading {
+struct GatedAnswerReading {
 
     /// Each condition, in reporting order, for `grade(scenario:checks:)`.
     let checks: [ScenarioCheck]
@@ -38,13 +38,13 @@ struct GatedTurnReading {
 ///   - makeTools: Makes the session tools from the resolved fixture.
 ///   - reading: Gives the conditions and the `RESULT` line from the answer
 ///     and from how long the answer took, in seconds.
-/// - Throws: What `withLiveRouterFixture`, `makeTools`, or `streamTurn`
+/// - Throws: What `withLiveRouterFixture`, `makeTools`, or `streamAnswer`
 ///   throws.
-func runGatedTurnScenario(
+func runGatedAnswerScenario(
     named name: String,
     prompt: String,
     tools makeTools: (LiveRouterFixture) throws -> [any Tool],
-    reading: (StreamedTurn, TimeInterval) async -> GatedTurnReading
+    reading: (StreamedAnswer, TimeInterval) async -> GatedAnswerReading
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let session = fixture.profile.standard.makeSession(
@@ -53,10 +53,10 @@ func runGatedTurnScenario(
         )
 
         let start = Date()
-        let turn = try await streamTurn(of: session, prompt: prompt)
+        let answer = try await streamAnswer(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
-        let result = await reading(turn, elapsed)
+        let result = await reading(answer, elapsed)
         grade(scenario: name, checks: result.checks)
         reportGatedResult(scenario: name, line: result.resultLine)
     }
@@ -85,7 +85,7 @@ func makeSessionTools(of registry: MultiTool.Registry, on fixture: LiveRouterFix
 /// The condition that the `runCode` snippets of an answer called each verb of
 /// `verbPaths`.
 ///
-/// The record is `StreamedTurn.calls`, read through
+/// The record is `StreamedAnswer.calls`, read through
 /// `NativeTranscript.typedToolPaths(in:)`. `ScenarioCallLog` is not the
 /// record, because it holds the calls of fixture tools only, and a product
 /// verb is not a fixture tool.
@@ -94,16 +94,16 @@ func makeSessionTools(of registry: MultiTool.Registry, on fixture: LiveRouterFix
 ///   - name: The label of the check on the `SCENARIO` line.
 ///   - verbPaths: The snippet call path of each verb that the snippets must
 ///     call, without the `tools.` prefix.
-///   - turn: The streamed answer, with each session tool call that it made.
+///   - answer: The streamed answer, with each session tool call that it made.
 /// - Returns: The condition, for `grade(scenario:checks:)`.
-func calledTheVerbsCheck(named name: String, verbPaths: Set<String>, in turn: StreamedTurn) -> ScenarioCheck {
-    let typedPaths = NativeTranscript.typedToolPaths(in: turn.calls)
+func calledTheVerbsCheck(named name: String, verbPaths: Set<String>, in answer: StreamedAnswer) -> ScenarioCheck {
+    let typedPaths = NativeTranscript.typedToolPaths(in: answer.calls)
     return ScenarioCheck(
         name: name,
         held: verbPaths.isSubset(of: typedPaths),
         failureMessage:
             "expected the \(MultiTool.runCodePath) snippets to call \(verbPaths.sorted()), "
-            + "but they called \(typedPaths.sorted()) and the calls were \(turn.calls.map(\.name))"
+            + "but they called \(typedPaths.sorted()) and the calls were \(answer.calls.map(\.name))"
     )
 }
 
@@ -124,10 +124,10 @@ extension ScenarioCheck {
     ///
     /// - Parameters:
     ///   - name: The label of the check on the `SCENARIO` line.
-    ///   - turn: The streamed answer, with each session tool call that it made.
+    ///   - answer: The streamed answer, with each session tool call that it made.
     /// - Returns: The condition, for `grade(scenario:checks:)`.
-    static func noCorrection(named name: String, in turn: StreamedTurn) -> ScenarioCheck {
-        let correctedOutputs = turn.calls
+    static func noCorrection(named name: String, in answer: StreamedAnswer) -> ScenarioCheck {
+        let correctedOutputs = answer.calls
             .filter { $0.name == MultiTool.runCodePath }
             .compactMap(\.output)
             .filter { $0.contains(correctionField) }
@@ -144,22 +144,22 @@ extension ScenarioCheck {
 /// tools it called.
 ///
 /// - Parameters:
-///   - turn: The streamed answer.
+///   - answer: The streamed answer.
 ///   - elapsed: How long the answer took, in seconds.
 /// - Returns: The reading, with a space at the end.
-private func routeReading(of turn: StreamedTurn, elapsed: TimeInterval) -> String {
-    "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) calls=\(turn.calls.map(\.name)) "
+private func routeReading(of answer: StreamedAnswer, elapsed: TimeInterval) -> String {
+    "elapsed=\(elapsed)s toolCalls=\(answer.toolCallCount) calls=\(answer.calls.map(\.name)) "
 }
 
 /// The `RESULT` line of a gated answer: the route, the readings of the
 /// scenario, then the start of the reply.
 ///
-/// Each suite that uses `runGatedTurnScenario(named:prompt:tools:reading:)`
+/// Each suite that uses `runGatedAnswerScenario(named:prompt:tools:reading:)`
 /// prints its line through this function. Thus the route and the reply have
 /// one format, and each suite gives only the fields that are special to it.
 ///
 /// - Parameters:
-///   - turn: The streamed answer.
+///   - answer: The streamed answer.
 ///   - elapsed: How long the answer took, in seconds.
 ///   - readings: The fields of the scenario, in print order, each as
 ///     `name=value`. The line puts one space after each field.
@@ -167,40 +167,40 @@ private func routeReading(of turn: StreamedTurn, elapsed: TimeInterval) -> Strin
 ///     shows.
 /// - Returns: The reading to print after the scenario label.
 func gatedResultLine(
-    of turn: StreamedTurn,
+    of answer: StreamedAnswer,
     elapsed: TimeInterval,
     readings: [String],
     replyPreviewCharacters: Int
 ) -> String {
     let fields = readings.map { $0 + " " }.joined()
-    let reply = "reply=\"\(turn.answer.prefix(replyPreviewCharacters))\""
-    return routeReading(of: turn, elapsed: elapsed) + fields + reply
+    let reply = "reply=\"\(answer.answer.prefix(replyPreviewCharacters))\""
+    return routeReading(of: answer, elapsed: elapsed) + fields + reply
 }
 
 /// The field of a `RESULT` line that names each verb that the `runCode`
 /// snippets of the answer called, without the `tools.` prefix.
 ///
-/// - Parameter turn: The streamed answer.
+/// - Parameter answer: The streamed answer.
 /// - Returns: The field, as `typed=[...]`, in sorted order.
-func typedPathsReading(of turn: StreamedTurn) -> String {
-    "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted())"
+func typedPathsReading(of answer: StreamedAnswer) -> String {
+    "typed=\(NativeTranscript.typedToolPaths(in: answer.calls).sorted())"
 }
 
 /// The field of a `RESULT` line that tells if the discovery priming of the
 /// answer ran.
 ///
-/// - Parameter turn: The streamed answer.
+/// - Parameter answer: The streamed answer.
 /// - Returns: The field, as `priming=<label>`, with the label of
 ///   `primingLabel(_:)`.
-func primingReading(of turn: StreamedTurn) -> String {
-    "priming=\(primingLabel(turn))"
+func primingReading(of answer: StreamedAnswer) -> String {
+    "priming=\(primingLabel(answer))"
 }
 
 /// The field of a `RESULT` line that names each tool call of the answer that
 /// failed.
 ///
-/// - Parameter turn: The streamed answer.
+/// - Parameter answer: The streamed answer.
 /// - Returns: The field, as `failedCalls=[...]`.
-func failedCallsReading(of turn: StreamedTurn) -> String {
-    "failedCalls=\(turn.failedCalls)"
+func failedCallsReading(of answer: StreamedAnswer) -> String {
+    "failedCalls=\(answer.failedCalls)"
 }

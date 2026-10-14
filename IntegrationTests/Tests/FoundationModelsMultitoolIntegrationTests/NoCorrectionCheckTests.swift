@@ -7,9 +7,9 @@ import Testing
 /// The offline checks of `ScenarioCheck.noCorrection(named:in:)`, the shared
 /// condition that no `runCode` output of a gated answer holds a `correction`.
 ///
-/// Each check makes a `StreamedTurn` by hand. No check loads a model. Thus
+/// Each check makes a `StreamedAnswer` by hand. No check loads a model. Thus
 /// each check always runs.
-@Suite("No correction check: no runCode output of a gated turn holds a correction")
+@Suite("No correction check: no runCode output of a gated answer holds a correction")
 struct NoCorrectionCheckTests {
 
     /// The label that each check gives to the condition.
@@ -29,17 +29,17 @@ struct NoCorrectionCheckTests {
     /// - Parameter outputs: The output of each call, or `nil` for a call
     ///   that did not complete.
     /// - Returns: The answer.
-    private static func turn(outputs: [String?]) -> StreamedTurn {
-        var turn = StreamedTurn()
-        turn.calls = outputs.map {
+    private static func streamed(outputs: [String?]) -> StreamedAnswer {
+        var answer = StreamedAnswer()
+        answer.calls = outputs.map {
             NativeTranscript.StreamedCall(name: MultiTool.runCodePath, argumentsJSON: snippetArguments, output: $0)
         }
-        return turn
+        return answer
     }
 
     @Test("an output with a null correction holds the condition")
     func anOutputWithANullCorrectionHoldsTheCondition() {
-        let check = ScenarioCheck.noCorrection(named: Self.checkName, in: Self.turn(outputs: [Self.answeredOutput]))
+        let check = ScenarioCheck.noCorrection(named: Self.checkName, in: Self.streamed(outputs: [Self.answeredOutput]))
 
         #expect(check.name == Self.checkName)
         #expect(check.held)
@@ -48,7 +48,7 @@ struct NoCorrectionCheckTests {
     @Test("an output with a correction that has a value breaks the condition, and the message names the output")
     func anOutputWithACorrectionBreaksTheCondition() {
         let check = ScenarioCheck.noCorrection(
-            named: Self.checkName, in: Self.turn(outputs: [Self.answeredOutput, Self.correctedOutput]))
+            named: Self.checkName, in: Self.streamed(outputs: [Self.answeredOutput, Self.correctedOutput]))
 
         #expect(!check.held)
         #expect(check.failureMessage.contains(Self.correctedOutput))
@@ -56,10 +56,10 @@ struct NoCorrectionCheckTests {
 
     @Test("a call with no output and a call that is not runCode do not break the condition")
     func aCallWithNoOutputOrAnotherNameDoesNotBreakTheCondition() {
-        var turn = Self.turn(outputs: [nil])
-        turn.calls.append(
+        var answer = Self.streamed(outputs: [nil])
+        answer.calls.append(
             NativeTranscript.StreamedCall(name: "listTools", argumentsJSON: "{}", output: Self.correctedOutput))
 
-        #expect(ScenarioCheck.noCorrection(named: Self.checkName, in: turn).held)
+        #expect(ScenarioCheck.noCorrection(named: Self.checkName, in: answer).held)
     }
 }

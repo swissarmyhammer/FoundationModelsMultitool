@@ -11,7 +11,7 @@ import Testing
 ///
 /// **The mount.** `MultiTool.Builder().withGit(root:)` over the work folder of
 /// ``GitScenarioHistory``, vended through `makeSessionTools(of:on:)` and
-/// mounted by `runGatedTurnScenario(named:prompt:tools:reading:)` on the
+/// mounted by `runGatedAnswerScenario(named:prompt:tools:reading:)` on the
 /// `RoutedSession` that the resolved `.standard` slot vends. This is the
 /// wiring that a Router host makes, the same as `WebResearchScenarioTests`.
 /// The session gets no instructions: the tool descriptions are the whole
@@ -29,7 +29,7 @@ import Testing
 /// not assert a fixed model score):
 ///
 /// 1. A `runCode` snippet of the answer called `git.diff`. The record is
-///    `StreamedTurn.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
+///    `StreamedAnswer.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
 /// 2. No `runCode` output holds a `correction`. A correction is the in-band
 ///    answer of a verb that could not answer, thus an output with one shows a
 ///    verb that refused the call.
@@ -85,17 +85,17 @@ struct GitScenarioTests {
         // The release of `repository` removes its work folder, thus the
         // repository must live until the answer ends.
         defer { withExtendedLifetime(repository) {} }
-        try await runGatedTurnScenario(
+        try await runGatedAnswerScenario(
             named: Self.scenarioName,
             prompt: Self.prompt,
             tools: { try makeSessionTools(of: registry, on: $0) },
-            reading: { turn, elapsed in
-                GatedTurnReading(
-                    checks: Self.checks(turn: turn),
+            reading: { answer, elapsed in
+                GatedAnswerReading(
+                    checks: Self.checks(answer: answer),
                     resultLine: gatedResultLine(
-                        of: turn,
+                        of: answer,
                         elapsed: elapsed,
-                        readings: Self.readings(of: turn),
+                        readings: Self.readings(of: answer),
                         replyPreviewCharacters: Self.replyPreviewCharacters))
             })
     }
@@ -103,13 +103,13 @@ struct GitScenarioTests {
     /// The conditions that the scenario is graded on: the verbs, then the
     /// corrections.
     ///
-    /// - Parameter turn: The streamed answer, with each session tool call it
+    /// - Parameter answer: The streamed answer, with each session tool call it
     ///   made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
-    private static func checks(turn: StreamedTurn) -> [ScenarioCheck] {
+    private static func checks(answer: StreamedAnswer) -> [ScenarioCheck] {
         [
-            calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: verbPaths, in: turn),
-            ScenarioCheck.noCorrection(named: noCorrectionCheckName, in: turn),
+            calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: verbPaths, in: answer),
+            ScenarioCheck.noCorrection(named: noCorrectionCheckName, in: answer),
         ]
     }
 
@@ -118,17 +118,17 @@ struct GitScenarioTests {
     /// token usage, the snippet verbs, the score, the priming, and the failed
     /// calls.
     ///
-    /// - Parameter turn: The streamed answer.
+    /// - Parameter answer: The streamed answer.
     /// - Returns: The fields, in print order.
-    private static func readings(of turn: StreamedTurn) -> [String] {
-        let namedFacts = answerFacts.filter { turn.answer.localizedCaseInsensitiveContains($0) }
+    private static func readings(of answer: StreamedAnswer) -> [String] {
+        let namedFacts = answerFacts.filter { answer.answer.localizedCaseInsensitiveContains($0) }
         let score = "answerFacts=\(namedFacts.count)/\(answerFacts.count) named=\(namedFacts)"
         return [
-            "tokens=\(turn.tokenUsage ?? "n/a")",
-            typedPathsReading(of: turn),
+            "tokens=\(answer.tokenUsage ?? "n/a")",
+            typedPathsReading(of: answer),
             score,
-            primingReading(of: turn),
-            failedCallsReading(of: turn),
+            primingReading(of: answer),
+            failedCallsReading(of: answer),
         ]
     }
 }

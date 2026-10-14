@@ -9,7 +9,7 @@ import Testing
 ///
 /// **The mount.** `MultiTool.Builder().withEnvironment(context:)` and no
 /// other capability, vended through `makeSessionTools(of:on:)` and mounted by
-/// `runGatedTurnScenario(named:prompt:tools:reading:)` on the `RoutedSession`
+/// `runGatedAnswerScenario(named:prompt:tools:reading:)` on the `RoutedSession`
 /// that the resolved `.standard` slot vends. This is the wiring that a Router
 /// host makes, the same as `GitScenarioTests`. The session gets no
 /// instructions: the tool descriptions are the whole product surface.
@@ -30,7 +30,7 @@ import Testing
 /// not assert a fixed model score):
 ///
 /// 1. A `runCode` snippet of the answer called `environment.now`. The record is
-///    `StreamedTurn.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
+///    `StreamedAnswer.calls`, read through `NativeTranscript.typedToolPaths(in:)`.
 /// 2. No `runCode` output holds a `correction`.
 /// 3. The answer holds the injected date: the injected weekday or the
 ///    injected `yyyy-MM-dd` date. The user's rule overrides the text of the
@@ -73,17 +73,17 @@ struct EnvironmentScenarioTests {
         let registry = try MultiTool.Builder()
             .withEnvironment(context: InjectedDate.context())
             .buildRegistry()
-        try await runGatedTurnScenario(
+        try await runGatedAnswerScenario(
             named: Self.scenarioName,
             prompt: Self.prompt,
             tools: { try makeSessionTools(of: registry, on: $0) },
-            reading: { turn, elapsed in
-                GatedTurnReading(
-                    checks: Self.checks(turn: turn),
+            reading: { answer, elapsed in
+                GatedAnswerReading(
+                    checks: Self.checks(answer: answer),
                     resultLine: gatedResultLine(
-                        of: turn,
+                        of: answer,
                         elapsed: elapsed,
-                        readings: Self.readings(of: turn),
+                        readings: Self.readings(of: answer),
                         replyPreviewCharacters: Self.replyPreviewCharacters))
             })
     }
@@ -91,14 +91,14 @@ struct EnvironmentScenarioTests {
     /// The conditions that the scenario is graded on: the verbs, the
     /// corrections, then the date in the answer.
     ///
-    /// - Parameter turn: The streamed answer, with each session tool call it
+    /// - Parameter answer: The streamed answer, with each session tool call it
     ///   made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
-    private static func checks(turn: StreamedTurn) -> [ScenarioCheck] {
+    private static func checks(answer: StreamedAnswer) -> [ScenarioCheck] {
         [
-            calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: verbPaths, in: turn),
-            ScenarioCheck.noCorrection(named: noCorrectionCheckName, in: turn),
-            InjectedDate.answerCheck(of: turn),
+            calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: verbPaths, in: answer),
+            ScenarioCheck.noCorrection(named: noCorrectionCheckName, in: answer),
+            InjectedDate.answerCheck(of: answer),
         ]
     }
 
@@ -107,15 +107,15 @@ struct EnvironmentScenarioTests {
     /// token usage, the snippet verbs, the injected date, the priming, and
     /// the failed calls.
     ///
-    /// - Parameter turn: The streamed answer.
+    /// - Parameter answer: The streamed answer.
     /// - Returns: The fields, in print order.
-    private static func readings(of turn: StreamedTurn) -> [String] {
+    private static func readings(of answer: StreamedAnswer) -> [String] {
         [
-            "tokens=\(turn.tokenUsage ?? "n/a")",
-            typedPathsReading(of: turn),
+            "tokens=\(answer.tokenUsage ?? "n/a")",
+            typedPathsReading(of: answer),
             "injectedDate=\(InjectedDate.date) injectedWeekday=\(InjectedDate.weekday)",
-            primingReading(of: turn),
-            failedCallsReading(of: turn),
+            primingReading(of: answer),
+            failedCallsReading(of: answer),
         ]
     }
 }
@@ -158,18 +158,18 @@ enum InjectedDate {
     /// The condition that the answer holds the injected date: the weekday or
     /// the `yyyy-MM-dd` date, in each letter case.
     ///
-    /// - Parameter turn: The streamed answer.
+    /// - Parameter answer: The streamed answer.
     /// - Returns: The condition, for `grade(scenario:checks:)`.
-    static func answerCheck(of turn: StreamedTurn) -> ScenarioCheck {
+    static func answerCheck(of answer: StreamedAnswer) -> ScenarioCheck {
         ScenarioCheck(
             name: answerCheckName,
-            held: [weekday, date].contains { turn.answer.localizedCaseInsensitiveContains($0) },
-            failureMessage: "expected the answer to name \(weekday) or \(date), but the answer was \"\(turn.answer)\""
+            held: [weekday, date].contains { answer.answer.localizedCaseInsensitiveContains($0) },
+            failureMessage: "expected the answer to name \(weekday) or \(date), but the answer was \"\(answer.answer)\""
         )
     }
 }
 
-/// The offline checks of ``InjectedDate``. Each check makes a `StreamedTurn`
+/// The offline checks of ``InjectedDate``. Each check makes a `StreamedAnswer`
 /// by hand, or calls the verb with no model. Thus each check always runs.
 @Suite("Injected date: the clock of the environment scenario, and the check of the answer")
 struct InjectedDateTests {
@@ -178,10 +178,10 @@ struct InjectedDateTests {
     ///
     /// - Parameter answer: The reply of the answer.
     /// - Returns: The answer.
-    private static func turn(answer: String) -> StreamedTurn {
-        var turn = StreamedTurn()
-        turn.answer = answer
-        return turn
+    private static func streamed(answer: String) -> StreamedAnswer {
+        var run = StreamedAnswer()
+        run.answer = answer
+        return run
     }
 
     @Test("the verb gives the injected date and weekday over the injected context")
@@ -195,7 +195,7 @@ struct InjectedDateTests {
 
     @Test("an answer that names the weekday in lower case holds the condition")
     func anAnswerThatNamesTheWeekdayHoldsTheCondition() {
-        let check = InjectedDate.answerCheck(of: Self.turn(answer: "It is wednesday, on macOS."))
+        let check = InjectedDate.answerCheck(of: Self.streamed(answer: "It is wednesday, on macOS."))
 
         #expect(check.name == InjectedDate.answerCheckName)
         #expect(check.held)
@@ -203,13 +203,13 @@ struct InjectedDateTests {
 
     @Test("an answer that names only the yyyy-MM-dd date holds the condition")
     func anAnswerThatNamesTheDateHoldsTheCondition() {
-        #expect(InjectedDate.answerCheck(of: Self.turn(answer: "Today is 2030-06-12 on macOS.")).held)
+        #expect(InjectedDate.answerCheck(of: Self.streamed(answer: "Today is 2030-06-12 on macOS.")).held)
     }
 
     @Test("an answer that names a different day breaks the condition, and the message holds the answer")
     func anAnswerThatNamesADifferentDayBreaksTheCondition() {
         let answer = "It is Thursday, on macOS."
-        let check = InjectedDate.answerCheck(of: Self.turn(answer: answer))
+        let check = InjectedDate.answerCheck(of: Self.streamed(answer: answer))
 
         #expect(!check.held)
         #expect(check.failureMessage.contains(answer))

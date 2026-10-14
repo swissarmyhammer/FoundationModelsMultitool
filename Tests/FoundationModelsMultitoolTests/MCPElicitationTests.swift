@@ -262,8 +262,8 @@ struct MCPElicitationTests {
 
     // MARK: - Case 1: a bound context answers
 
-    @Test("the answer the test delivers through the mailbox reaches elicitEcho", arguments: transports)
-    func theMailboxAnswerReachesTheTool(kind: MCPTransportKind) async throws {
+    @Test("the answer the test delivers through the session reaches elicitEcho", arguments: transports)
+    func theSessionAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
         let run = (try await BoundRun())
@@ -283,8 +283,8 @@ struct MCPElicitationTests {
         withExtendedLifetime(scripted) {}
     }
 
-    @Test("a URL-mode accept keeps the call open until the mailbox completes the flow", arguments: transports)
-    func aURLAcceptHoldsTheCallUntilTheMailboxCompletes(kind: MCPTransportKind) async throws {
+    @Test("a URL-mode accept keeps the call open until the session completes the flow", arguments: transports)
+    func aURLAcceptHoldsTheCallUntilTheSessionCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
         let run = (try await BoundRun())
@@ -304,7 +304,7 @@ struct MCPElicitationTests {
         withExtendedLifetime(scripted) {}
     }
 
-    @Test("a runCode snippet suspends on the elicitation and returns the mailbox answer over the HTTP loopback")
+    @Test("a runCode snippet suspends on the elicitation and returns the session answer over the HTTP loopback")
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
         defer { Task { await server.disconnect() } }

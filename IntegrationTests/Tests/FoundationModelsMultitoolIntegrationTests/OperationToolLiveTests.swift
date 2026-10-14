@@ -82,8 +82,8 @@ let operationToolQueries = [
 ///    count: card `^xr5w83f` removed the floor of one declared verb for each
 ///    query, because that count measures the model.
 /// 2. Search then call. One prompt asks the model to add a note, tag it and
-///    report its id. The route is read off `StreamedTurn.calls`, which is the
-///    record `streamTurn` keeps of every session tool call: a `searchTools`
+///    report its id. The route is read off `StreamedAnswer.calls`, which is the
+///    record `streamAnswer` keeps of every session tool call: a `searchTools`
 ///    call precedes the first `runCode` call, and there is one `runCode` call.
 ///    The outcome is read off the fixture store and off the reply: the store
 ///    holds one note with the title and the tag the prompt gave, and the
@@ -119,18 +119,18 @@ struct OperationToolLiveTests {
     func searchThenCallStoresTheNoteAndNamesItsID() async throws {
         let store = IntegrationNotesStore()
         let notes = try IntegrationNotesTool.make(store: store)
-        try await runGatedTurnScenario(
+        try await runGatedAnswerScenario(
             named: operationSearchThenCallScenarioName,
             prompt: operationSearchThenCallPrompt,
             tools: { try makeScenarioSurface(over: [notes], on: $0).tools },
-            reading: { turn, elapsed in
+            reading: { answer, elapsed in
                 let stored = await store.list()
-                return GatedTurnReading(
-                    checks: Self.searchThenCallChecks(turn: turn, stored: stored),
+                return GatedAnswerReading(
+                    checks: Self.searchThenCallChecks(answer: answer, stored: stored),
                     resultLine: gatedResultLine(
-                        of: turn,
+                        of: answer,
                         elapsed: elapsed,
-                        readings: ["stored=\(Self.descriptions(of: stored))", failedCallsReading(of: turn)],
+                        readings: ["stored=\(Self.descriptions(of: stored))", failedCallsReading(of: answer)],
                         replyPreviewCharacters: operationToolReplyPreviewCharacters))
             })
     }
@@ -139,16 +139,16 @@ struct OperationToolLiveTests {
     /// order: the route, the store, and the reply.
     ///
     /// - Parameters:
-    ///   - turn: the streamed answer, with every session tool call it made.
+    ///   - answer: the streamed answer, with every session tool call it made.
     ///   - stored: the notes the fixture store holds after the answer.
     /// - Returns: every condition, for `grade(scenario:checks:)`.
-    private static func searchThenCallChecks(turn: StreamedTurn, stored: [IntegrationNote]) -> [ScenarioCheck] {
-        let callNames = turn.calls.map(\.name)
+    private static func searchThenCallChecks(answer: StreamedAnswer, stored: [IntegrationNote]) -> [ScenarioCheck] {
+        let callNames = answer.calls.map(\.name)
         let runCodeCalls = callNames.count { $0 == MultiTool.runCodePath }
         var checks = [
             ScenarioCheck(
                 name: searchedFirstCheckName,
-                held: NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls),
+                held: NativeTranscript.searchToolsPrecedesRunCode(in: answer.calls),
                 failureMessage:
                     "expected a \(MultiTool.searchToolsPath) call before the first \(MultiTool.runCodePath) call, "
                     + "but the calls were \(callNames)"
@@ -169,7 +169,7 @@ struct OperationToolLiveTests {
         // The id of a stored note, and never a literal: the reply is graded
         // on the id the store really gave, so an empty store fails this check
         // with the empty candidate list in its message.
-        checks += answerChecks(turn.answer, containsOneOf: stored.map(\.id), mustNotContain: [])
+        checks += answerChecks(answer.answer, containsOneOf: stored.map(\.id), mustNotContain: [])
         return checks
     }
 

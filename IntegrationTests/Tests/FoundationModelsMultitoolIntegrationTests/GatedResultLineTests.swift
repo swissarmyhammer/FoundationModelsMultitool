@@ -8,7 +8,7 @@ import Testing
 /// `gatedResultLine(of:elapsed:readings:replyPreviewCharacters:)` and the
 /// field readings that the gated suites give to it.
 ///
-/// Each check makes a `StreamedTurn` by hand. No check loads a model. Thus
+/// Each check makes a `StreamedAnswer` by hand. No check loads a model. Thus
 /// each check always runs, and a change to the order or to the text of a
 /// field fails here before a live run prints a different line.
 @Suite("Gated result line: the route, the readings of the scenario, then the start of the reply")
@@ -28,22 +28,22 @@ struct GatedResultLineTests {
 
     /// An answer with one `runCode` call, one failed call, a priming failure, and
     /// a reply.
-    private static var turn: StreamedTurn {
-        var turn = StreamedTurn()
-        turn.answer = reply
-        turn.toolCallCount = 1
-        turn.calls = [
+    private static var answer: StreamedAnswer {
+        var run = StreamedAnswer()
+        run.answer = reply
+        run.toolCallCount = 1
+        run.calls = [
             NativeTranscript.StreamedCall(name: MultiTool.runCodePath, argumentsJSON: snippetArguments, output: nil)
         ]
-        turn.failedCalls = ["runCode: refused"]
-        turn.discoveryPrimingFailure = "busy"
-        return turn
+        run.failedCalls = ["runCode: refused"]
+        run.discoveryPrimingFailure = "busy"
+        return run
     }
 
     @Test("the line holds the route, then each reading in order, then the start of the reply")
     func theLineHoldsTheRouteTheReadingsAndTheReply() {
         let line = gatedResultLine(
-            of: Self.turn,
+            of: Self.answer,
             elapsed: Self.elapsed,
             readings: ["first=1", "second=2"],
             replyPreviewCharacters: Self.replyPreviewCharacters)
@@ -53,22 +53,22 @@ struct GatedResultLineTests {
     @Test("a line with no reading holds the route, then the start of the reply")
     func aLineWithNoReadingHoldsTheRouteAndTheReply() {
         let line = gatedResultLine(
-            of: Self.turn, elapsed: Self.elapsed, readings: [], replyPreviewCharacters: Self.replyPreviewCharacters)
+            of: Self.answer, elapsed: Self.elapsed, readings: [], replyPreviewCharacters: Self.replyPreviewCharacters)
         #expect(line == #"elapsed=2.5s toolCalls=1 calls=["runCode"] reply="The function""#)
     }
 
     @Test("the typed reading names each verb that the snippets called")
     func theTypedReadingNamesTheSnippetVerbs() {
-        #expect(typedPathsReading(of: Self.turn) == #"typed=["git.diff"]"#)
+        #expect(typedPathsReading(of: Self.answer) == #"typed=["git.diff"]"#)
     }
 
     @Test("the priming reading names why the priming did not run")
     func thePrimingReadingNamesTheFailure() {
-        #expect(primingReading(of: Self.turn) == "priming=FAILED(busy)")
+        #expect(primingReading(of: Self.answer) == "priming=FAILED(busy)")
     }
 
     @Test("the failed calls reading names each failed call")
     func theFailedCallsReadingNamesEachFailedCall() {
-        #expect(failedCallsReading(of: Self.turn) == #"failedCalls=["runCode: refused"]"#)
+        #expect(failedCallsReading(of: Self.answer) == #"failedCalls=["runCode: refused"]"#)
     }
 }

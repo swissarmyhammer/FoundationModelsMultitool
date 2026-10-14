@@ -71,7 +71,7 @@ struct FileChangeAttachmentTests {
     /// One: the mounted `runSnippet` call. `ToolContext.mount(_:op:as:)`
     /// swallows the invocation records of each verb call the snippet makes
     /// inside it, so the outer call is the one call a host can join against.
-    private static let callsPerTurn = 1
+    private static let callsPerAnswer = 1
 
     /// The prompt the stub backend answers by calling the mounted tool. It is
     /// unread — the backend calls the tool whatever the prompt says.
@@ -81,7 +81,7 @@ struct FileChangeAttachmentTests {
 
     /// One answer of a session that mounts a snippet-running tool: the files
     /// ground the snippet ran over, and every event the answer delivered.
-    private struct Turn {
+    private struct Answer {
         /// The files registry and the change journal the snippet ran over.
         let ground: FilesRun
 
@@ -110,7 +110,7 @@ struct FileChangeAttachmentTests {
     /// - Parameter code: the snippet to run.
     /// - Returns: the answer.
     /// - Throws: whatever standing up the session, or the answer itself, throws.
-    private static func runTurn(_ code: String) async throws -> Turn {
+    private static func runAnswer(_ code: String) async throws -> Answer {
         let ground = try await makeFilesRun(named: testDirectoryName, recordsChanges: true)
         let stub = try await makeStubSession(
             mounting: [SnippetRunningTool(multiTool: MultiTool(registry: ground.registry), code: code)])
@@ -118,27 +118,27 @@ struct FileChangeAttachmentTests {
         for try await event in await stub.session.streamEvents(to: prompt) {
             events.append(event)
         }
-        return Turn(ground: ground, events: events)
+        return Answer(ground: ground, events: events)
     }
 
     /// Runs the write snippet of this suite inside a live session call.
     ///
     /// - Returns: the answer.
-    /// - Throws: whatever ``runTurn(_:)`` throws.
-    private static func runWriteTurn() async throws -> Turn {
-        try await runTurn(writeVerbSnippet(writing: writtenFileName, content: writtenContent))
+    /// - Throws: whatever ``runAnswer(_:)`` throws.
+    private static func runWriteAnswer() async throws -> Answer {
+        try await runAnswer(writeVerbSnippet(writing: writtenFileName, content: writtenContent))
     }
 
     // MARK: - The attached record
 
     @Test("a mutating verb call attaches one record whose document decodes back to the change set")
     func aMutatingVerbCallAttachesOneRecord() async throws {
-        let turn = try await Self.runWriteTurn()
-        let report = try #require(turn.reports.first, "the turn delivered no report")
+        let answer = try await Self.runWriteAnswer()
+        let report = try #require(answer.reports.first, "the answer delivered no report")
         let attachment = try #require(report.attachments.first)
         let decoded = try #require(FileChangeSet(operationEventDetail: attachment.contentJSON))
 
-        #expect(turn.reports.count == Self.reportsPerCall, "reports were: \(turn.reports)")
+        #expect(answer.reports.count == Self.reportsPerCall, "reports were: \(answer.reports)")
         #expect(
             report.attachments.count == Self.attachmentsPerCall,
             "attachments were: \(report.attachments)")
@@ -146,11 +146,11 @@ struct FileChangeAttachmentTests {
         #expect(
             decoded
                 == FileChangeSet(
-                    root: turn.ground.journal.root,
+                    root: answer.ground.journal.root,
                     changes: [
                         FileChange(
                             kind: .add,
-                            path: TestSupport.path(Self.writtenFileName, in: turn.ground.root),
+                            path: TestSupport.path(Self.writtenFileName, in: answer.ground.root),
                             newContent: Self.writtenContent)
                     ]))
     }
@@ -159,14 +159,14 @@ struct FileChangeAttachmentTests {
 
     @Test("the report of the attached record carries the identity of the call the host sees")
     func theReportCarriesTheIdentityOfTheCallTheHostSees() async throws {
-        let turn = try await Self.runWriteTurn()
-        let report = try #require(turn.reports.first, "the turn delivered no report")
-        let close = try #require(turn.closeRecords.first)
+        let answer = try await Self.runWriteAnswer()
+        let report = try #require(answer.reports.first, "the answer delivered no report")
+        let close = try #require(answer.closeRecords.first)
 
         // The join a host makes: the report and the close record of one call
         // name the same call, so a host that has already opened a tool call on
         // the record can fill that call's touched paths from the report.
-        #expect(turn.closeRecords.count == Self.callsPerTurn, "close records were: \(turn.closeRecords)")
+        #expect(answer.closeRecords.count == Self.callsPerAnswer, "close records were: \(answer.closeRecords)")
         #expect(report.correlationID == close.correlationID)
         #expect(report.tool == close.tool)
         #expect(report.op == close.op)

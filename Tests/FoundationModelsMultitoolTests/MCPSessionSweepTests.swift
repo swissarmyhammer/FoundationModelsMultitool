@@ -270,7 +270,7 @@ struct MCPSessionSweepTests {
     /// to cancel. The cancellation of the task of the open answer is what reaches
     /// `MCPServer.call`, and the advisory cancel still goes out before the
     /// pool closes the transport.
-    @Test("native shape: the cancelled turn sends the advisory cancel before the transport closes")
+    @Test("native shape: the cancelled answer sends the advisory cancel before the transport closes")
     func nativeCallGetsTheAdvisoryCancelBeforeTheTransportCloses() async throws {
         let (ground, _) = try await Self.makeGround()
         let run = try await makeStubRun()
@@ -280,13 +280,13 @@ struct MCPSessionSweepTests {
             SessionMount.synchronous(
                 MCPTool(entry: entry, server: ground.server), on: context)
                 as? any FoundationModels.Tool<GeneratedContent, String>)
-        let turn = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
+        let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
         try await Self.waitForTheCall(on: ground)
         #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
-        turn.cancel()
+        answer.cancel()
         await #expect(throws: CancellationError.self) {
-            _ = try await turn.value
+            _ = try await answer.value
         }
         await ground.pool.shutdownAll()
 

@@ -70,7 +70,7 @@ import Testing
     // not return, thus no grade reports it.
 )
 struct NestedGenerationProbeTests {
-    @Test("a tool body generating on the outer turn's own model gets waitInsideOpenSubmission at once")
+    @Test("a tool body generating on the outer answer's own model gets waitInsideOpenSubmission at once")
     func aNestedGenerationOnTheHeldModelIsRefused() async throws {
         try await runNestedGenerationProbe(
             name: "nestedGeneration",

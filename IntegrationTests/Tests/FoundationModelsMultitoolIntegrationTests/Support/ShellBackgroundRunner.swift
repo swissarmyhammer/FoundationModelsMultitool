@@ -186,7 +186,7 @@ func runShellBackgroundScenario(name: String) async throws {
         // each command. Both gates live to the end of the scenario.
         let modelGate = try ShellCommandGate()
         let sweptGate = try ShellCommandGate()
-        let turnEnded = ScenarioGate()
+        let answerEnded = ScenarioGate()
 
         // Started before the answer and read after it. The run plane has to be
         // read WHILE the run is going — a reading taken after the answer would
@@ -195,19 +195,19 @@ func runShellBackgroundScenario(name: String) async throws {
         let watcher = Task {
             await observeShellRunPlane(
                 probe: probe, registry: registry, declaredJournalOp: declaredJournalOp,
-                turnEnded: turnEnded, sweptGate: sweptGate)
+                answerEnded: answerEnded, sweptGate: sweptGate)
         }
         let start = Date()
-        let turn: StreamedTurn
+        let answer: StreamedAnswer
         do {
-            turn = try await streamTurn(
+            answer = try await streamAnswer(
                 of: session, prompt: shellBackgroundPrompt(starting: shellBackgroundCommand(holdingOn: modelGate)))
         } catch {
-            turnEnded.open()
+            answerEnded.open()
             watcher.cancel()
             throw error
         }
-        turnEnded.open()
+        answerEnded.open()
         let elapsed = Date().timeIntervalSince(start)
         var plane = await watcher.value
         // The cancel comes after the answer. Until its settle period ends, the
@@ -234,7 +234,7 @@ func runShellBackgroundScenario(name: String) async throws {
 
         reportGatedResult(
             scenario: name,
-            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+            line: "elapsed=\(elapsed)s toolCalls=\(answer.toolCallCount) "
                 + "executeToken=\(plane.executeRunToken ?? "none") "
                 + "backgroundReports=\(evidence.backgroundReports) "
                 + "background=\(plane.backgroundRun?.description ?? "none") "
@@ -246,9 +246,9 @@ func runShellBackgroundScenario(name: String) async throws {
                 + "sweptRun=\(plane.sweptRunToken ?? "none") "
                 + "journaledEvents=\(journal.count) "
                 + "sweptTerminals=\(evidence.sweptRunTerminals.count) "
-                + "priming=\(primingLabel(turn)) "
-                + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(turn.answer.prefix(shellBackgroundReplyPreviewCharacters))\""
+                + "priming=\(primingLabel(answer)) "
+                + "failedCalls=\(answer.failedCalls.count)\(answer.failedCalls.isEmpty ? "" : " \(answer.failedCalls)") "
+                + "reply=\"\(answer.answer.prefix(shellBackgroundReplyPreviewCharacters))\""
         )
     }
 }
@@ -341,7 +341,7 @@ struct ShellRunPlaneObservation: Sendable {
 /// - The context of the model's shell run comes with the event of the probe
 ///   (``ShellRunContextProbe/waitForFirstContext()``). A model that never
 ///   starts the run gives no such event, thus the wait also ends when the
-///   answer ended (`turnEnded`), and the step leaves its reading unset.
+///   answer ended (`answerEnded`), and the step leaves its reading unset.
 /// - The `runCode` run stands on the run plane before its body runs:
 ///   `RunPlane.start` adds the run in the same step of its actor that creates
 ///   the task of the body, and the shell run is inside that body. Thus one
@@ -359,16 +359,16 @@ struct ShellRunPlaneObservation: Sendable {
 ///     `tools.shell.getLines` verb over the same store.
 ///   - declaredJournalOp: the op the registration site declared for
 ///     `tools.shell.execute`, which the swept run stands under.
-///   - turnEnded: the gate the runner opens when the answer ended.
+///   - answerEnded: the gate the runner opens when the answer ended.
 ///   - sweptGate: the FIFO the command of the swept run waits on.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
     probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?,
-    turnEnded: ScenarioGate, sweptGate: ShellCommandGate
+    answerEnded: ScenarioGate, sweptGate: ShellCommandGate
 ) async -> ShellRunPlaneObservation {
     var observation = ShellRunPlaneObservation()
 
-    guard let context = await firstShellRunContext(of: probe, orAfter: turnEnded) else { return observation }
+    guard let context = await firstShellRunContext(of: probe, orAfter: answerEnded) else { return observation }
     let token = context.completionToken
     observation.executeRunToken = token
 
@@ -400,20 +400,20 @@ private func observeShellRunPlane(
 ///
 /// Two events race, and the first one decides: the probe sees the first shell
 /// run (``ShellRunContextProbe/waitForFirstContext()``), or the runner opens
-/// `turnEnded`. After the answer ended, the probe is read one time, thus a run
+/// `answerEnded`. After the answer ended, the probe is read one time, thus a run
 /// that came at the same time as the end of the answer is not lost.
 ///
 /// - Parameters:
 ///   - probe: the sandbox the shell capability was built with.
-///   - turnEnded: the gate the runner opens when the answer ended.
+///   - answerEnded: the gate the runner opens when the answer ended.
 /// - Returns: the context of the first shell run, or `nil`.
 private func firstShellRunContext(
-    of probe: ShellRunContextProbe, orAfter turnEnded: ScenarioGate
+    of probe: ShellRunContextProbe, orAfter answerEnded: ScenarioGate
 ) async -> ToolContext? {
     await withTaskGroup(of: ToolContext?.self) { group in
         group.addTask { try? await probe.waitForFirstContext() }
         group.addTask {
-            guard (try? await turnEnded.wait()) != nil else { return nil }
+            guard (try? await answerEnded.wait()) != nil else { return nil }
             return probe.observedContexts.first
         }
         let first = await group.next() ?? nil

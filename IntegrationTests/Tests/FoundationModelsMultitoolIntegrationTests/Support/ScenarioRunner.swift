@@ -19,11 +19,11 @@ import ScenarioGrading
 /// primed one that worked. That is the exact confusion this field exists to
 /// prevent.
 ///
-/// - Parameter turn: the streamed answer to describe.
+/// - Parameter answer: the streamed answer to describe.
 /// - Returns: `off` when no seeding was requested, `ok` when it ran, or
 ///   `FAILED(reason)` when Router reported it downgraded.
-func primingLabel(_ turn: StreamedTurn) -> String {
-    if let failure = turn.discoveryPrimingFailure { return "FAILED(\(failure))" }
+func primingLabel(_ answer: StreamedAnswer) -> String {
+    if let failure = answer.discoveryPrimingFailure { return "FAILED(\(failure))" }
     return scenarioDiscoveryPriming == nil ? "off" : "ok"
 }
 
@@ -194,12 +194,12 @@ func runNativeIntegrationScenario(
         // `respond`, four of the seven failure modes were unobservable and the
         // MODES line printed `0` for each — reading as "clean" when it meant
         // "not measured". That is what `routeObservable` exists to prevent.
-        let turn = try await streamTurn(of: session, prompt: prompt)
+        let answer = try await streamAnswer(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
         let evidence = ScenarioEvidence(
-            answer: turn.answer,
-            typedPaths: NativeTranscript.typedToolPaths(in: turn.calls),
+            answer: answer.answer,
+            typedPaths: NativeTranscript.typedToolPaths(in: answer.calls),
             invokedPaths: await log.invokedPaths,
             returnedPaths: await log.returnedPaths
         )
@@ -212,8 +212,8 @@ func runNativeIntegrationScenario(
         )
         grade(scenario: name, checks: checks)
 
-        let toolCallCount = turn.toolCallCount
-        let searchedToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
+        let toolCallCount = answer.toolCallCount
+        let searchedToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: answer.calls)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
         // diagnostics, they just no longer gate.
@@ -226,19 +226,19 @@ func runNativeIntegrationScenario(
         // off this file.
         reportGatedResult(
             scenario: name,
-            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
-                + "submissions=\(turn.submissionIdentity ?? "n/a") "
+            line: "elapsed=\(elapsed)s toolCalls=\(answer.toolCallCount) "
+                + "submissions=\(answer.submissionIdentity ?? "n/a") "
                 + "typed=\(evidence.typedPaths.sorted()) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchedToolsFirst=\(searchedToolsFirst) "
-                + "priming=\(primingLabel(turn)) "
-                + "textResets=\(turn.supersededAnswers.count) "
-                + "progress=\(turn.progressEvents.count) "
-                + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
-                + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(turn.answer.prefix(nativeReplyPreviewCharacters))\""
+                + "priming=\(primingLabel(answer)) "
+                + "textResets=\(answer.supersededAnswers.count) "
+                + "progress=\(answer.progressEvents.count) "
+                + "compactions=\(answer.compactions.count) tokens=\(answer.tokenUsage ?? "n/a") "
+                + "failedCalls=\(answer.failedCalls.count)\(answer.failedCalls.isEmpty ? "" : " \(answer.failedCalls)") "
+                + "reply=\"\(answer.answer.prefix(nativeReplyPreviewCharacters))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
         // `SCENARIO` verdict, never instead of it: nothing below is
@@ -246,14 +246,14 @@ func runNativeIntegrationScenario(
         reportTraceLine(
             ScenarioFailureModes(
                 ScenarioObservation(
-                    reply: turn.answer,
+                    reply: answer.answer,
                     toolCallCount: toolCallCount,
                     typedPaths: evidence.typedPaths,
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
                     searchedToolsFirst: searchedToolsFirst,
                     routeObservable: true,
-                    returnedValues: NativeTranscript.returnedValues(in: turn.calls),
+                    returnedValues: NativeTranscript.returnedValues(in: answer.calls),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )
             )
@@ -269,8 +269,8 @@ func runNativeIntegrationScenario(
 private let nativeReplyPreviewCharacters = 80
 
 /// Everything one streamed answer produced that a scenario grades or reports.
-struct StreamedTurn {
-    /// The id of the user message, or `nil` before `streamTurn` sent it.
+struct StreamedAnswer {
+    /// The id of the user message, or `nil` before `streamAnswer` sent it.
     var mailId: MailID?
 
     /// The reply text of the answer: `SessionAnswer.reply` of the `answered`
@@ -420,12 +420,12 @@ private func traceExcerpt(_ text: String) -> String {
 ///   - prompt: the user request of the message.
 /// - Returns: the reply, tool-call count, and tool outputs of the answer.
 /// - Throws: what `mail(_:)` throws, and the error of a failed answer.
-func streamTurn(of session: any RoutedSession, prompt: String) async throws -> StreamedTurn {
-    var turn = StreamedTurn()
+func streamAnswer(of session: any RoutedSession, prompt: String) async throws -> StreamedAnswer {
+    var answer = StreamedAnswer()
     var outputs: [SessionOutput] = []
     let subscription = try await session.mail(
         Mail(sender: .user, body: .userMessage(prompt: prompt, options: UserMessageOptions(mode: .stream))))
-    turn.mailId = subscription.id
+    answer.mailId = subscription.id
     for await output in subscription {
         outputs.append(output)
         switch output.event {
@@ -465,7 +465,7 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
             // failure of the scenario.
             reportTraceLine("REASONING-STOP \(stop)")
         case .textDelta(let fragment):
-            turn.streamedText += fragment
+            answer.streamedText += fragment
         case .textReset:
             // Everything delivered so far is superseded, not retracted: the
             // model produced a first pass, a tool ran, and generation resumed
@@ -475,23 +475,23 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
             // "FINAL-ANSWER". This suite grades the reply of `answered`, so
             // the fragments are kept only as the superseded first pass; the
             // superseded text stays in the transcript.
-            turn.supersededAnswers.append(turn.streamedText)
-            turn.streamedText = ""
+            answer.supersededAnswers.append(answer.streamedText)
+            answer.streamedText = ""
         case .toolCall(let id, let name, let argumentsJSON):
-            turn.toolCallCount += 1
-            turn.callIndexByID[id] = turn.calls.count
-            turn.calls.append(
+            answer.toolCallCount += 1
+            answer.callIndexByID[id] = answer.calls.count
+            answer.calls.append(
                 NativeTranscript.StreamedCall(name: name, argumentsJSON: argumentsJSON, output: nil)
             )
-            reportTraceLine("CALL [\(turn.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
+            reportTraceLine("CALL [\(answer.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
         case .toolStatus(let id, .completed, let summary, _):
-            turn.toolOutputs.append(summary ?? "")
-            if let index = turn.callIndexByID[id] {
-                turn.calls[index].output = summary
+            answer.toolOutputs.append(summary ?? "")
+            if let index = answer.callIndexByID[id] {
+                answer.calls[index].output = summary
             }
-            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
+            let name = answer.callIndexByID[id].map { answer.calls[$0].name } ?? "?"
             reportTraceLine("DONE \(name) out=\(traceExcerpt(summary ?? ""))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
@@ -503,8 +503,8 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
             // expectation is the first — a fast call returns inline, a slow one
             // reports "in process" and streams events until it is done — so a
             // run that shows none is evidence, not an absence of evidence.
-            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
-            turn.progressEvents.append("\(name): \(summary ?? "no detail")")
+            let name = answer.callIndexByID[id].map { answer.calls[$0].name } ?? "?"
+            answer.progressEvents.append("\(name): \(summary ?? "no detail")")
             reportTraceLine("RUN  \(name) progress=\(traceExcerpt(summary ?? ""))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
@@ -513,31 +513,31 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
             // catch-all below swallowed it, so a run where every call failed
             // looked identical to one where the model never called anything —
             // and both read as "the model would not use its tools".
-            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
-            turn.failedCalls.append("\(name): \(summary ?? "no detail")")
+            let name = answer.callIndexByID[id].map { answer.calls[$0].name } ?? "?"
+            answer.failedCalls.append("\(name): \(summary ?? "no detail")")
         case .discoveryPrimingFailed(let reason):
             // Seeding is best-effort in Router: a failure downgrades the answer
             // to an unprimed one rather than failing it. Silence here would
             // read as "priming was on and did not help", so it is printed —
             // a run whose priming never happened must not be scored as one
             // that did.
-            turn.discoveryPrimingFailure = "\(reason)"
+            answer.discoveryPrimingFailure = "\(reason)"
         case .compaction(let result):
             // Swallowed until now, like `.toolStatus(.failed)` was. An answer that
             // compacted mid-flight can lose the tool definitions and the
             // discovery output it is meant to act on, which looks from the
             // outside exactly like a model that will not use its tools.
-            turn.compactions.append("\(result)")
+            answer.compactions.append("\(result)")
         case .compactionStarted(let start):
             // Router announces a compaction before it runs. The start is
             // kept with the finished ones, so an answer that began a compaction
             // and never finished it shows both facts.
-            turn.compactions.append("started \(start)")
+            answer.compactions.append("started \(start)")
         case .compactionFailed(let failure):
             // A compaction that failed leaves the session context as it was.
             // It is kept with the other compactions, so an answer that lost
             // the chance to shrink its context is not read as a clean answer.
-            turn.compactions.append("failed \(failure)")
+            answer.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
             .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused,
@@ -575,11 +575,11 @@ func streamTurn(of session: any RoutedSession, prompt: String) async throws -> S
     // The subscription ends at the terminal event of the message. A failed
     // answer throws its original error here, as the stream of the message did.
     _ = try await session.awaitAnswer(of: subscription.id)
-    turn.settle(from: SubmissionLog.answer(to: subscription.id, in: outputs))
-    return turn
+    answer.settle(from: SubmissionLog.answer(to: subscription.id, in: outputs))
+    return answer
 }
 
-extension StreamedTurn {
+extension StreamedAnswer {
     /// Takes the graded reply, the submission identity and the token usage
     /// from the answer chain of the message, found by its
     /// `MailID`.
@@ -831,7 +831,7 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// reaches the model only through the settled run, so an answer that carries
 /// it proves the mail brought it.
 ///
-/// The first answer is driven through `streamTurn(of:prompt:)` and not
+/// The first answer is driven through `streamAnswer(of:prompt:)` and not
 /// through `respond(to:)`, because only the stream carries the tool outputs
 /// the envelope check reads.
 ///
@@ -878,9 +878,9 @@ func runInBandCollectionCanaryScenario(
         let output = await SessionOutputLog.reading(session)
 
         let start = Date()
-        let turn: StreamedTurn
+        let answer: StreamedAnswer
         do {
-            turn = try await streamTurn(of: session, prompt: prompt)
+            answer = try await streamAnswer(of: session, prompt: prompt)
         } catch {
             // A fixture call that still waits must end with the run.
             firstAnswerEnded.open()
@@ -889,16 +889,16 @@ func runInBandCollectionCanaryScenario(
         // The first answer ended: a fixture that waits on the gate settles
         // now, after the pending envelope, and its result comes back as mail.
         firstAnswerEnded.open()
-        let reading = await MailAnswerReading.read(output, after: turn, backgroundRunsOf: log)
+        let reading = await MailAnswerReading.read(output, after: answer, backgroundRunsOf: log)
         let elapsed = Date().timeIntervalSince(start)
         let answers = SubmissionLog.fold(outputs: reading.outputs)
 
         let evidence = MailCollectionEvidence(
             // The answer that delivered the run mail, or the first answer
             // when no run mail came.
-            answer: reading.mailAnswer?.reply ?? turn.answer,
+            answer: reading.mailAnswer?.reply ?? answer.answer,
             returnedPaths: await log.returnedPaths,
-            pendingEnvelopes: turn.toolOutputs.filter(PendingRunEnvelope.isRendered).count,
+            pendingEnvelopes: answer.toolOutputs.filter(PendingRunEnvelope.isRendered).count,
             mailAnswers: answers.filter { $0.cause == .mail }.count,
             backgroundRunsAtLastAnswer: reading.backgroundRuns.map(\.tool)
         )
@@ -935,7 +935,7 @@ private struct MailAnswerReading {
     /// The background runs still going at the instant the reading ended.
     let backgroundRuns: [BackgroundRun]
 
-    /// Waits for the run mail of the first pending call of `turn` and for the
+    /// Waits for the run mail of the first pending call of `answer` and for the
     /// answer that delivers it, by id, and then snapshots the background runs.
     ///
     /// The completion token of the pending envelope names the run. The
@@ -946,18 +946,18 @@ private struct MailAnswerReading {
     ///
     /// - Parameters:
     ///   - output: the session output, read from before the message went in.
-    ///   - turn: the first answer, as `streamTurn` harvested it.
+    ///   - answer: the first answer, as `streamAnswer` harvested it.
     ///   - log: the run's call log, which holds the handle onto the session's
     ///     background runs.
     /// - Returns: the output read, the answer of the run mail, and the runs
     ///   still going at that instant.
     static func read(
         _ output: SessionOutputLog,
-        after turn: StreamedTurn,
+        after answer: StreamedAnswer,
         backgroundRunsOf log: ScenarioCallLog
     ) async -> MailAnswerReading {
         var mailAnswer: SessionAnswer?
-        if let token = turn.toolOutputs.lazy.compactMap(pendingCompletionToken).first {
+        if let token = answer.toolOutputs.lazy.compactMap(pendingCompletionToken).first {
             mailAnswer = try? await output.deliveredRunMail(settling: token).answer
         }
         return MailAnswerReading(
@@ -1106,19 +1106,19 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             tools: [IntegrationNestedGenerationTool(slot: slot, log: log, outcomes: outcomes)])
 
         let start = Date()
-        await reportGenerationQueue(on: slot, at: "before the turn")
-        let turn: StreamedTurn
+        await reportGenerationQueue(on: slot, at: "before the answer")
+        let answer: StreamedAnswer
         do {
-            turn = try await streamTurn(of: session, prompt: prompt)
+            answer = try await streamAnswer(of: session, prompt: prompt)
         } catch {
-            await reportGenerationQueue(on: slot, at: "the turn threw")
+            await reportGenerationQueue(on: slot, at: "the answer threw")
             throw error
         }
-        await reportGenerationQueue(on: slot, at: "the end of the turn")
+        await reportGenerationQueue(on: slot, at: "the end of the answer")
         let elapsed = Date().timeIntervalSince(start)
 
         let evidence = NestedGenerationEvidence(
-            answer: turn.answer,
+            answer: answer.answer,
             // `enteredPaths`, never `invokedPaths`: the log records a call in
             // `invokedPaths` on the way *out*, so a call parked for ever is
             // absent from it — the same reading a model that never called the
@@ -1133,7 +1133,7 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             "NESTED-GENERATION [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
                 + "entered=\(evidence.enteredPaths.sorted()) "
                 + "outcome=\(evidence.outcome.map { "\($0)" } ?? "none") "
-                + "reply=\"\(turn.answer.prefix(nestedGenerationReplyPreviewCharacters))\""
+                + "reply=\"\(answer.answer.prefix(nestedGenerationReplyPreviewCharacters))\""
         )
     }
 }
