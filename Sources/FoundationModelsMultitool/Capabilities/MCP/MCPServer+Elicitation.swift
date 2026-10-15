@@ -39,16 +39,28 @@
 //
 // **URL mode is a three-message flow**, and both answerers hold the accept
 // until the flow ends. Under a context, the `RunPlane` keeps the run
-// suspended after the accept until `RunPlane.complete(elicitationId:)`,
-// so the accept reaches the wire only once the host has closed the flow.
-// Under the handler, this actor holds the accept the same way until the host
-// calls `complete(elicitationId:)`. The swift-sdk client runs a request
-// handler inline in its message loop, so no wire message — the relayed
-// `notifications/elicitation/complete` included — can arrive while the
-// handler is held; a relayed completion therefore names either a flow the
-// host has already closed, or an id this actor never opened, and both are
-// ignored, per the spec. `complete(elicitationId:)` is the one end of a held
-// flow, whether the host calls it or the relay does.
+// suspended after the accept until the flow completes, so the accept reaches
+// the wire only after the flow closed. Under the handler, this actor holds
+// the accept the same way until `complete(elicitationId:)`.
+//
+// **The relay of the completion.** The swift-sdk client runs a request
+// handler inline in its message loop, so the loop reads no wire message while
+// the handler is held. Thus the `DropObservingTransport` of the attempt reads
+// each `notifications/elicitation/complete` before the loop does, and awaits
+// `complete(elicitationId:generation:)` before it yields the next frame. That
+// function ends the flow in this order:
+//
+// 1. A held accept of the handler, keyed by the wire id.
+// 2. An open question of a bound context, keyed by the wire id in
+//    `pendingContextElicitations` and of the same connect generation: the
+//    completion goes to `ToolContext.complete(elicitationId:)` with the
+//    `ToolContext` id that this actor chose for the question.
+// 3. Else the completion is ignored, per the spec.
+//
+// A completion that comes before the accept gives `noPendingElicitation`, and
+// the entry stays. A completion after the run ended is ignored: the entry
+// left the map when `elicit(_:through:)` returned. `complete(elicitationId:)`
+// is the one end of a held flow, whether the host calls it or the relay does.
 
 import Foundation
 import FoundationModelsExtras
@@ -136,6 +148,12 @@ extension MCPServer {
     /// - Returns: The answer.
     private func resolve(_ request: ElicitationRequest, urlElicitationId: String?) async -> ElicitationResponse {
         if let context = callingContext() {
+            guard let urlElicitationId,
+                openContextElicitation(urlElicitationId, request: request, context: context)
+            else {
+                return await elicit(request, through: context)
+            }
+            defer { pendingContextElicitations.removeValue(forKey: urlElicitationId) }
             return await elicit(request, through: context)
         }
         guard let elicitationHandler else {
@@ -159,6 +177,34 @@ extension MCPServer {
             return nil
         }
         return entry.context
+    }
+
+    /// Adds the URL-mode question `request` of `context` to
+    /// ``pendingContextElicitations`` under its wire id, before
+    /// `context.elicit(_:)` posts the question. Thus a completion that the
+    /// relay reads at any time after the post finds the entry.
+    ///
+    /// When an open question already uses `wireId`, this function does not
+    /// change that entry, and writes a record.
+    ///
+    /// - Parameters:
+    ///   - wireId: The wire `elicitationId` of the request.
+    ///   - request: The decoded request. Its `elicitationId` is the id that
+    ///     this actor chose.
+    ///   - context: The context of the calling run.
+    /// - Returns: `true` when this call added the entry, thus the caller
+    ///   removes it when the question ends.
+    private func openContextElicitation(
+        _ wireId: String, request: ElicitationRequest, context: ToolContext
+    ) -> Bool {
+        guard pendingContextElicitations[wireId] == nil else {
+            record(
+                .mcpElicitationWireIdInUse, level: .warning,
+                metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(wireId)"])
+            return false
+        }
+        pendingContextElicitations[wireId] = (context, request.elicitationId, connectGeneration)
+        return true
     }
 
     /// Suspends the calling run on `request` through `context` — case 1.
@@ -225,23 +271,49 @@ extension MCPServer {
         }
     }
 
-    /// Ends the URL-mode flow named `elicitationId`: the accept the host's
-    /// handler gave for it goes to the server. The host calls this when the
-    /// out-of-band interaction ends, and the relay of
-    /// `notifications/elicitation/complete` calls it too. An id this actor
-    /// holds no flow for — never opened, already ended, or a flow a bound
-    /// `ToolContext` answered, which `RunPlane.complete(elicitationId:)`
-    /// ends instead — is ignored, per the spec.
+    /// Ends the URL-mode flow named `elicitationId`. The host calls this when
+    /// the out-of-band interaction ends, and the relay of
+    /// `notifications/elicitation/complete` calls it too.
+    ///
+    /// The order is the order of the header of this file: a held accept of
+    /// the host's handler goes to the server; else an open question of a
+    /// bound `ToolContext` of the current connect generation completes
+    /// through that context; else the id is ignored, per the spec.
     ///
     /// - Parameter elicitationId: The wire id of the flow.
-    public func complete(elicitationId: String) {
-        guard let continuation = pendingHostElicitations.removeValue(forKey: elicitationId) else {
-            record(
-                .mcpElicitationCompletionIgnored, level: .debug,
-                metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(elicitationId)"])
+    public func complete(elicitationId: String) async {
+        await complete(elicitationId: elicitationId, generation: connectGeneration)
+    }
+
+    /// Ends the URL-mode flow named `elicitationId` as
+    /// ``complete(elicitationId:)`` does, for the connect attempt of
+    /// `generation`. The relay of the `DropObservingTransport` of an attempt
+    /// calls this with the generation of that attempt. Thus a completion
+    /// that an old transport relays does not reach a question of a newer
+    /// connection.
+    ///
+    /// - Parameters:
+    ///   - elicitationId: The wire id of the flow.
+    ///   - generation: The ``connectGeneration`` of the attempt that read
+    ///     the completion.
+    func complete(elicitationId: String, generation: Int) async {
+        let metadata: Logger.Metadata = [
+            MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(elicitationId)"
+        ]
+        if let continuation = pendingHostElicitations.removeValue(forKey: elicitationId) {
+            continuation.resume()
             return
         }
-        continuation.resume()
+        guard let open = pendingContextElicitations[elicitationId], open.generation == generation else {
+            record(.mcpElicitationCompletionIgnored, level: .debug, metadata: metadata)
+            return
+        }
+        let delivery = await open.context.complete(elicitationId: open.id)
+        record(
+            .mcpElicitationCompletionRelayed, level: .debug,
+            metadata: metadata.merging([
+                MultitoolTelemetry.LogMetadataKey.elicitationCompletionDelivery.rawValue: "\(delivery)"
+            ]) { wireId, _ in wireId })
     }
 
     /// The wire ids of the URL-mode flows the handler accepted and this actor

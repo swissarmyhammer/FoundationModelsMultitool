@@ -64,6 +64,7 @@
 import FoundationModelsExtras
 import Logging
 import MCP
+import ULID
 
 /// Owns one `MCP.Client` connection to a single MCP server: the async
 /// `connect(via:)` handshake, a `connecting` / `ready` / `disconnected` /
@@ -379,6 +380,14 @@ public actor MCPServer {
     /// and this actor still holds open, keyed by the wire `elicitationId` —
     /// resumed by `complete(elicitationId:)`. See `MCPServer+Elicitation.swift`.
     var pendingHostElicitations: [String: CheckedContinuation<Void, Never>] = [:]
+
+    /// Every URL-mode elicitation that a bound `ToolContext` answers and that
+    /// is still open, keyed by the wire `elicitationId`. Each entry holds the
+    /// context, the `ToolContext` elicitation id that this actor chose for
+    /// the question, and the ``connectGeneration`` of the attempt that got
+    /// the request. `complete(elicitationId:generation:)` relays a completion
+    /// through it. See `MCPServer+Elicitation.swift`.
+    var pendingContextElicitations: [String: (context: ToolContext, id: ULID, generation: Int)] = [:]
 
     /// Each caller of `waitUntilHostElicitationHeld(elicitationId:)` that
     /// waits until this actor holds the URL-mode flow of that wire id —

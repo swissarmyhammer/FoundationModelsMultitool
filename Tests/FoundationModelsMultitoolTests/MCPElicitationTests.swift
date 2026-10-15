@@ -101,6 +101,12 @@ struct MCPElicitationTests {
     /// The completion token of the headless context.
     private static let headlessCompletionToken = "headless-run"
 
+    /// The tool name and the op of the context of the relay case.
+    private static let relayTool = "relay-probe"
+
+    /// The completion token of the context of the relay case.
+    private static let relayCompletionToken = "relay-run"
+
     /// The `runCode` snippet that awaits the eliciting verb with no arguments.
     private static let elicitEchoSnippet =
         "return await tools.\(serverName).\(ScriptedServer.elicitEchoToolName)({});"
@@ -218,6 +224,25 @@ struct MCPElicitationTests {
             tool: headlessTool,
             op: headlessTool,
             completionToken: headlessCompletionToken,
+            isCancelled: { false })
+    }
+
+    /// A context over `runPlane` that posts to `sink`: a context that the
+    /// test owns, thus the test answers and completes its questions on
+    /// `runPlane` itself.
+    ///
+    /// - Parameters:
+    ///   - runPlane: The run plane of the context.
+    ///   - sink: The sink of the context.
+    /// - Returns: The context.
+    private static func relayContext(on runPlane: RunPlane, sink: RecordingEventSink) -> ToolContext {
+        ToolContext(
+            sessionID: ULID(),
+            runPlane: runPlane,
+            sink: sink,
+            tool: relayTool,
+            op: relayTool,
+            completionToken: relayCompletionToken,
             isCancelled: { false })
     }
 
@@ -356,6 +381,40 @@ struct MCPElicitationTests {
         withExtendedLifetime(scripted) {}
     }
 
+    /// The main proof of the relay. The server sends the completion and then
+    /// drops the transport. The relay reads the completion before the client
+    /// loop, and before the drop, thus the run plane has no open flow when
+    /// the call ended. Before the relay, the client loop waited in the
+    /// handler, the completion did not reach the run plane, and the flow was
+    /// still open after the drop ended the call.
+    ///
+    /// The drop ends the call in the two cases, thus the test does not wait
+    /// for ever. The sink posts the completion in a task of the run plane,
+    /// thus the test waits for that post as an event.
+    @Test("a wire completion of a URL flow under a context completes the flow on the run plane, one time")
+    func aWireCompletionUnderAContextCompletesTheFlow() async throws {
+        let (scripted, server) = try await Self.connected(over: .inMemory)
+        defer { Task { await server.disconnect() } }
+        let runPlane = RunPlane(userPresence: .interactive)
+        let sink = RecordingEventSink()
+        let call = Self.startCall(
+            server, tool: ScriptedServer.elicitURLToolName, under: Self.relayContext(on: runPlane, sink: sink))
+        await sink.waitUntilEvent { $0.kind == .elicitation }
+        let events = await sink.events
+        let request = try #require(events.first(where: { $0.kind == .elicitation })?.elicitation)
+        let delivery = await runPlane.respond(elicitationId: request.elicitationId, Self.urlAccept)
+        #expect(delivery == .acceptedAwaitingCompletion)
+
+        try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
+        _ = await call.result
+        let lateCompletion = await runPlane.complete(elicitationId: request.elicitationId)
+        await sink.waitUntilElicitationCompleted()
+
+        #expect(lateCompletion == .noPendingElicitation)
+        #expect(await sink.completedElicitationIds == [request.elicitationId])
+        withExtendedLifetime(scripted) {}
+    }
+
     @Test("a runCode snippet suspends on the elicitation and returns the session answer over the HTTP loopback")
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
@@ -412,6 +471,31 @@ struct MCPElicitationTests {
 
         #expect(output.contains(Self.acceptText))
         #expect(await server.pendingHostElicitationIds.isEmpty)
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// The held accept of the handler ends on a wire completion. The server
+    /// sends the completion and then drops the transport. The relay ends the
+    /// held flow before the drop reaches the client, thus no flow is held
+    /// when the drop ended the call. Before the relay, the handler held the
+    /// client loop, the completion did not reach
+    /// ``MCPServer/complete(elicitationId:)``, and the flow was still held
+    /// after the drop ended the call.
+    @Test("with no context bound, a wire completion ends the held URL accept of the handler before the drop")
+    func aWireCompletionEndsTheHeldHandlerAccept() async throws {
+        let probe = HandlerProbe(responding: Self.urlAccept)
+        let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
+        let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
+
+        let call = Task { try await Self.bareCall(tool) }
+        await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+        try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
+        _ = await call.result
+        let heldAfterTheCall = await server.pendingHostElicitationIds
+        // A flow that is still held ends here, thus no continuation stays.
+        await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+
+        #expect(heldAfterTheCall.isEmpty)
         withExtendedLifetime(scripted) {}
     }
 

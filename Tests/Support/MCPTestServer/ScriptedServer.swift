@@ -718,6 +718,22 @@ public actor ScriptedServer {
         try await server.notify(ElicitationCompleteNotification.message(.init(elicitationId: elicitationId)))
     }
 
+    /// Sends one `notifications/elicitation/complete`, and then drops the
+    /// transport — the one place that fixes the order of the two.
+    ///
+    /// The client reads the completion before the end of its receive stream.
+    /// Thus a client that relays the completion before it reads the next frame
+    /// relays it before it sees the drop. The drop ends each call in flight,
+    /// thus a test that awaits the call does not wait for ever when the
+    /// completion does not reach the flow.
+    ///
+    /// - Parameter elicitationId: The elicitation id the notification names.
+    /// - Throws: What `MCP.Server.notify(_:)` throws.
+    public func sendElicitationCompleteThenDrop(elicitationId: String) async throws {
+        try await sendElicitationComplete(elicitationId: elicitationId)
+        await dropTransport()
+    }
+
     // MARK: - Transport drop mid-call
 
     /// Registers a tool that drops the transport as its first action and

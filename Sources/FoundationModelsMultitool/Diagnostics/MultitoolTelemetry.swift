@@ -323,6 +323,10 @@ enum MultitoolTelemetry {
 
         /// The wire id of a URL-mode elicitation.
         case elicitationID = "FoundationModelsMultitool.mcp.elicitation_id"
+
+        /// The delivery of a completion that the server relayed to a bound
+        /// `ToolContext`: `completed` or `noPendingElicitation`.
+        case elicitationCompletionDelivery = "FoundationModelsMultitool.mcp.elicitation_completion_delivery"
     }
 
     /// The message of each log record of the library target.
@@ -445,6 +449,17 @@ enum MultitoolTelemetry {
         /// A completion named an elicitation that the server does not hold.
         /// Level: `debug`.
         case mcpElicitationCompletionIgnored = "mcp elicitation completion ignored"
+
+        /// A completion named a URL-mode elicitation that a bound
+        /// `ToolContext` answers, and the server relayed it to that context.
+        /// The record holds the delivery. Level: `debug`.
+        case mcpElicitationCompletionRelayed = "mcp elicitation completion relayed to the run"
+
+        /// A URL-mode elicitation came under a bound `ToolContext` with a
+        /// wire id that an open elicitation already uses. The open entry
+        /// stays, and a completion of that wire id reaches only the open
+        /// one. Level: `warning`.
+        case mcpElicitationWireIdInUse = "mcp url elicitation wire id already in use"
 
         /// An elicitation came in a headless session, and the answer is
         /// `cancel` with the no-user-present reason. Level: `debug`.

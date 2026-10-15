@@ -62,8 +62,54 @@ actor RecordingEventSink: OperationEventSink {
     /// Every event posted to this sink, in arrival order.
     private(set) var events: [OperationEvent] = []
 
+    /// The id of each completed URL flow posted to this sink, in arrival
+    /// order.
+    private(set) var completedElicitationIds: [ULID] = []
+
+    /// Each wait of ``waitUntilEvent(where:)`` that did not end yet.
+    private var eventWaiters: [(isMet: @Sendable (OperationEvent) -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
+
+    /// Each wait of ``waitUntilElicitationCompleted()`` that did not end yet.
+    private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+
     func post(event: OperationEvent) async {
         events.append(event)
+        let met = eventWaiters.filter { $0.isMet(event) }
+        eventWaiters.removeAll { $0.isMet(event) }
+        for waiter in met {
+            waiter.continuation.resume()
+        }
+    }
+
+    func post(elicitationCompleted elicitationId: ULID) async {
+        completedElicitationIds.append(elicitationId)
+        let waiters = completionWaiters
+        completionWaiters = []
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    /// Waits until this sink recorded an event that `isMet` accepts. Returns
+    /// at once when it recorded one before. The wait is an event: no clock
+    /// and no poll.
+    ///
+    /// - Parameter isMet: The test of one event.
+    func waitUntilEvent(where isMet: @escaping @Sendable (OperationEvent) -> Bool) async {
+        guard !events.contains(where: isMet) else { return }
+        await withCheckedContinuation { continuation in
+            eventWaiters.append((isMet, continuation))
+        }
+    }
+
+    /// Waits until this sink recorded one completed URL flow. Returns at once
+    /// when it recorded one before. The wait is an event: no clock and no
+    /// poll.
+    func waitUntilElicitationCompleted() async {
+        guard completedElicitationIds.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            completionWaiters.append(continuation)
+        }
     }
 
     /// The `detail` of every recorded event of one kind, in arrival order.

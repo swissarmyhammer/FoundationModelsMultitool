@@ -1,8 +1,8 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '80'
+position_column: done
+position_ordinal: fffff680
 title: 'Elicitation phase 3: end a bound URL flow on the run plane at notifications/elicitation/complete'
 ---
 Precondition: an Extras card that adds a run plane completion event (RunPlane.complete through a new Extras API). Do not start before it is on Extras main.

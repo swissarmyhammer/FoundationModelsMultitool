@@ -36,12 +36,23 @@
 // the client where it is. So every end this wrapper reports as a drop carries
 // an error, and so does the stream of a wrapper that never connected.
 //
+// **The relay reads one notification before the client.** The message loop of
+// `MCP.Client` calls the handler of a server-to-client request inline. Under a
+// bound `ToolContext`, the `elicitation/create` handler of a URL-mode question
+// holds the loop until the flow completes, thus the loop cannot read the
+// `notifications/elicitation/complete` that completes the flow. This wrapper
+// reads each frame before it yields the frame to the client. For that
+// notification, it awaits ``onElicitationComplete`` first, and it yields the
+// frame after. Thus the frame order stays as the server sent it: a drop after
+// the completion reaches the server only after the completion did.
+//
 // **`import Logging` names ONE type, and logs nothing.** The sdk's `Transport`
 // protocol requires `var logger: Logging.Logger`, so this actor names the
 // type to conform, as `StdioServerProcess.swift` does. It writes nothing
 // through it.
 
 import struct Foundation.Data
+import class Foundation.JSONDecoder
 import Logging
 import MCP
 
@@ -72,6 +83,21 @@ actor DropObservingTransport: Transport {
     /// transport returned — the report that the transport is closed.
     private let onClose: @Sendable () async -> Void
 
+    /// What the relay task awaits for each
+    /// `notifications/elicitation/complete` frame, with the wire
+    /// `elicitationId` of the frame, before it yields that frame to the client.
+    /// The relay yields no later frame until this call returns, thus the frame
+    /// order stays as the server sent it.
+    ///
+    /// The swift-sdk client calls a request handler inline in its message
+    /// loop, thus a held `elicitation/create` handler stops the loop, and the
+    /// client cannot read this notification. This hook reads it before the
+    /// loop. Elicitation-plan task 42 (the swift-sdk handles a
+    /// server-to-client request off the receive loop) can make this hook
+    /// unnecessary later: then a notification handler on the client can read
+    /// the frame while the request handler waits.
+    private let onElicitationComplete: @Sendable (String) async -> Void
+
     /// The mirror of the wrapped receive stream, built by ``connect()``.
     ///
     /// `Transport.receive()` is not `async`, so this actor cannot fetch the
@@ -101,14 +127,19 @@ actor DropObservingTransport: Transport {
     ///   - onClose: Called at the end of each ``disconnect()``, once the
     ///     `disconnect()` of the wrapped transport returned. Defaults to no
     ///     report.
+    ///   - onElicitationComplete: Awaited with the wire `elicitationId` of
+    ///     each `notifications/elicitation/complete` frame, before the relay
+    ///     yields that frame. Defaults to no relay.
     init(
         wrapping wrapped: any Transport,
         onDrop: @escaping @Sendable () async -> Void,
-        onClose: @escaping @Sendable () async -> Void = {}
+        onClose: @escaping @Sendable () async -> Void = {},
+        onElicitationComplete: @escaping @Sendable (String) async -> Void = { _ in }
     ) {
         self.wrapped = wrapped
         self.onDrop = onDrop
         self.onClose = onClose
+        self.onElicitationComplete = onElicitationComplete
     }
 
     /// The one close of this wrapper: the `disconnect()` of the wrapped
@@ -181,16 +212,24 @@ actor DropObservingTransport: Transport {
     /// Builds the stream the client iterates: every element of `inner`, and an
     /// end that ``end(_:after:)`` classifies.
     ///
+    /// For a `notifications/elicitation/complete` frame, the relay awaits
+    /// ``onElicitationComplete`` before it yields the frame. The client has
+    /// no handler for that notification, thus the yield does nothing more.
+    ///
     /// - Parameter inner: The receive stream of the wrapped transport.
     /// - Returns: The mirror.
     private func mirror(
         _ inner: AsyncThrowingStream<Data, Swift.Error>
     ) -> AsyncThrowingStream<Data, Swift.Error> {
-        AsyncThrowingStream { continuation in
+        let onElicitationComplete = onElicitationComplete
+        return AsyncThrowingStream { continuation in
             let relay = Task {
                 var failure: (any Swift.Error)?
                 do {
                     for try await data in inner {
+                        if let elicitationId = Self.completedElicitationId(in: data) {
+                            await onElicitationComplete(elicitationId)
+                        }
                         continuation.yield(data)
                     }
                 } catch {
@@ -200,6 +239,38 @@ actor DropObservingTransport: Transport {
             }
             continuation.onTermination = { _ in relay.cancel() }
         }
+    }
+
+    /// The wire shape of a `notifications/elicitation/complete` frame: only
+    /// the fields that the relay reads.
+    private struct CompletionFrame: Decodable {
+        /// The method of the frame.
+        let method: String
+
+        /// The params of the frame.
+        let params: ElicitationCompleteNotification.Parameters
+    }
+
+    /// The UTF-8 bytes of the method name of the completion notification. A
+    /// frame that does not hold them is not decoded.
+    private static let completionMethodBytes = Data(ElicitationCompleteNotification.name.utf8)
+
+    /// The wire `elicitationId` of `frame` when `frame` is one
+    /// `notifications/elicitation/complete` notification.
+    ///
+    /// A frame that does not hold the method name is not decoded, thus the
+    /// relay decodes no tool result.
+    ///
+    /// - Parameter frame: One frame of the wrapped receive stream.
+    /// - Returns: The wire id, or `nil` for each other frame.
+    static func completedElicitationId(in frame: Data) -> String? {
+        guard frame.range(of: completionMethodBytes) != nil,
+            let decoded = try? JSONDecoder().decode(CompletionFrame.self, from: frame),
+            decoded.method == ElicitationCompleteNotification.name
+        else {
+            return nil
+        }
+        return decoded.params.elicitationId
     }
 
     /// Ends `continuation` and reports a drop — the one place the end of the

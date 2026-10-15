@@ -13,14 +13,16 @@
 // itself — call the retained factory again, under the retained policy — is a
 // host operation here, `reconnect()`.
 //
-// **What `setupHandlers(on:)` registers.** Three notification handlers and one
+// **What `setupHandlers(on:)` registers.** Two notification handlers and one
 // request handler, on each new client before its connect — each attempt has
 // its own client, see `MCPServer+ClientLifecycle.swift`. The
 // `tools/list_changed` handler routes to the coalesced re-list of
 // `MCPServer+LiveCatalog.swift`; the `progress` handler routes to the
 // in-flight call of `MCPServer+Call.swift` whose token the notification
-// names; the `elicitation/complete` handler and the `elicitation/create`
-// request handler route to `MCPServer+Elicitation.swift`.
+// names; the `elicitation/create` request handler routes to
+// `MCPServer+Elicitation.swift`. The `DropObservingTransport` of the attempt,
+// not the client, relays `notifications/elicitation/complete` to
+// `MCPServer+Elicitation.swift`.
 //
 // **A connect discovers before it is ready.** `applyConnect(via:generation:)`
 // runs the paginated `tools/list` of `MCPServer+Discovery.swift` right after
@@ -563,6 +565,11 @@ extension MCPServer {
     /// time for each client: `MCP.Client.onNotification(_:handler:)` appends
     /// a handler to the list of the client, and that list starts empty.
     ///
+    /// The client gets no handler for `notifications/elicitation/complete`.
+    /// The `DropObservingTransport` of the attempt relays that notification
+    /// before the client loop reads it, thus one completion makes one
+    /// record — see `makeAttemptClient(over:transportID:generation:)`.
+    ///
     /// - Parameter client: The new client of the attempt.
     func setupHandlers(on client: MCP.Client) async {
         await registerNotificationHandler(ToolListChangedNotification.self, on: client) { server, _ in
@@ -570,9 +577,6 @@ extension MCPServer {
         }
         await registerNotificationHandler(ProgressNotification.self, on: client) { server, message in
             await server.handleProgressNotification(parameters: message.params)
-        }
-        await registerNotificationHandler(ElicitationCompleteNotification.self, on: client) { server, message in
-            await server.complete(elicitationId: message.params.elicitationId)
         }
         await registerElicitationHandler(on: client)
     }

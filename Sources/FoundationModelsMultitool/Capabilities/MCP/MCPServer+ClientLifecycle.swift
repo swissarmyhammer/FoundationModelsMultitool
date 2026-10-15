@@ -128,7 +128,9 @@ extension MCPServer {
             return nil
         }
         // The wrapper outlives this call — the client holds it for the whole
-        // connection — so its reports hold this actor weakly.
+        // connection — so its reports hold this actor weakly. The wrapper
+        // relays each `notifications/elicitation/complete` before the client
+        // loop reads it — see `DropObservingTransport.swift`.
         let observed = DropObservingTransport(
             wrapping: transport,
             onDrop: { [weak self] in
@@ -136,6 +138,9 @@ extension MCPServer {
             },
             onClose: { [weak self] in
                 await self?.closeOpenTransport(transportID)
+            },
+            onElicitationComplete: { [weak self] elicitationId in
+                await self?.complete(elicitationId: elicitationId, generation: generation)
             })
         openTransports[transportID]?.transport = observed
         let client = Client(
