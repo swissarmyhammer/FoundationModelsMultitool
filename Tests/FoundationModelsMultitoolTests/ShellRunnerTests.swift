@@ -306,6 +306,39 @@ struct ShellRunnerTests {
         return false
     }
 
+    /// Releases `gate` for the command of the run under `token`. The release
+    /// also ends when the process of that command exits before it reads the
+    /// line.
+    ///
+    /// The pid of the command is the pid that the store holds for the run.
+    /// The caller calls this only after an event that the command made while
+    /// it ran (a line of its output), thus the child registered its pid
+    /// before. The release then ends on the first of two events: the command
+    /// opens the gate, or the process of the command exits. When the command
+    /// is gone, the test records an issue with the result of the run, and no
+    /// wait stays open.
+    ///
+    /// - Parameters:
+    ///   - gate: The gate the command waits on.
+    ///   - token: The completion token of the run.
+    ///   - state: The store of the run.
+    ///   - run: The task of the run, which gives the result for the issue.
+    /// - Returns: `true` when the command got the line.
+    /// - Throws: What ``ShellCommandGate/release(whileAlive:)`` throws.
+    private static func release(
+        _ gate: ShellCommandGate, forCommandOf token: String, in state: ShellState,
+        run: Task<ShellRunner.Outcome, any Error>
+    ) async throws -> Bool {
+        if let pid = await state.runningProcess(commandID: token),
+            try await gate.release(whileAlive: pid) == .reached
+        {
+            return true
+        }
+        let result = await run.result
+        Issue.record("the command ended before the gate released it; the run gave \(result)")
+        return false
+    }
+
     /// Makes a directory named `name` inside the directory of one test, thus a
     /// test has a working directory that is not the current directory of this
     /// process.
@@ -662,6 +695,11 @@ struct ShellRunnerTests {
     /// the write on the live view, and only then releases the next step. The
     /// line of a step arrives after the shell closed the FIFO of the step
     /// before, thus each release reaches the wait of the next step.
+    ///
+    /// When the shell exits before it reads a release — a kill from outside,
+    /// for example — the release ends on the exit event of the shell, and the
+    /// test records the result of the run. Thus that fault is a failure of
+    /// the test, and never a wait with no end.
     @Test("standard output and standard error each keep their own write order")
     func stdoutAndStderrEachStayInWriteOrderWithAlternatingWrites() async throws {
         let live = ShellOutputChunkStream()
@@ -680,8 +718,14 @@ struct ShellRunnerTests {
         let runTask = Task { try await runner.run(.init(command: command, completionToken: token)) }
         defer { runTask.cancel() }
         for step in ["out1", "err1", "out2"] {
-            #expect(await Self.waitForOutput(containing: step, from: &events), "the step \(step) never wrote")
-            try await gate.release()
+            guard await Self.waitForOutput(containing: step, from: &events) else {
+                let result = await runTask.result
+                Issue.record("the step \(step) never wrote; the run gave \(result)")
+                return
+            }
+            guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
+                return
+            }
         }
         _ = try await runTask.value
         let lines = try await state.getLines(commandID: token)
@@ -859,22 +903,30 @@ struct ShellRunnerTests {
         try openGate(gate)
     }
 
-    /// With no limit the command runs to its own end. The command waits on a
-    /// `ShellCommandGate`, thus it cannot end before the test releases it.
-    /// The release returns only after the command opened the FIFO, thus the
-    /// command ran up to that point, and then it ends by itself. The timer of
-    /// a limit sleeps on the `GatedClock` of the runner. A clock that
-    /// recorded no sleep proves that the runner started no timer at all.
+    /// With no limit the command runs to its own end. The command writes one
+    /// line and then waits on a `ShellCommandGate`, thus it cannot end before
+    /// the test releases it. The test waits until the store holds that line,
+    /// thus the child registered its pid. The release returns only after the
+    /// command opened the FIFO, or after the command exited, thus no wait
+    /// stays open. The command then ends by itself. The timer of a limit
+    /// sleeps on the `GatedClock` of the runner. A clock that recorded no
+    /// sleep proves that the runner started no timer at all.
     @Test("no time limit applies when the request asks for none")
     func noTimeoutIsAppliedWhenNoneRequested() async throws {
         let clock = GatedClock()
-        let (runner, _, _) = try makeRunner(clock: clock)
+        let (runner, state, _) = try makeRunner(clock: clock)
         let token = ToolContext.makeCompletionToken()
         let gate = try ShellCommandGate()
 
-        let runTask = Task { try await runner.run(.init(command: gate.waitCommand, completionToken: token)) }
+        let runTask = Task {
+            try await runner.run(
+                .init(command: "printf 'ready\\n'; \(gate.waitCommand)", completionToken: token))
+        }
         defer { runTask.cancel() }
-        try await gate.release()
+        await state.waitForStoredLines(commandID: token, atLeast: 1)
+        guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
+            return
+        }
         let outcome = try await runTask.value
 
         #expect(outcome.status == .completed)

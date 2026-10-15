@@ -201,6 +201,21 @@ struct StdioServerProcessTests {
         ProcessLiveness.isGone(pid)
     }
 
+    /// Blocks until the child `pid` exited and is a zombie, and does not reap
+    /// it.
+    ///
+    /// `waitid` with `WNOWAIT` ends when the child can be reaped, thus when
+    /// the exit of the kernel closed each file descriptor of the child. The
+    /// child stays a zombie, thus its pid stays its own until the product
+    /// reaps it. A kqueue exit event is not enough here: the kernel can send
+    /// it before it closed the descriptors.
+    ///
+    /// - Parameter pid: A child of this process.
+    private static func waitUntilZombie(_ pid: pid_t) {
+        var info = siginfo_t()
+        _ = waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT)
+    }
+
     /// Whether `pid` names a live process (or a zombie) — see
     /// ``ProcessLiveness/isAlive(_:)``.
     ///
@@ -425,12 +440,14 @@ struct StdioServerProcessTests {
             return
         }
 
-        // A real, unscripted death — reaped through a blocking `waitpid`,
-        // because this process is the parent of the pid — so the fds of the
-        // child are closed before the call below writes to them.
+        // A real, unscripted death. The test waits until the child is a
+        // zombie, thus the fds of the child are closed before the call below
+        // writes to them. It does NOT reap the child: the product owns the
+        // reap. When the test reaped, the teardown below (`disconnect()`,
+        // `shutdown()`) sent `killpg` and `waitpid` to a pid that the kernel
+        // could already give to an unrelated process.
         kill(pid, SIGKILL)
-        var status: Int32 = 0
-        waitpid(pid, &status, 0)
+        Self.waitUntilZombie(pid)
 
         await #expect(throws: (any Error).self) {
             _ = try await client.callTool(
@@ -459,9 +476,12 @@ struct StdioServerProcessTests {
             return
         }
 
+        // The test waits until the child is a zombie and does NOT reap it:
+        // the teardown of `respawn()` reaps it. When the test reaped, that
+        // teardown sent `killpg` and `waitpid` to a pid that the kernel could
+        // already give to an unrelated process.
         kill(firstPid, SIGKILL)
-        var status: Int32 = 0
-        waitpid(firstPid, &status, 0)
+        Self.waitUntilZombie(firstPid)
 
         try await server.reconnect()
 
