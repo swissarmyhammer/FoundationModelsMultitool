@@ -691,10 +691,14 @@ struct ShellRunnerTests {
     /// or arrives twice. This test states that guarantee, and no more.
     ///
     /// The writes alternate in fixed steps, and no step waits on time. The
-    /// command waits on a `ShellCommandGate` after each write. The test reads
-    /// the write on the live view, and only then releases the next step. The
-    /// line of a step arrives after the shell closed the FIFO of the step
-    /// before, thus each release reaches the wait of the next step.
+    /// command waits on its own `ShellCommandGate` after each write: one gate
+    /// for each wait. The test reads the write on the live view, and only then
+    /// releases the gate of that step. One gate for all the waits is not
+    /// correct: a release closes its write end only after the write, and in
+    /// that interval the shell can open the same FIFO for the next wait. That
+    /// open ends at once on the write end of the step before, and the close of
+    /// that write end gives the next `read` the end of the file. The shell then
+    /// goes past the next wait with no release.
     ///
     /// When the shell exits before it reads a release — a kill from outside,
     /// for example — the release ends on the exit event of the shell, and the
@@ -705,19 +709,21 @@ struct ShellRunnerTests {
         let live = ShellOutputChunkStream()
         let (runner, state, _) = try makeRunner(outputChunkStream: live)
         let token = ToolContext.makeCompletionToken()
-        let gate = try ShellCommandGate()
+        let afterOut1 = try ShellCommandGate()
+        let afterErr1 = try ShellCommandGate()
+        let afterOut2 = try ShellCommandGate()
         var events = live.makeAsyncIterator()
         defer { live.finish() }
 
         let command = """
-            printf 'out1\\n'; \(gate.waitCommand)
-            printf 'err1\\n' >&2; \(gate.waitCommand)
-            printf 'out2\\n'; \(gate.waitCommand)
+            printf 'out1\\n'; \(afterOut1.waitCommand)
+            printf 'err1\\n' >&2; \(afterErr1.waitCommand)
+            printf 'out2\\n'; \(afterOut2.waitCommand)
             printf 'err2\\n' >&2
             """
         let runTask = Task { try await runner.run(.init(command: command, completionToken: token)) }
         defer { runTask.cancel() }
-        for step in ["out1", "err1", "out2"] {
+        for (step, gate) in [("out1", afterOut1), ("err1", afterErr1), ("out2", afterOut2)] {
             guard await Self.waitForOutput(containing: step, from: &events) else {
                 let result = await runTask.result
                 Issue.record("the step \(step) never wrote; the run gave \(result)")

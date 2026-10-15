@@ -38,6 +38,43 @@ struct ShellCommandGateTests {
         #expect(release == .reached)
     }
 
+    /// One gate releases one wait. A second release of one gate throws, and it
+    /// writes no line.
+    ///
+    /// The cause: a release closes its write end only after its write. In
+    /// that interval a command that waits two times on one gate can read the
+    /// line and open the same FIFO for its second wait. That open ends at once
+    /// on the write end of the first release, and the close of that write end
+    /// gives the second `read` the end of the file. The second wait then ends
+    /// with no release.
+    ///
+    /// The order is fixed. The first release reaches a first child. Only
+    /// after that does a second child wait on the same gate, and the second
+    /// release must throw. A release that does not throw reaches the second
+    /// child and gives ``ShellCommandGate/Release/reached``: a failed check,
+    /// and no wait for all time. The test then stops the second child, and it
+    /// waits for the kqueue exit event of that child.
+    @Test("a second release of one gate throws and writes no line")
+    func aSecondReleaseOfOneGateThrows() async throws {
+        let gate = try ShellCommandGate()
+        let first = Process()
+        first.executableURL = URL(fileURLWithPath: Self.shellPath)
+        first.arguments = ["-c", gate.waitCommand]
+        try first.run()
+        #expect(try await gate.release(whileAlive: first.processIdentifier) == .reached)
+
+        let second = Process()
+        second.executableURL = URL(fileURLWithPath: Self.shellPath)
+        second.arguments = ["-c", gate.waitCommand]
+        try second.run()
+        let secondPid = second.processIdentifier
+        await #expect(throws: ShellCommandGate.Failure.self) {
+            _ = try await gate.release(whileAlive: secondPid)
+        }
+        second.terminate()
+        await ProcessExitWait.waitUntilGone(secondPid)
+    }
+
     /// A child that exits and never opens the FIFO cannot make the release
     /// wait for all time: the release ends on the exit event of the child and
     /// gives ``ShellCommandGate/Release/commandExited``.

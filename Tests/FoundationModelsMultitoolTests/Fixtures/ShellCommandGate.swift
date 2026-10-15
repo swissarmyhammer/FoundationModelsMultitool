@@ -22,6 +22,14 @@ import Synchronization
 /// all time. ``release(commandIn:orEndOf:)`` gets that process from the
 /// `ShellState` of a command that runs through the `execute` verb or the run
 /// plane. It also ends when the call that must start the command ends first.
+///
+/// One gate releases ONE wait. A command that waits more than one time needs
+/// one gate for each wait. The cause: a release closes its write end only
+/// after the write. In that interval the command can read the line, go on,
+/// and open the same FIFO for its next wait. An open for reading ends at once
+/// while a writer holds the FIFO. The close of the write end then gives the
+/// next `read` the end of the file, thus that wait ends with no line and no
+/// release. Thus a second release of one gate throws ``Failure``.
 final class ShellCommandGate: Sendable {
     /// What a FIFO could not do.
     struct Failure: Error, CustomStringConvertible {
@@ -37,6 +45,10 @@ final class ShellCommandGate: Sendable {
 
     /// The mode of the FIFO: read and write for the owner only.
     private static let fifoMode: mode_t = 0o600
+
+    /// `true` once ``release(whileAlive:)`` started. One gate releases one
+    /// wait (see the type), thus a second release throws.
+    private let released = Mutex(false)
 
     /// Makes a FIFO in the temporary directory.
     ///
@@ -96,9 +108,18 @@ final class ShellCommandGate: Sendable {
     /// - Parameter pid: The pid of the process of the command: the shell
     ///   child that runs ``waitCommand``.
     /// - Returns: How the release ended.
-    /// - Throws: ``Failure`` when the FIFO does not open, or when the write
-    ///   fails for a cause other than `EPIPE`.
+    /// - Throws: ``Failure`` when this gate was released before (one gate
+    ///   releases one wait; see the type), when the FIFO does not open, or
+    ///   when the write fails for a cause other than `EPIPE`. A second
+    ///   release throws before it opens the FIFO.
     func release(whileAlive pid: pid_t) async throws -> Release {
+        let releasedBefore = released.withLock { current in
+            defer { current = true }
+            return current
+        }
+        guard !releasedBefore else {
+            throw Failure(description: "the gate \(path) was released before; one gate releases one wait")
+        }
         let path = path
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Release, any Error>) in
             let race = GateReleaseRace(path: path)
