@@ -35,13 +35,15 @@
 // `killpg` and `waitpid`, never just one.
 //
 // **Four teardown triggers, one idempotent funnel.** Each one reaches
-// `ProcessState.terminateCurrent()`, so a call to any of them, in any order,
-// any number of times, is safe:
+// `ProcessState.terminate(where:)` — through `terminateCurrent()`, or through
+// `terminateIfCurrent(pid:)` for a transport that tears down only its own
+// pid — so a call to any of them, in any order, any number of times, is safe:
 //
 //   1. Explicit `shutdown()` — a host tears the server down on purpose.
 //   2. Connection teardown — the vended transport's own `disconnect()`, which a
 //      host's disconnect of the server built over it reaches, even when the
-//      host never calls `shutdown()` directly.
+//      host never calls `shutdown()` directly. It tears down the pid of that
+//      transport only, and never a newer pid that a later `respawn()` spawned.
 //   3. The pre-spawn teardown of `respawn()` — each fresh spawn first tears
 //      down whatever this instance fronted before, which is what reaps a
 //      process that died on its own (the reconnect path after a mid-call
@@ -598,10 +600,11 @@ private final class ProcessState: Sendable {
     /// current, whether because `pid` was evicted by a fresher spawn or was
     /// never current at all.
     ///
-    /// Exists for one caller, `StdioServerTransport.dispose()`: a transport
-    /// whose own spawn lost the race (its pid evicted, killed and reaped by a
-    /// fresher spawn's own `recordSpawn`) must have its `dispose()` be a safe
-    /// no-op, and never reach for whatever pid is current NOW — which can be
+    /// Exists for `StdioServerTransport.dispose()` and
+    /// `StdioServerTransport.disconnect()`: a transport whose own spawn lost
+    /// the race (its pid evicted, killed and reaped by a fresher spawn's own
+    /// `recordSpawn`) must have its `dispose()` and its `disconnect()` be a
+    /// safe no-op, and never reach for whatever pid is current NOW — which can be
     /// that fresher, wanted spawn. `terminateCurrent()` cannot express that:
     /// it only knows "whatever is current", never "whether the pid a caller
     /// has in mind is still that".
@@ -708,10 +711,18 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     }
 
     /// Delegates to `inner`, then group-kills and reaps the subprocess this
-    /// transport is wired to.
+    /// transport is wired to — `pid`, and only while `state` still holds it
+    /// as current.
+    ///
+    /// `MCPServer` makes a new client for each connect attempt, and tears an
+    /// old client down in a task of its own. Thus the `disconnect()` of an
+    /// old transport can come after a newer `respawn()` spawned the current
+    /// process. "Whatever is current now" would then kill that wanted
+    /// process. The pid of this transport was already killed and reaped when
+    /// the newer spawn evicted it, thus nothing stays alive.
     func disconnect() async {
         await inner.disconnect()
-        state.terminateCurrent()
+        state.terminateIfCurrent(pid: pid)
     }
 
     /// Delegates to `inner`.

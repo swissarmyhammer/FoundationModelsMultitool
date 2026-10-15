@@ -13,12 +13,14 @@
 // itself — call the retained factory again, under the retained policy — is a
 // host operation here, `reconnect()`.
 //
-// **What `setupHandlers()` registers.** Three notification handlers, once per
-// actor, and one request handler, on every connect. The `tools/list_changed`
-// handler routes to the coalesced re-list of `MCPServer+LiveCatalog.swift`;
-// the `progress` handler routes to the in-flight call of `MCPServer+Call.swift`
-// whose token the notification names; the `elicitation/complete` handler and
-// the `elicitation/create` request handler route to `MCPServer+Elicitation.swift`.
+// **What `setupHandlers(on:)` registers.** Three notification handlers and one
+// request handler, on each new client before its connect — each attempt has
+// its own client, see `MCPServer+ClientLifecycle.swift`. The
+// `tools/list_changed` handler routes to the coalesced re-list of
+// `MCPServer+LiveCatalog.swift`; the `progress` handler routes to the
+// in-flight call of `MCPServer+Call.swift` whose token the notification
+// names; the `elicitation/complete` handler and the `elicitation/create`
+// request handler route to `MCPServer+Elicitation.swift`.
 //
 // **A connect discovers before it is ready.** `applyConnect(via:generation:)`
 // runs the paginated `tools/list` of `MCPServer+Discovery.swift` right after
@@ -32,8 +34,8 @@
 // returns would make a group-based race block as long as an un-raced call. The
 // attempt runs as an independent, un-joined `Task`, and the connect returns as
 // soon as the attempt or the timeout resumes the shared `SingleResume` first;
-// the loser keeps running and its late result is discarded by the generation
-// guard.
+// the loser keeps running on its own client, and the generation guard
+// discards its late result.
 
 import Logging
 import MCP
@@ -42,10 +44,6 @@ extension MCPServer {
     /// The base of the exponential backoff of `backoffDelay(afterAttempt:policy:)`
     /// — each failed attempt doubles the prior delay.
     private static let exponentialBackoffMultiplier = 2.0
-
-    /// The key `registerNotificationHandlerOnce(_:register:)` records the
-    /// `tools/list_changed` registration under.
-    private static let toolListChangedHandlerName = "toolListChanged"
 
     /// What one attempt inside the retry loop of
     /// ``connect(via:backoffPolicy:)-(TransportFactory,_)`` learned, for that
@@ -104,15 +102,14 @@ extension MCPServer {
     ///   throws.
     public func connect(via factory: @escaping TransportFactory) async throws {
         transportFactory = factory
-        // `MCP.Client.connect(transport:)` never cancels the message-handling
-        // task of a previous call before it starts a new one, so a reconnect
-        // without a disconnect first leaves two tasks racing to consume the
-        // same receive stream. `disconnect()` is a no-op before any
-        // connection was ever made.
         recordConnectStart()
-        await disconnectClientWithoutHanging()
+        // The generation moves first, thus an attempt still in flight is
+        // stale before the current client is torn down. The factory runs
+        // only after the transport of the current client closed.
         connectGeneration += 1
-        try await applyConnect(via: factory, generation: connectGeneration)
+        let generation = connectGeneration
+        await retireCurrentClient()
+        try await applyConnect(via: factory, generation: generation)
     }
 
     /// Connects to `transport` with automatic retry under `backoffPolicy`.
@@ -239,12 +236,20 @@ extension MCPServer {
     /// makes this method, and the next connect attempt, wait for it. Such a
     /// transport has a defect. The built-in stdio and in-memory transports
     /// return from `disconnect()`.
+    ///
+    /// A connect attempt that started before this call and still runs has a
+    /// transport too. This method also waits until each such transport
+    /// closed: the attempt is stale, and it closes its own transport when its
+    /// connect ends. Thus no transport and no stdio subprocess of this server
+    /// stays after this method returns.
     public func disconnect() async {
         await cancellationNotices.drain()
         connectGeneration += 1
+        let teardownGeneration = connectGeneration
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)
-        await disconnectClientWithoutHanging()
+        await retireCurrentClient()
+        await waitUntilTransportsClosed(before: teardownGeneration)
         transition(to: .disconnected)
     }
 
@@ -348,6 +353,10 @@ extension MCPServer {
     /// handshake it feeds: a factory that spawns a subprocess and hangs is as
     /// bounded by `timeout` as a transport whose own `connect()` hangs.
     ///
+    /// The current client is torn down before the race, and the race starts
+    /// only after its transport closed. An earlier attempt that still runs
+    /// is not waited for: it has its own client.
+    ///
     /// - Parameters:
     ///   - factory: Builds the fresh transport to connect over.
     ///   - timeout: The maximum real wall-clock time this attempt may take.
@@ -358,9 +367,9 @@ extension MCPServer {
         factory: @escaping TransportFactory, timeout: Duration
     ) async throws {
         recordConnectStart()
-        await disconnectClientWithoutHanging()
         connectGeneration += 1
         let generation = connectGeneration
+        await retireCurrentClient()
 
         try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<Void, any Error>) in
@@ -409,26 +418,34 @@ extension MCPServer {
     }
 
     /// The connection work shared by the single-attempt and the retried
-    /// connects: calls `factory` for a fresh transport, connects over it,
-    /// then discovers every tool through the paginated `tools/list` — and
-    /// mutates ``state``, ``identity`` and ``discoveredTools`` only when
-    /// `generation` still matches ``connectGeneration`` at the moment it
-    /// would apply its result. A success and a failure after a prior success
-    /// each emit one ``catalogUpdates`` snapshot.
+    /// connects: calls `factory` for a fresh transport, makes a new client
+    /// and connects it over that transport, then discovers every tool through
+    /// the paginated `tools/list` — and mutates ``state``, ``identity``,
+    /// ``currentClient`` and ``discoveredTools`` only when `generation` still
+    /// matches ``connectGeneration`` at the moment it would apply its result.
+    /// A success and a failure after a prior success each emit one
+    /// ``catalogUpdates`` snapshot.
     ///
     /// A fresh, non-racing `connect(via:)` always passes its own
     /// just-incremented generation, so the guard is satisfied there. For an
     /// abandoned attempt that lost its race against `connectTimeout` and
     /// finishes later, a newer attempt (or the loop giving up) moved the
-    /// generation on, so the stale result is logged and discarded.
+    /// generation on, so the stale result is logged and discarded, and the
+    /// attempt tears its own client down: it is never installed, and its
+    /// transport closes.
+    ///
+    /// A failed attempt whose generation is still current tears its client
+    /// down and waits until its transport closed, and only then throws. Thus
+    /// the next attempt of the retry loop spawns its transport only after
+    /// the transport of the failed attempt closed.
     ///
     /// - Parameters:
     ///   - factory: Builds the fresh transport to connect over.
     ///   - generation: The ``connectGeneration`` this attempt was launched
     ///     under.
     /// - Throws: What `factory`, `MCP.Client.connect(transport:)` or
-    ///   `discoverAllTools()` throws — even when `generation` turns out to be
-    ///   stale, so the detached task of
+    ///   `discoverAllTools(on:)` throws — even when `generation` turns out to
+    ///   be stale, so the detached task of
     ///   `performConnectAttempt(factory:timeout:)` still observes failure
     ///   against success correctly.
     private func applyConnect(via factory: TransportFactory, generation: Int) async throws {
@@ -439,25 +456,26 @@ extension MCPServer {
             return
         }
         transition(to: .connecting)
-        await setupHandlers()
+        var attempt: AttemptClient?
         do {
             let transport = try await factory()
-            guard
-                let initialized = try await connectClientExclusively(
-                    transport: transport, generation: generation)
-            else {
+            guard let made = await makeAttemptClient(over: transport, generation: generation) else {
+                return
+            }
+            attempt = made
+            let initialized = try await made.client.connect(transport: made.transport)
+            guard isCurrentGeneration(generation, orDiscard: .mcpStaleSuccessDiscarded) else {
+                dropAttemptClient(made)
                 return
             }
             // A fresh connection: the drop of the previous one, if any, is
             // over. Cleared before discovery, so a drop under discovery is
             // recorded against this connection and not lost to the reset.
+            currentClient = made
             isTransportDropped = false
-            let tools = try await discoverAllTools()
-            guard
-                isCurrentGeneration(
-                    generation,
-                    orDiscard: .mcpStaleSuccessDiscarded)
-            else {
+            let tools = try await discoverAllTools(on: made.client)
+            guard isCurrentGeneration(generation, orDiscard: .mcpStaleSuccessDiscarded) else {
+                dropAttemptClient(made)
                 return
             }
             discoveredTools = tools
@@ -477,7 +495,14 @@ extension MCPServer {
                     orDiscard: .mcpStaleFailureDiscarded,
                     error: error)
             else {
+                if let attempt {
+                    dropAttemptClient(attempt)
+                }
                 throw error
+            }
+            if let attempt {
+                dropAttemptClient(attempt)
+                await waitUntilTransportClosed(attempt.transportID)
             }
             transition(to: .faulted(String(describing: error)))
             emitCatalogSnapshot()
@@ -508,49 +533,27 @@ extension MCPServer {
         return true
     }
 
-    // MARK: - The notification handlers registered at connect
+    // MARK: - The handlers registered on each new client
 
-    /// Registers every handler this actor needs on ``client`` — extracted
-    /// from `applyConnect(via:generation:)` so that method reads as
-    /// "register handlers, then connect".
+    /// Registers every handler this actor needs on `client`, a new client of
+    /// one connect attempt, before its connect.
     ///
-    /// `MCP.Client.onNotification(_:handler:)` appends a handler to its list
-    /// instead of replacing it, so each notification registration goes
-    /// through `registerNotificationHandlerOnce(_:register:)` and runs at
-    /// most one time per actor, however many reconnects follow. The
-    /// `elicitation/create` request handler replaces the one before it, so it
-    /// is registered on every connect.
-    private func setupHandlers() async {
-        await registerNotificationHandlerOnce(Self.toolListChangedHandlerName) {
-            await self.registerNotificationHandler(ToolListChangedNotification.self) { server, _ in
-                await server.handleToolListChangedNotification()
-            }
-        }
-        await registerNotificationHandlerOnce(Self.progressHandlerName) {
-            await self.registerNotificationHandler(ProgressNotification.self) { server, message in
-                await server.handleProgressNotification(parameters: message.params)
-            }
-        }
-        await registerNotificationHandlerOnce(Self.elicitationCompleteHandlerName) {
-            await self.registerNotificationHandler(ElicitationCompleteNotification.self) { server, message in
-                await server.complete(elicitationId: message.params.elicitationId)
-            }
-        }
-        await registerElicitationHandler()
-    }
-
-    /// Runs `register` at most one time per actor, keyed by `name`.
+    /// Each attempt makes its own client, thus each registration runs one
+    /// time for each client: `MCP.Client.onNotification(_:handler:)` appends
+    /// a handler to the list of the client, and that list starts empty.
     ///
-    /// - Parameters:
-    ///   - name: A stable key for the handler, recorded in
-    ///     ``registeredNotificationHandlers`` before `register` runs.
-    ///   - register: The registration, invoked the first time `name` is seen.
-    private func registerNotificationHandlerOnce(
-        _ name: String, register: () async -> Void
-    ) async {
-        guard !registeredNotificationHandlers.contains(name) else { return }
-        registeredNotificationHandlers.insert(name)
-        await register()
+    /// - Parameter client: The new client of the attempt.
+    func setupHandlers(on client: MCP.Client) async {
+        await registerNotificationHandler(ToolListChangedNotification.self, on: client) { server, _ in
+            await server.handleToolListChangedNotification()
+        }
+        await registerNotificationHandler(ProgressNotification.self, on: client) { server, message in
+            await server.handleProgressNotification(parameters: message.params)
+        }
+        await registerNotificationHandler(ElicitationCompleteNotification.self, on: client) { server, message in
+            await server.complete(elicitationId: message.params.elicitationId)
+        }
+        await registerElicitationHandler(on: client)
     }
 
     /// Registers `client.onNotification(_:handler:)` for `type`, guarding
@@ -559,10 +562,12 @@ extension MCPServer {
     ///
     /// - Parameters:
     ///   - type: The notification type to register a handler for.
+    ///   - client: The client to register the handler on.
     ///   - handler: Invoked with `self` and the received message once `self`
     ///     is confirmed still alive.
     private func registerNotificationHandler<N: Notification>(
-        _ type: N.Type, handler: @escaping @Sendable (MCPServer, Message<N>) async -> Void
+        _ type: N.Type, on client: MCP.Client,
+        handler: @escaping @Sendable (MCPServer, Message<N>) async -> Void
     ) async {
         await client.onNotification(type) { [weak self] message in
             guard let self else { return }

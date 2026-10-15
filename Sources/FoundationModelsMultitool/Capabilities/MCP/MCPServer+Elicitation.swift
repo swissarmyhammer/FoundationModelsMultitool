@@ -56,23 +56,19 @@ extension MCPServer {
     /// is bound around the call the request belongs to.
     public typealias ElicitationHandler = @Sendable (ElicitationRequest) async -> ElicitationResponse
 
-    /// The key `registerNotificationHandlerOnce(_:register:)` records the
-    /// `elicitation/complete` registration under — see `setupHandlers()` in
-    /// `MCPServer+Connection.swift`.
-    static let elicitationCompleteHandlerName = "elicitationComplete"
-
     // MARK: - The handler the client calls
 
-    /// Registers the `elicitation/create` handler on ``client`` — the one
-    /// registration `setupHandlers()` makes for a request, beside the
-    /// notification handlers. `withMethodHandler` replaces the handler it
-    /// holds, so calling this on every connect is safe.
+    /// Registers the `elicitation/create` handler on `client`, the new client
+    /// of one connect attempt — the one registration `setupHandlers(on:)`
+    /// makes for a request, beside the notification handlers.
     ///
-    /// `[weak self]`, as `registerNotificationHandler(_:handler:)` captures:
-    /// the client retains the closure, and this actor retains the client. A
-    /// request that arrives after this actor is gone answers `cancel`, so
-    /// the server never waits on a host that no longer exists.
-    func registerElicitationHandler() async {
+    /// `[weak self]`, as `registerNotificationHandler(_:on:handler:)`
+    /// captures: the client retains the closure, and this actor retains the
+    /// client. A request that arrives after this actor is gone answers
+    /// `cancel`, so the server never waits on a host that no longer exists.
+    ///
+    /// - Parameter client: The client to register the handler on.
+    func registerElicitationHandler(on client: MCP.Client) async {
         await client.withElicitationHandler { [weak self] parameters in
             guard let self else {
                 return MCPServer.wireResult(of: .cancel)

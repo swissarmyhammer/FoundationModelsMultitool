@@ -157,11 +157,9 @@ enum MCPTestSupport {
     /// `GatedClock`, opens it when the attempt is in flight, and reads the
     /// recorded duration.
     ///
-    /// The defaults of `callTimeoutClock` and `clientQueueClock` are also
-    /// `GatedClock`s that no test opens. Thus no bare call of the server
-    /// times out, and each queued client operation waits for the one before
-    /// it to end. A test of the bare-call timeout or of the queue bound gives
-    /// its own clock.
+    /// The default of `callTimeoutClock` is also a `GatedClock` that no test
+    /// opens. Thus no bare call of the server times out. A test of the
+    /// bare-call timeout gives its own clock.
     ///
     /// - Parameters:
     ///   - name: The name of the server, and so its identity.
@@ -170,9 +168,6 @@ enum MCPTestSupport {
     ///     `ManualClock`, whose sleeps end at once. A test that reads the
     ///     backoff schedule gives its own `ManualClock` and reads
     ///     `recordedSleeps`.
-    ///   - clientQueueClock: The clock each bounded wait of the
-    ///     client-operation queue sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect sleeps on. Defaults to a `GatedClock` that no test opens.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
@@ -189,7 +184,6 @@ enum MCPTestSupport {
     static func makeServer(
         name: String,
         clock: any Clock<Duration> = ManualClock(),
-        clientQueueClock: any Clock<Duration> = GatedClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeoutClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
@@ -201,7 +195,6 @@ enum MCPTestSupport {
             name: name,
             version: MCPServer.defaultClientVersion,
             clock: clock,
-            clientQueueClock: clientQueueClock,
             connectAttemptClock: connectAttemptClock,
             callTimeoutClock: callTimeoutClock,
             callTimeout: callTimeout,
@@ -225,10 +218,10 @@ enum MCPTestSupport {
     ///   - clock: The clock the server sleeps on — between retries, and for
     ///     the `tools/list_changed` coalesce window. Defaults to a
     ///     `ManualClock`, whose sleeps end at once — see
-    ///     ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     ///   - callTimeout: The bound of a call made with no ambient
@@ -283,7 +276,7 @@ enum MCPTestSupport {
     ///     of `MCPServer`.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     /// - Returns: The connected server, and the recording transport it
@@ -319,7 +312,7 @@ enum MCPTestSupport {
     ///   - name: The name of the `MCPServer`, and so its identity.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     ///   - callTimeout: The bound of a bare call of the server. Defaults to
@@ -363,7 +356,7 @@ enum MCPTestSupport {
     ///     noun its verbs render under.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
     /// - Returns: The scripted server, which the test keeps alive, and the

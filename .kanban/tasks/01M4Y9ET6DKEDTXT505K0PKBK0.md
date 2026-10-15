@@ -10,8 +10,12 @@ comments:
     - Web research: one prompt and one response in the session; no toolCalls entry at all.
     Thus no tool call happened in another answer: the grade read the right answer. This is the model's choice. FIRST BASELINE (2026-10-14, Router 3f3ba209, Extras 278e9cb, standard Qwen3.8-27B-mxfp4): environmentWeekdayAndOperatingSystem FAIL (calledTheVerbs), webResearch FAIL (searchedTheWeb). These two results do not block the push (owner decision).
   timestamp: 2026-10-14T22:46:42.691666+00:00
-position_column: todo
-position_ordinal: '8780'
+- actor: claude-code
+  id: 01m4za89jdvmyjsk4de2s7sb8q
+  text: 'Close: in the next two full live runs (Router 7fbcf9b7, after the merge a0d1de7, and again with the fix e3b3d63), environmentWeekdayAndOperatingSystem and webResearch both gave result=PASS. The first failures were a model choice (the session journals showed no tool call in another answer), and they stay recorded above as the first baseline. Nothing is left to do here.'
+  timestamp: 2026-10-15T08:18:27.533799+00:00
+position_column: done
+position_ordinal: fffff080
 title: 'Live run: two graded scenarios fail on a model choice'
 ---
 Found in mail step 5, T4, live IntegrationTests run (2026-10-14, Router 3f3ba209, Extras 278e9cb, profile multitool-tiny, standard Qwen3.8-27B-mxfp4).

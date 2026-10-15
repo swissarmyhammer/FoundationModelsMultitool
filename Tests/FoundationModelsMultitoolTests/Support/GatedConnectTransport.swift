@@ -46,6 +46,16 @@ actor GatedConnectTransport: WrappingTransport {
     /// in flight, and does not poll ``connectWasCalled``.
     let connectArrival = TestGate()
 
+    /// Whether the wrapped transport is open: `true` after a ``connect()``
+    /// that succeeded, and `false` again after a ``disconnect()``. A test
+    /// reads it to know that no open transport stays after a teardown.
+    private(set) var isOpen = false
+
+    /// The gate that ``disconnect()`` opens after the wrapped transport
+    /// closed. A test waits on it to know that the transport closed, and
+    /// does not poll ``isOpen``.
+    let closeArrival = TestGate()
+
     /// Blocks until ``release()`` is called, then delegates to the wrapped
     /// transport.
     ///
@@ -55,6 +65,15 @@ actor GatedConnectTransport: WrappingTransport {
         connectArrival.open()
         await gate.wait()
         try await connectWrapped()
+        isOpen = true
+    }
+
+    /// Delegates to the wrapped transport, then records the close and opens
+    /// ``closeArrival``.
+    func disconnect() async {
+        await wrapped.disconnect()
+        isOpen = false
+        closeArrival.open()
     }
 
     /// Opens the gate: resumes a `connect()` already blocked on it, and lets

@@ -17,14 +17,13 @@
 // calls the `disconnect()` of this wrapper, and the wrapped stream ends as a
 // result. That end is the host's own doing, and it is not reported.
 //
-// **The disconnect call itself is reported.** `MCP.Client.disconnect()` calls
-// the `disconnect()` of this wrapper only after it took its connection, its
-// message-handling task and its pending requests. This wrapper reports that
-// call to `MCPServer.endClientDisconnectTurn()` before it delegates, and the
-// client-operation queue lets the next operation start at that report. The
-// report gives back a closure, which this wrapper calls once the wrapped
-// transport closed: the caller of the disconnect waits for that close — see
-// `MCPServer+ClientQueue.swift`.
+// **The close is reported.** When the `disconnect()` of the wrapped transport
+// returns, the transport is closed: a stdio transport killed and reaped its
+// subprocess. This wrapper then reports the close to
+// `MCPServer.closeOpenTransport(_:)`. A connect attempt and `disconnect()`
+// of the server wait for that report, and never for the `disconnect()` of the
+// client, which can hang on a suspended server-to-client handler — see
+// `MCPServer+ClientLifecycle.swift`.
 //
 // **A drop ends the mirror with an error, and never without one.** The message
 // loop of `MCP.Client` is `repeat { for try await data in await
@@ -69,11 +68,9 @@ actor DropObservingTransport: Transport {
     /// without a ``disconnect()`` of this wrapper — the drop report.
     private let onDrop: @Sendable () async -> Void
 
-    /// What ``disconnect()`` calls before it delegates — the report that the
-    /// client took its state and now closes this connection. It gives back
-    /// the closure that ``disconnect()`` calls once the wrapped transport
-    /// closed.
-    private let onDisconnect: @Sendable () async -> @Sendable () -> Void
+    /// What ``disconnect()`` calls once the `disconnect()` of the wrapped
+    /// transport returned — the report that the transport is closed.
+    private let onClose: @Sendable () async -> Void
 
     /// The mirror of the wrapped receive stream, built by ``connect()``.
     ///
@@ -101,17 +98,17 @@ actor DropObservingTransport: Transport {
     ///   - wrapped: The transport to delegate to.
     ///   - onDrop: Called one time, after the receive stream of `wrapped`
     ///     ended without a ``disconnect()`` of this wrapper.
-    ///   - onDisconnect: Called at the start of each ``disconnect()``, before
-    ///     the wrapped transport disconnects. The closure it gives back is
-    ///     called once the wrapped transport closed. Defaults to no report.
+    ///   - onClose: Called at the end of each ``disconnect()``, once the
+    ///     `disconnect()` of the wrapped transport returned. Defaults to no
+    ///     report.
     init(
         wrapping wrapped: any Transport,
         onDrop: @escaping @Sendable () async -> Void,
-        onDisconnect: @escaping @Sendable () async -> @Sendable () -> Void = { {} }
+        onClose: @escaping @Sendable () async -> Void = {}
     ) {
         self.wrapped = wrapped
         self.onDrop = onDrop
-        self.onDisconnect = onDisconnect
+        self.onClose = onClose
     }
 
     /// Delegates to the wrapped transport, then builds the mirror of its
@@ -124,14 +121,12 @@ actor DropObservingTransport: Transport {
     }
 
     /// Records the disconnect, so the end of the wrapped stream it causes
-    /// is not reported as a drop, reports the call through
-    /// ``onDisconnect``, delegates to the wrapped transport, and then calls
-    /// the closure the report gave back.
+    /// is not reported as a drop, delegates to the wrapped transport, and
+    /// then reports the close through ``onClose``.
     func disconnect() async {
         wasDisconnected = true
-        let reportClose = await onDisconnect()
         await wrapped.disconnect()
-        reportClose()
+        await onClose()
     }
 
     /// Delegates to the wrapped transport.

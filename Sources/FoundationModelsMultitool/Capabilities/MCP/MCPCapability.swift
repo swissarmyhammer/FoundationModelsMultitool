@@ -41,9 +41,9 @@
 //   `TransportContracts.swift` — the two contracts a transport states to the
 //   server: a permanent failure, and a resource to release.
 // - `MCPServer.swift`, `MCPServer+Connection.swift` and
-//   `MCPServer+ClientQueue.swift` — the connected server: its state, its
-//   connect, reconnect and disconnect, and the queue that serializes its
-//   client operations. `BackoffPolicy.swift` holds the retry schedule, the
+//   `MCPServer+ClientLifecycle.swift` — the connected server: its state, its
+//   connect, reconnect and disconnect, and the new client of each connect
+//   attempt. `BackoffPolicy.swift` holds the retry schedule, the
 //   transport factory and the errors of the connect path, and
 //   `SingleResume.swift` the one-resumption race both extensions use.
 // - `MCPServer+Discovery.swift` and `MCPServer+LiveCatalog.swift` — the

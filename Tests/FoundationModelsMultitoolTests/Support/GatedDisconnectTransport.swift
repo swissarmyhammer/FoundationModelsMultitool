@@ -15,10 +15,11 @@ import MCP
 ///
 /// `MCP.Client.disconnect()` takes its connection state first, and then
 /// awaits the `disconnect()` of its transport before it returns — so this
-/// gate holds a real `client.disconnect()` call open, after the take, for as
-/// long as a test needs. That is what proves the client-operation queue of
-/// `MCPServer` lets a later operation pass a disconnect that took the state
-/// and does not return, with no bound and no wait for that return.
+/// gate holds a real `client.disconnect()` call open, and the transport open,
+/// for as long as a test needs. That is what proves that a fresh connect of
+/// `MCPServer` does not wait for a disconnect whose transport does not close,
+/// and that the late close of an old transport never closes the current
+/// connection.
 actor GatedDisconnectTransport: WrappingTransport {
     let wrapped: any Transport
     var wrappedReceiveStream: AsyncThrowingStream<Data, Swift.Error>?

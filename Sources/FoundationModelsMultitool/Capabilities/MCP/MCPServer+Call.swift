@@ -82,6 +82,12 @@ extension MCPServer {
         /// transport drop and a reconnect record an event on it.
         let span: any Span
 
+        /// The client the call read at its start: the request goes out on
+        /// it, and its `notifications/cancelled` goes out on it too. A new
+        /// connect makes a new client, thus a call that started on an old
+        /// client stays on that old client to its end.
+        let client: MCP.Client
+
         /// Where the call stands — see ``Phase``.
         var phase: Phase = .sent
 
@@ -89,11 +95,6 @@ extension MCPServer {
         /// that answered holds nothing open.
         var bareTimeout: Task<Void, Never>?
     }
-
-    /// The key `registerNotificationHandlerOnce(_:register:)` records the
-    /// `progress` registration under — see `setupHandlers()` in
-    /// `MCPServer+Connection.swift`.
-    static let progressHandlerName = "progress"
 
     /// What ``MCPServerError/lost(serverName:toolName:underlying:)`` carries
     /// when the transport dropped under the request.
@@ -103,6 +104,11 @@ extension MCPServer {
     /// request was sent, and no request went out.
     private static let transportAlreadyDroppedDescription =
         "the transport had dropped before the request was sent"
+
+    /// What the error carries when the server had no client at the start of
+    /// the call: a `disconnect()` or a new connect took the client out, and
+    /// the state did not change yet.
+    private static let noClientDescription = "the server had no connection when the request was sent"
 
     /// What the error carries when the host's `disconnect()` tore the client
     /// down under the request.
@@ -172,10 +178,17 @@ extension MCPServer {
         guard case .ready = state else {
             return Self.toolErrorResult(toolName: name, reason: notReadyReason)
         }
-        inFlightCalls[requestID] = InFlightCall(toolName: name, context: context, span: span)
+        // The one read of the current client: the call uses this client to
+        // its end, even when a new connect installs a new client meanwhile.
+        guard let client else {
+            throw lostError(toolName: name, underlying: Self.noClientDescription)
+        }
+        inFlightCalls[requestID] = InFlightCall(toolName: name, context: context, span: span, client: client)
         let meta = Self.requestMetadata(requestID: requestID, span: span)
         return try await withTaskCancellationHandler {
-            try await dispatch(name: name, arguments: arguments, requestID: requestID, meta: meta, context: context)
+            try await dispatch(
+                name: name, arguments: arguments, requestID: requestID, meta: meta, context: context,
+                client: client)
         } onCancel: {
             // Tracked, so that `disconnect()` waits for the notice to reach
             // the wire before it closes the transport.
@@ -197,10 +210,12 @@ extension MCPServer {
     ///   - meta: The `_meta` of the request: the progress token and the
     ///     trace context.
     ///   - context: The captured ambient context, or `nil` on the bare path.
+    ///   - client: The client the call read at its start.
     /// - Returns: The settlement of the call.
     /// - Throws: What ``call(name:arguments:)`` throws.
     private func dispatch(
-        name: String, arguments: [String: Value]?, requestID: ID, meta: Metadata, context: ToolContext?
+        name: String, arguments: [String: Value]?, requestID: ID, meta: Metadata, context: ToolContext?,
+        client: MCP.Client
     ) async throws -> CallTool.Result {
         guard !isTransportDropped else {
             inFlightCalls[requestID] = nil
@@ -230,7 +245,7 @@ extension MCPServer {
     ///
     /// One call attaches one waiter, to an entry
     /// `callInSpan(name:arguments:requestID:context:span:)` registered and
-    /// `dispatch(name:arguments:requestID:meta:context:)` removed only on a
+    /// `dispatch(name:arguments:requestID:meta:context:client:)` removed only on a
     /// path that never waits. An entry that is missing, or that
     /// already holds a waiter, answers this waiter with a `CancellationError`
     /// all the same, so no caller waits forever — a graceful degradation,
@@ -275,7 +290,7 @@ extension MCPServer {
     }
 
     /// Awaits the answer of the client for `requestID` and settles the call
-    /// with it — the task `dispatch(name:arguments:requestID:meta:context:)`
+    /// with it — the task `dispatch(name:arguments:requestID:meta:context:client:)`
     /// starts once the request went out.
     ///
     /// - Parameters:
@@ -308,7 +323,7 @@ extension MCPServer {
         guard let entry = inFlightCalls[requestID] else { return }
         settleInFlightCall(requestID, with: settling(entry))
         do {
-            try await client.cancelRequest(requestID, reason: reason)
+            try await entry.client.cancelRequest(requestID, reason: reason)
         } catch {
             record(
                 .mcpCancelNoticeFailed, level: .warning,
@@ -463,7 +478,7 @@ extension MCPServer {
     }
 
     /// The request id a progress token names — the inverse of the token
-    /// `dispatch(name:arguments:requestID:meta:context:)` sends.
+    /// `dispatch(name:arguments:requestID:meta:context:client:)` sends.
     ///
     /// - Parameter token: The token of the notification.
     /// - Returns: The id.

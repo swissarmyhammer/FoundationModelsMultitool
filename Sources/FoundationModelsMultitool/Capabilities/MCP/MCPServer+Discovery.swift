@@ -33,10 +33,15 @@ extension MCPServer {
     /// `tools/list`, following `nextCursor` until the server returns none,
     /// and converts each `MCP.Tool` to an `MCPCatalogEntry`.
     ///
+    /// Each page is read from `client`, the one client the caller read at
+    /// the start of the round trip, thus no page comes from another
+    /// connection.
+    ///
+    /// - Parameter client: The client to read each page from.
     /// - Returns: One entry per tool across every page, in page order.
     /// - Throws: What `MCP.Client.listTools(cursor:)` throws, or what
     ///   `MCPCatalogEntry.init(tool:)` throws for a malformed `inputSchema`.
-    func discoverAllTools() async throws -> [MCPCatalogEntry] {
+    func discoverAllTools(on client: MCP.Client) async throws -> [MCPCatalogEntry] {
         var allTools: [MCP.Tool] = []
         var cursor: String?
         repeat {

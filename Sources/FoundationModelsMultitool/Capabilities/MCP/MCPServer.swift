@@ -11,8 +11,9 @@
 // - `MCPServer+Connection.swift` — `connect(via:)` in its four forms,
 //   `disconnect()`, `reconnect()`, the backoff retry loop, the generation
 //   guard, and the notification handlers registered at connect.
-// - `MCPServer+ClientQueue.swift` — the FIFO queue that serializes every
-//   `client.connect(transport:)` and `client.disconnect()` call.
+// - `MCPServer+ClientLifecycle.swift` — the new `MCP.Client` of each connect
+//   attempt, the install of the client of the current attempt, the teardown
+//   of an old client, and the set of transports that did not close yet.
 // - `MCPServer+Discovery.swift` — the paginated `tools/list` round trip a
 //   connect makes, `mcpTools()`, `tool(named:)`, `catalog`, and the one
 //   emission point of `catalogUpdates`.
@@ -38,15 +39,17 @@
 // `tool(named:)` vend that entry; `MCPTool.swift` is the plain `Tool` a
 // host builds over one entry.
 //
-// **This actor constructs its own `MCP.Client`.** In swift-sdk 0.12.1 the
-// client capabilities are fixed at `Client.init(name:version:capabilities:)`
-// and sent verbatim in `initialize`; nothing can add one at connect. And
+// **This actor constructs its own `MCP.Client`, a new one for each connect
+// attempt.** In swift-sdk 0.12.1 the client capabilities are fixed at
+// `Client.init(name:version:capabilities:)` and sent verbatim in
+// `initialize`; nothing can add one at connect. And
 // `Client.Capabilities.Elicitation.init(form:url:)` defaults `url` to `nil`,
-// so URL-mode elicitation is off unless declared. So `init` builds the client
-// with `Elicitation(form: .init(), url: .init())`, and takes no client from
-// the host. The handler is registered at connect, by `setupHandlers()` in
-// `MCPServer+Connection.swift`; the capability is declared here, because the
-// declaration cannot wait for the handler.
+// so URL-mode elicitation is off unless declared. So each client gets
+// ``clientCapabilities``, with `Elicitation(form: .init(), url: .init())`,
+// and this actor takes no client from the host. The handlers are registered
+// on each new client before its connect, by `setupHandlers(on:)` in
+// `MCPServer+Connection.swift`. See `MCPServer+ClientLifecycle.swift` for
+// why each attempt gets its own client.
 //
 // **Logging goes through swift-log**, as `MultiTool.swift` logs. Each record
 // has a constant `MultitoolTelemetry.LogMessage` and the server name in its
@@ -63,8 +66,9 @@ import MCP
 /// survives reconnects.
 ///
 /// `MCP.Client` is a concrete `actor` of the swift-sdk with its own connection
-/// and request internals; `MCPServer` wraps it directly, because this actor
-/// owns the whole lifecycle of the client — connect, reconnect, disconnect.
+/// and request internals; `MCPServer` makes a new one for each connect
+/// attempt, because this actor owns the whole lifecycle of each client —
+/// connect, reconnect, disconnect.
 /// The host supplies the `Transport` (in-memory, stdio, HTTP) through
 /// `connect(via:)` — either an already-constructed instance, or, for a
 /// transport that must be freshly built on every reconnect attempt (a stdio
@@ -95,13 +99,47 @@ public actor MCPServer {
         MultitoolTelemetry.logger
     }
 
-    /// The wrapped swift-sdk client this actor owns for its whole lifetime.
+    /// The capabilities each client of this actor sends at `initialize`: the
+    /// elicitation capability with both `form` and `url` — see the header of
+    /// this file.
+    static let clientCapabilities = Client.Capabilities(
+        elicitation: .init(form: .init(), url: .init()))
+
+    /// The client version each client of this actor sends at `initialize`.
+    let clientVersion: String
+
+    /// The client of the current connection, or `nil` when there is none —
+    /// see `MCPServer+ClientLifecycle.swift`.
+    ///
+    /// Only the connect attempt whose generation is still current sets it,
+    /// after its `initialize` handshake succeeded. A new attempt and
+    /// `disconnect()` take it out, and tear its client down.
+    var currentClient: AttemptClient?
+
+    /// The client of the current connection, or `nil` when there is none.
     ///
     /// Internal, not private: a test reads the capabilities the client sends
-    /// at `initialize` through `@testable import`. Nothing else in this
-    /// package reaches it — every connect and disconnect goes through this
-    /// actor.
-    let client: MCP.Client
+    /// at `initialize` through `@testable import`. Each operation of this
+    /// actor reads it one time, at its start, and uses that same client to
+    /// its end.
+    var client: MCP.Client? {
+        currentClient?.client
+    }
+
+    /// Each transport a connect attempt made that did not close yet, by its
+    /// id — see `MCPServer+ClientLifecycle.swift`. An attempt adds its
+    /// transport when the factory gave it, and the close of the transport
+    /// removes it. `disconnect()` waits until no transport of an earlier
+    /// generation stays here.
+    var openTransports: [Int: OpenTransport] = [:]
+
+    /// The id the next transport of ``openTransports`` gets.
+    var nextTransportID = 0
+
+    /// Each caller of `waitUntilTransportCloseIsAwaited()` — resumed when a
+    /// caller starts to wait for the close of an open transport. A test
+    /// hook: no product code waits here.
+    var transportCloseAwaitedWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// The name of this connection: the client name sent at `initialize`, and
     /// the ``identity`` once the first connect succeeds.
@@ -144,17 +182,6 @@ public actor MCPServer {
     /// attempts — injectable so a test substitutes a virtual clock and drives
     /// a full backoff schedule with no real delay.
     let clock: any Clock<Duration>
-
-    /// The clock each bounded wait of the client-operation queue sleeps on —
-    /// see `awaitWithBoundedWait(_:timeout:on:)` in `MCPServer+ClientQueue.swift`.
-    /// Only a wait behind an unresolved connect has a bound; no clock decides
-    /// the order of a disconnect and the operation after it.
-    ///
-    /// It is not ``clock``. A test gives ``clock`` a virtual clock whose sleep
-    /// never waits, and a queue bound that never waits would let a queued
-    /// operation run beside its predecessor. A host always gets the real
-    /// clock here; a test of the queue gives a clock it opens on command.
-    let clientQueueClock: any Clock<Duration>
 
     /// The clock the per-attempt timeout of a connect sleeps on — see
     /// `failConnectAttemptAfterTimeout(_:resume:)` in
@@ -206,44 +233,6 @@ public actor MCPServer {
     /// last connected with. A server that only ever called the single-attempt
     /// `connect(via:)` reconnects with ``BackoffPolicy/default``.
     var activeBackoffPolicy: BackoffPolicy = .default
-
-    /// The tail of the FIFO queue that serializes every operation this actor
-    /// issues against ``client`` that mutates its internal connection state —
-    /// `client.connect(transport:)` and `client.disconnect()` — see
-    /// `enqueueClientOperation(kind:_:)` in `MCPServer+ClientQueue.swift`.
-    ///
-    /// Starts as an already-completed sentinel task, so the first operation
-    /// ever enqueued has nothing to wait for.
-    var clientQueueTail: Task<Void, Never> = Task {}
-
-    /// The kind of the operation that set ``clientQueueTail``, or `nil` while
-    /// the tail is the first sentinel. `enqueueClientOperation(kind:_:)` reads
-    /// it: only the wait behind a connect operation has a bound.
-    var clientQueueTailKind: ClientOperationKind?
-
-    /// The events of the running `client.disconnect()` call, or `nil` when no
-    /// disconnect operation waits for its take — set by
-    /// `disconnectClientUntilItTookTheState(transportClosed:)`, and taken by
-    /// `endClientDisconnectTurn()` when the client took its state. See
-    /// `MCPServer+ClientQueue.swift`.
-    var runningClientDisconnect: ClientDisconnectEvents?
-
-    /// Each caller of `waitUntilClientQueueTailChanges(from:)` that waits for
-    /// the next operation to enter the client queue — resumed by
-    /// `enqueueClientOperation(kind:_:)`. A test hook: no product code waits
-    /// here.
-    var clientQueueTailWaiters: [CheckedContinuation<Void, Never>] = []
-
-    /// The number of enqueued connect operations whose real
-    /// `client.connect(transport:)` call has not yet finished — see
-    /// `enqueueClientOperation(kind:_:)` for the bound this selects.
-    var pendingConnectStragglers = 0
-
-    /// The names of the notification handlers already registered on
-    /// ``client`` — `MCP.Client.onNotification(_:handler:)` appends a handler
-    /// to its list instead of replacing it, so each registration runs at most
-    /// one time per actor however many reconnects follow.
-    var registeredNotificationHandlers: Set<String> = []
 
     /// Every ``waitUntilReady()`` caller suspended on a state that is still
     /// `.connecting`, resumed by the next state change.
@@ -363,11 +352,11 @@ public actor MCPServer {
     /// waits here.
     var hostElicitationHeldWaiters: [(elicitationId: String, continuation: CheckedContinuation<Void, Never>)] = []
 
-    /// Creates a server that owns a fresh `MCP.Client` named `name`.
+    /// Creates a server that makes a new `MCP.Client` named `name` for each
+    /// connect attempt.
     ///
-    /// The client declares the elicitation capability with both `form` and
-    /// `url` — see the header of this file for why the declaration stands
-    /// here and not at connect.
+    /// Each client declares the elicitation capability with both `form` and
+    /// `url` — see ``clientCapabilities``.
     ///
     /// - Parameters:
     ///   - name: The name of this connection — the client name sent at
@@ -403,7 +392,6 @@ public actor MCPServer {
             name: name,
             version: version,
             clock: clock,
-            clientQueueClock: ContinuousClock(),
             connectAttemptClock: ContinuousClock(),
             callTimeoutClock: ContinuousClock(),
             callTimeout: callTimeout,
@@ -412,21 +400,18 @@ public actor MCPServer {
             logger: logger)
     }
 
-    /// Creates a server whose client-operation queue bounds each wait on
-    /// `clientQueueClock`, and whose per-attempt connect timeout sleeps on
-    /// `connectAttemptClock` — the initializer every other one forwards to.
+    /// Creates a server whose per-attempt connect timeout sleeps on
+    /// `connectAttemptClock`, and whose bare-call timer sleeps on
+    /// `callTimeoutClock` — the initializer every other one forwards to.
     ///
     /// Internal: a host has no reason to move these bounds, and the public
-    /// initializer gives the real clock to each. A test of the queue or of the
-    /// timeout calls this one through `@testable import`, with a clock it
-    /// opens on command.
+    /// initializer gives the real clock to each. A test of a timeout calls
+    /// this one through `@testable import`, with a clock it opens on command.
     ///
     /// - Parameters:
     ///   - name: See the public initializer.
     ///   - version: See the public initializer.
     ///   - clock: See the public initializer.
-    ///   - clientQueueClock: The clock each bounded wait of the
-    ///     client-operation queue sleeps on — see ``clientQueueClock``.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect sleeps on — see ``connectAttemptClock``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on —
@@ -439,7 +424,6 @@ public actor MCPServer {
         name: String,
         version: String,
         clock: any Clock<Duration>,
-        clientQueueClock: any Clock<Duration>,
         connectAttemptClock: any Clock<Duration>,
         callTimeoutClock: any Clock<Duration>,
         callTimeout: Duration,
@@ -448,13 +432,8 @@ public actor MCPServer {
         logger: Logger
     ) {
         self.name = name
-        self.client = Client(
-            name: name,
-            version: version,
-            capabilities: Client.Capabilities(elicitation: .init(form: .init(), url: .init()))
-        )
+        self.clientVersion = version
         self.clock = clock
-        self.clientQueueClock = clientQueueClock
         self.connectAttemptClock = connectAttemptClock
         self.callTimeoutClock = callTimeoutClock
         self.callTimeout = callTimeout

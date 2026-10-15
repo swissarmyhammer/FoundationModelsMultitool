@@ -120,11 +120,23 @@ extension MCPServer {
     /// failed `connect(via:)`, a transient `tools/list` failure mid-burst
     /// does not change ``state`` or fault the connection.
     ///
+    /// The round trip reads the current client one time, at its start, and
+    /// uses that client for each page. When a new connect replaced that
+    /// client during the round trip, the result is dropped: the new connect
+    /// discovers its own tools.
+    ///
     /// - Returns: `true` when discovery succeeded and ``discoveredTools`` was
     ///   replaced; `false` when it failed and nothing changed.
     private func relistOnce() async -> Bool {
         do {
-            discoveredTools = try await discoverAllTools()
+            guard let client else {
+                throw MCPServerError.notReady(state)
+            }
+            let tools = try await discoverAllTools(on: client)
+            guard self.client === client else {
+                return false
+            }
+            discoveredTools = tools
             return true
         } catch {
             record(.mcpToolRelistFailed, level: .warning, metadata: MultitoolTelemetry.errorMetadata(of: error))
