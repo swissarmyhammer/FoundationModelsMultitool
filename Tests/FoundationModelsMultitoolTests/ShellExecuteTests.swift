@@ -3,6 +3,7 @@ import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
+import os
 
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
@@ -309,6 +310,32 @@ struct ShellExecuteTests {
         ) {
             try await engine.call(arguments: ExecuteArguments(command: command))
         }
+    }
+
+    /// Runs `call` beside `steps`, and then runs `stop`. It runs `stop` when
+    /// `steps` returns and when `steps` throws, and always before it waits
+    /// for the answer of `call`.
+    ///
+    /// The command of `call` waits on a `ShellCommandGate`, and the shell
+    /// runner does not end a command on a cancel. When a step throws, the
+    /// scope of the `async let` waits for `call`. Thus a stop on the return
+    /// path alone makes that wait hang.
+    ///
+    /// - Parameters:
+    ///   - stop: Ends the command of `call`.
+    ///   - call: The call whose command waits until `stop` ends it.
+    ///   - steps: The readings that the test makes while the command runs.
+    /// - Returns: What `steps` returned.
+    /// - Throws: What `steps` or `call` threw.
+    private static func callStopped<Readings>(
+        by stop: () async -> Void,
+        _ call: @escaping @Sendable () async throws -> String,
+        during steps: () async throws -> Readings
+    ) async throws -> Readings {
+        async let answer = call()
+        let readings = try await ensuring(stop, after: steps)
+        _ = try await answer
+        return readings
     }
 
     /// A command of exactly `byteCount` UTF-8 bytes that writes
@@ -622,7 +649,8 @@ struct ShellExecuteTests {
     /// thus the test waits until the collection asks for its interval with no
     /// event posted, opens the sleeps of that interval alone, and then waits
     /// for the event while the command still runs. The canceler of the run
-    /// ends the command after the readings, on each path.
+    /// ends the command after the readings, on each path: see
+    /// ``callStopped(by:_:during:)``.
     @Test("output that holds still goes out when its collection interval ends")
     func outputGoesOutWhenItsCollectionIntervalEnds() async throws {
         let state = try makeState()
@@ -635,15 +663,18 @@ struct ShellExecuteTests {
             let gate = try ShellCommandGate()
             let command = "echo \(Self.inlineMarker); \(gate.waitCommand)"
 
-            async let answer = Self.call(verb, ExecuteArguments(command: command), under: context)
-            try await clock.waitForRecordedSleeps(atLeast: 1)
-            let isCollecting = clock.recordedSleeps.contains(interval)
-            let progressBeforeInterval = await recordedOperationEvents(of: run, ofKind: .progress)
-            clock.open(sleepsOf: interval)
-            let progressAfterInterval = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1)
-                .map(\.detail)
-            _ = await stop()
-            _ = try await answer
+            let (isCollecting, progressBeforeInterval, progressAfterInterval) = try await Self.callStopped(
+                by: { _ = await stop() }
+            ) {
+                try await Self.call(verb, ExecuteArguments(command: command), under: context)
+            } during: {
+                try await clock.waitForRecordedSleeps(atLeast: 1)
+                let isCollecting = clock.recordedSleeps.contains(interval)
+                let before = await recordedOperationEvents(of: run, ofKind: .progress)
+                clock.open(sleepsOf: interval)
+                let after = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1).map(\.detail)
+                return (isCollecting, before, after)
+            }
 
             #expect(isCollecting, "the collection never waited on its interval")
             #expect(progressBeforeInterval.isEmpty, "progress before the interval: \(progressBeforeInterval)")
@@ -652,6 +683,32 @@ struct ShellExecuteTests {
                 "progress after the interval: \(progressAfterInterval)")
         }
     }
+
+    /// ``callStopped(by:_:during:)`` stops the call also when a step throws.
+    ///
+    /// The held command of a test waits on a `ShellCommandGate`, and the
+    /// shell runner does not end a command on a cancel. Thus a step that
+    /// throws before the stop makes the wait for the answer hang. Here the
+    /// call answers at once, thus the test ends on each path, and the count
+    /// of stops shows if the stop ran on the throw path. The order is fixed:
+    /// the step throws, and then the test reads the count.
+    @Test("a held call is stopped when a step throws before the stop")
+    func aHeldCallIsStoppedWhenAStepThrows() async throws {
+        let stops = OSAllocatedUnfairLock(initialState: 0)
+
+        await #expect(throws: HeldCallStepFailure.self) {
+            try await Self.callStopped(by: { stops.withLock { $0 += 1 } }) {
+                "answered"
+            } during: { () async throws -> Void in
+                throw HeldCallStepFailure()
+            }
+        }
+
+        #expect(stops.withLock { $0 } == 1, "the stop did not run on the throw path")
+    }
+
+    /// The failure of the step of ``aHeldCallIsStoppedWhenAStepThrows()``.
+    private struct HeldCallStepFailure: Error {}
 
     /// A collection closes when it holds the byte limit, and not only on its
     /// interval. The clock never opens, thus each event but the last one is
