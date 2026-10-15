@@ -36,8 +36,9 @@ struct RunCodeToolTimeoutTests {
                 on: context
             )
 
-            let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
-            await Self.endOneWindow(of: clock)
+            let rendered = try await Self.callEndingOneWindow(of: clock, on: context) {
+                try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
+            }
 
             // The sandbox has no clock to end the loop, thus the outcome comes
             // from the engine clock.
@@ -46,6 +47,45 @@ struct RunCodeToolTimeoutTests {
             #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
         }
     }
+
+    /// ``callEndingOneWindow(of:on:_:)`` ends the window of the run also when
+    /// the test throws after the run started.
+    ///
+    /// The step starts a spinning run, waits until the timer of the run
+    /// waits, and then throws. The test then reads the run clock: the window
+    /// ended when the clock moved one full window. The order is fixed, thus
+    /// the read is the same on each machine. When the window did not end,
+    /// the test ends it itself before the close, so that the close never
+    /// depends on the cancel of the JavaScriptCore loop.
+    @Test("a spinning runCode run ends at the engine clock also when the test throws after the call")
+    func aThrowAfterTheCallStillEndsTheWindow() async throws {
+        let clock = ManualRunClock()
+        try await withOuterRunContext(runClock: clock) { context in
+            let mounted = try Self.mountedRunCode(
+                registry: try MultiTool.Builder().buildRegistry(),
+                window: Self.stallWindowSeconds,
+                on: context
+            )
+            let start = clock.now
+
+            await #expect(throws: InjectedStepFailure.self) {
+                try await Self.callEndingOneWindow(of: clock, on: context) { () async throws -> String in
+                    _ = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
+                    await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                    throw InjectedStepFailure()
+                }
+            }
+
+            let windowEnded = clock.now >= start.advanced(by: .seconds(Self.stallWindowSeconds))
+            if !windowEnded {
+                clock.advance(by: .seconds(Self.stallWindowSeconds))
+            }
+            #expect(windowEnded, "the window of the run did not end on the throw path")
+        }
+    }
+
+    /// The failure of the step of ``aThrowAfterTheCallStillEndsTheWindow()``.
+    private struct InjectedStepFailure: Error {}
 
     @Test("a mounted runCode that awaits a tools.* call that never completes ends as timedOut at the engine clock")
     func pendingToolCallEndsAtTheEngineClock() async throws {
@@ -217,6 +257,38 @@ struct RunCodeToolTimeoutTests {
     private static func endOneWindow(of clock: ManualRunClock) async {
         await clock.waitForSleepers(atLeast: timeoutSleepers)
         clock.advance(by: .seconds(stallWindowSeconds))
+    }
+
+    /// Runs `call`, and then ends one stall window of the run that `call`
+    /// started. It ends the window when `call` returns and when `call`
+    /// throws.
+    ///
+    /// A spinning snippet ends only at the engine clock or at a cancel that
+    /// stops the JavaScriptCore loop. `close()` waits for each run body to
+    /// end. Thus a window that ends on the return path alone makes the close
+    /// on the throw path depend on that cancel. Here the clock ends the run
+    /// in a fixed order on each path.
+    ///
+    /// The window ends only when `call` left a new run open. The run plane
+    /// lists the run before the call returns or throws. A call that threw
+    /// before it started a run leaves no timer, and a wait for that timer
+    /// would not end.
+    ///
+    /// - Parameters:
+    ///   - clock: The run clock of the session.
+    ///   - context: The session context that tracks the runs.
+    ///   - call: The mounted call that starts the run.
+    /// - Returns: What `call` returned.
+    /// - Throws: What `call` threw.
+    private static func callEndingOneWindow(
+        of clock: ManualRunClock, on context: ToolContext, _ call: () async throws -> String
+    ) async throws -> String {
+        let runsBefore = Set(await context.backgroundRuns().map(\.completionToken))
+        return try await ensuring({
+            let runsAfter = Set(await context.backgroundRuns().map(\.completionToken))
+            guard !runsAfter.subtracting(runsBefore).isEmpty else { return }
+            await endOneWindow(of: clock)
+        }, after: call)
     }
 
     /// Mounts a `runCode` tool the way a Router session mounts every tool.
