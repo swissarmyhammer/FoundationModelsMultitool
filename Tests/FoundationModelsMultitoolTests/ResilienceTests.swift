@@ -816,6 +816,24 @@ struct ResilienceTests {
         #expect(declared.elicitation == elicitation)
     }
 
+    /// A headless server declares no elicitation capability at `initialize`:
+    /// no person can answer a question, thus the server must not get one.
+    /// The test reads the capability off the server end, which is what
+    /// proves the wire did not carry it, and off the client the actor built.
+    @Test func headlessInitializeCarriesNoElicitationCapability() async throws {
+        let scripted = ScriptedServer()
+        let server = try await MCPTestSupport.connectedMCPServer(
+            to: scripted, over: .inMemory, name: Self.serverName, userPresence: .headless)
+        #expect(await server.state == .ready)
+
+        let received = try #require(await scripted.receivedClientCapabilities)
+        #expect(received.elicitation == nil)
+
+        let client = try #require(await server.client)
+        let declared = await client.capabilities
+        #expect(declared.elicitation == nil)
+    }
+
     // MARK: - The state machine a host reads
 
     @Test func disconnectMovesStateToDisconnectedAndKeepsIdentity() async throws {

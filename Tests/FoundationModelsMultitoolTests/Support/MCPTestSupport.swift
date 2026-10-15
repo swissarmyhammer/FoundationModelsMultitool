@@ -15,6 +15,7 @@
 // `connectedLoopbackMCPServer(over:name:)` builds the scripted server with the
 // three loopback tools and connects it, for a suite of the capability.
 
+import FoundationModelsExtras
 import Logging
 import MCP
 import MCPTestServer
@@ -178,6 +179,8 @@ enum MCPTestSupport {
     ///     server obeys. Defaults to `RenderBudget.default`.
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
+    ///   - userPresence: Whether a person is present to answer an
+    ///     elicitation. Defaults to `.interactive`.
     ///   - logger: The logger of the server. Defaults to
     ///     `MCPServer.defaultLogger`.
     /// - Returns: The server, not yet connected.
@@ -189,6 +192,7 @@ enum MCPTestSupport {
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         elicitationHandler: MCPServer.ElicitationHandler? = nil,
+        userPresence: UserPresence = .interactive,
         logger: Logger = MCPServer.defaultLogger
     ) -> MCPServer {
         MCPServer(
@@ -200,6 +204,7 @@ enum MCPTestSupport {
             callTimeout: callTimeout,
             renderBudget: renderBudget,
             elicitationHandler: elicitationHandler,
+            userPresence: userPresence,
             logger: logger)
     }
 
@@ -218,10 +223,10 @@ enum MCPTestSupport {
     ///   - clock: The clock the server sleeps on — between retries, and for
     ///     the `tools/list_changed` coalesce window. Defaults to a
     ///     `ManualClock`, whose sleeps end at once — see
-    ///     ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     ///   - callTimeout: The bound of a call made with no ambient
@@ -232,6 +237,9 @@ enum MCPTestSupport {
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`; a suite of the
     ///     bare-session path passes one.
+    ///   - userPresence: Whether a person is present to answer an
+    ///     elicitation. Defaults to `.interactive`; a suite of a headless
+    ///     session passes `.headless`.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
@@ -244,12 +252,13 @@ enum MCPTestSupport {
         callTimeoutClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
-        elicitationHandler: MCPServer.ElicitationHandler? = nil
+        elicitationHandler: MCPServer.ElicitationHandler? = nil,
+        userPresence: UserPresence = .interactive
     ) async throws -> MCPServer {
         let server = makeServer(
             name: name, clock: clock, connectAttemptClock: connectAttemptClock,
             callTimeoutClock: callTimeoutClock, callTimeout: callTimeout, renderBudget: renderBudget,
-            elicitationHandler: elicitationHandler)
+            elicitationHandler: elicitationHandler, userPresence: userPresence)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await closingOnFailure(transport) {
             try await server.connect(via: transport)
@@ -276,7 +285,7 @@ enum MCPTestSupport {
     ///     of `MCPServer`.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     /// - Returns: The connected server, and the recording transport it
@@ -304,7 +313,7 @@ enum MCPTestSupport {
     /// the verb starts from.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:)``
     ///   requires.
     ///
     /// - Parameters:
@@ -312,7 +321,7 @@ enum MCPTestSupport {
     ///   - name: The name of the `MCPServer`, and so its identity.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
     ///     Defaults to a `GatedClock` that no test opens.
     ///   - callTimeout: The bound of a bare call of the server. Defaults to
@@ -347,7 +356,7 @@ enum MCPTestSupport {
     /// parameterized case runs over both transports.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:)``
     ///   requires.
     ///
     /// - Parameters:
@@ -356,22 +365,25 @@ enum MCPTestSupport {
     ///     noun its verbs render under.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
-    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///     no test opens — see ``makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
+    ///   - userPresence: Whether a person is present to answer an
+    ///     elicitation. Defaults to `.interactive`.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.
     static func connectedLoopbackMCPServer(
         over kind: MCPTransportKind, name: String,
         connectAttemptClock: any Clock<Duration> = GatedClock(),
-        elicitationHandler: MCPServer.ElicitationHandler? = nil
+        elicitationHandler: MCPServer.ElicitationHandler? = nil,
+        userPresence: UserPresence = .interactive
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let server = try await connectedMCPServer(
             to: scripted, over: kind, name: name, connectAttemptClock: connectAttemptClock,
-            elicitationHandler: elicitationHandler)
+            elicitationHandler: elicitationHandler, userPresence: userPresence)
         return (scripted, server)
     }
 }

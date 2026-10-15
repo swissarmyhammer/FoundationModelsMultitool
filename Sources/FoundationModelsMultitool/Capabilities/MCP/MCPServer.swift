@@ -45,11 +45,15 @@
 // `initialize`; nothing can add one at connect. And
 // `Client.Capabilities.Elicitation.init(form:url:)` defaults `url` to `nil`,
 // so URL-mode elicitation is off unless declared. So each client gets
-// ``clientCapabilities``, with `Elicitation(form: .init(), url: .init())`,
-// and this actor takes no client from the host. The handlers are registered
-// on each new client before its connect, by `setupHandlers(on:)` in
-// `MCPServer+Connection.swift`. See `MCPServer+ClientLifecycle.swift` for
-// why each attempt gets its own client.
+// ``clientCapabilities(for:)`` of the ``userPresence`` of this actor. An
+// interactive session gets `Elicitation(form: .init(), url: .init())`. A
+// headless session gets no elicitation capability, because no person can
+// answer a question. This actor takes no client from the host. The handler
+// of `elicitation/create` stays registered in the two modes: a server that
+// sends a request it did not get the capability for still gets an answer.
+// The handlers are registered on each new client before its connect, by
+// `setupHandlers(on:)` in `MCPServer+Connection.swift`. See
+// `MCPServer+ClientLifecycle.swift` for why each attempt gets its own client.
 //
 // **Logging goes through swift-log**, as `MultiTool.swift` logs. Each record
 // has a constant `MultitoolTelemetry.LogMessage` and the server name in its
@@ -57,6 +61,7 @@
 // never holds an MCP payload, a tool argument or a tool output: an error goes
 // in as its type and its code only. See `record(_:level:metadata:)`.
 
+import FoundationModelsExtras
 import Logging
 import MCP
 
@@ -79,7 +84,7 @@ import MCP
 /// `buildRegistry()`; `MCPCapability` then registers the tools of the
 /// connected server, through `MultiTool.Builder.withMCP(servers:)`.
 public actor MCPServer {
-    /// The version ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:logger:)``
+    /// The version ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``
     /// reports at `initialize` when the host names none.
     public static let defaultClientVersion = "1.0"
 
@@ -89,7 +94,7 @@ public actor MCPServer {
     /// The default ``callTimeout`` — see that property.
     public static let defaultCallTimeout = Duration.seconds(defaultCallTimeoutSeconds)
 
-    /// The logger ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:logger:)``
+    /// The logger ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``
     /// takes when the host supplies none: the swift-log logger of the library.
     ///
     /// A new logger for each read, not a stored value: a logger keeps the
@@ -99,11 +104,25 @@ public actor MCPServer {
         MultitoolTelemetry.logger
     }
 
-    /// The capabilities each client of this actor sends at `initialize`: the
-    /// elicitation capability with both `form` and `url` — see the header of
-    /// this file.
-    static let clientCapabilities = Client.Capabilities(
-        elicitation: .init(form: .init(), url: .init()))
+    /// The capabilities each client of this actor sends at `initialize` —
+    /// see the header of this file.
+    ///
+    /// An interactive session declares the elicitation capability with both
+    /// `form` and `url`. A headless session declares no elicitation
+    /// capability: no person can answer a question, thus a server must not
+    /// send one.
+    ///
+    /// - Parameter presence: Whether a person is present to answer an
+    ///   elicitation in this session.
+    /// - Returns: The capabilities of a new client.
+    static func clientCapabilities(for presence: UserPresence) -> Client.Capabilities {
+        switch presence {
+        case .interactive:
+            return .init(elicitation: .init(form: .init(), url: .init()))
+        case .headless:
+            return .init()
+        }
+    }
 
     /// The client version each client of this actor sends at `initialize`.
     let clientVersion: String
@@ -172,6 +191,13 @@ public actor MCPServer {
     /// request with `cancel`. A Router host never sets it: a bound context
     /// answers first. See `MCPServer+Elicitation.swift`.
     let elicitationHandler: ElicitationHandler?
+
+    /// Whether a person is present to answer an elicitation in this session.
+    ///
+    /// `.interactive` makes each client declare the elicitation capability.
+    /// `.headless` makes each client declare no elicitation capability — see
+    /// ``clientCapabilities(for:)``.
+    let userPresence: UserPresence
 
     /// The current readiness state — see ``MCPServerState``.
     public private(set) var state: MCPServerState = .connecting
@@ -361,8 +387,10 @@ public actor MCPServer {
     /// Creates a server that makes a new `MCP.Client` named `name` for each
     /// connect attempt.
     ///
-    /// Each client declares the elicitation capability with both `form` and
-    /// `url` — see ``clientCapabilities``.
+    /// In an interactive session, each client declares the elicitation
+    /// capability with both `form` and `url`. In a headless session, each
+    /// client declares no elicitation capability — see
+    /// ``clientCapabilities(for:)``.
     ///
     /// - Parameters:
     ///   - name: The name of this connection — the client name sent at
@@ -383,6 +411,8 @@ public actor MCPServer {
     ///   - elicitationHandler: The host's answerer for a server-initiated
     ///     elicitation that arrives under no `ToolContext` — see
     ///     ``elicitationHandler``. Defaults to `nil`, which answers `cancel`.
+    ///   - userPresence: Whether a person is present to answer an
+    ///     elicitation — see ``userPresence``. Defaults to `.interactive`.
     ///   - logger: The logger every retry, reconnect and discarded attempt is
     ///     reported to. Defaults to ``defaultLogger``.
     public init(
@@ -392,6 +422,7 @@ public actor MCPServer {
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         elicitationHandler: ElicitationHandler? = nil,
+        userPresence: UserPresence = .interactive,
         logger: Logger = MCPServer.defaultLogger
     ) {
         self.init(
@@ -403,6 +434,7 @@ public actor MCPServer {
             callTimeout: callTimeout,
             renderBudget: renderBudget,
             elicitationHandler: elicitationHandler,
+            userPresence: userPresence,
             logger: logger)
     }
 
@@ -425,6 +457,7 @@ public actor MCPServer {
     ///   - callTimeout: See the public initializer.
     ///   - renderBudget: See the public initializer.
     ///   - elicitationHandler: See the public initializer.
+    ///   - userPresence: See the public initializer.
     ///   - logger: See the public initializer.
     init(
         name: String,
@@ -435,6 +468,7 @@ public actor MCPServer {
         callTimeout: Duration,
         renderBudget: RenderBudget,
         elicitationHandler: ElicitationHandler?,
+        userPresence: UserPresence,
         logger: Logger
     ) {
         self.name = name
@@ -445,6 +479,7 @@ public actor MCPServer {
         self.callTimeout = callTimeout
         self.renderBudget = renderBudget
         self.elicitationHandler = elicitationHandler
+        self.userPresence = userPresence
         self.logger = logger
         (self.catalogUpdates, self.catalogContinuation) = AsyncStream.makeStream()
     }

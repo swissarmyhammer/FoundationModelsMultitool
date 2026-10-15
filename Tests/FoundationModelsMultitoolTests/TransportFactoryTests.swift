@@ -70,7 +70,7 @@ struct TransportFactoryTests {
 
     /// A `MCPServer` named ``serverName`` over `clock`, whose connect-attempt
     /// timeout sleeps on a clock that no test opens — see
-    /// ``MCPTestSupport/makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    /// ``MCPTestSupport/makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``.
     ///
     /// - Parameter clock: The clock the retry loop sleeps on. Defaults to a
     ///   `ManualClock`, whose sleeps end at once. A test that reads the

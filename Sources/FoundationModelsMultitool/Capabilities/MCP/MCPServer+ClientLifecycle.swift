@@ -138,7 +138,8 @@ extension MCPServer {
                 await self?.closeOpenTransport(transportID)
             })
         openTransports[transportID]?.transport = observed
-        let client = Client(name: name, version: clientVersion, capabilities: Self.clientCapabilities)
+        let client = Client(
+            name: name, version: clientVersion, capabilities: Self.clientCapabilities(for: userPresence))
         await setupHandlers(on: client)
         return AttemptClient(client: client, transport: observed, transportID: transportID)
     }
