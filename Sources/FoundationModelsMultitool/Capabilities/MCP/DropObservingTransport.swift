@@ -111,22 +111,52 @@ actor DropObservingTransport: Transport {
         self.onClose = onClose
     }
 
+    /// The one close of this wrapper: the `disconnect()` of the wrapped
+    /// transport, then the report through ``onClose``. Made by the first
+    /// ``disconnect()``; each later ``disconnect()`` waits for the same close.
+    private var close: Task<Void, Never>?
+
     /// Delegates to the wrapped transport, then builds the mirror of its
     /// receive stream for ``receive()``.
     ///
-    /// - Throws: What the `connect()` of the wrapped transport throws.
+    /// A wrapper that was closed never connects: the teardown of the server
+    /// can close it before its client calls this method. When the close comes
+    /// while the `connect()` of the wrapped transport runs, and that
+    /// `connect()` then succeeds, this method closes the wrapped transport
+    /// again and throws. Thus no transport stays open after its close.
+    ///
+    /// - Throws: `MCPError.connectionClosed` when this wrapper was closed;
+    ///   otherwise what the `connect()` of the wrapped transport throws.
     func connect() async throws {
+        guard !wasDisconnected else {
+            throw Self.dropError
+        }
         try await wrapped.connect()
+        guard !wasDisconnected else {
+            await wrapped.disconnect()
+            throw Self.dropError
+        }
         mirroredReceiveStream = mirror(await wrapped.receive())
     }
 
     /// Records the disconnect, so the end of the wrapped stream it causes
     /// is not reported as a drop, delegates to the wrapped transport, and
     /// then reports the close through ``onClose``.
+    ///
+    /// The client of the attempt and the teardown of the server can both
+    /// call this method. The wrapped transport closes one time, and each
+    /// call returns once that close ended.
     func disconnect() async {
         wasDisconnected = true
-        await wrapped.disconnect()
-        await onClose()
+        if close == nil {
+            let wrapped = wrapped
+            let onClose = onClose
+            close = Task {
+                await wrapped.disconnect()
+                await onClose()
+            }
+        }
+        await close?.value
     }
 
     /// Delegates to the wrapped transport.

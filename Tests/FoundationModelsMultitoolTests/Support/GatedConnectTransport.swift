@@ -56,21 +56,45 @@ actor GatedConnectTransport: WrappingTransport {
     /// does not poll ``isOpen``.
     let closeArrival = TestGate()
 
+    /// Whether ``disconnect()`` was called. A ``connect()`` that waits on the
+    /// gate then ends with an error, and never delegates.
+    private(set) var isClosed = false
+
+    /// Whether a ``connect()`` ended because ``disconnect()`` closed this
+    /// transport while that connect waited on the gate.
+    private(set) var connectEndedByClose = false
+
+    /// The gate that ``connect()`` opens when it ended, by any path. A test
+    /// waits on it to know that the connect ended, and then reads
+    /// ``connectEndedByClose``.
+    let connectEnd = TestGate()
+
     /// Blocks until ``release()`` is called, then delegates to the wrapped
-    /// transport.
+    /// transport — or, when ``disconnect()`` closed this transport during the
+    /// wait, ends with `MCPError.connectionClosed` and never delegates.
     ///
-    /// - Throws: What the `connect()` of the wrapped transport throws.
+    /// - Throws: `MCPError.connectionClosed` when this transport was closed
+    ///   during the wait; otherwise what the `connect()` of the wrapped
+    ///   transport throws.
     func connect() async throws {
         connectWasCalled = true
         connectArrival.open()
         await gate.wait()
+        defer { connectEnd.open() }
+        guard !isClosed else {
+            connectEndedByClose = true
+            throw MCPError.connectionClosed
+        }
         try await connectWrapped()
         isOpen = true
     }
 
-    /// Delegates to the wrapped transport, then records the close and opens
+    /// Records the close, ends a ``connect()`` that waits on the gate,
+    /// delegates to the wrapped transport, then records the close and opens
     /// ``closeArrival``.
     func disconnect() async {
+        isClosed = true
+        await gate.release()
         await wrapped.disconnect()
         isOpen = false
         closeArrival.open()

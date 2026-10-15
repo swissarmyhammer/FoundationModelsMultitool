@@ -237,19 +237,28 @@ extension MCPServer {
     /// transport has a defect. The built-in stdio and in-memory transports
     /// return from `disconnect()`.
     ///
-    /// A connect attempt that started before this call and still runs has a
-    /// transport too. This method also waits until each such transport
-    /// closed: the attempt is stale, and it closes its own transport when its
-    /// connect ends. Thus no transport and no stdio subprocess of this server
-    /// stays after this method returns.
+    /// A connect attempt that started before this call and still runs is
+    /// ended too. This method calls the `disconnect()` of the transport of
+    /// each such attempt itself, also when the `connect()` of that transport
+    /// did not return, and waits until the transport closed. For an attempt
+    /// whose factory did not return yet, this method waits until the factory
+    /// returned: the attempt is stale, thus it releases that transport at
+    /// once and never connects it. Thus no transport and no stdio subprocess
+    /// of this server stays or appears after this method returns.
+    ///
+    /// A factory that never returns makes this method wait for it. Such a
+    /// factory has a defect, the same as a transport whose `disconnect()`
+    /// never returns.
     public func disconnect() async {
         await cancellationNotices.drain()
         connectGeneration += 1
         let teardownGeneration = connectGeneration
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)
-        await retireCurrentClient()
-        await waitUntilTransportsClosed(before: teardownGeneration)
+        if let retired = currentClient {
+            dropAttemptClient(retired)
+        }
+        await endAttempts(before: teardownGeneration)
         transition(to: .disconnected)
     }
 
@@ -456,10 +465,22 @@ extension MCPServer {
             return
         }
         transition(to: .connecting)
+        // The attempt is in the set before its factory runs, thus a teardown
+        // that starts now waits until the factory returned.
+        let transportID = beginAttempt(generation: generation)
         var attempt: AttemptClient?
         do {
-            let transport = try await factory()
-            guard let made = await makeAttemptClient(over: transport, generation: generation) else {
+            let transport: any Transport
+            do {
+                transport = try await factory()
+            } catch {
+                closeOpenTransport(transportID)
+                throw error
+            }
+            guard
+                let made = await makeAttemptClient(
+                    over: transport, transportID: transportID, generation: generation)
+            else {
                 return
             }
             attempt = made

@@ -9,8 +9,8 @@ import Testing
 /// Coverage for the connection resilience of `MCPServer`: the backoff-retried
 /// connect, its exhaustion, the per-attempt timeout against a transport that
 /// hangs, the generation guard against a late attempt, the new client of
-/// each attempt against a straggler, the teardown that waits for the
-/// transport of a straggler, and the state machine a host reads.
+/// each attempt against a straggler, the teardown that ends each straggler
+/// and waits for each pending attempt, and the state machine a host reads.
 ///
 /// A port of `../FoundationModelsMCP/Tests/FoundationModelsMCPTests/ResilienceTests.swift`.
 /// Every test drives its own `ManualClock` instead of a real `ContinuousClock`
@@ -543,49 +543,124 @@ struct ResilienceTests {
         withExtendedLifetime((straggler, fresh)) {}
     }
 
-    // MARK: - The teardown waits for the transport of a straggler
+    // MARK: - The teardown ends each straggler and each pending attempt
 
-    /// The final teardown of a server is its `disconnect()`. It must return
-    /// only when each transport of the server closed, also the transport of
-    /// a straggler that ends its connect after the teardown started. Thus no
-    /// transport stays open after the server.
+    /// Starts `server.disconnect()`, and waits for the first of two events:
+    /// the teardown returned, or the teardown waits for the close of an open
+    /// attempt — the test hook `waitUntilTransportCloseIsAwaited()`. Each of
+    /// the two events can occur, thus the wait always ends, and the caller
+    /// reads which event came first without a clock.
+    ///
+    /// - Parameter server: The server to tear down.
+    /// - Returns: The task of the teardown, and whether the teardown
+    ///   returned before the first event ended the wait.
+    private func startTeardown(
+        of server: MCPServer
+    ) async throws -> (teardown: Task<Void, Never>, returnedFirst: Bool) {
+        let returned = EventFlag()
+        let firstEvent = TestGate()
+        let teardown = Task {
+            await server.disconnect()
+            await returned.set()
+            firstEvent.open()
+        }
+        let awaited = Task {
+            await server.waitUntilTransportCloseIsAwaited()
+            firstEvent.open()
+        }
+        try await firstEvent.wait()
+        let returnedFirst = await returned.isSet
+        // The cancel ends the wait of the hook when the teardown never waits.
+        awaited.cancel()
+        return (teardown, returnedFirst)
+    }
+
+    /// A teardown must not wait forever for work that it can stop. A
+    /// straggler whose transport `connect()` never returns is ended by the
+    /// teardown: the teardown calls the `disconnect()` of that transport
+    /// itself, and returns once the transport closed.
     ///
     /// The order is fixed, and no load can change it (card `^kdtrmhv`):
     ///
     /// 1. The first attempt holds its connect at the gate of its transport,
-    ///    and the test ends only its timeout.
-    /// 2. The teardown starts, and the test waits until the teardown waits
-    ///    for the close of a transport — the test hook
-    ///    `waitUntilTransportCloseIsAwaited()`.
-    /// 3. The test lets the straggler end: its connect completes, its result
-    ///    is discarded, and it closes its own transport.
-    /// 4. The teardown returns, and the transport of the straggler is closed.
+    ///    and the test ends only its timeout. The test never opens that gate.
+    /// 2. The teardown starts. The test waits for the first of two events:
+    ///    the teardown returned, or the teardown waits for a close.
+    /// 3. The teardown returned first. The transport closed, and its
+    ///    `connect()` ended because of that close.
+    ///
+    /// A teardown that waits for the straggler makes step 3 fail as a check:
+    /// the test then opens the gate itself, so that the straggler ends and
+    /// the test ends.
     @Test
-    func disconnectReturnsOnlyAfterTheTransportOfALateStragglerClosed() async throws {
+    func disconnectEndsAStragglerWhoseConnectNeverReturns() async throws {
         let (straggler, stragglerTransport) = try await makeScriptedPair(name: "straggler-server")
         let gated = GatedConnectTransport(wrapping: stragglerTransport)
         let attemptClock = GatedClock()
-        let (logger, discarded) = makeStaleConnectDiscardLogger()
-        let server = makeServer(connectAttemptClock: attemptClock, logger: logger)
+        let server = makeServer(connectAttemptClock: attemptClock)
 
-        // 1. The straggler holds its connect.
+        // 1. The straggler holds its connect, and the gate never opens.
         try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
 
-        // 2. The teardown starts, and waits for the transport of the straggler.
-        let teardown = Task { await server.disconnect() }
-        await server.waitUntilTransportCloseIsAwaited()
+        // 2. The teardown starts.
+        let (teardown, returnedFirst) = try await startTeardown(of: server)
 
-        // 3. The straggler ends.
-        await gated.release()
-
-        // 4. The teardown returns after the close.
+        // 3. The teardown ended the straggler.
+        #expect(returnedFirst, "the teardown waits for a straggler whose connect never returns")
+        if !returnedFirst {
+            await gated.release()
+        }
         await teardown.value
-        #expect(await gated.isOpen == false, "the transport of the straggler is open after the teardown")
-        try await discarded.wait()
         try await gated.closeArrival.wait()
+        try await gated.connectEnd.wait()
+        #expect(await gated.connectEndedByClose)
         #expect(await gated.isOpen == false)
         #expect(await server.state == .disconnected)
         withExtendedLifetime(straggler) {}
+    }
+
+    /// The factory of an attempt can return a transport after the teardown
+    /// started. The teardown must wait until that factory returned and its
+    /// transport was released, and the attempt must never connect that
+    /// transport. Thus no transport and no process appears after
+    /// `disconnect()` returned.
+    ///
+    /// The order is fixed, and no load can change it (card `^kdtrmhv`):
+    ///
+    /// 1. The attempt holds its factory at a gate.
+    /// 2. The teardown starts. The test waits for the first of two events:
+    ///    the teardown returned, or the teardown waits for the attempt. The
+    ///    teardown must not have returned.
+    /// 3. The test opens the factory gate. The teardown returns, and by then
+    ///    the transport of the factory was released and never connected.
+    @Test
+    func disconnectWaitsForTheFactoryOfAPendingAttempt() async throws {
+        let (scripted, clientTransport) = try await makeScriptedPair()
+        let spy = DisposableSpyTransport(wrapping: clientTransport)
+        let gatedFactory = GatedTransportFactory { spy }
+        let attemptClock = GatedClock()
+        let server = makeServer(connectAttemptClock: attemptClock)
+
+        // 1. The attempt holds its factory.
+        let connecting = Task {
+            try await server.connect(
+                via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
+        }
+        try await gatedFactory.makeArrival.wait()
+
+        // 2. The teardown starts, and waits for the attempt.
+        let (teardown, returnedFirst) = try await startTeardown(of: server)
+        #expect(!returnedFirst, "the teardown returned while the factory of an attempt was held")
+
+        // 3. The factory returns; the teardown returns after the release.
+        await gatedFactory.release()
+        await teardown.value
+        #expect(await spy.disposeWasCalled, "the transport of the factory was not released before the teardown returned")
+        #expect(await spy.connectWasCalled == false)
+        #expect(await server.state == .disconnected)
+
+        _ = try? await connecting.value
+        withExtendedLifetime(scripted) {}
     }
 
     // MARK: - A disconnect whose transport hangs does not block a fresh connect
@@ -790,6 +865,18 @@ struct ResilienceTests {
 
         #expect(await server.state == .ready)
         withExtendedLifetime(scripted) {}
+    }
+}
+
+/// A flag that one task sets and another task reads — the record of which
+/// of two events came first.
+private actor EventFlag {
+    /// Whether ``set()`` was called.
+    private(set) var isSet = false
+
+    /// Sets the flag.
+    func set() {
+        isSet = true
     }
 }
 

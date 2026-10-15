@@ -126,20 +126,26 @@ public actor MCPServer {
         currentClient?.client
     }
 
-    /// Each transport a connect attempt made that did not close yet, by its
-    /// id — see `MCPServer+ClientLifecycle.swift`. An attempt adds its
-    /// transport when the factory gave it, and the close of the transport
-    /// removes it. `disconnect()` waits until no transport of an earlier
-    /// generation stays here.
+    /// Each connect attempt whose transport did not close yet, by its id —
+    /// see `MCPServer+ClientLifecycle.swift`. An attempt goes in when it
+    /// starts, before its factory runs, and adds its transport when the
+    /// factory gave it. The close of the transport takes the attempt out, and
+    /// so does the end of an attempt with no transport to close.
+    /// `disconnect()` ends each attempt of an earlier generation and waits
+    /// until none stays here.
     var openTransports: [Int: OpenTransport] = [:]
 
-    /// The id the next transport of ``openTransports`` gets.
+    /// The id the next attempt of ``openTransports`` gets.
     var nextTransportID = 0
 
-    /// Each caller of `waitUntilTransportCloseIsAwaited()` — resumed when a
-    /// caller starts to wait for the close of an open transport. A test
-    /// hook: no product code waits here.
-    var transportCloseAwaitedWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Each caller of `waitUntilTransportCloseIsAwaited()`, by the id of its
+    /// wait — resumed when a caller starts to wait for the close of an open
+    /// attempt, or when the task of the wait is cancelled. A test hook: no
+    /// product code waits here.
+    var transportCloseAwaitedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    /// The id the next wait of ``transportCloseAwaitedWaiters`` gets.
+    var nextTransportCloseAwaitedWaiterID = 0
 
     /// The name of this connection: the client name sent at `initialize`, and
     /// the ``identity`` once the first connect succeeds.

@@ -1,6 +1,6 @@
 // `MCPServer+ClientLifecycle` — the new `MCP.Client` of each connect attempt,
 // the install of the client of the current attempt, the teardown of an old
-// client, and the set of transports that did not close yet.
+// client, and the set of attempts whose transport did not close yet.
 //
 // **Why a new client for each attempt.** `MCP.Client.connect(transport:)`
 // changes the connection and the message-handling task of the client, and it
@@ -30,24 +30,30 @@
 // server-to-client request handler is suspended on that connection. Thus the
 // call can hang, and it hangs alone.
 //
-// **The transport close is the event that callers wait for.** Each transport
-// that an attempt made goes into ``MCPServer/openTransports`` when the
-// factory gave it. The `DropObservingTransport` around it reports the return
-// of the `disconnect()` of the wrapped transport, and that report takes the
-// transport out of the set. A stdio transport kills and reaps its subprocess
-// in its own `disconnect()`. Thus:
+// **The set of open attempts.** Each connect attempt goes into
+// ``MCPServer/openTransports`` when it starts, before it calls the factory.
+// When the factory gives a transport, the attempt adds the
+// `DropObservingTransport` around it to its entry. The entry leaves the set
+// when the transport closed — the wrapper reports the return of the
+// `disconnect()` of the wrapped transport — or when the attempt ended with no
+// transport to close: the factory threw, or the attempt was stale when the
+// factory returned and released the transport at once. A stdio transport
+// kills and reaps its subprocess in its own `disconnect()`. Thus:
 //
 // - A connect attempt that replaces the current client waits until the
 //   transport of that client closed, and only then calls the factory. A new
 //   stdio subprocess is spawned only after the old one is gone.
-// - `disconnect()` returns only when each transport of an earlier generation
-//   closed: the transport of the current client, and the transport of each
-//   straggler. A straggler that ends its connect after the teardown started
-//   closes its own transport, and the teardown waits for that close too.
+// - `disconnect()` ends each attempt of an earlier generation. It calls the
+//   `disconnect()` of each transport in the set itself, also the transport of
+//   a straggler whose `connect()` did not return, and waits for each close. It
+//   waits for each attempt whose factory did not return yet: that attempt is
+//   stale when its factory returns, and it releases the transport at once and
+//   never connects it. Thus no transport and no stdio subprocess of an
+//   earlier attempt can stay or appear after `disconnect()` returned.
 //
 // No clock decides these waits. A transport whose `disconnect()` never
-// returns makes its waiter wait, and so does a straggler whose `connect()`
-// never returns, when `disconnect()` waits for it.
+// returns makes its waiter wait, and so does a factory that never returns,
+// when `disconnect()` waits for it.
 
 import MCP
 
@@ -61,14 +67,19 @@ extension MCPServer {
         /// transport that the factory gave.
         let transport: DropObservingTransport
 
-        /// The id of the transport in ``MCPServer/openTransports``.
+        /// The id of the attempt in ``MCPServer/openTransports``.
         let transportID: Int
     }
 
-    /// One transport of ``MCPServer/openTransports`` that did not close yet.
+    /// One attempt of ``MCPServer/openTransports`` whose transport did not
+    /// close yet.
     struct OpenTransport {
-        /// The ``MCPServer/connectGeneration`` of the attempt that made it.
+        /// The ``MCPServer/connectGeneration`` of the attempt.
         let generation: Int
+
+        /// The transport of the attempt, or `nil` while its factory did not
+        /// return.
+        var transport: DropObservingTransport?
 
         /// Each caller that waits for the close of the transport.
         var closeWaiters: [CheckedContinuation<Void, Never>] = []
@@ -76,24 +87,43 @@ extension MCPServer {
 
     // MARK: - The client of an attempt
 
-    /// Makes the client of one connect attempt for `transport`, and adds
-    /// `transport` to ``openTransports``.
+    /// Adds a connect attempt of `generation` to ``openTransports`` — the
+    /// first step of each attempt, before it calls the factory.
+    ///
+    /// - Parameter generation: The ``connectGeneration`` of the attempt.
+    /// - Returns: The id of the attempt.
+    func beginAttempt(generation: Int) -> Int {
+        let transportID = nextTransportID
+        nextTransportID += 1
+        openTransports[transportID] = OpenTransport(generation: generation)
+        return transportID
+    }
+
+    /// Makes the client of the attempt `transportID` for `transport`, the
+    /// transport that its factory gave.
     ///
     /// The client gets each handler before its connect — see
     /// `setupHandlers(on:)` in `MCPServer+Connection.swift`. When
     /// `generation` is already stale, no client is made: `transport` is
-    /// released through its `DisposableTransport` conformance when it has
-    /// one, and it is never connected.
+    /// released at once — through its `DisposableTransport` conformance when
+    /// it has one, else through its `disconnect()` — and it is never
+    /// connected.
     ///
     /// - Parameters:
     ///   - transport: The transport that the factory gave.
+    ///   - transportID: The id of the attempt in ``openTransports``.
     ///   - generation: The ``connectGeneration`` of the attempt.
     /// - Returns: The client and its transport, or `nil` when `generation`
     ///   is stale.
-    func makeAttemptClient(over transport: any Transport, generation: Int) async -> AttemptClient? {
-        let transportID = addOpenTransport(generation: generation)
+    func makeAttemptClient(
+        over transport: any Transport, transportID: Int, generation: Int
+    ) async -> AttemptClient? {
         guard isCurrentGeneration(generation, orDiscard: .mcpStaleTransportDiscarded) else {
-            await (transport as? DisposableTransport)?.dispose()
+            if let disposable = transport as? DisposableTransport {
+                await disposable.dispose()
+            } else {
+                await transport.disconnect()
+            }
             closeOpenTransport(transportID)
             return nil
         }
@@ -107,6 +137,7 @@ extension MCPServer {
             onClose: { [weak self] in
                 await self?.closeOpenTransport(transportID)
             })
+        openTransports[transportID]?.transport = observed
         let client = Client(name: name, version: clientVersion, capabilities: Self.clientCapabilities)
         await setupHandlers(on: client)
         return AttemptClient(client: client, transport: observed, transportID: transportID)
@@ -135,24 +166,14 @@ extension MCPServer {
         await waitUntilTransportClosed(retired.transportID)
     }
 
-    // MARK: - The open transports
+    // MARK: - The open attempts
 
-    /// Adds a transport of the attempt of `generation` to ``openTransports``.
-    ///
-    /// - Parameter generation: The ``connectGeneration`` of the attempt.
-    /// - Returns: The id of the transport.
-    private func addOpenTransport(generation: Int) -> Int {
-        let transportID = nextTransportID
-        nextTransportID += 1
-        openTransports[transportID] = OpenTransport(generation: generation)
-        return transportID
-    }
-
-    /// Takes the transport of `transportID` out of ``openTransports``, and
+    /// Takes the attempt of `transportID` out of ``openTransports``, and
     /// resumes each caller that waits for its close. A no-op when the
-    /// transport closed before.
+    /// attempt left the set before.
     ///
-    /// - Parameter transportID: The id of the transport that closed.
+    /// - Parameter transportID: The id of the attempt whose transport closed,
+    ///   or that ended with no transport to close.
     func closeOpenTransport(_ transportID: Int) {
         guard let closed = openTransports.removeValue(forKey: transportID) else { return }
         for waiter in closed.closeWaiters {
@@ -160,43 +181,68 @@ extension MCPServer {
         }
     }
 
-    /// Waits until the transport of `transportID` closed. Returns at once
-    /// when it closed before.
+    /// Waits until the attempt of `transportID` left ``openTransports``.
+    /// Returns at once when it left before.
     ///
-    /// - Parameter transportID: The id of the transport.
+    /// - Parameter transportID: The id of the attempt.
     func waitUntilTransportClosed(_ transportID: Int) async {
         guard openTransports[transportID] != nil else { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             openTransports[transportID]?.closeWaiters.append(continuation)
             let awaited = transportCloseAwaitedWaiters
-            transportCloseAwaitedWaiters = []
-            for waiter in awaited {
+            transportCloseAwaitedWaiters = [:]
+            for waiter in awaited.values {
                 waiter.resume()
             }
         }
     }
 
-    /// Waits until no transport of a generation before `generation` stays in
-    /// ``openTransports``. A transport that an attempt of such a generation
-    /// adds during the wait is waited for too.
+    /// Ends each attempt of a generation before `generation`, and returns
+    /// when none stays in ``openTransports``.
     ///
-    /// - Parameter generation: The first generation whose transports this
-    ///   wait leaves alone: the transports of a connect that started later.
-    func waitUntilTransportsClosed(before generation: Int) async {
-        while let open = openTransports.first(where: { $0.value.generation < generation }) {
-            await waitUntilTransportClosed(open.key)
+    /// For an attempt with a transport, this calls the `disconnect()` of
+    /// that transport itself — also when its `connect()` did not return — and
+    /// that call returns once the transport closed. For an attempt whose
+    /// factory did not return, this waits: that attempt is stale, and it
+    /// releases its transport at once when the factory returns. An attempt
+    /// of such a generation that starts during the wait is ended too.
+    ///
+    /// - Parameter generation: The first generation whose attempts this
+    ///   call leaves alone: the attempts of a connect that started later.
+    func endAttempts(before generation: Int) async {
+        while let (transportID, open) = openTransports.first(where: { $0.value.generation < generation }) {
+            if let transport = open.transport {
+                await transport.disconnect()
+                closeOpenTransport(transportID)
+            } else {
+                await waitUntilTransportClosed(transportID)
+            }
         }
     }
 
-    /// Waits until a caller waits for the close of an open transport — the
-    /// event a test waits on to know that `disconnect()` waits for a
-    /// transport.
+    /// Waits until a caller waits for the close of an open attempt — the
+    /// event a test waits on to know that a teardown waits for an attempt.
+    /// A cancel of the calling task ends the wait.
     ///
     /// Internal, for `@testable import`: no product code waits here.
     func waitUntilTransportCloseIsAwaited() async {
         guard !openTransports.values.contains(where: { !$0.closeWaiters.isEmpty }) else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            transportCloseAwaitedWaiters.append(continuation)
+        let waiterID = nextTransportCloseAwaitedWaiterID
+        nextTransportCloseAwaitedWaiterID += 1
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                transportCloseAwaitedWaiters[waiterID] = continuation
+            }
+        } onCancel: {
+            Task { await self.endTransportCloseAwaitedWait(waiterID) }
         }
+    }
+
+    /// Ends the wait `waiterID` of ``waitUntilTransportCloseIsAwaited()`` —
+    /// the cancel of that wait. A no-op when the wait ended before.
+    ///
+    /// - Parameter waiterID: The id of the wait.
+    private func endTransportCloseAwaitedWait(_ waiterID: Int) {
+        transportCloseAwaitedWaiters.removeValue(forKey: waiterID)?.resume()
     }
 }
