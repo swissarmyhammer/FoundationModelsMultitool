@@ -379,6 +379,13 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 /// not poll. The watch task is not a task of the session, thus the close of
 /// the session does not end it. The scoped form ends it with ``stop()`` on
 /// every path, so that no watch of one test waits on after that test.
+///
+/// The call to `respond` (or to `complete`) resumes the snippet before the
+/// watch records the report of the session. Thus the snippet can return
+/// before the log holds that report. A test reads the reports only with
+/// ``deliveries(count:)`` and ``completions(count:)``: each one waits until
+/// the log recorded the given count of reports. It waits on the record event,
+/// not on a clock.
 final class ScriptedElicitationSink: Sendable {
     /// What the watch observed and what the session reported.
     private let log: ElicitationAnswerLog
@@ -391,11 +398,14 @@ final class ScriptedElicitationSink: Sendable {
     /// - Parameters:
     ///   - run: the run to watch and answer through.
     ///   - response: the answer to give.
-    fileprivate init(run: StubRun, answering response: ElicitationResponse) {
-        let log = ElicitationAnswerLog()
+    ///   - recordGate: a test hook. When it is not `nil`, the watch waits at
+    ///     this gate before it records each delivery, and the log opens the
+    ///     gate when a read of the reports starts to wait.
+    fileprivate init(run: StubRun, answering response: ElicitationResponse, holdingRecordAt recordGate: TestGate?) {
+        let log = ElicitationAnswerLog(readerWaits: recordGate)
         self.log = log
         watchTask = Task {
-            await Self.watch(run, answering: response, into: log)
+            await Self.watch(run, answering: response, into: log, holdingRecordAt: recordGate)
             await log.recordWatchEnd()
         }
     }
@@ -420,13 +430,21 @@ final class ScriptedElicitationSink: Sendable {
     }
 
     /// What the session reported for each delivered answer, in delivery order.
-    var deliveries: [ElicitationAnswerDelivery] {
-        get async { await log.deliveries }
+    ///
+    /// - Parameter count: the count of deliveries to wait for. The read
+    ///   returns when the log recorded this count, or when the watch ended.
+    /// - Returns: each recorded delivery.
+    func deliveries(count: Int) async -> [ElicitationAnswerDelivery] {
+        await log.deliveries(count: count)
     }
 
     /// What the session reported for each URL-mode completion.
-    var completions: [ElicitationCompletionDelivery] {
-        get async { await log.completions }
+    ///
+    /// - Parameter count: the count of completions to wait for. The read
+    ///   returns when the log recorded this count, or when the watch ended.
+    /// - Returns: each recorded completion.
+    func completions(count: Int) async -> [ElicitationCompletionDelivery] {
+        await log.completions(count: count)
     }
 
     /// The first observed request, or `nil` when none arrived.
@@ -444,8 +462,11 @@ final class ScriptedElicitationSink: Sendable {
     ///   - run: the run to watch and answer through.
     ///   - response: the answer to give.
     ///   - log: where the watch records what it observed.
+    ///   - recordGate: the test hook where the watch waits before it records
+    ///     each delivery, or `nil`.
     private static func watch(
-        _ run: StubRun, answering response: ElicitationResponse, into log: ElicitationAnswerLog
+        _ run: StubRun, answering response: ElicitationResponse, into log: ElicitationAnswerLog,
+        holdingRecordAt recordGate: TestGate?
     ) async {
         while !Task.isCancelled {
             let answered = await log.answered
@@ -460,6 +481,10 @@ final class ScriptedElicitationSink: Sendable {
                 guard let request = event.elicitation, await log.claim(request) else { continue }
                 let id = request.elicitationId.description
                 let delivery = await run.session.respond(elicitationId: id, response: response)
+                // The snippet can resume and return before this record.
+                if let recordGate {
+                    do { try await recordGate.wait() } catch { return }
+                }
                 await log.record(delivery: delivery)
                 guard delivery == .acceptedAwaitingCompletion else { continue }
                 await log.record(completion: await run.session.complete(elicitationId: id))
@@ -480,31 +505,109 @@ final class ScriptedElicitationSink: Sendable {
 /// - Parameters:
 ///   - run: the run to watch and answer through.
 ///   - response: the answer to give.
+///   - recordGate: a test hook. When it is not `nil`, the watch waits at this
+///     gate before it records each delivery, and the log opens the gate when
+///     a read of the reports starts to wait. The default is `nil`.
 ///   - body: the work that elicits.
 /// - Returns: what `body` returned.
 /// - Throws: what `body` threw, after the watch ended.
 func withScriptedElicitationSink<Result>(
     run: StubRun, answering response: ElicitationResponse,
+    holdingRecordAt recordGate: TestGate? = nil,
     _ body: (ScriptedElicitationSink) async throws -> Result
 ) async throws -> Result {
-    let sink = ScriptedElicitationSink(run: run, answering: response)
+    let sink = ScriptedElicitationSink(run: run, answering: response, holdingRecordAt: recordGate)
     return try await ensuring({ await sink.stop() }) { try await body(sink) }
 }
 
 /// What a ``ScriptedElicitationSink`` observed, and what the session reported
 /// for each answer.
 actor ElicitationAnswerLog {
+    /// One read that waits until a list of the log holds a count of entries.
+    private struct Waiter {
+        /// The count of entries that ends the wait.
+        let count: Int
+
+        /// The read to resume.
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     /// Every elicitation request claimed, in arrival order.
     private(set) var requests: [ElicitationRequest] = []
 
     /// What the session reported for each delivered answer, in delivery order.
-    private(set) var deliveries: [ElicitationAnswerDelivery] = []
+    private var recordedDeliveries: [ElicitationAnswerDelivery] = []
 
     /// What the session reported for each URL-mode completion.
-    private(set) var completions: [ElicitationCompletionDelivery] = []
+    private var recordedCompletions: [ElicitationCompletionDelivery] = []
+
+    /// Each read of ``deliveries(count:)`` that waits.
+    private var deliveryWaiters: [Waiter] = []
+
+    /// Each read of ``completions(count:)`` that waits.
+    private var completionWaiters: [Waiter] = []
+
+    /// The test hook that the log opens when a read starts to wait, or `nil`.
+    private let readerWaits: TestGate?
 
     /// The elicitation ids already claimed, so the watch answers each one time.
     private(set) var answered: Set<String> = []
+
+    /// Makes an empty log.
+    ///
+    /// - Parameter readerWaits: the test hook that the log opens when a read
+    ///   starts to wait, or `nil`.
+    init(readerWaits: TestGate?) {
+        self.readerWaits = readerWaits
+    }
+
+    /// Waits until the log recorded `count` deliveries, or until the watch
+    /// ended, and then returns each recorded delivery.
+    ///
+    /// - Parameter count: the count of deliveries to wait for.
+    /// - Returns: each recorded delivery, in delivery order.
+    func deliveries(count: Int) async -> [ElicitationAnswerDelivery] {
+        if recordedDeliveries.count < count && !watchEnded {
+            await withCheckedContinuation { continuation in
+                deliveryWaiters.append(Waiter(count: count, continuation: continuation))
+                readerWaits?.open()
+            }
+        }
+        return recordedDeliveries
+    }
+
+    /// Waits until the log recorded `count` completions, or until the watch
+    /// ended, and then returns each recorded completion.
+    ///
+    /// - Parameter count: the count of completions to wait for.
+    /// - Returns: each recorded completion, in completion order.
+    func completions(count: Int) async -> [ElicitationCompletionDelivery] {
+        if recordedCompletions.count < count && !watchEnded {
+            await withCheckedContinuation { continuation in
+                completionWaiters.append(Waiter(count: count, continuation: continuation))
+                readerWaits?.open()
+            }
+        }
+        return recordedCompletions
+    }
+
+    /// Resumes each waiter whose count is reached, and keeps the others.
+    ///
+    /// - Parameters:
+    ///   - waiters: the waiters of one list.
+    ///   - count: the count of entries in that list now.
+    /// - Returns: the waiters that still wait.
+    private static func resume(_ waiters: [Waiter], reaching count: Int) -> [Waiter] {
+        var waiting: [Waiter] = []
+        for waiter in waiters {
+            if waiter.count <= count {
+                waiter.continuation.resume()
+            } else {
+                waiting.append(waiter)
+            }
+        }
+        return waiting
+    }
 
     /// Claims `request` for one answer.
     ///
@@ -520,21 +623,26 @@ actor ElicitationAnswerLog {
     ///
     /// - Parameter delivery: the report of the session.
     func record(delivery: ElicitationAnswerDelivery) {
-        deliveries.append(delivery)
+        recordedDeliveries.append(delivery)
+        deliveryWaiters = Self.resume(deliveryWaiters, reaching: recordedDeliveries.count)
     }
 
     /// Records what the session reported for one URL-mode completion.
     ///
     /// - Parameter completion: the report of the session.
     func record(completion: ElicitationCompletionDelivery) {
-        completions.append(completion)
+        recordedCompletions.append(completion)
+        completionWaiters = Self.resume(completionWaiters, reaching: recordedCompletions.count)
     }
 
     /// Whether the watch task ended.
     private(set) var watchEnded = false
 
-    /// Records that the watch task ended.
+    /// Records that the watch task ended, and ends each read that waits: no
+    /// record comes after this.
     func recordWatchEnd() {
         watchEnded = true
+        deliveryWaiters = Self.resume(deliveryWaiters, reaching: .max)
+        completionWaiters = Self.resume(completionWaiters, reaching: .max)
     }
 }

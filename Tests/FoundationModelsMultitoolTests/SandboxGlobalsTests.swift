@@ -455,6 +455,38 @@ struct SandboxGlobalsTests {
         #expect(await sink.watchEnded, "the watch task still waits after its scope and the close")
     }
 
+    /// The call to `respond` resumes the snippet before the watch records the
+    /// delivery. This test holds the record step at a gate. The order is
+    /// fixed: the snippet returns, the test reads the deliveries, the read
+    /// starts to wait and opens the gate, and then the watch records. A read
+    /// that returns before the record sees no delivery and a closed gate.
+    @Test("a read of the elicitation deliveries waits until the sink recorded them")
+    func theDeliveriesReadWaitsForTheRecord() async throws {
+        let record = TestGate()
+        try await withStubRun { stub in
+            let context = stub.context
+            try await withScriptedElicitationSink(
+                run: stub,
+                answering: .accept(content: ["repo": .string("sah")]),
+                holdingRecordAt: record
+            ) { sink in
+                let output = try await runSnippet(
+                    "return (await elicit(\"Which repository?\")).action;",
+                    under: context
+                )
+                #expect(try RunOutput.decoded(String.self, from: output) == "accept")
+
+                let deliveries = await sink.deliveries(count: 1)
+                let recordWasOpen = record.isOpen
+                // Let the watch go on, so that the scope can end it.
+                record.open()
+
+                #expect(recordWasOpen, "the read of the deliveries returned before the record step")
+                #expect(deliveries == [.delivered])
+            }
+        }
+    }
+
     @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
         try await withStubRun { stub in
@@ -478,7 +510,8 @@ struct SandboxGlobalsTests {
                 #expect(request.mode == .form)
                 #expect(request.message == "Which repository should I target?")
                 #expect(request.requestedSchema?.properties.isEmpty == true)
-                #expect(await sink.deliveries == [.delivered])
+                // The snippet can return before the sink records the delivery.
+                #expect(await sink.deliveries(count: 1) == [.delivered])
             }
         }
     }
@@ -574,8 +607,9 @@ struct SandboxGlobalsTests {
                 let request = try #require(await sink.observedRequest)
                 #expect(request.mode == .url)
                 #expect(request.url == URL(string: "https://example.com/auth"))
-                #expect(await sink.deliveries == [.acceptedAwaitingCompletion])
-                #expect(await sink.completions == [.completed])
+                #expect(await sink.deliveries(count: 1) == [.acceptedAwaitingCompletion])
+                // The snippet can return before the sink records the completion.
+                #expect(await sink.completions(count: 1) == [.completed])
             }
         }
     }
