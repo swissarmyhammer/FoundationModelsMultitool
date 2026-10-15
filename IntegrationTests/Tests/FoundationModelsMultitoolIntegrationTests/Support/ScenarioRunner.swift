@@ -554,9 +554,9 @@ func streamAnswer(of session: any RoutedSession, prompt: String) async throws ->
             // the chance to shrink its context is not read as a clean answer.
             answer.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
-            .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
-            .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused,
-            .toolDisplay, .mailDelivered, .cancelled, .signalDone, .lost:
+            .elicitationRequested, .elicitationEnded, .runMessage, .runProgress, .runSettled, .generationCall,
+            .submissionQueued, .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused,
+            .toolDisplay, .mailDelivered, .cancelled, .signalDone, .lost, .workStarted, .workEnded:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -566,7 +566,9 @@ func streamAnswer(of session: any RoutedSession, prompt: String) async throws ->
             // — the file-change set of a mutating `tools.files` call — which
             // `FileChangeAttachmentTests` grades with no model at all.
             // `.elicitationRequested` announces a question a run raised, and no
-            // tool of these scenarios raises one. `.runMessage` carries a
+            // tool of these scenarios raises one. `.elicitationEnded` tells
+            // that such a question ended, and thus it does not occur here
+            // either. `.runMessage` carries a
             // message that an open background run sent to the session, and no
             // tool of these scenarios sends one. `.runProgress` carries a
             // progress event of an open background run, and no scenario here
@@ -583,7 +585,10 @@ func streamAnswer(of session: any RoutedSession, prompt: String) async throws ->
             // `.mailDelivered` says the model got a mail, and `.cancelled`,
             // `.signalDone` and `.lost` are terminals of mail and signals that
             // these scenarios do not send; the terminal of this message is
-            // read by its id after the loop.
+            // read by its id after the loop. `.workStarted` and `.workEnded`
+            // have the `.system` origin and tell that the session started or
+            // stopped work; they are not output of this message, and this
+            // runner grades no session state.
             break
         }
     }

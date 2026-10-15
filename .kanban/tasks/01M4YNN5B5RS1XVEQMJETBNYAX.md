@@ -1,8 +1,8 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: 8a80
+position_column: done
+position_ordinal: ffffe780
 title: Move to Router 77b2da68 and add the three new SessionEvent cases
 ---
 Router main 77b2da68 needs Extras 7f530ff or later (Extras main is 278e9cb). It adds three public SessionEvent cases:
