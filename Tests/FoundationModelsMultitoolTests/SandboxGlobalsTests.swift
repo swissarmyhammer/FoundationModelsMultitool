@@ -161,17 +161,20 @@ struct SandboxGlobalsTests {
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            // Constructed for its effect: answering the snippet's elicitation.
-            _ = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
+            // The sink answers the elicitation of the snippet.
+            try await withScriptedElicitationSink(
+                run: stub, answering: .accept(content: ["repo": .string("sah")])
+            ) { _ in
+                let output = try await runSnippet(
+                    "return Object.keys(await elicit(\"Which repository?\")).sort();",
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                "return Object.keys(await elicit(\"Which repository?\")).sort();",
-                under: context
-            )
-
-            let observed = try RunOutput.decoded([String].self, from: output)
-            let documented = try #require(declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
-            #expect(documented == observed)
+                let observed = try RunOutput.decoded([String].self, from: output)
+                let documented = try #require(
+                    declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
+                #expect(documented == observed)
+            }
         }
     }
 
@@ -438,31 +441,45 @@ struct SandboxGlobalsTests {
 
     // MARK: - elicit()
 
+    /// The watch task of a ``ScriptedElicitationSink`` is not a task of the
+    /// session, thus the close of the session does not end it. The scoped
+    /// form must end it before it returns, so that nothing of one test waits
+    /// on after that test. The order is fixed: the scope returns, the session
+    /// closes, and then the test reads the end flag of the watch one time.
+    @Test("the watch of a scripted elicitation sink ends when its scope ends")
+    func theWatchOfAScriptedElicitationSinkEndsWithItsScope() async throws {
+        let sink = try await withStubRun { stub in
+            try await withScriptedElicitationSink(run: stub, answering: .decline) { $0 }
+        }
+
+        #expect(await sink.watchEnded, "the watch task still waits after its scope and the close")
+    }
+
     @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            let sink = ScriptedElicitationSink(
+            try await withScriptedElicitationSink(
                 run: stub,
                 answering: .accept(content: ["repo": .string("swissarmyhammer")])
-            )
+            ) { sink in
+                let output = try await runSnippet(
+                    """
+                    const pending = elicit("Which repository should I target?");
+                    const isThenable = typeof pending.then === "function";
+                    const answer = await pending;
+                    return [String(isThenable), answer.action, answer.content.repo];
+                    """,
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                """
-                const pending = elicit("Which repository should I target?");
-                const isThenable = typeof pending.then === "function";
-                const answer = await pending;
-                return [String(isThenable), answer.action, answer.content.repo];
-                """,
-                under: context
-            )
-
-            #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
-            let request = try #require(await sink.observedRequest)
-            #expect(request.mode == .form)
-            #expect(request.message == "Which repository should I target?")
-            #expect(request.requestedSchema?.properties.isEmpty == true)
-            #expect(await sink.deliveries == [.delivered])
+                #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
+                let request = try #require(await sink.observedRequest)
+                #expect(request.mode == .form)
+                #expect(request.message == "Which repository should I target?")
+                #expect(request.requestedSchema?.properties.isEmpty == true)
+                #expect(await sink.deliveries == [.delivered])
+            }
         }
     }
 
@@ -470,18 +487,18 @@ struct SandboxGlobalsTests {
     func elicitSurfacesADeclineDistinctly() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            // Constructed for its effect: answering the snippet's elicitation.
-            _ = ScriptedElicitationSink(run: stub, answering: .decline)
+            // The sink answers the elicitation of the snippet.
+            try await withScriptedElicitationSink(run: stub, answering: .decline) { _ in
+                let output = try await runSnippet(
+                    """
+                    const answer = await elicit("Proceed?");
+                    return [answer.action, String(answer.content)];
+                    """,
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                """
-                const answer = await elicit("Proceed?");
-                return [answer.action, String(answer.content)];
-                """,
-                under: context
-            )
-
-            #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
+                #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
+            }
         }
     }
 
@@ -489,18 +506,18 @@ struct SandboxGlobalsTests {
     func elicitSurfacesACancelDistinctly() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            // Constructed for its effect: answering the snippet's elicitation.
-            _ = ScriptedElicitationSink(run: stub, answering: .cancel)
+            // The sink answers the elicitation of the snippet.
+            try await withScriptedElicitationSink(run: stub, answering: .cancel) { _ in
+                let output = try await runSnippet(
+                    """
+                    const answer = await elicit("Proceed?");
+                    return [answer.action, String(answer.content)];
+                    """,
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                """
-                const answer = await elicit("Proceed?");
-                return [answer.action, String(answer.content)];
-                """,
-                under: context
-            )
-
-            #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
+                #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
+            }
         }
     }
 
@@ -508,35 +525,35 @@ struct SandboxGlobalsTests {
     func elicitCarriesAFormSchemaThrough() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            let sink = ScriptedElicitationSink(
+            try await withScriptedElicitationSink(
                 run: stub,
                 answering: .accept(content: ["repo": .string("multitool")])
-            )
+            ) { sink in
+                let output = try await runSnippet(
+                    """
+                    const answer = await elicit({
+                        message: "Pick a repository",
+                        requestedSchema: {
+                            type: "object",
+                            properties: { repo: { type: "string", title: "Repository" } },
+                            required: ["repo"],
+                        },
+                    });
+                    return [answer.action, answer.content.repo];
+                    """,
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                """
-                const answer = await elicit({
-                    message: "Pick a repository",
-                    requestedSchema: {
-                        type: "object",
-                        properties: { repo: { type: "string", title: "Repository" } },
-                        required: ["repo"],
-                    },
-                });
-                return [answer.action, answer.content.repo];
-                """,
-                under: context
-            )
-
-            #expect(try RunOutput.decoded([String].self, from: output) == ["accept", "multitool"])
-            let request = try #require(await sink.observedRequest)
-            #expect(request.mode == .form)
-            #expect(request.requestedSchema?.required == ["repo"])
-            guard case .string(let repoSchema)? = request.requestedSchema?.properties["repo"] else {
-                Issue.record("the repo property did not decode as a string schema")
-                return
+                #expect(try RunOutput.decoded([String].self, from: output) == ["accept", "multitool"])
+                let request = try #require(await sink.observedRequest)
+                #expect(request.mode == .form)
+                #expect(request.requestedSchema?.required == ["repo"])
+                guard case .string(let repoSchema)? = request.requestedSchema?.properties["repo"] else {
+                    Issue.record("the repo property did not decode as a string schema")
+                    return
+                }
+                #expect(repoSchema.title == "Repository")
             }
-            #expect(repoSchema.title == "Repository")
         }
     }
 
@@ -544,22 +561,22 @@ struct SandboxGlobalsTests {
     func elicitUrlModeResolvesAfterCompletion() async throws {
         try await withStubRun { stub in
             let context = stub.context
-            let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: nil))
+            try await withScriptedElicitationSink(run: stub, answering: .accept(content: nil)) { sink in
+                let output = try await runSnippet(
+                    """
+                    const answer = await elicit({ message: "Sign in", url: "https://example.com/auth" });
+                    return answer.action;
+                    """,
+                    under: context
+                )
 
-            let output = try await runSnippet(
-                """
-                const answer = await elicit({ message: "Sign in", url: "https://example.com/auth" });
-                return answer.action;
-                """,
-                under: context
-            )
-
-            #expect(try RunOutput.decoded(String.self, from: output) == "accept")
-            let request = try #require(await sink.observedRequest)
-            #expect(request.mode == .url)
-            #expect(request.url == URL(string: "https://example.com/auth"))
-            #expect(await sink.deliveries == [.acceptedAwaitingCompletion])
-            #expect(await sink.completions == [.completed])
+                #expect(try RunOutput.decoded(String.self, from: output) == "accept")
+                let request = try #require(await sink.observedRequest)
+                #expect(request.mode == .url)
+                #expect(request.url == URL(string: "https://example.com/auth"))
+                #expect(await sink.deliveries == [.acceptedAwaitingCompletion])
+                #expect(await sink.completions == [.completed])
+            }
         }
     }
 

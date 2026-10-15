@@ -366,8 +366,9 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 /// route that does carry `.elicitation` events — and answers through
 /// `RoutedSession.respond(elicitationId:response:)`.
 ///
-/// The watch starts as soon as this is made, so build it BEFORE the snippet
-/// that elicits. A URL-mode accept is a two-step flow: `respond` records the
+/// Make it with ``withScriptedElicitationSink(run:answering:_:)``. The watch
+/// starts as soon as this is made, so make it BEFORE the snippet that
+/// elicits. A URL-mode accept is a two-step flow: `respond` records the
 /// accept and the snippet stays suspended, so an `.acceptedAwaitingCompletion`
 /// delivery is followed by `complete(elicitationId:)`, exactly as a real
 /// host's out-of-band flow would.
@@ -375,22 +376,42 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 /// The watch waits on the recorder of the run
 /// (``CollectingTranscriptRecorder/waitUntil(_:)``): it wakes when the journal
 /// gets an elicitation that it did not answer yet. It reads no clock and does
-/// not poll. A test can drop this answerer at once: the watch task holds the
-/// log and the run, not the answerer, and it keeps answering for the life of
-/// the run.
+/// not poll. The watch task is not a task of the session, thus the close of
+/// the session does not end it. The scoped form ends it with ``stop()`` on
+/// every path, so that no watch of one test waits on after that test.
 final class ScriptedElicitationSink: Sendable {
     /// What the watch observed and what the session reported.
     private let log: ElicitationAnswerLog
+
+    /// The task that watches the journal and answers.
+    private let watchTask: Task<Void, Never>
 
     /// Makes an answerer and starts watching at once.
     ///
     /// - Parameters:
     ///   - run: the run to watch and answer through.
     ///   - response: the answer to give.
-    init(run: StubRun, answering response: ElicitationResponse) {
+    fileprivate init(run: StubRun, answering response: ElicitationResponse) {
         let log = ElicitationAnswerLog()
         self.log = log
-        Task { await Self.watch(run, answering: response, into: log) }
+        watchTask = Task {
+            await Self.watch(run, answering: response, into: log)
+            await log.recordWatchEnd()
+        }
+    }
+
+    /// Cancels the watch, and waits until the watch task ended.
+    ///
+    /// The wait on the recorder ends with `false` on a cancel, and the loop
+    /// of the watch stops on a cancel. Thus the wait for the task ends.
+    fileprivate func stop() async {
+        watchTask.cancel()
+        await watchTask.value
+    }
+
+    /// Whether the watch task ended.
+    var watchEnded: Bool {
+        get async { await log.watchEnded }
     }
 
     /// Every elicitation request observed, in arrival order.
@@ -447,6 +468,29 @@ final class ScriptedElicitationSink: Sendable {
     }
 }
 
+/// Makes a ``ScriptedElicitationSink`` that answers each elicitation of
+/// `run`, gives it to `body`, and ends its watch task on every path after
+/// `body`.
+///
+/// The watch task is not a task of the session. Thus the close of the
+/// session does not end it, and a watch that nobody stops waits on the
+/// recorder after the test. Use this form inside the scope of the session,
+/// so that the watch ends before the session closes.
+///
+/// - Parameters:
+///   - run: the run to watch and answer through.
+///   - response: the answer to give.
+///   - body: the work that elicits.
+/// - Returns: what `body` returned.
+/// - Throws: what `body` threw, after the watch ended.
+func withScriptedElicitationSink<Result>(
+    run: StubRun, answering response: ElicitationResponse,
+    _ body: (ScriptedElicitationSink) async throws -> Result
+) async throws -> Result {
+    let sink = ScriptedElicitationSink(run: run, answering: response)
+    return try await ensuring({ await sink.stop() }) { try await body(sink) }
+}
+
 /// What a ``ScriptedElicitationSink`` observed, and what the session reported
 /// for each answer.
 actor ElicitationAnswerLog {
@@ -484,5 +528,13 @@ actor ElicitationAnswerLog {
     /// - Parameter completion: the report of the session.
     func record(completion: ElicitationCompletionDelivery) {
         completions.append(completion)
+    }
+
+    /// Whether the watch task ended.
+    private(set) var watchEnded = false
+
+    /// Records that the watch task ended.
+    func recordWatchEnd() {
+        watchEnded = true
     }
 }
