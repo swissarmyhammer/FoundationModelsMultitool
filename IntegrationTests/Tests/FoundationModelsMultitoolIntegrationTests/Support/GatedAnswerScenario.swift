@@ -52,13 +52,25 @@ func runGatedAnswerScenario(
             discoveryPriming: scenarioDiscoveryPriming
         )
 
+        // The session is closed on each path before this body returns: on a
+        // throw of the answer, and after the answer and the output are read.
+        // `RoutedSession.close()` waits for the generation pass and for its
+        // helper tasks, thus the handles of the profile are free when the
+        // fixture checks them.
         let start = Date()
-        let answer = try await streamAnswer(of: session, prompt: prompt)
+        let answer: StreamedAnswer
+        do {
+            answer = try await streamAnswer(of: session, prompt: prompt)
+        } catch {
+            await session.close()
+            throw error
+        }
         let elapsed = Date().timeIntervalSince(start)
 
         let result = await reading(answer, elapsed)
         grade(scenario: name, checks: result.checks)
         reportGatedResult(scenario: name, line: result.resultLine)
+        await session.close()
     }
 }
 

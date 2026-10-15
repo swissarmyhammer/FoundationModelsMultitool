@@ -194,7 +194,18 @@ func runNativeIntegrationScenario(
         // `respond`, four of the seven failure modes were unobservable and the
         // MODES line printed `0` for each — reading as "clean" when it meant
         // "not measured". That is what `routeObservable` exists to prevent.
-        let answer = try await streamAnswer(of: session, prompt: prompt)
+        //
+        // The session is closed on each path before this body returns: on a
+        // throw here, and at the end of the body. `RoutedSession.close()`
+        // waits for the generation pass and for its helper tasks, thus the
+        // handles of the profile are free when the fixture checks them.
+        let answer: StreamedAnswer
+        do {
+            answer = try await streamAnswer(of: session, prompt: prompt)
+        } catch {
+            await session.close()
+            throw error
+        }
         let elapsed = Date().timeIntervalSince(start)
 
         let evidence = ScenarioEvidence(
@@ -259,6 +270,10 @@ func runNativeIntegrationScenario(
             )
             .line(scenario: name)
         )
+
+        // After the answer and the output are read, and before the fixture
+        // checks the handles of the profile.
+        await session.close()
     }
 }
 
@@ -617,6 +632,11 @@ extension StreamedAnswer {
 /// prints a skip note and returns without recording an issue, so the suite
 /// stays green on a network/GPU-less box. Every other error propagates.
 ///
+/// The release checks, with no wait, that the model handles of the fixture
+/// are free (see `LiveRouterFixture.tearDown(checking:)`). The fixture lives
+/// in ``runLiveFixtureBody(name:profile:_:)`` only, thus it is gone when that
+/// call returns, and this call keeps no reference that the check sees.
+///
 /// - Parameters:
 ///   - name: the scenario label named in the skip note.
 ///   - body: the scenario's own work, given the resolved fixture.
@@ -627,23 +647,49 @@ func withLiveRouterFixture(
     profile definition: ProfileDefinition = multitoolTinyProfile,
     _ body: (LiveRouterFixture) async throws -> Void
 ) async throws {
+    guard let run = try await runLiveFixtureBody(name: name, profile: definition, body) else { return }
+    await LiveRouterFixture.tearDown(checking: run.release)
+    try run.outcome.get()
+}
+
+/// Resolves one live fixture and runs `body` against it, for
+/// ``withLiveRouterFixture(name:profile:_:)``.
+///
+/// The fixture is a local value of this call, thus it is gone when this call
+/// returns. Only the weak references of its ``LiveRouterFixture/release``
+/// come out.
+///
+/// - Parameters:
+///   - name: the scenario label named in the skip note.
+///   - definition: the profile to resolve.
+///   - body: the scenario's own work, given the resolved fixture.
+/// - Returns: the release of the fixture and the outcome of `body`, or `nil`
+///   when the resolution threw `GenerationError.notWiredForLiveInference`.
+///   A body that threw that error has a successful outcome.
+/// - Throws: whatever the resolution throws, other than
+///   `GenerationError.notWiredForLiveInference`.
+private func runLiveFixtureBody(
+    name: String,
+    profile definition: ProfileDefinition,
+    _ body: (LiveRouterFixture) async throws -> Void
+) async throws -> (release: LiveProfileRelease, outcome: Result<Void, any Error>)? {
     let fixture: LiveRouterFixture
     do {
         fixture = try await LiveRouterFixture.resolve(definition)
     } catch GenerationError.notWiredForLiveInference {
         printSkipNote(name)
-        return
+        return nil
     }
 
+    let release = fixture.release
     do {
         try await body(fixture)
-        await fixture.tearDown()
+        return (release, .success(()))
     } catch GenerationError.notWiredForLiveInference {
         printSkipNote(name)
-        await fixture.tearDown()
+        return (release, .success(()))
     } catch {
-        await fixture.tearDown()
-        throw error
+        return (release, .failure(error))
     }
 }
 
@@ -882,8 +928,11 @@ func runInBandCollectionCanaryScenario(
         do {
             answer = try await streamAnswer(of: session, prompt: prompt)
         } catch {
-            // A fixture call that still waits must end with the run.
+            // A fixture call that still waits must end with the run. The
+            // session is closed on this path too, before the fixture checks
+            // the handles of the profile.
             firstAnswerEnded.open()
+            await session.close()
             throw error
         }
         // The first answer ended: a fixture that waits on the gate settles
@@ -918,6 +967,10 @@ func runInBandCollectionCanaryScenario(
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "reply=\"\(evidence.answer.prefix(mailCanaryReplyPreviewCharacters))\""
         )
+
+        // After the answer, the run mail and the output are read, and before
+        // the fixture checks the handles of the profile.
+        await session.close()
     }
 }
 
@@ -1112,6 +1165,9 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             answer = try await streamAnswer(of: session, prompt: prompt)
         } catch {
             await reportGenerationQueue(on: slot, at: "the answer threw")
+            // Closed on this path too, before the fixture checks the handles
+            // of the profile.
+            await session.close()
             throw error
         }
         await reportGenerationQueue(on: slot, at: "the end of the answer")
@@ -1135,5 +1191,9 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
                 + "outcome=\(evidence.outcome.map { "\($0)" } ?? "none") "
                 + "reply=\"\(answer.answer.prefix(nestedGenerationReplyPreviewCharacters))\""
         )
+
+        // After the answer and the output are read, and before the fixture
+        // checks the handles of the profile.
+        await session.close()
     }
 }

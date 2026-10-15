@@ -142,15 +142,23 @@ struct IntegrationNestedGenerationTool: Tool {
     /// - Returns: `.refused` with the queue reading at the refusal, `.returned`
     ///   when the nested call gave a reply, or `.threw` for any other error.
     private func nestedCallOutcome() async -> NestedGenerationOutcome {
+        // The nested session is a Router session. It is closed on each path,
+        // thus it keeps no hold of the profile after this call. The queue is
+        // read before the close, at the instant the refusal arrives.
+        let nested = slot.makeSession()
         do {
-            _ = try await slot.makeSession().respond(
+            _ = try await nested.respond(
                 to: integrationNestedGenerationPrompt,
                 maxTokens: integrationNestedGenerationTokenLimit
             )
+            await nested.close()
             return .returned
         } catch GenerationQueueError.waitInsideOpenSubmission {
-            return .refused(queueAtRefusal: await queueReading())
+            let reading = await queueReading()
+            await nested.close()
+            return .refused(queueAtRefusal: reading)
         } catch {
+            await nested.close()
             return .threw(description: "\(error)")
         }
     }

@@ -172,6 +172,15 @@ func runShellBackgroundScenario(name: String) async throws {
             .withShell(storeDirectory: LiveRouterFixture.makeTempDir(), sandbox: probe)
             .buildRegistry()
         let declaredJournalOp = registry.surface.entries.first { $0.path == shellExecutePath }?.journalOp
+        // The command of the model waits on `modelGate`, and the swept run
+        // waits on `sweptGate`. The harness releases neither: a kill ends
+        // each command. Both gates live to the end of the scenario. They are
+        // made before the session, thus a gate that throws leaves no session
+        // that is not closed.
+        let modelGate = try ShellCommandGate()
+        let sweptGate = try ShellCommandGate()
+        let answerEnded = ScenarioGate()
+
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface, and their own
         // descriptions carry the contract.
@@ -180,13 +189,6 @@ func runShellBackgroundScenario(name: String) async throws {
             tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder),
             discoveryPriming: scenarioDiscoveryPriming
         )
-
-        // The command of the model waits on `modelGate`, and the swept run
-        // waits on `sweptGate`. The harness releases neither: a kill ends
-        // each command. Both gates live to the end of the scenario.
-        let modelGate = try ShellCommandGate()
-        let sweptGate = try ShellCommandGate()
-        let answerEnded = ScenarioGate()
 
         // Started before the answer and read after it. The run plane has to be
         // read WHILE the run is going — a reading taken after the answer would
@@ -205,6 +207,9 @@ func runShellBackgroundScenario(name: String) async throws {
         } catch {
             answerEnded.open()
             watcher.cancel()
+            // Closed on this path too, before the fixture checks the handles
+            // of the profile.
+            await session.close()
             throw error
         }
         answerEnded.open()
