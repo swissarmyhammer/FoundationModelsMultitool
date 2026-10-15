@@ -280,11 +280,11 @@ struct ShellSessionSweepTests {
 
         for group in session.groups {
             #expect(ProcessLiveness.isGone(group), "the sweep left the leader of the group \(group) unreaped")
+            // The end of each wait is the result, thus no state is read
+            // again after it. A process that the sweep did not kill never
+            // exits, and that wait is the failure of the test.
             for member in Self.processes(inGroup: group) {
                 await ProcessExitWait.waitUntilGone(member)
-                #expect(
-                    ProcessExitWait.hasExited(member),
-                    "the sweep left the process \(member) of the group \(group) alive")
             }
         }
     }

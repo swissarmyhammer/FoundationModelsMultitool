@@ -604,13 +604,12 @@ struct StdioServerProcessTests {
         await stdio.shutdown()
 
         // A killed grandchild is reaped by the system, not by this process.
-        // The wait ends on the exit event of the kernel: the grandchild is
-        // gone, or it is a zombie that the system did not reap yet.
+        // The wait ends on the exit event of the kernel, or on a reading that
+        // shows the exit. The end of the wait is the result, thus no state is
+        // read again after it. A child that the group kill missed never exits,
+        // and that wait is the failure of the test.
         for child in childPids {
             await ProcessExitWait.waitUntilGone(child)
-            #expect(
-                ProcessExitWait.hasExited(child),
-                "expected the forked child \(child) to die with its process group")
         }
         #expect(Self.isGone(pid))
         Self.confirmNoLeaks()

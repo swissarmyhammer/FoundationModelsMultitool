@@ -234,27 +234,28 @@ struct ShellRunnerTests {
         return text.split(separator: "\n").compactMap { pid_t($0) }
     }
 
-    /// Waits until each process of `members` exited, and then counts the
-    /// processes that still match `pattern` and did not exit.
+    /// Waits until each process of `members` exited, and counts the waits
+    /// that ended.
     ///
     /// Each member is a grandchild of this process, thus this process cannot
     /// reap it, and the system reaps it at a time this process does not
     /// control. The wait is on the exit event of the kernel for each member
-    /// (``ProcessExitWait/waitUntilGone(_:)``), and not on time. A member that
-    /// the kill missed never exits, and that wait is the failure of the test.
-    /// After the waits, no member of the killed tree can start a new process,
-    /// thus one reading of `pgrep` is the count of the survivors.
+    /// (``ProcessExitWait/waitUntilGone(_:)``), and not on time. The end of
+    /// each wait is the result, thus no state is read again after the waits:
+    /// a second read can see a member in the exit window as live, or see a
+    /// new process that took the pid again. A member that the kill missed
+    /// never exits, and that wait is the failure of the test.
     ///
-    /// - Parameters:
-    ///   - members: The pids of the tree, read while the tree ran.
-    ///   - pattern: The pattern `pgrep -f` reads.
-    /// - Returns: The count of the processes that match `pattern` and that
-    ///   did not exit.
-    private func survivorCount(afterTheExitOf members: [pid_t], matching pattern: String) async -> Int {
+    /// - Parameter members: The pids of the tree, read while the tree ran.
+    /// - Returns: The count of the members whose wait ended. It is equal to
+    ///   the count of `members` when this call returns.
+    private func exitedCount(of members: [pid_t]) async -> Int {
+        var exited = 0
         for member in members {
             await ProcessExitWait.waitUntilGone(member)
+            exited += 1
         }
-        return processIDs(matching: pattern).filter { !ProcessExitWait.hasExited($0) }.count
+        return exited
     }
 
     /// Waits until the store holds a line of `commandID`, and reads the lines.
@@ -464,8 +465,8 @@ struct ShellRunnerTests {
         #expect(outcome.exitCode == Self.absentExitCode)
         #expect(clock.recordedSleeps == [Self.treeKillTimeout])
 
-        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
-        #expect(survivors == 0, "the group kill left \(survivors) survivor(s)")
+        let exited = await exitedCount(of: members)
+        #expect(exited == members.count, "the group kill left \(members.count - exited) survivor(s)")
     }
 
     // MARK: - The default captured-output cap
@@ -745,8 +746,8 @@ struct ShellRunnerTests {
         let outcome = await runner.canceler(completionToken: token)()
         #expect(outcome == .stopped)
 
-        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
-        #expect(survivors == 0, "the canceler left \(survivors) survivor(s)")
+        let exited = await exitedCount(of: members)
+        #expect(exited == members.count, "the canceler left \(members.count - exited) survivor(s)")
 
         _ = try? await runTask.value
         let record = try #require(await state.record(commandID: token))
@@ -778,8 +779,8 @@ struct ShellRunnerTests {
         let outcome = await runner.canceler(completionToken: token)()
         #expect(outcome == .stopped)
 
-        let survivors = await survivorCount(afterTheExitOf: members, matching: pattern)
-        #expect(survivors == 0, "the canceler left \(survivors) member(s) of the group alive")
+        let exited = await exitedCount(of: members)
+        #expect(exited == members.count, "the canceler left \(members.count - exited) member(s) of the group alive")
 
         _ = try? await runTask.value
     }

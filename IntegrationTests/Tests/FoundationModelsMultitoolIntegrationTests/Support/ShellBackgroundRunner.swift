@@ -453,11 +453,16 @@ private func cancelSnippetRun(
     // that the kill missed never exits, and that wait is the failure of the
     // run. A process that exited and that no one reaped yet counts as gone:
     // the system reaps it at a time this process does not control.
-    let members = ProcessExitWait.processes(inGroup: group)
-    for member in members {
+    //
+    // The end of the waits is the result, thus no state is read again after
+    // them. A second read can see a process in the exit window between
+    // `NOTE_EXIT` and `SZOMB` as live, or see a new process that took the pid
+    // again. The guard above keeps `childGone` false when the group was never
+    // read.
+    for member in ProcessExitWait.processes(inGroup: group) {
         await ProcessExitWait.waitUntilGone(member)
     }
-    observation.childGone = members.allSatisfy(ProcessExitWait.hasExited)
+    observation.childGone = true
 }
 
 /// Reads the stored output of a run that is still going, through the live

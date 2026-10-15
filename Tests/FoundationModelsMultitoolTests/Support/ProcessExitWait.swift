@@ -21,22 +21,29 @@ enum ProcessExitWait {
     /// it yet.
     private static let zombieStatus = Int32(SZOMB)
 
-    /// Whether `pid` exited: the pid is gone, or the pid is a zombie that
-    /// waits for its parent to reap it.
+    /// Whether `pid` exited: the pid is gone, the kernel marks the process as
+    /// exiting, or the pid is a zombie that waits for its parent to reap it.
+    ///
+    /// The exiting state is necessary. The kernel sends `NOTE_EXIT` while it
+    /// sets `P_WEXIT` on the process, and it sets `SZOMB` only later. In that
+    /// window a read of `p_stat` alone tells "live", although the exit event
+    /// was already sent. A wait that reads in that window and then registers
+    /// its source can miss the event.
     ///
     /// - Parameter pid: The pid to read.
-    /// - Returns: `true` when the process exited.
+    /// - Returns: `true` when the process exited or is exiting.
     static func hasExited(_ pid: pid_t) -> Bool {
-        ProcessLiveness.isGone(pid) || isZombie(pid)
+        ProcessLiveness.isGone(pid) || isExitingOrZombie(pid)
     }
 
-    /// Whether `pid` is a zombie, read through `sysctl` with
+    /// Whether the kernel marks `pid` as exiting (`P_WEXIT` in `p_flag`) or
+    /// holds it as a zombie (`SZOMB` in `p_stat`), read through `sysctl` with
     /// `CTL_KERN, KERN_PROC, KERN_PROC_PID`.
     ///
     /// - Parameter pid: The pid to read.
-    /// - Returns: `true` when the kernel holds the pid in the zombie state.
-    ///   `false` when the pid is live, or when the kernel holds no such pid.
-    static func isZombie(_ pid: pid_t) -> Bool {
+    /// - Returns: `true` when the process is exiting or is a zombie. `false`
+    ///   when the pid is live, or when the kernel holds no such pid.
+    static func isExitingOrZombie(_ pid: pid_t) -> Bool {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
@@ -44,7 +51,7 @@ enum ProcessExitWait {
             sysctl(buffer.baseAddress, u_int(buffer.count), &info, &size, nil, 0)
         }
         guard result == 0, size > 0 else { return false }
-        return Int32(info.kp_proc.p_stat) == zombieStatus
+        return info.kp_proc.p_flag & P_WEXIT != 0 || Int32(info.kp_proc.p_stat) == zombieStatus
     }
 
     /// Waits until `pid` exited. Returns at once when it exited already.
@@ -52,10 +59,19 @@ enum ProcessExitWait {
     /// The wait registers a process-exit source for `pid`, resumes the source,
     /// and only then reads the pid again. Thus an exit that comes between the
     /// first reading and the registration is not lost: the second reading
-    /// sees it. The source is cancelled when the wait ends.
+    /// sees it. Each reading also counts a process in the exit window
+    /// between `NOTE_EXIT` and `SZOMB` (see ``hasExited(_:)``). The source is
+    /// cancelled when the wait ends.
     ///
-    /// A process that never exits makes the wait last until the test ends.
-    /// That wait is the failure of the test.
+    /// The end of the wait is the result: the wait ends only on the exit
+    /// event of the kernel, or on a reading that shows the exit. A caller
+    /// must not read the pid again after the wait. That second read can see
+    /// the process in the exit window as live, or see a new process that
+    /// took the pid again.
+    ///
+    /// A process that never exits, for example one that the kill missed,
+    /// makes the wait last until the test ends. That wait is the failure of
+    /// the test.
     ///
     /// - Parameter pid: The pid to wait for.
     static func waitUntilGone(_ pid: pid_t) async {
