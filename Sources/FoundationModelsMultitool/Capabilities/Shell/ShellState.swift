@@ -214,6 +214,22 @@ actor ShellState {
     /// never leaves a wait suspended.
     private var lineCountWaiters: [String: [LineCountWaiter]] = [:]
 
+    /// One wait of ``waitForCommand(holding:)``: the text the command line
+    /// must hold, and the continuation that ends the wait.
+    private struct CommandStartWaiter {
+        /// The text that the command line of the started command holds.
+        let text: String
+
+        /// Resumes the wait with the completion token of the command.
+        let continuation: CheckedContinuation<String, Never>
+    }
+
+    /// Each wait of ``waitForCommand(holding:)`` that did not end.
+    ///
+    /// `startCommand(_:commandID:)` ends each wait whose text the new command
+    /// line holds.
+    private var commandStartWaiters: [CommandStartWaiter] = []
+
     /// Resumes every continuation `pidWaiters` holds for `commandID` with
     /// `result`, and forgets them.
     ///
@@ -315,6 +331,48 @@ actor ShellState {
                 completedAt: nil,
                 completedAtWall: nil
             ))
+        resolveCommandStartWaiters(command: command, commandID: commandID)
+    }
+
+    /// Waits until a command whose command line holds `text` started, and
+    /// gives the completion token of that command.
+    ///
+    /// This is an internal hook for the tests. A test that runs a command
+    /// through the `execute` verb or through the run plane does not get the
+    /// completion token before the command starts. With this token, the test
+    /// gets the process of the command from ``groupToCancel(commandID:)``. It
+    /// returns at once when such a command already started. When more than
+    /// one command holds `text`, it gives the token of the first one.
+    ///
+    /// - Parameter text: The text that the command line holds, for example
+    ///   the path of a FIFO that only that command reads.
+    /// - Returns: The completion token of the command.
+    func waitForCommand(holding text: String) async -> String {
+        if let found = commands.first(where: { $0.command.contains(text) }) {
+            return found.id
+        }
+        return await withCheckedContinuation { continuation in
+            commandStartWaiters.append(CommandStartWaiter(text: text, continuation: continuation))
+        }
+    }
+
+    /// Ends each wait of ``waitForCommand(holding:)`` whose text `command`
+    /// holds.
+    ///
+    /// - Parameters:
+    ///   - command: The command line of the command that started.
+    ///   - commandID: The completion token of that command.
+    private func resolveCommandStartWaiters(command: String, commandID: String) {
+        guard !commandStartWaiters.isEmpty else { return }
+        var stillWaiting: [CommandStartWaiter] = []
+        for waiter in commandStartWaiters {
+            if command.contains(waiter.text) {
+                waiter.continuation.resume(returning: commandID)
+            } else {
+                stillWaiting.append(waiter)
+            }
+        }
+        commandStartWaiters = stillWaiting
     }
 
     /// Registers the right to kill the process group of a command that runs,
