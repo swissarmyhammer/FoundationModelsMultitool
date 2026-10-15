@@ -1,0 +1,1 @@
+{"id":"01M50F1QGZSFJ8MFFB594YKF68","timestamp":"2026-10-15T19:01:29.759508Z","op":"create","item_id":"01M50F1QGR6T4QD50R4HNAM5SF","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: b60205\n+tag_name: elicitation-phase-2\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: b60205\n-tag_name: elicitation-phase-2\n","transaction_id":null}
