@@ -646,6 +646,36 @@ struct ShellStateTests {
         #expect(await state.runningProcess(commandID: token) == nil)
     }
 
+    /// `groupToCancel` gives `nil` for a command whose record is already
+    /// final, and it does not wait. Before, the call waited for a
+    /// `registerProcess` or a `completeCommand` that never comes after the
+    /// end, thus a cancel of an ended command did not end.
+    ///
+    /// The order is fixed, and no run can hang. The command ends first. Then
+    /// a task starts the call, and the test registers a group that sends
+    /// nothing. That registration is the release signal: it ends the call in
+    /// each order of the two. When the call waits, the registration resumes
+    /// it with that group. When the registration comes first, the call reads
+    /// that group. Thus the old code always gives the group, and the check
+    /// fails. The fixed code reads the final record first and gives `nil`.
+    @Test("groupToCancel gives nil for a command that already ended")
+    func groupToCancelGivesNilForAnEndedCommand() async throws {
+        let state = try makeState()
+        let token = ToolContext.makeCompletionToken()
+
+        await state.startCommand("echo done", commandID: token)
+        await state.completeCommand(commandID: token, exitCode: 0)
+
+        let call = Task { await state.groupToCancel(commandID: token) }
+        // The signal sends nothing: a kill of this group would end the test
+        // process.
+        await state.registerProcess(
+            commandID: token, group: ProcessGroupKill(pid: getpid(), signal: { _ in }))
+
+        let answer = await call.value
+        #expect(answer == nil)
+    }
+
     // MARK: - The atomic completion transition
 
     /// `completeIfRunning` finalizes a command that still runs, in one hop of

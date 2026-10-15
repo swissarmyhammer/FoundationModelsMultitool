@@ -361,10 +361,18 @@ actor ShellState {
     /// comment of `pidWaiters` for why the check and the wait are one
     /// uninterrupted hop of this actor.
     ///
+    /// A command whose record is already final gets `nil` at once, and the
+    /// call does not wait. The finalize of that record already ran, thus no
+    /// later event can resume a wait. A final record also has no process to
+    /// kill: the run already reaped its child, or a different cancel already
+    /// holds the group. A token with no record yet still waits, because the
+    /// run can start its record after this cancel arrived.
+    ///
     /// - Parameter commandID: The completion token of the run to cancel.
-    /// - Returns: The process group to kill, or `nil` when the command ended
-    ///   (or never started) with no process to kill.
+    /// - Returns: The process group to kill, or `nil` when the record of the
+    ///   command is final, or becomes final with no process to kill.
     func groupToCancel(commandID: String) async -> ProcessGroupKill? {
+        if let found = record(commandID: commandID), found.status != .running { return nil }
         if let group = processes[commandID] { return group }
         return await withCheckedContinuation { continuation in
             pidWaiters[commandID, default: []].append(continuation)
