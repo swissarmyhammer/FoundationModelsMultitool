@@ -24,6 +24,12 @@
 //
 // A bound context wins when present, so a Router host never sets the handler.
 //
+// **A headless session asks no one.** When the `userPresence` of this actor
+// is `.headless`, each request gets `cancel` at once, with
+// `RunPlane.noUserPresentReason` under the `reason` key of `_meta`. The
+// three answerers are not asked. Each decline and each cancel that gives a
+// reason carries it the same way.
+//
 // **The restricted form schema.** eventplan.md: "Our boundary enforces the
 // restricted form schema for each elicitor." The wire schema is decoded by
 // the `ElicitationRequestedSchema` of FoundationModelsExtras, which refuses a
@@ -81,11 +87,20 @@ extension MCPServer {
     /// an `ElicitationRequest`, resolves it in the order the header of
     /// this file states, and encodes the answer back onto the wire.
     ///
+    /// In a headless session (``userPresence`` is `.headless`), no person
+    /// can answer. The answer is a cancel with `RunPlane.noUserPresentReason`
+    /// at once: before the schema decode, the context and the host's
+    /// handler.
+    ///
     /// - Parameter parameters: The request as the server sent it — form
     ///   mode with a `requestedSchema`, or URL mode with a `url` and an
     ///   `elicitationId`.
     /// - Returns: The result the server reads.
     func answerElicitation(parameters: CreateElicitation.Parameters) async -> CreateElicitation.Result {
+        guard userPresence == .interactive else {
+            record(.mcpElicitationCancelledNoUserPresent, level: .debug)
+            return Self.wireResult(of: .cancel(reason: RunPlane.noUserPresentReason))
+        }
         switch parameters {
         case .form(let form):
             guard let requestedSchema = decodeRestrictedSchema(form.requestedSchema) else {
@@ -259,7 +274,16 @@ extension MCPServer {
         }
     }
 
+    /// The key of the reason in the `_meta` of a decline or a cancel on the
+    /// wire. It is the same key as `ACPClient.elicitationReasonMetaKey` of
+    /// FoundationModelsACPClient, thus the two sides of an agent read one
+    /// key.
+    static let elicitationReasonMetaKey = "reason"
+
     /// Encodes an answer as the `CreateElicitation.Result` the server reads.
+    ///
+    /// A decline or a cancel that gives a reason carries it in `_meta`,
+    /// under ``elicitationReasonMetaKey``. One with no reason has no `_meta`.
     ///
     /// - Parameter response: The answer.
     /// - Returns: The wire result.
@@ -269,10 +293,20 @@ extension MCPServer {
             return CreateElicitation.Result(
                 action: .accept, content: response.content.map { $0.mapValues(wireValue) })
         case .decline:
-            return CreateElicitation.Result(action: .decline)
+            return CreateElicitation.Result(action: .decline, _meta: reasonMetadata(of: response))
         case .cancel:
-            return CreateElicitation.Result(action: .cancel)
+            return CreateElicitation.Result(action: .cancel, _meta: reasonMetadata(of: response))
         }
+    }
+
+    /// The `_meta` that carries the reason of `response`.
+    ///
+    /// - Parameter response: A decline or a cancel.
+    /// - Returns: The metadata with the reason under
+    ///   ``elicitationReasonMetaKey``, or `nil` when `response` gives no
+    ///   reason.
+    private static func reasonMetadata(of response: ElicitationResponse) -> Metadata? {
+        response.reason.map { Metadata(additionalFields: [elicitationReasonMetaKey: .string($0)]) }
     }
 
     /// One filled form value on the wire.

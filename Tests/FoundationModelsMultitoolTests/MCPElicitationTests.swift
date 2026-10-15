@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import MCP
 import MCPTestServer
@@ -86,6 +87,20 @@ struct MCPElicitationTests {
     /// How many calls stand in flight while an elicitation is held.
     private static let oneCallInFlight = 1
 
+    /// How many calls the case of two calls in flight makes.
+    private static let twoCalls = 2
+
+    /// The key of the reason in the `_meta` of an elicitation result. The
+    /// test spells it out, and does not read the constant of the product, so
+    /// the test compiles on the code before the change.
+    private static let reasonMetaKey = "reason"
+
+    /// The tool name and the op of the headless context.
+    private static let headlessTool = "headless-probe"
+
+    /// The completion token of the headless context.
+    private static let headlessCompletionToken = "headless-run"
+
     /// The `runCode` snippet that awaits the eliciting verb with no arguments.
     private static let elicitEchoSnippet =
         "return await tools.\(serverName).\(ScriptedServer.elicitEchoToolName)({});"
@@ -100,7 +115,11 @@ struct MCPElicitationTests {
 
     /// The two answers that are not an accept, beside the text each one
     /// makes the loopback tool answer.
-    private static let refusals: [(response: ElicitationResponse, text: String)] = [
+    ///
+    /// The tuple names the type with its module: Router declares a typealias
+    /// of the same name, and the `@Test` arguments macro cannot resolve the
+    /// bare name when this file imports the two modules.
+    private static let refusals: [(response: FoundationModelsExtras.ElicitationResponse, text: String)] = [
         (.decline, declineText),
         (.cancel, cancelText),
     ]
@@ -173,14 +192,42 @@ struct MCPElicitationTests {
     /// - Parameters:
     ///   - kind: The transport to connect over.
     ///   - elicitationHandler: The host's answerer, or `nil`.
+    ///   - userPresence: Whether a person is present to answer an
+    ///     elicitation. Defaults to `.interactive`.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.
     private static func connected(
-        over kind: MCPTransportKind, elicitationHandler: MCPServer.ElicitationHandler? = nil
+        over kind: MCPTransportKind, elicitationHandler: MCPServer.ElicitationHandler? = nil,
+        userPresence: UserPresence = .interactive
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
         try await MCPTestSupport.connectedLoopbackMCPServer(
-            over: kind, name: serverName, elicitationHandler: elicitationHandler)
+            over: kind, name: serverName, elicitationHandler: elicitationHandler, userPresence: userPresence)
+    }
+
+    /// A context over a headless run plane: no person is present, thus the
+    /// run plane answers each question with a cancel and
+    /// `RunPlane.noUserPresentReason` at once.
+    ///
+    /// - Returns: The context.
+    private static func headlessContext() -> ToolContext {
+        ToolContext(
+            sessionID: ULID(),
+            runPlane: RunPlane(userPresence: .headless),
+            sink: RecordingEventSink(),
+            tool: headlessTool,
+            op: headlessTool,
+            completionToken: headlessCompletionToken,
+            isCancelled: { false })
+    }
+
+    /// The `reason` field of the `_meta` of `result`.
+    ///
+    /// - Parameter result: The elicitation result the scripted server got.
+    /// - Returns: The value, or `nil` when there is no result, no `_meta` or
+    ///   no `reason`.
+    private static func reason(of result: CreateElicitation.Result?) -> Value? {
+        result?._meta?[reasonMetaKey]
     }
 
     /// Starts one call of `tool` on `server` under `context`, in a task the
@@ -402,7 +449,9 @@ struct MCPElicitationTests {
     // MARK: - decline and cancel
 
     @Test("decline and cancel reach the server as those actions, and neither cancels the run", arguments: refusals)
-    func aRefusalReachesTheServerAndKeepsTheRun(refusal: (response: ElicitationResponse, text: String)) async throws {
+    func aRefusalReachesTheServerAndKeepsTheRun(
+        refusal: (response: FoundationModelsExtras.ElicitationResponse, text: String)
+    ) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
         try await BoundRun.with { run in
             let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
@@ -419,6 +468,60 @@ struct MCPElicitationTests {
             }
             #expect(Self.rendered(echoed).contains(Self.echoText))
         }
+        withExtendedLifetime(scripted) {}
+    }
+
+    // MARK: - A headless session
+
+    @Test("under a headless context, elicitEcho gets cancel with the no-user-present reason in _meta")
+    func aHeadlessContextCancelsWithTheReason() async throws {
+        let (scripted, server) = try await Self.connected(over: .inMemory)
+
+        let result = try await ToolContext.$current.withValue(Self.headlessContext()) {
+            try await server.call(name: ScriptedServer.elicitEchoToolName, arguments: nil)
+        }
+
+        #expect(Self.rendered(result).contains(Self.cancelText))
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .cancel)
+        #expect(Self.reason(of: received) == .string(RunPlane.noUserPresentReason))
+        withExtendedLifetime(scripted) {}
+    }
+
+    @Test("a headless server cancels a bare elicitEcho with the reason, and never calls the handler")
+    func aHeadlessServerCancelsWithoutTheHandler() async throws {
+        let probe = HandlerProbe(responding: Self.scriptedAccept)
+        let (scripted, server) = try await Self.connected(
+            over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
+        let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+
+        let output = try await Self.bareCall(tool)
+
+        #expect(output.contains(Self.cancelText))
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .cancel)
+        #expect(Self.reason(of: received) == .string(RunPlane.noUserPresentReason))
+        #expect(await probe.requests.count == Self.noHandlerCalls)
+        withExtendedLifetime(scripted) {}
+    }
+
+    @Test("two elicitEcho calls in flight on a headless server each get cancel with the reason")
+    func twoCallsOnAHeadlessServerEachCancelWithTheReason() async throws {
+        let probe = HandlerProbe(responding: Self.scriptedAccept)
+        let (scripted, server) = try await Self.connected(
+            over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
+        let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+
+        async let first = Self.bareCall(tool)
+        async let second = Self.bareCall(tool)
+        let outputs = try await [first, second]
+
+        #expect(outputs.allSatisfy { $0.contains(Self.cancelText) })
+        let received = await scripted.receivedElicitationResults
+        #expect(received.count == Self.twoCalls)
+        #expect(received.allSatisfy { $0.action == .cancel })
+        #expect(received.allSatisfy { Self.reason(of: $0) == .string(RunPlane.noUserPresentReason) })
+        #expect(await probe.requests.count == Self.noHandlerCalls)
         withExtendedLifetime(scripted) {}
     }
 

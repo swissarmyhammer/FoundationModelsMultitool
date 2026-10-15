@@ -118,6 +118,12 @@ public actor ScriptedServer {
     /// wire carried a capability, and not only that the client held it.
     public private(set) var receivedClientCapabilities: Client.Capabilities?
 
+    /// Each `elicitation/create` result that an eliciting tool of this server
+    /// received, in receipt order. The tool appends the result before it
+    /// returns, thus a test reads it after the call returned and needs no
+    /// wait.
+    public private(set) var receivedElicitationResults: [CreateElicitation.Result] = []
+
     /// How many stages of the dynamic toolset scenario ran — the index of the
     /// stage `advanceDynamicToolsetScenario()` runs next. It is stored here,
     /// and not in `DynamicToolsetScenario.swift`, because an extension cannot
@@ -640,9 +646,17 @@ public actor ScriptedServer {
             try await Self.withResolvedSelf(self) { instance in
                 let result = try await instance.server.requestElicitation(
                     message: message, requestedSchema: requestedSchema)
+                await instance.recordElicitationResult(result)
                 return Self.buildElicitationResult(from: result)
             }
         }
+    }
+
+    /// Appends `result` to ``receivedElicitationResults``.
+    ///
+    /// - Parameter result: The result that an eliciting tool received.
+    private func recordElicitationResult(_ result: CreateElicitation.Result) {
+        receivedElicitationResults.append(result)
     }
 
     /// Builds the `tools/call` result an eliciting tool returns once its
@@ -688,6 +702,7 @@ public actor ScriptedServer {
             try await Self.withResolvedSelf(self) { instance in
                 let result = try await instance.server.requestElicitation(
                     message: message, url: url, elicitationId: elicitationId)
+                await instance.recordElicitationResult(result)
                 return Self.buildElicitationResult(from: result)
             }
         }

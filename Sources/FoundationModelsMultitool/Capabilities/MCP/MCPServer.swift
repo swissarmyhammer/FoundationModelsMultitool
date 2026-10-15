@@ -196,7 +196,9 @@ public actor MCPServer {
     ///
     /// `.interactive` makes each client declare the elicitation capability.
     /// `.headless` makes each client declare no elicitation capability — see
-    /// ``clientCapabilities(for:)``.
+    /// ``clientCapabilities(for:)`` — and answers each `elicitation/create`
+    /// with `cancel` and `RunPlane.noUserPresentReason` at once. See
+    /// `MCPServer+Elicitation.swift`.
     let userPresence: UserPresence
 
     /// The current readiness state — see ``MCPServerState``.

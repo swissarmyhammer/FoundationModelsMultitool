@@ -446,6 +446,10 @@ enum MultitoolTelemetry {
         /// Level: `debug`.
         case mcpElicitationCompletionIgnored = "mcp elicitation completion ignored"
 
+        /// An elicitation came in a headless session, and the answer is
+        /// `cancel` with the no-user-present reason. Level: `debug`.
+        case mcpElicitationCancelledNoUserPresent = "mcp elicitation cancelled: no user is present"
+
         /// A form-mode elicitation was declined because its schema is outside
         /// the restricted subset. Level: `warning`.
         case mcpElicitationSchemaDeclined = "mcp form elicitation declined: the schema is not supported"
