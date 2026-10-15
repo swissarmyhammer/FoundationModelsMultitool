@@ -217,18 +217,26 @@ actor ShellState {
     /// One wait of ``waitForCommand(holding:)``: the text the command line
     /// must hold, and the continuation that ends the wait.
     private struct CommandStartWaiter {
+        /// The id of the wait. A cancel of the task of the wait finds the
+        /// wait with this id.
+        let id: Int
+
         /// The text that the command line of the started command holds.
         let text: String
 
-        /// Resumes the wait with the completion token of the command.
-        let continuation: CheckedContinuation<String, Never>
+        /// Resumes the wait with the completion token of the command, or with
+        /// `nil` when the task of the wait was cancelled.
+        let continuation: CheckedContinuation<String?, Never>
     }
 
     /// Each wait of ``waitForCommand(holding:)`` that did not end.
     ///
     /// `startCommand(_:commandID:)` ends each wait whose text the new command
-    /// line holds.
+    /// line holds. A cancel of the task of a wait ends that wait with `nil`.
     private var commandStartWaiters: [CommandStartWaiter] = []
+
+    /// The id that the next wait of ``waitForCommand(holding:)`` gets.
+    private var nextCommandStartWaiterID = 0
 
     /// Resumes every continuation `pidWaiters` holds for `commandID` with
     /// `result`, and forgets them.
@@ -344,16 +352,45 @@ actor ShellState {
     /// returns at once when such a command already started. When more than
     /// one command holds `text`, it gives the token of the first one.
     ///
+    /// A command that never starts does not end the wait. Thus the wait also
+    /// ends when its task is cancelled, and then it gives `nil`. A test that
+    /// also waits for a different event, for example the end of the call that
+    /// must start the command, cancels this wait when that event comes first.
+    /// Thus no wait stays behind.
+    ///
     /// - Parameter text: The text that the command line holds, for example
     ///   the path of a FIFO that only that command reads.
-    /// - Returns: The completion token of the command.
-    func waitForCommand(holding text: String) async -> String {
+    /// - Returns: The completion token of the command, or `nil` when the task
+    ///   was cancelled before such a command started.
+    func waitForCommand(holding text: String) async -> String? {
         if let found = commands.first(where: { $0.command.contains(text) }) {
             return found.id
         }
-        return await withCheckedContinuation { continuation in
-            commandStartWaiters.append(CommandStartWaiter(text: text, continuation: continuation))
+        let id = nextCommandStartWaiterID
+        nextCommandStartWaiterID += 1
+        // The check of the cancel and the record of the wait occur in one hop
+        // of this actor. A cancel that comes after the check sends its end in
+        // a later hop, thus that end finds the recorded wait.
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                commandStartWaiters.append(CommandStartWaiter(id: id, text: text, continuation: continuation))
+            }
+        } onCancel: {
+            Task { await self.endCommandStartWait(id: id) }
         }
+    }
+
+    /// Ends the wait of ``waitForCommand(holding:)`` with `id` with `nil`.
+    /// Does nothing when that wait already ended.
+    ///
+    /// - Parameter id: The id of the wait.
+    private func endCommandStartWait(id: Int) {
+        guard let index = commandStartWaiters.firstIndex(where: { $0.id == id }) else { return }
+        commandStartWaiters.remove(at: index).continuation.resume(returning: nil)
     }
 
     /// Ends each wait of ``waitForCommand(holding:)`` whose text `command`

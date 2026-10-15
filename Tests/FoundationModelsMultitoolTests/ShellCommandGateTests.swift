@@ -1,12 +1,16 @@
 import Foundation
 import Testing
 
-/// Tests of ``ShellCommandGate/release(whileAlive:)``: the release ends on the
-/// first of two events, and never on a time.
+@testable import FoundationModelsMultitool
+
+/// Tests of ``ShellCommandGate``: each release ends on the first of its
+/// events, and never on a time.
 ///
-/// Each test starts a real child with `Process`. No test waits on a clock: the
-/// release ends when the child opens the FIFO, or on the kqueue exit event of
-/// the child.
+/// The tests of ``ShellCommandGate/release(whileAlive:)`` start a real child
+/// with `Process`. No test waits on a clock: the release ends when the child
+/// opens the FIFO, or on the kqueue exit event of the child. The tests of
+/// ``ShellCommandGate/release(commandIn:orEndOf:)`` drive a `ShellState` and a
+/// ``CallEnd`` in a fixed order.
 @Suite("ShellCommandGateTests")
 struct ShellCommandGateTests {
 
@@ -55,5 +59,61 @@ struct ShellCommandGateTests {
         try input.fileHandleForWriting.close()
 
         #expect(try await release.value == .commandExited)
+    }
+
+    /// What the call of ``releaseEndsWhenTheCallEndsBeforeTheCommandStarts()``
+    /// returned. It never calls `execute`.
+    private static let returnedWithNoExecute = "returned with no execute"
+
+    /// The completion token of the command that starts after the call ended.
+    private static let laterCommandID = "later-command"
+
+    /// A call that ends and never starts the command cannot make the release
+    /// wait for all time: the release ends on the end of the call, and gives
+    /// ``ShellCommandGate/CommandRelease/callEndedFirst(returned:)``.
+    ///
+    /// The order is fixed. The call ends first, and only after that does a
+    /// different command that holds the path of the FIFO start, and end with
+    /// no process. ``CallEnd/record(_:)`` ends the race of the release in the
+    /// record itself, or the release sees the end at once when it starts
+    /// later. Thus the release gives the end of the call, before or after
+    /// the later command. A release that does not see the end of the call
+    /// waits for the later command, and gives
+    /// ``ShellCommandGate/CommandRelease/released(_:commandID:)`` for it: a
+    /// failed check, and no wait for all time.
+    @Test("a release ends when the call that must start the command ends first")
+    func releaseEndsWhenTheCallEndsBeforeTheCommandStarts() async throws {
+        let gate = try ShellCommandGate()
+        let state = try ShellState(
+            preferredDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("multitool-gate-call-\(UUID().uuidString)"))
+        let call = CallEnd()
+
+        async let released = gate.release(commandIn: state, orEndOf: call)
+        call.record(Self.returnedWithNoExecute)
+        await state.startCommand(gate.waitCommand, commandID: Self.laterCommandID)
+        await state.completeCommand(commandID: Self.laterCommandID)
+
+        #expect(try await released == .callEndedFirst(returned: Self.returnedWithNoExecute))
+    }
+
+    /// When the command starts before the call ends, the release goes on to
+    /// the process of that command. A record that is final with no process
+    /// gives ``ShellCommandGate/Release/commandExited``, and the end of the
+    /// call that comes later changes nothing.
+    @Test("a release that sees the command start ignores a later end of the call")
+    func releaseThatSeesTheCommandIgnoresALaterEndOfTheCall() async throws {
+        let gate = try ShellCommandGate()
+        let state = try ShellState(
+            preferredDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("multitool-gate-call-\(UUID().uuidString)"))
+        let call = CallEnd()
+        await state.startCommand(gate.waitCommand, commandID: Self.laterCommandID)
+        await state.completeCommand(commandID: Self.laterCommandID)
+
+        let released = try await gate.release(commandIn: state, orEndOf: call)
+        call.record(Self.returnedWithNoExecute)
+
+        #expect(released == .released(.commandExited, commandID: Self.laterCommandID))
     }
 }

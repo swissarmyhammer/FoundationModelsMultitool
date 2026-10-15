@@ -19,9 +19,9 @@ import Synchronization
 /// for reading, thus the release reaches the command that waits, also when
 /// the command starts after the call of the release. The release also ends
 /// when the process of the command exits first, thus no release waits for
-/// all time. ``release(commandIn:)`` gets that process from the
+/// all time. ``release(commandIn:orEndOf:)`` gets that process from the
 /// `ShellState` of a command that runs through the `execute` verb or the run
-/// plane.
+/// plane. It also ends when the call that must start the command ends first.
 final class ShellCommandGate: Sendable {
     /// What a FIFO could not do.
     struct Failure: Error, CustomStringConvertible {
@@ -116,16 +116,33 @@ final class ShellCommandGate: Sendable {
         }
     }
 
+    /// How ``release(commandIn:orEndOf:)`` ended.
+    enum CommandRelease: Equatable, Sendable {
+        /// The command started, and the release ended as `release` tells.
+        case released(Release, commandID: String)
+
+        /// The call that must start the command ended before the command
+        /// started. The release wrote no line. `returned` tells what the call
+        /// returned.
+        case callEndedFirst(returned: String)
+    }
+
     /// Lets the command that waits on the FIFO go on, for a command that runs
-    /// through `state`, or ends when the process of that command exits first.
+    /// through `state`, or ends when the process of that command exits first,
+    /// or when the call that must start the command ends first.
     ///
     /// The test does not have the pid of a command that runs through the
     /// `execute` verb or the run plane. Each step that gets it ends on an
     /// event:
     ///
-    /// 1. `ShellState.waitForCommand(holding:)` ends when a command whose
-    ///    command line holds the path of this FIFO started. It gives the
-    ///    completion token of that command.
+    /// 1. The first of two events: `ShellState.waitForCommand(holding:)` ends
+    ///    when a command whose command line holds the path of this FIFO
+    ///    started, and gives the completion token of that command; or `call`
+    ///    records its end. When the call ended first, the command never
+    ///    starts, and this release gives
+    ///    ``CommandRelease/callEndedFirst(returned:)``. The release then
+    ///    cancels the wait for the command and waits for the end of that
+    ///    wait, thus no wait stays behind.
     /// 2. `ShellState.groupToCancel(commandID:)` ends when the run registered
     ///    the process of the command. It gives `nil` when the record of the
     ///    command is final with no process, for example after a spawn that
@@ -135,16 +152,89 @@ final class ShellCommandGate: Sendable {
     ///
     /// `groupToCancel` only reads the process group. It sends no signal.
     ///
-    /// - Parameter state: The store of the shell commands of the test.
-    /// - Returns: How the release ended, and the completion token of the
-    ///   command.
+    /// - Parameters:
+    ///   - state: The store of the shell commands of the test.
+    ///   - call: The end of the call that must start the command.
+    /// - Returns: How the release ended.
     /// - Throws: What ``release(whileAlive:)`` throws.
-    func release(commandIn state: ShellState) async throws -> (release: Release, commandID: String) {
-        let commandID = await state.waitForCommand(holding: path)
-        guard let group = await state.groupToCancel(commandID: commandID) else {
-            return (.commandExited, commandID)
+    func release(commandIn state: ShellState, orEndOf call: CallEnd) async throws -> CommandRelease {
+        let race = CommandStartRace()
+        call.observe { returned in race.finish(.callEnded(returned: returned)) }
+        let path = path
+        let commandWait = Task {
+            if let commandID = await state.waitForCommand(holding: path) {
+                race.finish(.started(commandID: commandID))
+            }
         }
-        return (try await release(whileAlive: group.pid), commandID)
+        let first = await race.first()
+        commandWait.cancel()
+        await commandWait.value
+        switch first {
+        case .callEnded(let returned):
+            return .callEndedFirst(returned: returned)
+        case .started(let commandID):
+            guard let group = await state.groupToCancel(commandID: commandID) else {
+                return .released(.commandExited, commandID: commandID)
+            }
+            return .released(try await release(whileAlive: group.pid), commandID: commandID)
+        }
+    }
+}
+
+/// The race of one ``ShellCommandGate/release(commandIn:orEndOf:)``: the start
+/// of the command against the end of the call that must start it. The first
+/// event wins.
+private final class CommandStartRace: Sendable {
+    /// One event of the race.
+    enum Event: Sendable {
+        /// The command started under `commandID`.
+        case started(commandID: String)
+
+        /// The call ended, and returned `returned`.
+        case callEnded(returned: String)
+    }
+
+    /// What the two events and the waiter know of the race.
+    private struct State {
+        /// The first event, after it came.
+        var first: Event?
+
+        /// The waiter of ``first()``, while it waits.
+        var waiter: CheckedContinuation<Event, Never>?
+    }
+
+    /// The state that the events and the waiter share.
+    private let state = Mutex(State())
+
+    /// Records `event`, unless an event came before it, and ends the wait of
+    /// ``first()``.
+    ///
+    /// - Parameter event: The event that came.
+    func finish(_ event: Event) {
+        let waiter = state.withLock { current -> CheckedContinuation<Event, Never>? in
+            guard current.first == nil else { return nil }
+            current.first = event
+            defer { current.waiter = nil }
+            return current.waiter
+        }
+        waiter?.resume(returning: event)
+    }
+
+    /// Waits for the first event. Returns at once when it already came.
+    ///
+    /// - Returns: The first event.
+    func first() async -> Event {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Event, Never>) in
+            let first = state.withLock { current -> Event? in
+                if current.first == nil {
+                    current.waiter = continuation
+                }
+                return current.first
+            }
+            if let first {
+                continuation.resume(returning: first)
+            }
+        }
     }
 }
 

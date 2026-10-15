@@ -91,25 +91,52 @@ struct BackgroundSettleGraceTests {
     }
 
     /// Releases the command that waits on `gate`, and records an issue when
-    /// that command exited before it got the line.
+    /// that command exited before it got the line, or when the call that must
+    /// start the command ended before the command started.
     ///
     /// The release ends on an event in each case, see
-    /// ``ShellCommandGate/release(commandIn:)``. When the command is gone, the
-    /// test waits for the end of its record, which is an event of `state`,
-    /// and records an issue with that record. Thus no release waits for all
-    /// time.
+    /// ``ShellCommandGate/release(commandIn:orEndOf:)``. When the command is
+    /// gone, the test waits for the end of its record, which is an event of
+    /// `state`, and records an issue with that record. When the call ended
+    /// first, the test records an issue with what the call returned. Thus no
+    /// release waits for all time.
     ///
     /// - Parameters:
     ///   - gate: The gate the command waits on.
     ///   - state: The store of the shell commands of the test.
-    /// - Throws: What ``ShellCommandGate/release(commandIn:)`` throws.
-    private static func release(_ gate: ShellCommandGate, commandIn state: ShellState) async throws {
-        let (release, commandID) = try await gate.release(commandIn: state)
-        guard release == .commandExited else { return }
-        await state.waitForStoredLines(commandID: commandID, atLeast: .max)
-        let record = await state.record(commandID: commandID)
-        Issue.record(
-            "the command ended before the gate released it; its record: \(String(describing: record))")
+    ///   - call: The end of the call that must start the command.
+    /// - Throws: What ``ShellCommandGate/release(commandIn:orEndOf:)`` throws.
+    private static func release(
+        _ gate: ShellCommandGate, commandIn state: ShellState, orEndOf call: CallEnd
+    ) async throws {
+        switch try await gate.release(commandIn: state, orEndOf: call) {
+        case .released(.reached, _):
+            return
+        case .released(.commandExited, let commandID):
+            await state.waitForStoredLines(commandID: commandID, atLeast: .max)
+            let record = await state.record(commandID: commandID)
+            Issue.record(
+                "the command ended before the gate released it; its record: \(String(describing: record))")
+        case .callEndedFirst(let returned):
+            Issue.record("the call ended before it started the command; the call \(returned)")
+        }
+    }
+
+    /// The end of the background run `completionToken`: the event of its
+    /// run mail in `log`.
+    ///
+    /// Each test that uses it waits for the run mail of that run next, thus
+    /// the task that waits for the event ends in the test.
+    ///
+    /// - Parameters:
+    ///   - completionToken: The completion token of the run.
+    ///   - log: The output of the session.
+    /// - Returns: The end of the run, with the terminal event of the run.
+    private static func endOfRun(_ completionToken: String, in log: SessionOutputLog) -> CallEnd {
+        CallEnd.after {
+            let runMail = await log.runMail(settling: completionToken)
+            return "settled with \(String(describing: await log.settledRun(in: runMail)))"
+        }
     }
 
     /// The `execute` verb and the `getLines` verb over one store, with a
@@ -314,9 +341,10 @@ struct BackgroundSettleGraceTests {
             mounting: [probe.runCode], prompts: MailProbePrompts(),
             step: runningSnippet(snippet(heldCommand(gate))), clock: ManualRunClock()
         ) { session in
-            async let responded = session.respond(to: "run the snippet")
+            let callEnd = CallEnd()
+            async let responded = callEnd.recording { try await session.respond(to: "run the snippet") }
             try await snippetEnded.wait()
-            try await Self.release(gate, commandIn: probe.state)
+            try await Self.release(gate, commandIn: probe.state, orEndOf: callEnd)
             return try await responded
         }
         #expect(!PendingRunEnvelope.isRendered(text: result), "the snippet went to the background: \(result)")
@@ -416,7 +444,8 @@ struct BackgroundSettleGraceTests {
             let answer = try await asked.reply
 
             let envelope = try mailProbeEnvelope(answer)
-            try await Self.release(gate, commandIn: probe.state)
+            try await Self.release(
+                gate, commandIn: probe.state, orEndOf: Self.endOfRun(envelope.completionToken, in: log))
             let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
             #expect(runMail.event.detail.contains(Self.fullOutputLine), "run mail: \(runMail.event.detail)")
             #expect(runMail.answer.mailIds.contains(runMail.id))
@@ -476,7 +505,8 @@ struct BackgroundSettleGraceTests {
             let answer = try await asked.reply
 
             let envelope = try mailProbeEnvelope(answer)
-            try await Self.release(gate, commandIn: probe.state)
+            try await Self.release(
+                gate, commandIn: probe.state, orEndOf: Self.endOfRun(envelope.completionToken, in: log))
             let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
             #expect(runMail.answer.mailIds.contains(runMail.id))
             let mail = try #require(Self.laterPrompts(containing: envelope.completionToken, in: prompts.all).first)
@@ -571,7 +601,8 @@ struct BackgroundSettleGraceTests {
 
             let envelope = try mailProbeEnvelope(answer)
             #expect(envelope.pending)
-            try await Self.release(gate, commandIn: verbs.state)
+            try await Self.release(
+                gate, commandIn: verbs.state, orEndOf: Self.endOfRun(envelope.completionToken, in: log))
             let runMail = try await log.deliveredRunMail(settling: envelope.completionToken)
             let followUp = try await log.ask(Self.followUpMessage)
             #expect(await log.runMailIds(settling: envelope.completionToken) == [runMail.id])
@@ -593,10 +624,11 @@ struct BackgroundSettleGraceTests {
         try await Self.withSession(
             mounting: [verbs.execute], prompts: prompts, step: Self.executing(Self.heldCommand(gate)), clock: clock
         ) { session in
-            async let responded = session.respond(to: "run the command")
+            let callEnd = CallEnd()
+            async let responded = callEnd.recording { try await session.respond(to: "run the command") }
             await clock.waitForSleepers(atLeast: Self.executeSleepers)
             clock.advance(by: Self.threeSecondRun)
-            try await Self.release(gate, commandIn: verbs.state)
+            try await Self.release(gate, commandIn: verbs.state, orEndOf: callEnd)
             let report = try await responded
 
             #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
