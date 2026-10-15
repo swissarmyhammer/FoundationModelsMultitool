@@ -202,8 +202,8 @@ struct ShellSessionSweepTests {
     ///
     /// The engine tracks a run as it takes it, and the child registers its pid
     /// inside the spawn, thus a plain read that arrives first finds nothing.
-    /// `ShellState.pidToCancel(commandID:)` is the event: it returns when the
-    /// child registered its pid, or `nil` when the command ended with no pid.
+    /// `ShellState.groupToCancel(commandID:)` is the event: it returns when the
+    /// child registered its group, or `nil` when the command ended with no group.
     ///
     /// - Parameters:
     ///   - completionToken: The completion token of the run.
@@ -214,11 +214,11 @@ struct ShellSessionSweepTests {
     private static func processGroup(
         of completionToken: String, in state: ShellState
     ) async throws -> pid_t {
-        guard let registered = await state.pidToCancel(commandID: completionToken) else {
+        guard let registered = await state.groupToCancel(commandID: completionToken) else {
             Issue.record("The run under \(completionToken) registered no process group.")
             throw ProcessGroupAbsent()
         }
-        return registered
+        return registered.pid
     }
 
     /// The failure ``processGroup(of:in:)`` throws when no child registers.

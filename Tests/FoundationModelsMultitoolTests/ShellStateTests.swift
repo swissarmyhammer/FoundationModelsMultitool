@@ -636,7 +636,10 @@ struct ShellStateTests {
         let group = getpid()
 
         await state.startCommand("sleep 60", commandID: token)
-        await state.registerProcess(commandID: token, pid: group)
+        // The signal sends nothing: this test never kills, and a kill of this
+        // group would end the test process.
+        await state.registerProcess(
+            commandID: token, group: ProcessGroupKill(pid: group, signal: { _ in }))
         #expect(await state.runningProcess(commandID: token) == group)
 
         await state.completeCommand(commandID: token, exitCode: 0)

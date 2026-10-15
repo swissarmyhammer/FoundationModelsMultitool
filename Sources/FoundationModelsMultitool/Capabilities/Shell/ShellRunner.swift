@@ -21,13 +21,15 @@
 // no supervisor.
 //
 // The canceler holds NO pid of its own. It reads the process group of the run
-// from `ShellState.pidToCancel(commandID:)` at the moment it runs. The store
-// is the one home of that pid, thus the canceler can never signal a process
-// group that the store already gave up. A cancel can also arrive before that
-// pid exists at all — a mounted call answers the envelope before its command
-// spawns, see `Execute.mount` — and `pidToCancel` answers
-// that case by SUSPENDING instead of answering with a pid it does not have
-// yet: it waits for `ShellState.registerProcess(commandID:pid:)` to give one,
+// from `ShellState.groupToCancel(commandID:)` at the moment it runs. The store
+// is the one home of that group, and the group is a `ProcessGroupKill`, not a
+// bare pid: the body closes it before `Subprocess.run` reaps the child, thus
+// no kill of this file can reach the pid after the reap, when the kernel can
+// give that pid to an unrelated process. A cancel can also arrive before that
+// group exists at all — a mounted call answers the envelope before its command
+// spawns, see `Execute.mount` — and `groupToCancel` answers
+// that case by SUSPENDING instead of answering with a group it does not have
+// yet: it waits for `ShellState.registerProcess(commandID:group:)` to give one,
 // or for the run's own finalize to report there will never be one. Thus the
 // canceler itself never returns until the process is dead or certainly never
 // existed, and a cancel that outraces the spawn cannot leave the child to run
@@ -185,6 +187,22 @@ struct ShellRunner {
     /// same directory.
     var defaultWorkingDirectory: String?
 
+    /// The signal that each kill of a process group sends: the canceler, the
+    /// timer of a time limit, and the teardown of the body.
+    ///
+    /// It is `killpg(pid, SIGKILL)` by default. This is an internal hook for
+    /// the tests: a test gives a recorder here, thus it can prove which kills
+    /// reach a pid, and when, with no signal to a real process.
+    var signalProcessGroup: ProcessGroupKill.Signal = ProcessGroupKill.killGroup
+
+    /// What the canceler does after it wrote `.killed` and before it sends its
+    /// kill. It does nothing by default.
+    ///
+    /// This is an internal hook for the tests: a test holds the canceler here,
+    /// lets the child end and the run reap it, and only then lets the canceler
+    /// go on. Thus the test drives the late kill path in a fixed order.
+    var cancelerWillSignal: @Sendable () async -> Void = {}
+
     /// One request to run a command.
     struct Request: Sendable {
 
@@ -295,24 +313,26 @@ struct ShellRunner {
     /// This is the closure that
     /// `RunPlane.start(tool:op:kind:completionToken:canceler:body:)` takes
     /// beside the run body. It holds NO pid of its own. It reads the process group from
-    /// `ShellState.pidToCancel(commandID:)` at the moment it runs, thus the
-    /// store stays the one home of that pid and a stale pid cannot reach a
-    /// process group that the store already gave up.
+    /// `ShellState.groupToCancel(commandID:)` at the moment it runs, thus the
+    /// store stays the one home of that group. The group is a
+    /// `ProcessGroupKill` that the body closes before the reap of the child,
+    /// thus a cancel that comes late sends nothing, and it cannot kill an
+    /// unrelated process that took the pid after the reap.
     ///
-    /// `pidToCancel` can also find no pid yet, when this cancel outraces the
+    /// `groupToCancel` can also find no group yet, when this cancel outraces the
     /// spawn of its own child — a mounted call answers the envelope before its
     /// command spawns, see `Execute.mount`, so a cancel can
     /// reach this closure before `ShellRunner.run`'s spawn closure ever calls
-    /// `registerProcess`. Rather than give up, `pidToCancel` SUSPENDS this
-    /// closure until either that registration gives it a pid to kill, or the
+    /// `registerProcess`. Rather than give up, `groupToCancel` SUSPENDS this
+    /// closure until either that registration gives it a group to kill, or the
     /// run's own finalize reports there will never be one (a spawn that
     /// throws, above all). This closure therefore never returns having merely
     /// hoped a process died — it waits until it is certain.
     ///
     /// The order of the three steps is load bearing:
     ///
-    /// 1. Await the pid — see the paragraph above. `completeCommand` drops the
-    ///    entry of the process group as it finalizes a record, thus the pid
+    /// 1. Await the group — see the paragraph above. `completeCommand` drops the
+    ///    entry of the process group as it finalizes a record, thus the group
     ///    must be read before step 2 writes the record.
     /// 2. Write `.killed` with `completeIfRunning`, which is one hop of the
     ///    actor. This write comes BEFORE the signal. The signal ends the child,
@@ -321,7 +341,10 @@ struct ShellRunner {
     ///    record would say `.completed` for a run that the cancel killed. With
     ///    this order the finalize finds a record that is already past
     ///    `.running`, and it does nothing.
-    /// 3. Send `killpg(SIGKILL)`, when step 1 found a pid to send it to.
+    /// 3. Send `killpg(SIGKILL)` through the group, when step 1 found a group
+    ///    and the body did not close it yet. A closed group sends nothing: the
+    ///    child is dead and can be reaped, and its pid can be in use by an
+    ///    unrelated process.
     ///
     /// The outcome is `.stopped`, and it is never `.cancelled`: `killpg` on the
     /// own process group of the child is authoritative, and this closure does
@@ -336,13 +359,13 @@ struct ShellRunner {
     /// - Returns: The canceler of that run.
     func canceler(completionToken: String) -> @Sendable () async -> OperationOutcome {
         let state = state
+        let willSignal = cancelerWillSignal
         return {
-            let pid = await state.pidToCancel(commandID: completionToken)
+            let group = await state.groupToCancel(commandID: completionToken)
             await state.completeIfRunning(
                 commandID: completionToken, status: .killed, exitCode: Self.absentExitCode)
-            if let pid {
-                _ = killpg(pid, SIGKILL)
-            }
+            await willSignal()
+            group?.kill()
             return .stopped
         }
     }
@@ -407,17 +430,20 @@ struct ShellRunner {
                 configuration, input: .none, output: .sequence, error: .sequence
             ) { execution in
                 let pid = execution.processIdentifier.value
-                await state.registerProcess(commandID: commandID, pid: pid)
+                let group = ProcessGroupKill(pid: pid, signal: signalProcessGroup)
+                await state.registerProcess(commandID: commandID, group: group)
                 registry.register(pid)
                 // The teardown that each exit path of the body takes — a normal
                 // end, a time limit, a cancel, or a thrown error. The kill of
                 // the group makes each grandchild that the command put in the
                 // background die, thus the reap of the library can complete. To
                 // kill a group that is already dead gives a harmless `ESRCH`.
-                // The deregister leaves the registry with nothing for a later
-                // `sweep(_:)` to kill again.
+                // The close comes before `Subprocess.run` reaps the child, thus
+                // no later kill — a canceler that comes late — reaches the pid
+                // after the reap. The deregister leaves the registry with
+                // nothing for a later `sweep(_:)` to kill again.
                 defer {
-                    _ = killpg(pid, SIGKILL)
+                    group.killAndClose()
                     registry.deregister(pid)
                 }
 
@@ -426,7 +452,7 @@ struct ShellRunner {
                     stderr: execution.standardError,
                     commandID: commandID,
                     timeout: request.timeout,
-                    pid: pid
+                    group: group
                 )
             }
 
@@ -641,8 +667,7 @@ struct ShellRunner {
     ///   - stderr: The standard error of the child.
     ///   - commandID: The completion token of the run.
     ///   - timeout: The time limit on the wall clock, or `nil` for no limit.
-    ///   - pid: The pid of the child, which is the identifier of its process
-    ///     group.
+    ///   - group: The right to kill the process group of the child.
     /// - Returns: `true` when the time limit fired, and `false` otherwise.
     /// - Throws: What the pipeline of the output throws, above all a throw from
     ///   `state.appendLines`.
@@ -651,7 +676,7 @@ struct ShellRunner {
         stderr: SubprocessOutputSequence,
         commandID: String,
         timeout: Duration?,
-        pid: pid_t
+        group processGroup: ProcessGroupKill
     ) async throws -> Bool {
         let timedOutFlag = Mutex<Bool>(false)
         let (chunkStream, chunkContinuation) = AsyncStream<StreamChunk>.makeStream()
@@ -677,7 +702,7 @@ struct ShellRunner {
                 return .consumerFinished
             }
             if let timeout {
-                addTimeoutTask(to: &group, after: timeout, pid: pid) {
+                addTimeoutTask(to: &group, after: timeout, processGroup: processGroup) {
                     timedOutFlag.withLock { $0 = true }
                 }
             }
@@ -759,8 +784,8 @@ struct ShellRunner {
 
     /// Adds the timer of the time limit to the task group of
     /// `waitForCompletion`: it waits for `timeout` on ``clock`` and, when the
-    /// group does not cancel it first, it kills the process group of `pid` and
-    /// reports that the limit fired.
+    /// group does not cancel it first, it kills `processGroup` and reports that
+    /// the limit fired.
     ///
     /// It takes a closure instead of the flag itself: a `Mutex` cannot be
     /// copied, thus to give one here as a parameter would consume it, and the
@@ -771,20 +796,19 @@ struct ShellRunner {
     /// - Parameters:
     ///   - group: The task group of `waitForCompletion`.
     ///   - timeout: How long to wait before the kill of the process group.
-    ///   - pid: The pid of the child, which is the identifier of its process
-    ///     group.
+    ///   - processGroup: The right to kill the process group of the child.
     ///   - markTimedOut: What to call when the limit comes before the cancel.
     private func addTimeoutTask(
         to group: inout ThrowingTaskGroup<BodyEvent, Error>,
         after timeout: Duration,
-        pid: pid_t,
+        processGroup: ProcessGroupKill,
         markTimedOut: @escaping @Sendable () -> Void
     ) {
         let timerClock = clock
         group.addTask {
             if (try? await timerClock.sleep(for: timeout)) != nil {
                 markTimedOut()
-                _ = killpg(pid, SIGKILL)
+                processGroup.kill()
             }
             return .timerFinished
         }

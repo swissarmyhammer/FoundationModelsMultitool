@@ -858,10 +858,10 @@ struct ShellExecuteTests {
             // The record is written by the run body, which can start after the
             // call already answered its envelope; one read here is a race, not a
             // check. The runner records the command before it registers the pid,
-            // and `pidToCancel` returns only after the registration (or after the
+            // and `groupToCancel` returns only after the registration (or after the
             // end of the command). Thus the wait is an event, and the record
             // stands after it.
-            _ = await state.pidToCancel(commandID: going.completionToken)
+            _ = await state.groupToCancel(commandID: going.completionToken)
             #expect(
                 await state.record(commandID: going.completionToken) != nil,
                 "the store holds no record of the run")

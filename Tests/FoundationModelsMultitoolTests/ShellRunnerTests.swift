@@ -754,6 +754,56 @@ struct ShellRunnerTests {
         #expect(record.status == .killed)
     }
 
+    /// The canceler never sends a kill after the run reaped its child.
+    ///
+    /// After the reap, the kernel can give the pid of the child to a new
+    /// process, and that process can lead its own group. A late `killpg` with
+    /// the old pid can thus kill an unrelated process — in a parallel run, the
+    /// shell of another test.
+    ///
+    /// The test drives the late path in a fixed order, with no real pid reuse:
+    /// a recorder stands in for the kill, and the hook
+    /// `cancelerWillSignal` holds the canceler after it took the process group
+    /// and before it sends its kill. While the canceler waits there, the test
+    /// lets the child end and waits until the run returned, thus until
+    /// `Subprocess.run` reaped the child. Only then does the canceler go on.
+    /// The kills the recorder holds at the end must be the kills it held when
+    /// the run returned.
+    @Test("the canceler sends no kill after the run reaped its child")
+    func cancelerSendsNoKillAfterTheRunReapedItsChild() async throws {
+        let kills = KillRecorder()
+        var (runner, state, directory) = try makeRunner()
+        let (entered, enteredContinuation) = AsyncStream<Void>.makeStream()
+        let (released, releasedContinuation) = AsyncStream<Void>.makeStream()
+        runner.signalProcessGroup = { pid in kills.record(pid) }
+        runner.cancelerWillSignal = {
+            enteredContinuation.yield()
+            enteredContinuation.finish()
+            for await _ in released {}
+        }
+        let token = ToolContext.makeCompletionToken()
+        let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
+        defer { runTask.cancel() }
+        defer { releasedContinuation.finish() }
+
+        // The first line is stored inside the body, after the registration of
+        // the process group, thus the canceler finds a group to kill.
+        _ = try await waitForLines(in: state, commandID: token)
+        let canceler = runner.canceler(completionToken: token)
+        let cancel = Task { await canceler() }
+        for await _ in entered {}
+
+        try openGate(gate)
+        _ = try await runTask.value
+        let killsAtReap = kills.count
+
+        releasedContinuation.finish()
+        #expect(await cancel.value == .stopped)
+        #expect(
+            kills.count == killsAtReap,
+            "the canceler sent \(kills.count - killsAtReap) kill(s) after the run reaped its child")
+    }
+
     /// The canceler signals the whole process group, and not the leader alone:
     /// a command that put a child in the background dies with its tree.
     @Test("the canceler kills the whole process group, and not the leader alone")
