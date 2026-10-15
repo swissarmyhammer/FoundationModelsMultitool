@@ -155,11 +155,15 @@ struct MCPElicitationTests {
         /// The session the answer is delivered through.
         var session: any RoutedSession { stub.session }
 
-        /// Builds a fresh run.
+        /// Builds a fresh run, gives it to `body`, and closes its session
+        /// when `body` returns or throws.
         ///
-        /// - Throws: whatever standing up the stub session throws.
-        init() async throws {
-            stub = try await makeStubRun()
+        /// - Parameter body: The work that uses the run.
+        /// - Returns: What `body` returned.
+        /// - Throws: whatever standing up the stub session throws, or what
+        ///   `body` threw.
+        static func with<Result>(_ body: (BoundRun) async throws -> Result) async throws -> Result {
+            try await withStubRun { stub in try await body(BoundRun(stub: stub)) }
         }
     }
 
@@ -266,20 +270,20 @@ struct MCPElicitationTests {
     func theSessionAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
-        let run = (try await BoundRun())
+        try await BoundRun.with { run in
+            let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
+            let event = try await Self.elicitationEvent(on: run)
+            let request = try #require(event.elicitation)
+            #expect(request.mode == .form)
+            #expect(request.message == ScriptedServer.elicitEchoMessage)
+            #expect(request.requestedSchema?.properties.keys.contains(ScriptedServer.elicitEchoAnswerField) == true)
+            #expect(event.correlationID == run.context.completionToken)
+            await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
+            let result = try await call.value
 
-        let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let event = try await Self.elicitationEvent(on: run)
-        let request = try #require(event.elicitation)
-        #expect(request.mode == .form)
-        #expect(request.message == ScriptedServer.elicitEchoMessage)
-        #expect(request.requestedSchema?.properties.keys.contains(ScriptedServer.elicitEchoAnswerField) == true)
-        #expect(event.correlationID == run.context.completionToken)
-        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
-        let result = try await call.value
-
-        #expect(Self.answer(in: result) == Self.scriptedAnswer)
-        #expect(Self.rendered(result).contains(Self.acceptText))
+            #expect(Self.answer(in: result) == Self.scriptedAnswer)
+            #expect(Self.rendered(result).contains(Self.acceptText))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -287,20 +291,21 @@ struct MCPElicitationTests {
     func aURLAcceptHoldsTheCallUntilTheSessionCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
-        let run = (try await BoundRun())
+        try await BoundRun.with { run in
+            let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
+            let request = try await Self.elicitationRequest(on: run)
+            #expect(request.mode == .url)
+            #expect(request.message == ScriptedServer.elicitURLMessage)
+            #expect(request.url?.absoluteString == ScriptedServer.elicitURLLink)
+            let delivery = await run.session.respond(
+                elicitationId: request.elicitationId.description, response: Self.urlAccept)
+            #expect(delivery == .acceptedAwaitingCompletion)
+            #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
+            await run.session.complete(elicitationId: request.elicitationId.description)
+            let result = try await call.value
 
-        let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run)
-        #expect(request.mode == .url)
-        #expect(request.message == ScriptedServer.elicitURLMessage)
-        #expect(request.url?.absoluteString == ScriptedServer.elicitURLLink)
-        let delivery = await run.session.respond(elicitationId: request.elicitationId.description, response: Self.urlAccept)
-        #expect(delivery == .acceptedAwaitingCompletion)
-        #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
-        await run.session.complete(elicitationId: request.elicitationId.description)
-        let result = try await call.value
-
-        #expect(Self.rendered(result).contains(Self.acceptText))
+            #expect(Self.rendered(result).contains(Self.acceptText))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -310,20 +315,20 @@ struct MCPElicitationTests {
         defer { Task { await server.disconnect() } }
         let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let run = (try await BoundRun())
-
-        let snippet = Task {
-            try await ToolContext.$current.withValue(run.context) {
-                try await multiTool.call(arguments: RunCodeArguments(code: Self.elicitEchoSnippet))
+        try await BoundRun.with { run in
+            let snippet = Task {
+                try await ToolContext.$current.withValue(run.context) {
+                    try await multiTool.call(arguments: RunCodeArguments(code: Self.elicitEchoSnippet))
+                }
             }
-        }
-        let request = try await Self.elicitationRequest(on: run)
-        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
-        let output = try await snippet.value
+            let request = try await Self.elicitationRequest(on: run)
+            await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
+            let output = try await snippet.value
 
-        let returned = try JSONDecoder().decode(String.self, from: Data(output.utf8))
-        #expect(returned.contains(Self.scriptedAnswer), "the snippet returned: \(returned)")
-        #expect(returned.contains(Self.acceptText))
+            let returned = try JSONDecoder().decode(String.self, from: Data(output.utf8))
+            #expect(returned.contains(Self.scriptedAnswer), "the snippet returned: \(returned)")
+            #expect(returned.contains(Self.acceptText))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -382,15 +387,15 @@ struct MCPElicitationTests {
     func theContextWinsOverTheHandler() async throws {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        let run = (try await BoundRun())
+        try await BoundRun.with { run in
+            let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
+            let request = try await Self.elicitationRequest(on: run)
+            await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
+            let result = try await call.value
 
-        let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run)
-        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
-        let result = try await call.value
-
-        #expect(Self.answer(in: result) == Self.scriptedAnswer)
-        #expect(await probe.requests.count == Self.noHandlerCalls)
+            #expect(Self.answer(in: result) == Self.scriptedAnswer)
+            #expect(await probe.requests.count == Self.noHandlerCalls)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -399,21 +404,21 @@ struct MCPElicitationTests {
     @Test("decline and cancel reach the server as those actions, and neither cancels the run", arguments: refusals)
     func aRefusalReachesTheServerAndKeepsTheRun(refusal: (response: ElicitationResponse, text: String)) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        let run = (try await BoundRun())
+        try await BoundRun.with { run in
+            let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
+            let request = try await Self.elicitationRequest(on: run)
+            await run.session.respond(elicitationId: request.elicitationId.description, response: refusal.response)
+            let result = try await call.value
 
-        let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run)
-        await run.session.respond(elicitationId: request.elicitationId.description, response: refusal.response)
-        let result = try await call.value
-
-        #expect(result.isError != true)
-        #expect(Self.rendered(result).contains(refusal.text))
-        let echoed = try await ToolContext.$current.withValue(run.context) {
-            try await server.call(
-                name: ScriptedServer.echoToolName,
-                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+            #expect(result.isError != true)
+            #expect(Self.rendered(result).contains(refusal.text))
+            let echoed = try await ToolContext.$current.withValue(run.context) {
+                try await server.call(
+                    name: ScriptedServer.echoToolName,
+                    arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+            }
+            #expect(Self.rendered(echoed).contains(Self.echoText))
         }
-        #expect(Self.rendered(echoed).contains(Self.echoText))
         withExtendedLifetime(scripted) {}
     }
 
@@ -429,14 +434,14 @@ struct MCPElicitationTests {
                 properties: [Self.nestedFieldName: .object(["type": .string(Self.objectTypeName)])]))
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
-        let run = (try await BoundRun())
+        try await BoundRun.with { run in
+            let result = try await ToolContext.$current.withValue(run.context) {
+                try await server.call(name: Self.nestedToolName, arguments: nil)
+            }
 
-        let result = try await ToolContext.$current.withValue(run.context) {
-            try await server.call(name: Self.nestedToolName, arguments: nil)
+            #expect(Self.rendered(result).contains(Self.declineText))
+            #expect(await recordedOperationEvents(of: run.stub).isEmpty)
         }
-
-        #expect(Self.rendered(result).contains(Self.declineText))
-        #expect(await recordedOperationEvents(of: run.stub).isEmpty)
         withExtendedLifetime(scripted) {}
     }
 

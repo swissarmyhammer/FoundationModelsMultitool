@@ -507,35 +507,42 @@ struct MultiToolExecutionTests {
             pending.withLock { $0 = envelope }
             return "the result comes back later"
         }
-        let log = await SessionOutputLog.reading(session)
+        // `ReleaseGate.wait()` does not end on cancellation, and `close()`
+        // waits for each run body to end. Thus the gate opens on every path
+        // before the session closes. A second release has no effect.
+        try await closing(session) {
+            try await ensuring({ await gate.release() }) {
+                let log = await SessionOutputLog.reading(session)
 
-        let first = try await log.ask("start the snippet")
-        let token = try #require(pending.withLock { $0 }).completionToken
-        await gate.release()
-        let runMail = try await log.deliveredRunMail(settling: token)
-        let afterMail = prompts.all
-        // One more caller message after the mail: mail that stays in the
-        // outbox, or a second copy of it, goes into this submission.
-        let followUp = try await log.ask("one more message")
-        let all = prompts.all
+                let first = try await log.ask("start the snippet")
+                let token = try #require(pending.withLock { $0 }).completionToken
+                await gate.release()
+                let runMail = try await log.deliveredRunMail(settling: token)
+                let afterMail = prompts.all
+                // One more caller message after the mail: mail that stays in the
+                // outbox, or a second copy of it, goes into this submission.
+                let followUp = try await log.ask("one more message")
+                let all = prompts.all
 
-        // The run mail starts its own answer. That answer delivers the run
-        // mail, and no mail other than run mail of the same run (a progress
-        // or message mail of the run can wait in the queue and go with it).
-        // The follow-up answer delivers only the follow-up.
-        let mailOfTheRun = Set(await log.allRunMailIds(of: token))
-        #expect(first.answer.mailIds == [first.id])
-        #expect(runMail.answer.mailIds.contains(runMail.id))
-        #expect(
-            Set(runMail.answer.mailIds).isSubset(of: mailOfTheRun),
-            "the run mail answer delivered: \(runMail.answer.mailIds), run mail: \(mailOfTheRun)")
-        #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
-        #expect(followUp.answer.mailIds == [followUp.id])
-        #expect(await log.runMailIds(settling: token) == [runMail.id])
-        #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
-        #expect(afterMail.count == 2)
-        #expect(all.count == 3)
-        #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
+                // The run mail starts its own answer. That answer delivers the run
+                // mail, and no mail other than run mail of the same run (a progress
+                // or message mail of the run can wait in the queue and go with it).
+                // The follow-up answer delivers only the follow-up.
+                let mailOfTheRun = Set(await log.allRunMailIds(of: token))
+                #expect(first.answer.mailIds == [first.id])
+                #expect(runMail.answer.mailIds.contains(runMail.id))
+                #expect(
+                    Set(runMail.answer.mailIds).isSubset(of: mailOfTheRun),
+                    "the run mail answer delivered: \(runMail.answer.mailIds), run mail: \(mailOfTheRun)")
+                #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
+                #expect(followUp.answer.mailIds == [followUp.id])
+                #expect(await log.runMailIds(settling: token) == [runMail.id])
+                #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
+                #expect(afterMail.count == 2)
+                #expect(all.count == 3)
+                #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
+            }
+        }
     }
 
     /// Records the fix of task `^11cfnx0` for the finding of task `^q4jrnd0`.
@@ -550,47 +557,56 @@ struct MultiToolExecutionTests {
         let prompts = MailProbePrompts()
         let refused = OSAllocatedUnfairLock<String?>(initialState: nil)
         let token = OSAllocatedUnfairLock<String?>(initialState: nil)
-        let collectorMount = try #require(
-            try await makeStubRun(runClock: ManualRunClock()).context.mount(
-                Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
-                as? any Tool<RunCodeArguments, String>)
-        let session = try await makeMailProbeSession(
-            mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
-            prompts: prompts
-        ) { index, runCode in
-            guard index == 0 else { return "answered" }
-            // The gated snippet runs on a mount with no wait, so its call
-            // answers with a pending envelope at once. A second snippet then
-            // tries to collect the run with the removed sandbox `wait()`, on a
-            // mount that waits for its snippet to settle, and the gate opens
-            // after it.
-            let pending = try mailProbeEnvelope(
-                try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
-            token.withLock { $0 = pending.completionToken }
-            let collector = "return (await wait(\"\(pending.completionToken)\", "
-                + "\(Self.removedWaitSecondsArgument))).detail;"
-            let answer = try await collectorMount.call(arguments: RunCodeArguments(code: collector))
-            refused.withLock { $0 = answer }
-            await gate.release()
-            return "the result comes back later"
+        try await withStubRun(runClock: ManualRunClock()) { collectorRun in
+            let collectorMount = try #require(
+                collectorRun.context.mount(
+                    Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
+                    as? any Tool<RunCodeArguments, String>)
+            let session = try await makeMailProbeSession(
+                mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
+                prompts: prompts
+            ) { index, runCode in
+                guard index == 0 else { return "answered" }
+                // The gated snippet runs on a mount with no wait, so its call
+                // answers with a pending envelope at once. A second snippet then
+                // tries to collect the run with the removed sandbox `wait()`, on a
+                // mount that waits for its snippet to settle, and the gate opens
+                // after it.
+                let pending = try mailProbeEnvelope(
+                    try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
+                token.withLock { $0 = pending.completionToken }
+                let collector = "return (await wait(\"\(pending.completionToken)\", "
+                    + "\(Self.removedWaitSecondsArgument))).detail;"
+                let answer = try await collectorMount.call(arguments: RunCodeArguments(code: collector))
+                refused.withLock { $0 = answer }
+                await gate.release()
+                return "the result comes back later"
+            }
+            // `ReleaseGate.wait()` does not end on cancellation, and `close()`
+            // waits for each run body to end. Thus the gate opens on every
+            // path before the sessions close. A second release has no effect.
+            try await closing(session) {
+                try await ensuring({ await gate.release() }) {
+                    let log = await SessionOutputLog.reading(session)
+
+                    _ = try await log.ask("start the snippet and try to collect it")
+                    let completionToken = try #require(token.withLock { $0 })
+                    let runMail = try await log.deliveredRunMail(settling: completionToken)
+                    let followUp = try await log.ask("one more message")
+                    let all = prompts.all
+
+                    let collector = try #require(refused.withLock { $0 })
+                    #expect(!PendingRunEnvelope.isRendered(text: collector))
+                    #expect(collector.contains(SandboxGlobalError.waitRemoved.description))
+                    #expect(!collector.contains(mailProbeResultCode))
+                    #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
+                    #expect(await log.runMailIds(settling: completionToken) == [runMail.id])
+                    #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
+                    #expect(followUp.answer.mailIds == [followUp.id])
+                    #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
+                }
+            }
         }
-        let log = await SessionOutputLog.reading(session)
-
-        _ = try await log.ask("start the snippet and try to collect it")
-        let completionToken = try #require(token.withLock { $0 })
-        let runMail = try await log.deliveredRunMail(settling: completionToken)
-        let followUp = try await log.ask("one more message")
-        let all = prompts.all
-
-        let collector = try #require(refused.withLock { $0 })
-        #expect(!PendingRunEnvelope.isRendered(text: collector))
-        #expect(collector.contains(SandboxGlobalError.waitRemoved.description))
-        #expect(!collector.contains(mailProbeResultCode))
-        #expect(runMail.event.detail.contains(mailProbeResultCode), "run mail: \(runMail.event.detail)")
-        #expect(await log.runMailIds(settling: completionToken) == [runMail.id])
-        #expect(await log.deliveredMailIds.filter { $0 == runMail.id }.count == 1)
-        #expect(followUp.answer.mailIds == [followUp.id])
-        #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
 
     // MARK: - The detail of a settled background run has a bound
@@ -624,26 +640,27 @@ struct MultiToolExecutionTests {
     /// cuts keeps at most its named cap.
     @Test("the detail of a background runCode with ten times too much output keeps each section within its named cap")
     func overlongBackgroundRunCodeDetailStaysWithinTheCaps() async throws {
-        let context = try await makeOuterRunContext()
-        let runCode = MultiTool(
-            registry: try MultiTool.Builder().addTool(TempTool()).buildRegistry(),
-            configuration: Self.overflowConfiguration
-        )
-        let mounted = try #require(
-            context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+        try await withOuterRunContext { context in
+            let runCode = MultiTool(
+                registry: try MultiTool.Builder().addTool(TempTool()).buildRegistry(),
+                configuration: Self.overflowConfiguration
+            )
+            let mounted = try #require(
+                context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
 
-        let envelope = try mailProbeEnvelope(
-            try await mounted.call(arguments: RunCodeArguments(code: Self.overlongSnippet)))
-        let terminal = try await TerminalDetail.settledEvent(
-            of: envelope.completionToken, in: context)
+            let envelope = try mailProbeEnvelope(
+                try await mounted.call(arguments: RunCodeArguments(code: Self.overlongSnippet)))
+            let terminal = try await TerminalDetail.settledEvent(
+                of: envelope.completionToken, in: context)
 
-        let sections = terminal.detail.components(separatedBy: ResultRenderer.consoleSectionSeparator)
-        try #require(
-            sections.count == Self.renderedSectionCount,
-            "detail began: \(terminal.detail.prefix(Self.failureExcerptLength))")
-        let returned = try #require(TerminalDetail.keptText(of: sections[0]))
-        let logged = try #require(TerminalDetail.keptText(of: sections[1]))
-        #expect(returned.count <= Self.overflowConfiguration.returnValueCharacterLimit)
-        #expect(logged.count <= Self.overflowConfiguration.consoleCharacterLimit)
+            let sections = terminal.detail.components(separatedBy: ResultRenderer.consoleSectionSeparator)
+            try #require(
+                sections.count == Self.renderedSectionCount,
+                "detail began: \(terminal.detail.prefix(Self.failureExcerptLength))")
+            let returned = try #require(TerminalDetail.keptText(of: sections[0]))
+            let logged = try #require(TerminalDetail.keptText(of: sections[1]))
+            #expect(returned.count <= Self.overflowConfiguration.returnValueCharacterLimit)
+            #expect(logged.count <= Self.overflowConfiguration.consoleCharacterLimit)
+        }
     }
 }

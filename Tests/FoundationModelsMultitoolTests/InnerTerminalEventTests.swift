@@ -81,23 +81,24 @@ struct InnerTerminalEventTests {
     /// - Parameter snippet: The snippet to run.
     /// - Returns: The terminal events on the sink and on the run plane.
     private static func run(snippet: String) async throws -> RecordedRun {
-        let context = try await makeOuterRunContext()
-        let sink = RecordingEventSink()
-        let registry = try MultiTool.Builder().addTool(FailingTool()).buildRegistry()
-        // A settle period of 0 sends the run to the background at once, so that
-        // the run plane keeps a terminal event for the runCode completion token.
-        let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
-        let mounted = try #require(
-            context.mount(runCode, as: .synchronous, postingTo: sink)
-                as? any Tool<RunCodeArguments, String>
-        )
+        try await withOuterRunContext { context in
+            let sink = RecordingEventSink()
+            let registry = try MultiTool.Builder().addTool(FailingTool()).buildRegistry()
+            // A settle period of 0 sends the run to the background at once, so that
+            // the run plane keeps a terminal event for the runCode completion token.
+            let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
+            let mounted = try #require(
+                context.mount(runCode, as: .synchronous, postingTo: sink)
+                    as? any Tool<RunCodeArguments, String>
+            )
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
-        let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
-        let settled = try await TerminalDetail.settledEvent(of: token, in: context)
-        let terminals = await sink.events.filter { $0.kind == .completed && $0.correlationID == token }
-        return RecordedRun(sinkTerminals: terminals, settled: settled)
+            let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
+            let settled = try await TerminalDetail.settledEvent(of: token, in: context)
+            let terminals = await sink.events.filter { $0.kind == .completed && $0.correlationID == token }
+            return RecordedRun(sinkTerminals: terminals, settled: settled)
+        }
     }
 }
 

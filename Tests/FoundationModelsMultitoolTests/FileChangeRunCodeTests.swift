@@ -144,41 +144,42 @@ struct FileChangeRunCodeTests {
 
     @Test("a write through runCode delivers one add change on the outer run's correlation")
     func writeThroughRunCodeDeliversOneAddChange() async throws {
-        let ground = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: true)
-        let path = TestSupport.path(Self.writtenFileName, in: ground.root)
+        try await withFilesRun(named: Self.testDirectoryName, recordsChanges: true) { ground in
+            let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
-        let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
-        let events = await Self.outerProgressEvents(of: ground.run)
-        let event = try #require(events.first)
-        let set = try Self.changeSet(of: event)
+            let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
+            let events = await Self.outerProgressEvents(of: ground.run)
+            let event = try #require(events.first)
+            let set = try Self.changeSet(of: event)
 
-        #expect(output == Self.writtenByteCountText, "output was: \(output)")
-        #expect(events.count == Self.eventsPerCall, "events were: \(events)")
-        #expect(event.correlationID == ground.run.context.completionToken)
-        #expect(set.root == ground.journal.root)
-        #expect(set.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+            #expect(output == Self.writtenByteCountText, "output was: \(output)")
+            #expect(events.count == Self.eventsPerCall, "events were: \(events)")
+            #expect(event.correlationID == ground.run.context.completionToken)
+            #expect(set.root == ground.journal.root)
+            #expect(set.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+        }
     }
 
     // MARK: - The event is there when the call returns
 
     @Test("the event is in the recorder when the runCode call returns, with no wait, and alone")
     func eventIsRecordedWhenTheCallReturns() async throws {
-        let ground = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: true)
+        try await withFilesRun(named: Self.testDirectoryName, recordsChanges: true) { ground in
+            let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
+            // The first read is while the session is open: it shows that the event
+            // is in the recorder when the call returns. Router writes the first
+            // progress event of a run at once, but it keeps a second one in an
+            // open row until `close()`. Thus the second read, after `close()`,
+            // shows that the event is alone.
+            let outerEventsAtReturn = await recordedOperationEvents(
+                of: ground.run, ofKind: .progress, correlatedTo: [ground.run.context.completionToken])
+            let everyProgressEvents = await settledOperationEvents(of: ground.run, ofKind: .progress)
 
-        let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
-        // The first read is while the session is open: it shows that the event
-        // is in the recorder when the call returns. Router writes the first
-        // progress event of a run at once, but it keeps a second one in an
-        // open row until `close()`. Thus the second read, after `close()`,
-        // shows that the event is alone.
-        let outerEventsAtReturn = await recordedOperationEvents(
-            of: ground.run, ofKind: .progress, correlatedTo: [ground.run.context.completionToken])
-        let everyProgressEvents = await settledOperationEvents(of: ground.run, ofKind: .progress)
-
-        #expect(output == Self.writtenByteCountText, "output was: \(output)")
-        #expect(outerEventsAtReturn.count == Self.eventsPerCall, "events were: \(outerEventsAtReturn)")
-        #expect(everyProgressEvents.count == Self.eventsPerCall, "events were: \(everyProgressEvents)")
-        #expect(outerEventsAtReturn.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) != nil })
+            #expect(output == Self.writtenByteCountText, "output was: \(output)")
+            #expect(outerEventsAtReturn.count == Self.eventsPerCall, "events were: \(outerEventsAtReturn)")
+            #expect(everyProgressEvents.count == Self.eventsPerCall, "events were: \(everyProgressEvents)")
+            #expect(outerEventsAtReturn.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) != nil })
+        }
     }
 
     // MARK: - A patch through runCode
@@ -206,17 +207,18 @@ struct FileChangeRunCodeTests {
 
     @Test("a three-file patch through runCode delivers ONE event with three changes")
     func patchThroughRunCodeDeliversOneEventWithThreeChanges() async throws {
-        let ground = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: true)
-        try TestSupport.seed(Self.updatedFileName, contents: Self.updatedBefore, in: ground.root)
-        try TestSupport.seed(Self.deletedFileName, contents: Self.deletedContent, in: ground.root)
+        try await withFilesRun(named: Self.testDirectoryName, recordsChanges: true) { ground in
+            try TestSupport.seed(Self.updatedFileName, contents: Self.updatedBefore, in: ground.root)
+            try TestSupport.seed(Self.deletedFileName, contents: Self.deletedContent, in: ground.root)
 
-        let output = try await runSnippet(Self.patchSnippet, over: ground.registry, under: ground.run.context)
-        let (event, set) = try await Self.deliveredChange(of: ground.run)
+            let output = try await runSnippet(Self.patchSnippet, over: ground.registry, under: ground.run.context)
+            let (event, set) = try await Self.deliveredChange(of: ground.run)
 
-        #expect(output == String(Self.patchedFileCount), "output was: \(output)")
-        #expect(event.correlationID == ground.run.context.completionToken)
-        #expect(set.changes.count == Self.patchedFileCount)
-        #expect(Set(set.changes.map(\.kind)) == [.add, .modify, .delete])
+            #expect(output == String(Self.patchedFileCount), "output was: \(output)")
+            #expect(event.correlationID == ground.run.context.completionToken)
+            #expect(set.changes.count == Self.patchedFileCount)
+            #expect(Set(set.changes.map(\.kind)) == [.add, .modify, .delete])
+        }
     }
 
     // MARK: - Two calls at the same time
@@ -236,25 +238,28 @@ struct FileChangeRunCodeTests {
     @Test("two concurrent runCode calls over one MultiTool each deliver their own path on their own correlation")
     func concurrentCallsKeepTheirEventsApart() async throws {
         let rendezvous = Rendezvous(partySize: Self.concurrentSnippetCount)
-        let first = try await makeFilesRun(
+        try await withFilesRun(
             named: Self.testDirectoryName, recordsChanges: true,
-            alongside: [RendezvousTool(rendezvous: rendezvous)])
-        let second = try await makeStubRun()
-        let multiTool = MultiTool(registry: first.registry)
+            alongside: [RendezvousTool(rendezvous: rendezvous)]
+        ) { first in
+            try await withStubRun { second in
+                let multiTool = MultiTool(registry: first.registry)
 
-        async let firstOutput = runSnippet(
-            Self.gatedWriteSnippet(writing: Self.firstFileName), through: multiTool, under: first.run.context)
-        async let secondOutput = runSnippet(
-            Self.gatedWriteSnippet(writing: Self.secondFileName), through: multiTool, under: second.context)
-        let outputs = try await [firstOutput, secondOutput]
-        let (firstEvent, firstSet) = try await Self.deliveredChange(of: first.run)
-        let (secondEvent, secondSet) = try await Self.deliveredChange(of: second)
+                async let firstOutput = runSnippet(
+                    Self.gatedWriteSnippet(writing: Self.firstFileName), through: multiTool, under: first.run.context)
+                async let secondOutput = runSnippet(
+                    Self.gatedWriteSnippet(writing: Self.secondFileName), through: multiTool, under: second.context)
+                let outputs = try await [firstOutput, secondOutput]
+                let (firstEvent, firstSet) = try await Self.deliveredChange(of: first.run)
+                let (secondEvent, secondSet) = try await Self.deliveredChange(of: second)
 
-        #expect(outputs == [Self.writtenByteCountText, Self.writtenByteCountText], "outputs were: \(outputs)")
-        #expect(firstEvent.correlationID == first.run.context.completionToken)
-        #expect(secondEvent.correlationID == second.context.completionToken)
-        #expect(firstSet.changes.map(\.path) == [TestSupport.path(Self.firstFileName, in: first.root)])
-        #expect(secondSet.changes.map(\.path) == [TestSupport.path(Self.secondFileName, in: first.root)])
+                #expect(outputs == [Self.writtenByteCountText, Self.writtenByteCountText], "outputs were: \(outputs)")
+                #expect(firstEvent.correlationID == first.run.context.completionToken)
+                #expect(secondEvent.correlationID == second.context.completionToken)
+                #expect(firstSet.changes.map(\.path) == [TestSupport.path(Self.firstFileName, in: first.root)])
+                #expect(secondSet.changes.map(\.path) == [TestSupport.path(Self.secondFileName, in: first.root)])
+            }
+        }
     }
 
     // MARK: - What the model reads
@@ -271,19 +276,24 @@ struct FileChangeRunCodeTests {
 
     @Test("a recording capability renders the same runCode text as a non-recording one")
     func recordingAndNonRecordingCapabilitiesRenderTheSameText() async throws {
-        let recording = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: true)
-        let plain = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: false)
+        try await withFilesRun(named: Self.testDirectoryName, recordsChanges: true) { recording in
+            try await withFilesRun(named: Self.testDirectoryName, recordsChanges: false) { plain in
+                let recordingOutput = try await runSnippet(
+                    Self.envelopeSnippet, over: recording.registry, under: recording.run.context)
+                let plainOutput = try await runSnippet(
+                    Self.envelopeSnippet, over: plain.registry, under: plain.run.context)
+                let recordingEvents = await Self.outerProgressEvents(of: recording.run)
+                let plainEvents = await Self.outerProgressEvents(of: plain.run)
 
-        let recordingOutput = try await runSnippet(
-            Self.envelopeSnippet, over: recording.registry, under: recording.run.context)
-        let plainOutput = try await runSnippet(Self.envelopeSnippet, over: plain.registry, under: plain.run.context)
-        let recordingEvents = await Self.outerProgressEvents(of: recording.run)
-        let plainEvents = await Self.outerProgressEvents(of: plain.run)
-
-        #expect(recordingOutput == plainOutput, "outputs were: \(recordingOutput) and \(plainOutput)")
-        #expect(TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: recording.root)) == Self.writtenContent)
-        #expect(TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: plain.root)) == Self.writtenContent)
-        #expect(recordingEvents.count == Self.eventsPerCall, "events were: \(recordingEvents)")
-        #expect(plainEvents.isEmpty, "events were: \(plainEvents)")
+                #expect(recordingOutput == plainOutput, "outputs were: \(recordingOutput) and \(plainOutput)")
+                #expect(
+                    TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: recording.root))
+                        == Self.writtenContent)
+                #expect(
+                    TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: plain.root)) == Self.writtenContent)
+                #expect(recordingEvents.count == Self.eventsPerCall, "events were: \(recordingEvents)")
+                #expect(plainEvents.isEmpty, "events were: \(plainEvents)")
+            }
+        }
     }
 }

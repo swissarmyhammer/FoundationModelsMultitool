@@ -63,16 +63,18 @@ struct FileChangeEventTests {
     }
 
     /// Builds the ground: a canonical root seeded with files, a recording
-    /// capability over it, and a stub run.
+    /// capability over it, and a stub run. Gives the ground to `body`, and
+    /// closes the session of the stub run on every path.
     ///
-    /// - Parameter files: the file names and UTF-8 contents to seed under the
-    ///   root.
-    /// - Returns: the ground.
-    /// - Throws: rethrows a seed-write failure, or whatever standing up the
-    ///   stub run throws.
-    private static func makeGround(
-        seeding files: [(name: String, contents: String)] = []
-    ) async throws -> Ground {
+    /// - Parameters:
+    ///   - files: the file names and UTF-8 contents to seed under the root.
+    ///   - body: the work that uses the ground.
+    /// - Throws: rethrows a seed-write failure, whatever standing up the stub
+    ///   run throws, or what `body` throws.
+    private static func withGround(
+        seeding files: [(name: String, contents: String)] = [],
+        _ body: (Ground) async throws -> Void
+    ) async throws {
         let root = TestSupport.canonicalDirectory(
             TestSupport.makeTemporaryDirectory(named: testDirectoryName))
         for file in files {
@@ -80,8 +82,9 @@ struct FileChangeEventTests {
                 to: root.appendingPathComponent(file.name, isDirectory: false))
         }
         let capability = FilesCapability(root: root, recordsChanges: true)
-        let run = try await makeStubRun()
-        return Ground(run: run, capability: capability, root: root)
+        try await withStubRun { run in
+            try await body(Ground(run: run, capability: capability, root: root))
+        }
     }
 
     /// The one verb of the capability that is a `Verb`, mounted on the stub
@@ -138,107 +141,112 @@ struct FileChangeEventTests {
 
     @Test("a mounted write delivers one add change through the session")
     func aMountedWriteDeliversOneAddChange() async throws {
-        let ground = try await Self.makeGround()
-        let write = try Self.mounted(Write.self, in: ground)
-        let path = TestSupport.path("new.txt", in: ground.root)
+        try await Self.withGround { ground in
+            let write = try Self.mounted(Write.self, in: ground)
+            let path = TestSupport.path("new.txt", in: ground.root)
 
-        let result = try await write.call(
-            arguments: WriteArguments(path: path, content: Self.writtenContent))
-        let (event, set) = try await Self.deliveredChangeSet(in: ground)
+            let result = try await write.call(
+                arguments: WriteArguments(path: path, content: Self.writtenContent))
+            let (event, set) = try await Self.deliveredChangeSet(in: ground)
 
-        #expect(result.correction == nil)
-        #expect(event.correlationID == ground.run.context.completionToken)
-        #expect(set.root == (try Self.journal(of: ground)).root)
-        #expect(set.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+            #expect(result.correction == nil)
+            #expect(event.correlationID == ground.run.context.completionToken)
+            #expect(set.root == (try Self.journal(of: ground)).root)
+            #expect(set.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+        }
     }
 
     // MARK: - The patch verb
 
     @Test("a mounted patch of four files delivers one event with four changes")
     func aMountedPatchDeliversOneEventWithFourChanges() async throws {
-        let ground = try await Self.makeGround(seeding: [
+        try await Self.withGround(seeding: [
             ("update.txt", "one\ntwo\nthree\n"),
             ("delete.txt", "obsolete\n"),
             ("source.txt", "keep me\n"),
-        ])
-        let patch = try Self.mounted(Patch.self, in: ground)
-        let envelope = """
-            *** Begin Patch
-            *** Add File: \(TestSupport.path("added.txt", in: ground.root))
-            +added
-            *** Update File: \(TestSupport.path("update.txt", in: ground.root))
-            *** Find:
-            two
-            *** Replace:
-            TWO
-            *** Delete File: \(TestSupport.path("delete.txt", in: ground.root))
-            *** Update File: \(TestSupport.path("source.txt", in: ground.root))
-            *** Move to: \(TestSupport.path("dest.txt", in: ground.root))
-            *** End Patch
+        ]) { ground in
+            let patch = try Self.mounted(Patch.self, in: ground)
+            let envelope = """
+                *** Begin Patch
+                *** Add File: \(TestSupport.path("added.txt", in: ground.root))
+                +added
+                *** Update File: \(TestSupport.path("update.txt", in: ground.root))
+                *** Find:
+                two
+                *** Replace:
+                TWO
+                *** Delete File: \(TestSupport.path("delete.txt", in: ground.root))
+                *** Update File: \(TestSupport.path("source.txt", in: ground.root))
+                *** Move to: \(TestSupport.path("dest.txt", in: ground.root))
+                *** End Patch
 
-            """
+                """
 
-        let result = try await patch.call(arguments: PatchArguments(patch: envelope))
-        let (event, set) = try await Self.deliveredChangeSet(in: ground)
+            let result = try await patch.call(arguments: PatchArguments(patch: envelope))
+            let (event, set) = try await Self.deliveredChangeSet(in: ground)
 
-        #expect(result.correction == nil)
-        #expect(event.correlationID == ground.run.context.completionToken)
-        #expect(set.changes.count == Self.touchedFileCount)
-        #expect(Set(set.changes.map(\.kind)) == [.add, .modify, .delete, .move])
+            #expect(result.correction == nil)
+            #expect(event.correlationID == ground.run.context.completionToken)
+            #expect(set.changes.count == Self.touchedFileCount)
+            #expect(Set(set.changes.map(\.kind)) == [.add, .modify, .delete, .move])
+        }
     }
 
     // MARK: - The edit verb
 
     @Test("a mounted edit delivers one modify change with both sides")
     func aMountedEditDeliversOneModifyWithBothSides() async throws {
-        let ground = try await Self.makeGround(seeding: [("code.txt", Self.editedBefore)])
-        let edit = try Self.mounted(Edit.self, in: ground)
-        let path = TestSupport.path("code.txt", in: ground.root)
+        try await Self.withGround(seeding: [("code.txt", Self.editedBefore)]) { ground in
+            let edit = try Self.mounted(Edit.self, in: ground)
+            let path = TestSupport.path("code.txt", in: ground.root)
 
-        let result = try await edit.call(
-            arguments: EditArguments(
-                path: path, find: ["two"], replace: ["TWO"], replacesAll: nil, occurrence: nil))
-        let (event, set) = try await Self.deliveredChangeSet(in: ground)
+            let result = try await edit.call(
+                arguments: EditArguments(
+                    path: path, find: ["two"], replace: ["TWO"], replacesAll: nil, occurrence: nil))
+            let (event, set) = try await Self.deliveredChangeSet(in: ground)
 
-        #expect(result.correction == nil)
-        #expect(event.correlationID == ground.run.context.completionToken)
-        #expect(
-            set.changes == [
-                FileChange(
-                    kind: .modify, path: path, oldContent: Self.editedBefore,
-                    newContent: Self.editedAfter)
-            ])
+            #expect(result.correction == nil)
+            #expect(event.correlationID == ground.run.context.completionToken)
+            #expect(
+                set.changes == [
+                    FileChange(
+                        kind: .modify, path: path, oldContent: Self.editedBefore,
+                        newContent: Self.editedAfter)
+                ])
+        }
     }
 
     // MARK: - The journal after a delivery
 
     @Test("a delivered change is not kept in the journal")
     func aDeliveredChangeIsNotKeptInTheJournal() async throws {
-        let ground = try await Self.makeGround()
-        let write = try Self.mounted(Write.self, in: ground)
+        try await Self.withGround { ground in
+            let write = try Self.mounted(Write.self, in: ground)
 
-        _ = try await write.call(
-            arguments: WriteArguments(
-                path: TestSupport.path("new.txt", in: ground.root), content: Self.writtenContent))
-        _ = try await Self.deliveredChangeSet(in: ground)
-        let drained = await (try Self.journal(of: ground)).drain()
+            _ = try await write.call(
+                arguments: WriteArguments(
+                    path: TestSupport.path("new.txt", in: ground.root), content: Self.writtenContent))
+            _ = try await Self.deliveredChangeSet(in: ground)
+            let drained = await (try Self.journal(of: ground)).drain()
 
-        #expect(drained.changes.isEmpty)
+            #expect(drained.changes.isEmpty)
+        }
     }
 
     // MARK: - A verb with no ambient context
 
     @Test("a verb called with no ambient context keeps its change for drain")
     func aVerbCalledWithNoAmbientContextKeepsItsChangeForDrain() async throws {
-        let ground = try await Self.makeGround()
-        let write = try #require(ground.capability.tools.compactMap { $0 as? Write }.first)
-        let path = TestSupport.path("new.txt", in: ground.root)
+        try await Self.withGround { ground in
+            let write = try #require(ground.capability.tools.compactMap { $0 as? Write }.first)
+            let path = TestSupport.path("new.txt", in: ground.root)
 
-        _ = try await write.call(arguments: WriteArguments(path: path, content: Self.writtenContent))
-        let drained = await write.context.changes.drain()
-        let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
+            _ = try await write.call(arguments: WriteArguments(path: path, content: Self.writtenContent))
+            let drained = await write.context.changes.drain()
+            let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
 
-        #expect(drained.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
-        #expect(events.isEmpty)
+            #expect(drained.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+            #expect(events.isEmpty)
+        }
     }
 }

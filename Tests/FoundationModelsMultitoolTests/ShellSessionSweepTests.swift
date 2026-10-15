@@ -124,21 +124,30 @@ struct ShellSessionSweepTests {
         let gate: ShellCommandGate
     }
 
-    /// Starts `count` background shell runs in one session, and answers
+    /// Starts `count` background shell runs in one session, gives `body`
     /// everything a test needs to tear that session down and read what the
-    /// teardown did.
+    /// teardown did, and closes the session on every path.
+    ///
+    /// The session is closed when the setup throws, when `body` throws, and
+    /// when `body` returns. A test can close the session itself at the point
+    /// that its assertions need: `RoutedSession.close()` is idempotent.
     ///
     /// The process-group registry is a PRIVATE `ProcessRegistry()` and never
     /// `.global`: an ordinary test must not touch the process-wide instance —
     /// see the doc comment of that property. It is also what the test of the
     /// `atexit` backstop reads.
     ///
-    /// - Parameter count: How many runs to start.
-    /// - Returns: The session, its background runs and their process groups.
+    /// - Parameters:
+    ///   - count: How many runs to start.
+    ///   - body: The work that uses the session, its background runs and their
+    ///     process groups.
+    /// - Returns: What `body` returned.
     /// - Throws: When the store does not prepare, when the engine does not
-    ///   mount, when a run does not reach the plane, or when a child of a run
-    ///   registers no process group.
-    private func makeBackgroundSession(runCount count: Int) async throws -> BackgroundSession {
+    ///   mount, when a run does not reach the plane, when a child of a run
+    ///   registers no process group, or what `body` threw.
+    private func withBackgroundSession<Result>(
+        runCount count: Int, _ body: (BackgroundSession) async throws -> Result
+    ) async throws -> Result {
         let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         let state = try ShellState(
             preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
@@ -147,43 +156,45 @@ struct ShellSessionSweepTests {
         // the test moves this clock past the settle period, and no real time
         // passes.
         let clock = ManualRunClock()
-        let run = try await makeStubRun(runClock: clock)
-        let context = run.context
-        // A caller-supplied sink: each swept run's terminal must carry that
-        // run's OWN token, and the mount's own sink re-stamps onto the
-        // mounting run.
-        let sink = RecordingEventSink()
-        let engine = ShellRunPlane.mounted(
-            Execute(runner: ShellRunner(state: state, registry: registry)),
-            inheriting: context, postingTo: sink)
-        let gate = try ShellCommandGate()
+        return try await withStubRun(runClock: clock) { run in
+            let context = run.context
+            // A caller-supplied sink: each swept run's terminal must carry that
+            // run's OWN token, and the mount's own sink re-stamps onto the
+            // mounting run.
+            let sink = RecordingEventSink()
+            let engine = ShellRunPlane.mounted(
+                Execute(runner: ShellRunner(state: state, registry: registry)),
+                inheriting: context, postingTo: sink)
+            let gate = try ShellCommandGate()
 
-        // The gate holds each command, thus each call answers with its pending
-        // envelope only when the clock moves past the settle period.
-        let arguments = ExecuteArguments(command: Self.backgroundCommand(holdingOn: gate))
-        for _ in 0..<count {
-            _ = try await callPastSettlePeriod(
-                on: clock, grace: context.inlineSettleGrace, timers: settlePeriodTimers
-            ) {
-                try await engine.call(arguments: arguments)
+            // The gate holds each command, thus each call answers with its pending
+            // envelope only when the clock moves past the settle period.
+            let arguments = ExecuteArguments(command: Self.backgroundCommand(holdingOn: gate))
+            for _ in 0..<count {
+                _ = try await callPastSettlePeriod(
+                    on: clock, grace: context.inlineSettleGrace, timers: settlePeriodTimers
+                ) {
+                    try await engine.call(arguments: arguments)
+                }
             }
-        }
 
-        let runs = try await ShellRunPlane.backgroundRuns(in: context, count: count)
-        var groups: [pid_t] = []
-        for run in runs {
-            groups.append(try await Self.processGroup(of: run.completionToken, in: state))
+            let runs = try await ShellRunPlane.backgroundRuns(in: context, count: count)
+            var groups: [pid_t] = []
+            for backgroundRun in runs {
+                groups.append(try await Self.processGroup(of: backgroundRun.completionToken, in: state))
+            }
+            return try await body(
+                BackgroundSession(
+                    stub: run,
+                    sink: sink,
+                    context: context,
+                    state: state,
+                    registry: registry,
+                    runs: runs,
+                    groups: groups,
+                    gate: gate
+                ))
         }
-        return BackgroundSession(
-            stub: run,
-            sink: sink,
-            context: context,
-            state: state,
-            registry: registry,
-            runs: runs,
-            groups: groups,
-            gate: gate
-        )
     }
 
     /// The process group of the run under `completionToken`, once its child
@@ -270,21 +281,22 @@ struct ShellSessionSweepTests {
     /// failure of the test.
     @Test("session teardown kills the child process group of each background shell run")
     func sessionTeardownKillsTheProcessGroupOfEachBackgroundShellRun() async throws {
-        let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
-        #expect(session.runs.allSatisfy { $0.kind == .process })
-        for group in session.groups {
-            #expect(Self.processGroupStands(group), "the process group \(group) never came up")
-        }
+        try await withBackgroundSession(runCount: Self.twoBackgroundRuns) { session in
+            #expect(session.runs.allSatisfy { $0.kind == .process })
+            for group in session.groups {
+                #expect(Self.processGroupStands(group), "the process group \(group) never came up")
+            }
 
-        await session.stub.session.close()
+            await session.stub.session.close()
 
-        for group in session.groups {
-            #expect(ProcessLiveness.isGone(group), "the sweep left the leader of the group \(group) unreaped")
-            // The end of each wait is the result, thus no state is read
-            // again after it. A process that the sweep did not kill never
-            // exits, and that wait is the failure of the test.
-            for member in Self.processes(inGroup: group) {
-                await ProcessExitWait.waitUntilGone(member)
+            for group in session.groups {
+                #expect(ProcessLiveness.isGone(group), "the sweep left the leader of the group \(group) unreaped")
+                // The end of each wait is the result, thus no state is read
+                // again after it. A process that the sweep did not kill never
+                // exits, and that wait is the failure of the test.
+                for member in Self.processes(inGroup: group) {
+                    await ProcessExitWait.waitUntilGone(member)
+                }
             }
         }
     }
@@ -302,28 +314,29 @@ struct ShellSessionSweepTests {
     /// this run ended.
     @Test("the terminal event of a swept shell run carries the outcome .stopped")
     func theTerminalEventOfASweptShellRunCarriesStopped() async throws {
-        let session = try await makeBackgroundSession(runCount: Self.oneBackgroundRun)
-        let run = try #require(session.runs.first)
+        try await withBackgroundSession(runCount: Self.oneBackgroundRun) { session in
+            let run = try #require(session.runs.first)
 
-        // Subscribed BEFORE the sweep. `streamSessionEvents()` is live and has
-        // no replay, and `close()` finishes every open subscription, so a
-        // stream opened after the sweep sees nothing at all.
-        // The sweep's terminal reaches the JOURNAL, not the mounted run's own
-        // sink: `close()` sweeps through the run plane, which is not the run
-        // posting an event of its own. With a caller-supplied sink in the mount
-        // there is no re-stamping layer, so the journaled terminal carries the
-        // run's own token — measured.
-        await session.stub.session.close()
-        let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed,
-            correlatedTo: Set(session.runs.map(\.completionToken)),
-            awaiting: Self.terminalEventsPerRun)
-        #expect(terminals.count == Self.terminalEventsPerRun)
-        let terminal = try #require(terminals.first)
-        #expect(terminal.correlationID == run.completionToken)
-        #expect(terminal.kind == .completed)
-        #expect(terminal.outcome == .stopped)
-        #expect(await session.state.record(commandID: run.completionToken)?.status == .killed)
+            // Subscribed BEFORE the sweep. `streamSessionEvents()` is live and has
+            // no replay, and `close()` finishes every open subscription, so a
+            // stream opened after the sweep sees nothing at all.
+            // The sweep's terminal reaches the JOURNAL, not the mounted run's own
+            // sink: `close()` sweeps through the run plane, which is not the run
+            // posting an event of its own. With a caller-supplied sink in the mount
+            // there is no re-stamping layer, so the journaled terminal carries the
+            // run's own token — measured.
+            await session.stub.session.close()
+            let terminals = await recordedOperationEvents(
+                of: session.stub, ofKind: .completed,
+                correlatedTo: Set(session.runs.map(\.completionToken)),
+                awaiting: Self.terminalEventsPerRun)
+            #expect(terminals.count == Self.terminalEventsPerRun)
+            let terminal = try #require(terminals.first)
+            #expect(terminal.correlationID == run.completionToken)
+            #expect(terminal.kind == .completed)
+            #expect(terminal.outcome == .stopped)
+            #expect(await session.state.record(commandID: run.completionToken)?.status == .killed)
+        }
     }
 
     /// eventplan.md: *"Each outcome goes into the journal before the session
@@ -336,25 +349,25 @@ struct ShellSessionSweepTests {
     /// orphan, because no run is left for a later observer to find.
     @Test("each of two background shell runs gets its own terminal event, and none stays on the plane")
     func eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent() async throws {
-        let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
+        try await withBackgroundSession(runCount: Self.twoBackgroundRuns) { session in
+            // Subscribed BEFORE the sweep; see the sibling test for why.
+            // The sweep's terminal reaches the JOURNAL, not the mounted run's own
+            // sink: `close()` sweeps through the run plane, which is not the run
+            // posting an event of its own. With a caller-supplied sink in the mount
+            // there is no re-stamping layer, so the journaled terminal carries the
+            // run's own token — measured.
+            await session.stub.session.close()
+            let terminals = await recordedOperationEvents(
+                of: session.stub, ofKind: .completed,
+                correlatedTo: Set(session.runs.map(\.completionToken)),
+                awaiting: Self.twoBackgroundRuns)
 
-        // Subscribed BEFORE the sweep; see the sibling test for why.
-        // The sweep's terminal reaches the JOURNAL, not the mounted run's own
-        // sink: `close()` sweeps through the run plane, which is not the run
-        // posting an event of its own. With a caller-supplied sink in the mount
-        // there is no re-stamping layer, so the journaled terminal carries the
-        // run's own token — measured.
-        await session.stub.session.close()
-        let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed,
-            correlatedTo: Set(session.runs.map(\.completionToken)),
-            awaiting: Self.twoBackgroundRuns)
-
-        #expect(terminals.count == Self.twoBackgroundRuns)
-        #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
-        #expect(terminals.allSatisfy { $0.kind == .completed })
-        #expect(terminals.allSatisfy { $0.outcome == .stopped })
-        #expect(await session.context.backgroundRuns().isEmpty)
+            #expect(terminals.count == Self.twoBackgroundRuns)
+            #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
+            #expect(terminals.allSatisfy { $0.kind == .completed })
+            #expect(terminals.allSatisfy { $0.outcome == .stopped })
+            #expect(await session.context.backgroundRuns().isEmpty)
+        }
     }
 
     // MARK: - The atexit backstop of the process registry
@@ -372,12 +385,13 @@ struct ShellSessionSweepTests {
     /// the order that the product makes.
     @Test("the sweep drains the process registry, thus the atexit backstop finds nothing to kill")
     func theSweepDrainsTheProcessRegistry() async throws {
-        let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
-        let registry = session.registry
-        #expect(registry.registeredPids == Set(session.groups))
+        try await withBackgroundSession(runCount: Self.twoBackgroundRuns) { session in
+            let registry = session.registry
+            #expect(registry.registeredPids == Set(session.groups))
 
-        await session.stub.session.close()
+            await session.stub.session.close()
 
-        #expect(registry.registeredPids.isEmpty, "the registry still held \(registry.registeredPids)")
+            #expect(registry.registeredPids.isEmpty, "the registry still held \(registry.registeredPids)")
+        }
     }
 }

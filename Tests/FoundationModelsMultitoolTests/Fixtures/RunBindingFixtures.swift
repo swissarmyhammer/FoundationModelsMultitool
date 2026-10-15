@@ -133,10 +133,21 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// public initializer and the run plane of a session is internal to Router. See
 /// `StubRouterFixtures.swift` for the stack that stands the session up.
 ///
-/// - Parameter runClock: the run clock of the session, or `nil` for the real
-///   time. See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
-/// - Returns: the outer run's ambient context.
-/// - Throws: whatever standing up the stub session throws.
-func makeOuterRunContext(runClock: (any RunClock)? = nil) async throws -> ToolContext {
-    try await makeStubRun(runClock: runClock).context
+/// The helper gives the context to `body`, and closes the session of the
+/// context when `body` returns or throws. A close inside a helper that
+/// returns the context would end the session while the test still uses the
+/// context. A session that is not closed has no contract: its tasks can
+/// still run after the test.
+///
+/// - Parameters:
+///   - runClock: the run clock of the session, or `nil` for the real time.
+///     See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
+///   - body: the work that uses the outer run's ambient context.
+/// - Returns: what `body` returned.
+/// - Throws: whatever standing up the stub session throws, or what `body`
+///   threw.
+func withOuterRunContext<Result>(
+    runClock: (any RunClock)? = nil, _ body: (ToolContext) async throws -> Result
+) async throws -> Result {
+    try await withStubRun(runClock: runClock) { run in try await body(run.context) }
 }

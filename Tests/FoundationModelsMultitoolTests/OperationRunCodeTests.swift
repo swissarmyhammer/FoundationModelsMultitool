@@ -316,12 +316,12 @@ struct OperationRunCodeTests {
         try await Self.seed(parent, with: [Self.seededNotes[0]])
         let stored = try #require(parent.notes.first)
         let multiTool = try Self.makeMultiTool(over: parent)
-        let context = try await makeOuterRunContext()
-
-        _ = try await ToolContext.$current.withValue(context) {
-            try await multiTool.call(
-                arguments: RunCodeArguments(
-                    code: #"return await tools.notes.tagNote({ id: "\#(stored.id)", tag: "\#(Self.addedTag)" });"#))
+        try await withOuterRunContext { context in
+            _ = try await ToolContext.$current.withValue(context) {
+                try await multiTool.call(
+                    arguments: RunCodeArguments(
+                        code: #"return await tools.notes.tagNote({ id: "\#(stored.id)", tag: "\#(Self.addedTag)" });"#))
+            }
         }
 
         let tagCall = try #require(parent.recordedCalls(withOp: NotesOperationTool.tagNoteOp).first)

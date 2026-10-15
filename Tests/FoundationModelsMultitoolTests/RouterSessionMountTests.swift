@@ -20,68 +20,70 @@ import ULID
 struct RouterSessionMountTests {
     @Test("searchTools returns the same text through Router's session mount as it does direct")
     func searchToolsIsTransparentThroughTheMount() async throws {
-        let context = try await makeOuterRunContext()
-        let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
-        let task = "the cities on the trip"
+        try await withOuterRunContext { context in
+            let registry = try Self.registry()
+            let searchTools = try SearchToolsTool(registry: registry, selection: nil)
+            let task = "the cities on the trip"
 
-        let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
-        let mounted = try #require(
-            Self.makeSessionMounted(searchTools, on: context) as? any Tool<SearchToolsArguments, String>
-        )
-        let throughMount = try await mounted.call(arguments: SearchToolsArguments(task: task))
+            let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
+            let mounted = try #require(
+                Self.makeSessionMounted(searchTools, on: context) as? any Tool<SearchToolsArguments, String>
+            )
+            let throughMount = try await mounted.call(arguments: SearchToolsArguments(task: task))
 
-        #expect(throughMount == direct)
-        #expect(!direct.isEmpty)
+            #expect(throughMount == direct)
+            #expect(!direct.isEmpty)
+        }
     }
 
     @Test("a short snippet returns the same value through the mount as it does direct")
     func runCodeIsTransparentThroughTheMountInsideTheSettlePeriod() async throws {
-        let context = try await makeOuterRunContext()
-        let registry = try Self.registry()
-        let runCode = MultiTool(registry: registry)
-        let snippet = "const r = await tools.getCities({}); return r.cities.length;"
+        try await withOuterRunContext { context in
+            let registry = try Self.registry()
+            let runCode = MultiTool(registry: registry)
+            let snippet = "const r = await tools.getCities({}); return r.cities.length;"
 
-        let direct = try await runCode.call(arguments: RunCodeArguments(code: snippet))
-        let mounted = try #require(
-            Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
-        )
-        let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+            let direct = try await runCode.call(arguments: RunCodeArguments(code: snippet))
+            let mounted = try #require(
+                Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
+            )
+            let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
-        // Mounted, `runCode` is a background tool, but a background call goes
-        // to the background only when it takes longer than its settle period
-        // (the rule of the user). This snippet is over at once, so the mount
-        // gives its own result, the same as the direct call, and no envelope.
-        // A snippet that runs longer gets a pending envelope: see
-        // `runCodeEnvelopeCarriesTheSharedPendingText` below.
-        #expect(!PendingRunEnvelope.isRendered(text: throughMount))
-        #expect(throughMount == direct)
-        // Called directly, with no session and no background runs to post into,
-        // the same snippet still returns its own value. Both halves of one rule.
-        //
-        // A city count derived from the names the call returned shares no text
-        // with them, so the run also closes with `ToolReturnLedger`'s notice —
-        // the detector reporting the fact it reports, not noise this test
-        // should assert around. The whole output is compared, and the notice is
-        // read from its one source, so a reword reaches here too.
-        #expect(direct == "3\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
+            // Mounted, `runCode` is a background tool, but a background call goes
+            // to the background only when it takes longer than its settle period
+            // (the rule of the user). This snippet is over at once, so the mount
+            // gives its own result, the same as the direct call, and no envelope.
+            // A snippet that runs longer gets a pending envelope: see
+            // `runCodeEnvelopeCarriesTheSharedPendingText` below.
+            #expect(!PendingRunEnvelope.isRendered(text: throughMount))
+            #expect(throughMount == direct)
+            // Called directly, with no session and no background runs to post into,
+            // the same snippet still returns its own value. Both halves of one rule.
+            //
+            // A city count derived from the names the call returned shares no text
+            // with them, so the run also closes with `ToolReturnLedger`'s notice —
+            // the detector reporting the fact it reports, not noise this test
+            // should assert around. The whole output is compared, and the notice is
+            // read from its one source, so a reword reaches here too.
+            #expect(direct == "3\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
+        }
     }
 
     @Test("the mount leaves the model-facing name and description untouched")
     func theMountPreservesTheModelFacingSurface() async throws {
-        let context = try await makeOuterRunContext()
-        let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
+        try await withOuterRunContext { context in
+            let registry = try Self.registry()
+            let searchTools = try SearchToolsTool(registry: registry, selection: nil)
 
-        let mounted = Self.makeSessionMounted(searchTools, on: context)
+            let mounted = Self.makeSessionMounted(searchTools, on: context)
 
-        #expect(mounted.name == searchTools.name)
-        #expect(mounted.description == searchTools.description)
+            #expect(mounted.name == searchTools.name)
+            #expect(mounted.description == searchTools.description)
+        }
     }
 
     @Test("a snippet that is still running hands back an envelope that carries the shared pending text, not a call to a wait tool or another snippet")
     func runCodeEnvelopeCarriesTheSharedPendingText() async throws {
-        let context = try await makeOuterRunContext()
         // The live-lock of task ^4qcf1v9: every mounted `runCode` call
         // backgrounds, so a snippet that is still running is tracked and hands
         // back a token. An envelope whose `next` told the model to run another
@@ -91,40 +93,47 @@ struct RouterSessionMountTests {
         // shared pending text (task ^1dzf1za). It names no `wait` tool, because
         // no `wait` tool is mounted, and the sandbox has no `wait()` global.
         let gate = ReleaseGate()
-        let runCode = MultiTool(
-            registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
-            configuration: MultiToolConfiguration(inlineSettleGrace: 0)
-        )
-        let mounted = try #require(
-            Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
-        )
+        try await withOuterRunContext { context in
+            // `ReleaseGate.wait()` does not end on cancellation, and `close()`
+            // waits for each run body to end. Thus the gate opens on every path
+            // before the session closes. A second release has no effect.
+            try await ensuring({ await gate.release() }) {
+                let runCode = MultiTool(
+                    registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
+                    configuration: MultiToolConfiguration(inlineSettleGrace: 0)
+                )
+                let mounted = try #require(
+                    Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
+                )
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: gatedCodeSnippet))
+                let rendered = try await mounted.call(arguments: RunCodeArguments(code: gatedCodeSnippet))
 
-        #expect(PendingRunEnvelope.isRendered(text: rendered))
-        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
-        // The sentence carries the shared pending text and names this
-        // envelope's token. It names no `wait` tool.
-        #expect(envelope.next.contains(PendingRunEnvelope.pendingWorkInstruction))
-        #expect(envelope.next.contains(envelope.completionToken))
-        #expect(!envelope.next.contains("wait tool"))
-        #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
-        // It prescribes no snippet (task `^cf57dtd`).
-        #expect(!envelope.next.contains("Call this tool again"))
-        #expect(!envelope.next.contains("return await wait"))
-        // The envelope is a short report: shorter than one capped `runCode`
-        // return value.
-        #expect(rendered.count < MultiToolConfiguration.default.returnValueCharacterLimit)
+                #expect(PendingRunEnvelope.isRendered(text: rendered))
+                let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+                #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
+                // The sentence carries the shared pending text and names this
+                // envelope's token. It names no `wait` tool.
+                #expect(envelope.next.contains(PendingRunEnvelope.pendingWorkInstruction))
+                #expect(envelope.next.contains(envelope.completionToken))
+                #expect(!envelope.next.contains("wait tool"))
+                #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
+                // It prescribes no snippet (task `^cf57dtd`).
+                #expect(!envelope.next.contains("Call this tool again"))
+                #expect(!envelope.next.contains("return await wait"))
+                // The envelope is a short report: shorter than one capped `runCode`
+                // return value.
+                #expect(rendered.count < MultiToolConfiguration.default.returnValueCharacterLimit)
 
-        // Open the gate the snippet waits on; the background snippet then
-        // finishes, and the token the envelope names resolves to a result.
-        await gate.release()
-        let collected = await context
-            .wait(completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
-        guard case .settled = collected else {
-            Issue.record("the background snippet never settled: \(collected)")
-            return
+                // Open the gate the snippet waits on; the background snippet then
+                // finishes, and the token the envelope names resolves to a result.
+                await gate.release()
+                let collected = await context
+                    .wait(completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
+                guard case .settled = collected else {
+                    Issue.record("the background snippet never settled: \(collected)")
+                    return
+                }
+            }
         }
     }
 

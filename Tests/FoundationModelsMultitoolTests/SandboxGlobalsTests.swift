@@ -66,33 +66,34 @@ struct SandboxGlobalsTests {
 
     @Test("the run verbs return promises; notify, progress, help, and docs return plain values")
     func promiseVersusSynchronousContractHolds() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        let output = try await runSnippet(
-            """
-            return [
-                "status:" + typeof status().then,
-                "cancel:" + typeof cancel("no-such-token").then,
-                "notify:" + String(notify("a notice")),
-                "progress:" + String(progress("half way")),
-                "help:" + typeof help().then,
-                "docs:" + typeof docs("nothing").then,
-            ];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                return [
+                    "status:" + typeof status().then,
+                    "cancel:" + typeof cancel("no-such-token").then,
+                    "notify:" + String(notify("a notice")),
+                    "progress:" + String(progress("half way")),
+                    "help:" + typeof help().then,
+                    "docs:" + typeof docs("nothing").then,
+                ];
+                """,
+                under: context
+            )
 
-        #expect(
-            try RunOutput.decoded([String].self, from: output) == [
-                "status:function",
-                "cancel:function",
-                "notify:undefined",
-                "progress:undefined",
-                "help:undefined",
-                "docs:undefined",
-            ]
-        )
+            #expect(
+                try RunOutput.decoded([String].self, from: output) == [
+                    "status:function",
+                    "cancel:function",
+                    "notify:undefined",
+                    "progress:undefined",
+                    "help:undefined",
+                    "docs:undefined",
+                ]
+            )
+        }
     }
 
     // MARK: - Discovery: docs() carries the contract the description points at
@@ -139,35 +140,39 @@ struct SandboxGlobalsTests {
     @Test("the globals page declares the exact fields a running background run really reports")
     func theGlobalsPageMatchesTheBackgroundRunItDocuments() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        _ = try await startScriptedRun(on: context, clock: clock, progress: "step one")
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            // The run must still be going while the snippet reads it. Its gate
+            // opens after the last check, before the session closes.
+            try await withScriptedRun(on: context, clock: clock, progress: "step one") { _ in
+                let output = try await runSnippet(
+                    "return Object.keys((await status())[0]).sort();",
+                    under: context
+                )
 
-        let output = try await runSnippet(
-            "return Object.keys((await status())[0]).sort();",
-            under: context
-        )
-
-        let observed = try RunOutput.decoded([String].self, from: output)
-        let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage))
-        #expect(documented == observed)
+                let observed = try RunOutput.decoded([String].self, from: output)
+                let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage))
+                #expect(documented == observed)
+            }
+        }
     }
 
     @Test("the globals page declares the exact fields an elicitation answer really carries")
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        // Constructed for its effect: answering the snippet's elicitation.
-        _ = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
+        try await withStubRun { stub in
+            let context = stub.context
+            // Constructed for its effect: answering the snippet's elicitation.
+            _ = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
 
-        let output = try await runSnippet(
-            "return Object.keys(await elicit(\"Which repository?\")).sort();",
-            under: context
-        )
+            let output = try await runSnippet(
+                "return Object.keys(await elicit(\"Which repository?\")).sort();",
+                under: context
+            )
 
-        let observed = try RunOutput.decoded([String].self, from: output)
-        let documented = try #require(declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
-        #expect(documented == observed)
+            let observed = try RunOutput.decoded([String].self, from: output)
+            let documented = try #require(declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
+            #expect(documented == observed)
+        }
     }
 
     // MARK: - The two discriminators
@@ -175,37 +180,41 @@ struct SandboxGlobalsTests {
     @Test("state and result never appear on one object — state is the run, result is the call")
     func stateAndResultNeverAppearOnOneObject() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let running = try await startScriptedRun(on: context, clock: clock, tool: "slow")
-        let finished = try await startScriptedRun(on: context, clock: clock, tool: "quick")
-        await settle(finished, on: context)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            // The gate of `running` opens after the last check, before the
+            // session closes.
+            try await withScriptedRun(on: context, clock: clock, tool: "slow") { running in
+                let finished = try await startScriptedRun(on: context, clock: clock, tool: "quick")
+                await settle(finished, on: context)
 
-        let output = try await runSnippet(
-            """
-            const shapes = [
-                await status("\(running.completionToken)"),
-                await status("\(finished.completionToken)"),
-                await status("no-such-token"),
-                await cancel("\(finished.completionToken)"),
-                await cancel("no-such-token"),
-                await cancel("\(running.completionToken)"),
-            ];
-            return shapes.map(shape => ["state" in shape, "result" in shape]);
-            """,
-            under: context
-        )
+                let output = try await runSnippet(
+                    """
+                    const shapes = [
+                        await status("\(running.completionToken)"),
+                        await status("\(finished.completionToken)"),
+                        await status("no-such-token"),
+                        await cancel("\(finished.completionToken)"),
+                        await cancel("no-such-token"),
+                        await cancel("\(running.completionToken)"),
+                    ];
+                    return shapes.map(shape => ["state" in shape, "result" in shape]);
+                    """,
+                    under: context
+                )
 
-        #expect(
-            try RunOutput.decoded([[Bool]].self, from: output) == [
-                [true, false],   // status() on a run that is going
-                [true, false],   // status() on a run that finished
-                [false, true],   // status() on a handle naming no run
-                [true, false],   // cancel() that arrived too late
-                [false, true],   // cancel() on a handle naming no run
-                [false, true],   // cancel() the canceler answered
-            ]
-        )
+                #expect(
+                    try RunOutput.decoded([[Bool]].self, from: output) == [
+                        [true, false],   // status() on a run that is going
+                        [true, false],   // status() on a run that finished
+                        [false, true],   // status() on a handle naming no run
+                        [true, false],   // cancel() that arrived too late
+                        [false, true],   // cancel() on a handle naming no run
+                        [false, true],   // cancel() the canceler answered
+                    ]
+                )
+            }
+        }
     }
 
     // MARK: - status()
@@ -213,100 +222,107 @@ struct SandboxGlobalsTests {
     @Test("status() with no argument lists each running run's token, op, and latest progress")
     func statusWithNoArgumentListsEveryRunningRun() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock, progress: "downloading")
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            try await withScriptedRun(on: context, clock: clock, progress: "downloading") { run in
+                let output = try await runSnippet(
+                    "return (await status()).map(row => [row.completionToken, row.op, row.latestProgress]);",
+                    under: context
+                )
 
-        let output = try await runSnippet(
-            "return (await status()).map(row => [row.completionToken, row.op, row.latestProgress]);",
-            under: context
-        )
-
-        #expect(try RunOutput.decoded([[String?]].self, from: output) == [[run.completionToken, run.op, "downloading"]])
+                #expect(
+                    try RunOutput.decoded([[String?]].self, from: output)
+                        == [[run.completionToken, run.op, "downloading"]])
+            }
+        }
     }
 
     @Test("status(completionToken) reports a running run as running")
     func statusWithATokenReportsARunningRun() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock, progress: "step one")
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            try await withScriptedRun(on: context, clock: clock, progress: "step one") { run in
+                let output = try await runSnippet(
+                    """
+                    const row = await status("\(run.completionToken)");
+                    return [row.state, row.completionToken, row.op, row.kind, row.latestProgress];
+                    """,
+                    under: context
+                )
 
-        let output = try await runSnippet(
-            """
-            const row = await status("\(run.completionToken)");
-            return [row.state, row.completionToken, row.op, row.kind, row.latestProgress];
-            """,
-            under: context
-        )
-
-        #expect(
-            try RunOutput.decoded([String?].self, from: output) == [
-                "running", run.completionToken, run.op, "swiftTask", "step one",
-            ]
-        )
+                #expect(
+                    try RunOutput.decoded([String?].self, from: output) == [
+                        "running", run.completionToken, run.op, "swiftTask", "step one",
+                    ]
+                )
+            }
+        }
     }
 
     @Test("status(completionToken) reports a finished run as complete, with its terminal outcome")
     func statusWithATokenReportsAFinishedRun() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock)
-        await settle(run, on: context)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            let run = try await startScriptedRun(on: context, clock: clock)
+            await settle(run, on: context)
 
-        let output = try await runSnippet(
-            """
-            const row = await status("\(run.completionToken)");
-            return [row.state, row.completionToken, row.detail, row.outcome];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const row = await status("\(run.completionToken)");
+                return [row.state, row.completionToken, row.detail, row.outcome];
+                """,
+                under: context
+            )
 
-        #expect(
-            try RunOutput.decoded([String?].self, from: output) == [
-                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
-            ]
-        )
+            #expect(
+                try RunOutput.decoded([String?].self, from: output) == [
+                    "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
+                ]
+            )
+        }
     }
 
     @Test("status(completionToken) reports a run that failed as error, and outcome says why")
     func statusWithATokenReportsAFailedRun() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock, failing: true)
-        await settle(run, on: context)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            let run = try await startScriptedRun(on: context, clock: clock, failing: true)
+            await settle(run, on: context)
 
-        let output = try await runSnippet(
-            """
-            const row = await status("\(run.completionToken)");
-            return [row.state, row.completionToken, row.outcome];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const row = await status("\(run.completionToken)");
+                return [row.state, row.completionToken, row.outcome];
+                """,
+                under: context
+            )
 
-        #expect(
-            try RunOutput.decoded([String?].self, from: output) == [
-                "error", run.completionToken, OperationOutcome.failed.rawValue,
-            ]
-        )
+            #expect(
+                try RunOutput.decoded([String?].self, from: output) == [
+                    "error", run.completionToken, OperationOutcome.failed.rawValue,
+                ]
+            )
+        }
     }
 
     @Test("status(completionToken) reports an unknown token as a safe no-op, never a throw")
     func statusWithAnUnknownTokenIsASafeNoOp() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        let output = try await runSnippet(
-            """
-            const row = await status("no-such-token");
-            return [row.result, row.completionToken];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const row = await status("no-such-token");
+                return [row.result, row.completionToken];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
+            #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
+        }
     }
 
     // MARK: - The removed wait()
@@ -314,17 +330,18 @@ struct SandboxGlobalsTests {
     @Test("a snippet that calls wait() in a session gets the repair text: return the token, and the shared pending text")
     func waitInASessionGivesTheRepairText() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            try await withScriptedRun(on: context, clock: clock) { run in
+                let output = try await runSnippet(removedWaitCatchingSnippet, under: context)
 
-        let output = try await runSnippet(removedWaitCatchingSnippet, under: context)
-
-        let message = try RunOutput.decoded(String.self, from: output)
-        #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
-        #expect(message.contains(PendingRunEnvelope.pendingWorkInstruction))
-        // The call holds nothing: the run it names is still going.
-        #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
+                let message = try RunOutput.decoded(String.self, from: output)
+                #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
+                #expect(message.contains(PendingRunEnvelope.pendingWorkInstruction))
+                // The call holds nothing: the run it names is still going.
+                #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
+            }
+        }
     }
 
     @Test("a snippet that calls wait() with no session gets the same repair text, not the no-session text")
@@ -356,251 +373,264 @@ struct SandboxGlobalsTests {
     @Test("cancel() returns the canceler's honest outcome, verbatim")
     func cancelReturnsTheHonestOutcome() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            // The cancel does not end the body on the gate. The gate opens
+            // after the last check, before the session closes.
+            try await withScriptedRun(on: context, clock: clock) { run in
+                let output = try await runSnippet(
+                    """
+                    const outcome = await cancel("\(run.completionToken)");
+                    return [outcome.result, outcome.completionToken, outcome.outcome];
+                    """,
+                    under: context
+                )
 
-        let output = try await runSnippet(
-            """
-            const outcome = await cancel("\(run.completionToken)");
-            return [outcome.result, outcome.completionToken, outcome.outcome];
-            """,
-            under: context
-        )
-
-        #expect(
-            try RunOutput.decoded([String].self, from: output) == [
-                "cancelled", run.completionToken, scriptedRunCancelOutcome.rawValue,
-            ]
-        )
+                #expect(
+                    try RunOutput.decoded([String].self, from: output) == [
+                        "cancelled", run.completionToken, scriptedRunCancelOutcome.rawValue,
+                    ]
+                )
+            }
+        }
     }
 
     @Test("cancel() on a run that already finished reports the retained terminal event, not an unknown token")
     func cancelOnAFinishedRunReportsItsTerminalEvent() async throws {
         let clock = ManualRunClock()
-        let stub = try await makeStubRun(runClock: clock)
-        let context = stub.context
-        let run = try await startScriptedRun(on: context, clock: clock)
-        await settle(run, on: context)
+        try await withStubRun(runClock: clock) { stub in
+            let context = stub.context
+            let run = try await startScriptedRun(on: context, clock: clock)
+            await settle(run, on: context)
 
-        let output = try await runSnippet(
-            """
-            const outcome = await cancel("\(run.completionToken)");
-            return [outcome.state, outcome.completionToken, outcome.detail, outcome.outcome];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const outcome = await cancel("\(run.completionToken)");
+                return [outcome.state, outcome.completionToken, outcome.detail, outcome.outcome];
+                """,
+                under: context
+            )
 
-        #expect(
-            try RunOutput.decoded([String?].self, from: output) == [
-                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
-            ]
-        )
+            #expect(
+                try RunOutput.decoded([String?].self, from: output) == [
+                    "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
+                ]
+            )
+        }
     }
 
     @Test("cancel() reports an unknown token as a safe no-op, never a throw")
     func cancelWithAnUnknownTokenIsASafeNoOp() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        let output = try await runSnippet(
-            """
-            const outcome = await cancel("no-such-token");
-            return [outcome.result, outcome.completionToken];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const outcome = await cancel("no-such-token");
+                return [outcome.result, outcome.completionToken];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
+            #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
+        }
     }
 
     // MARK: - elicit()
 
     @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        let sink = ScriptedElicitationSink(
-            run: stub,
-            answering: .accept(content: ["repo": .string("swissarmyhammer")])
-        )
+        try await withStubRun { stub in
+            let context = stub.context
+            let sink = ScriptedElicitationSink(
+                run: stub,
+                answering: .accept(content: ["repo": .string("swissarmyhammer")])
+            )
 
-        let output = try await runSnippet(
-            """
-            const pending = elicit("Which repository should I target?");
-            const isThenable = typeof pending.then === "function";
-            const answer = await pending;
-            return [String(isThenable), answer.action, answer.content.repo];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const pending = elicit("Which repository should I target?");
+                const isThenable = typeof pending.then === "function";
+                const answer = await pending;
+                return [String(isThenable), answer.action, answer.content.repo];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
-        let request = try #require(await sink.observedRequest)
-        #expect(request.mode == .form)
-        #expect(request.message == "Which repository should I target?")
-        #expect(request.requestedSchema?.properties.isEmpty == true)
-        #expect(await sink.deliveries == [.delivered])
+            #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
+            let request = try #require(await sink.observedRequest)
+            #expect(request.mode == .form)
+            #expect(request.message == "Which repository should I target?")
+            #expect(request.requestedSchema?.properties.isEmpty == true)
+            #expect(await sink.deliveries == [.delivered])
+        }
     }
 
     @Test("a declined elicitation surfaces as a decline, distinct from a cancel")
     func elicitSurfacesADeclineDistinctly() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        // Constructed for its effect: answering the snippet's elicitation.
-        _ = ScriptedElicitationSink(run: stub, answering: .decline)
+        try await withStubRun { stub in
+            let context = stub.context
+            // Constructed for its effect: answering the snippet's elicitation.
+            _ = ScriptedElicitationSink(run: stub, answering: .decline)
 
-        let output = try await runSnippet(
-            """
-            const answer = await elicit("Proceed?");
-            return [answer.action, String(answer.content)];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const answer = await elicit("Proceed?");
+                return [answer.action, String(answer.content)];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
+            #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
+        }
     }
 
     @Test("a cancelled elicitation surfaces as a cancel, distinct from a decline")
     func elicitSurfacesACancelDistinctly() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        // Constructed for its effect: answering the snippet's elicitation.
-        _ = ScriptedElicitationSink(run: stub, answering: .cancel)
+        try await withStubRun { stub in
+            let context = stub.context
+            // Constructed for its effect: answering the snippet's elicitation.
+            _ = ScriptedElicitationSink(run: stub, answering: .cancel)
 
-        let output = try await runSnippet(
-            """
-            const answer = await elicit("Proceed?");
-            return [answer.action, String(answer.content)];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const answer = await elicit("Proceed?");
+                return [answer.action, String(answer.content)];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
+            #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
+        }
     }
 
     @Test("elicit({ message, requestedSchema }) carries the restricted form schema through unchanged")
     func elicitCarriesAFormSchemaThrough() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        let sink = ScriptedElicitationSink(
-            run: stub,
-            answering: .accept(content: ["repo": .string("multitool")])
-        )
+        try await withStubRun { stub in
+            let context = stub.context
+            let sink = ScriptedElicitationSink(
+                run: stub,
+                answering: .accept(content: ["repo": .string("multitool")])
+            )
 
-        let output = try await runSnippet(
-            """
-            const answer = await elicit({
-                message: "Pick a repository",
-                requestedSchema: {
-                    type: "object",
-                    properties: { repo: { type: "string", title: "Repository" } },
-                    required: ["repo"],
-                },
-            });
-            return [answer.action, answer.content.repo];
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const answer = await elicit({
+                    message: "Pick a repository",
+                    requestedSchema: {
+                        type: "object",
+                        properties: { repo: { type: "string", title: "Repository" } },
+                        required: ["repo"],
+                    },
+                });
+                return [answer.action, answer.content.repo];
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["accept", "multitool"])
-        let request = try #require(await sink.observedRequest)
-        #expect(request.mode == .form)
-        #expect(request.requestedSchema?.required == ["repo"])
-        guard case .string(let repoSchema)? = request.requestedSchema?.properties["repo"] else {
-            Issue.record("the repo property did not decode as a string schema")
-            return
+            #expect(try RunOutput.decoded([String].self, from: output) == ["accept", "multitool"])
+            let request = try #require(await sink.observedRequest)
+            #expect(request.mode == .form)
+            #expect(request.requestedSchema?.required == ["repo"])
+            guard case .string(let repoSchema)? = request.requestedSchema?.properties["repo"] else {
+                Issue.record("the repo property did not decode as a string schema")
+                return
+            }
+            #expect(repoSchema.title == "Repository")
         }
-        #expect(repoSchema.title == "Repository")
     }
 
     @Test("elicit({ message, url }) resolves only once the out-of-band flow completes")
     func elicitUrlModeResolvesAfterCompletion() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: nil))
+        try await withStubRun { stub in
+            let context = stub.context
+            let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: nil))
 
-        let output = try await runSnippet(
-            """
-            const answer = await elicit({ message: "Sign in", url: "https://example.com/auth" });
-            return answer.action;
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                const answer = await elicit({ message: "Sign in", url: "https://example.com/auth" });
+                return answer.action;
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded(String.self, from: output) == "accept")
-        let request = try #require(await sink.observedRequest)
-        #expect(request.mode == .url)
-        #expect(request.url == URL(string: "https://example.com/auth"))
-        #expect(await sink.deliveries == [.acceptedAwaitingCompletion])
-        #expect(await sink.completions == [.completed])
+            #expect(try RunOutput.decoded(String.self, from: output) == "accept")
+            let request = try #require(await sink.observedRequest)
+            #expect(request.mode == .url)
+            #expect(request.url == URL(string: "https://example.com/auth"))
+            #expect(await sink.deliveries == [.acceptedAwaitingCompletion])
+            #expect(await sink.completions == [.completed])
+        }
     }
 
     @Test("elicit() with neither a question nor a message rejects with a repairable error naming the shape")
     func elicitWithoutAMessageRejectsRepairably() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        let output = try await runSnippet(
-            """
-            try {
-                await elicit(42);
-                return "no-throw";
-            } catch (error) {
-                return String(error.message);
-            }
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                try {
+                    await elicit(42);
+                    return "no-throw";
+                } catch (error) {
+                    return String(error.message);
+                }
+                """,
+                under: context
+            )
 
-        let message = try RunOutput.decoded(String.self, from: output)
-        #expect(message.hasPrefix("elicit: "))
-        #expect(message.contains("elicit(\"question\")"))
+            let message = try RunOutput.decoded(String.self, from: output)
+            #expect(message.hasPrefix("elicit: "))
+            #expect(message.contains("elicit(\"question\")"))
+        }
     }
 
     // MARK: - notify() / progress()
 
     @Test("notify() and progress() reach the session's sink on the run's own correlation")
     func noticesReachTheSinkOnTheRunsCorrelation() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        let output = try await runSnippet(
-            """
-            notify("starting the sweep");
-            progress("half way");
-            return "done";
-            """,
-            under: context
-        )
+            let output = try await runSnippet(
+                """
+                notify("starting the sweep");
+                progress("half way");
+                return "done";
+                """,
+                under: context
+            )
 
-        #expect(try RunOutput.decoded(String.self, from: output) == "done")
-        // Router writes the second progress event in a merged row that only
-        // `close()` writes, so the read settles the session first.
-        let events = await settledOperationEvents(of: stub)
-        #expect(events.filter { $0.kind == .progress }.map(\.detail) == ["starting the sweep", "half way"])
-        #expect(events.allSatisfy { $0.correlationID == context.completionToken })
+            #expect(try RunOutput.decoded(String.self, from: output) == "done")
+            // Router writes the second progress event in a merged row that only
+            // `close()` writes, so the read settles the session first.
+            let events = await settledOperationEvents(of: stub)
+            #expect(events.filter { $0.kind == .progress }.map(\.detail) == ["starting the sweep", "half way"])
+            #expect(events.allSatisfy { $0.correlationID == context.completionToken })
+        }
     }
 
     @Test("a long snippet loop's notices reach the sink in the order the snippet enqueued them")
     func noticesArriveInSnippetOrder() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
+        try await withStubRun { stub in
+            let context = stub.context
 
-        _ = try await runSnippet(
-            """
-            for (let step = 1; step <= 4; step += 1) {
-                progress("step " + step);
-            }
-            notify("finished");
-            return null;
-            """,
-            under: context
-        )
+            _ = try await runSnippet(
+                """
+                for (let step = 1; step <= 4; step += 1) {
+                    progress("step " + step);
+                }
+                notify("finished");
+                return null;
+                """,
+                under: context
+            )
 
-        #expect(
-            await settledOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["step 1", "step 2", "step 3", "step 4", "finished"]
-        )
+            #expect(
+                await settledOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["step 1", "step 2", "step 3", "step 4", "finished"]
+            )
+        }
     }
 
     // MARK: - No ambient context: there is no session, which is not a fault

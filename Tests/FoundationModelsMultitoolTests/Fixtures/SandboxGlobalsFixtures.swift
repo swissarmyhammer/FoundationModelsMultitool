@@ -264,20 +264,63 @@ func startScriptedRun(
     ) {
         try await engine.call(arguments: NoArguments())
     }
-    guard PendingRunEnvelope.isRendered(text: rendered) else {
-        throw ScriptedRunFailure.didNotBackground(rendered)
-    }
-    let completionToken = try JSONDecoder()
-        .decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        .completionToken
-    if let progress {
-        // The envelope is proof the run is in the background, so the call may
-        // post now.
+    let completionToken: String
+    do {
+        guard PendingRunEnvelope.isRendered(text: rendered) else {
+            throw ScriptedRunFailure.didNotBackground(rendered)
+        }
+        completionToken = try JSONDecoder()
+            .decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+            .completionToken
+        if let progress {
+            // The envelope is proof the run is in the background, so the call may
+            // post now.
+            await backgrounded.open()
+            await progressPosted.wait()
+            try await expectProgress(progress, of: completionToken, on: context)
+        }
+    } catch {
+        // No caller gets the gate. Open the gates, so that the run body ends
+        // and the close of the session does not wait for it.
         await backgrounded.open()
-        await progressPosted.wait()
-        try await expectProgress(progress, of: completionToken, on: context)
+        await gate.open()
+        throw error
     }
     return ScriptedRun(completionToken: completionToken, tool: tool, op: tool, gate: gate)
+}
+
+/// Starts a scripted background run, gives it to `body`, and opens its gate
+/// on every path after `body`.
+///
+/// `SettlementGate.wait()` does not end on cancellation. Thus a run body that
+/// is held on the gate does not end when the session closes, and
+/// `RoutedSession.close()` waits for each run body to end. Use this form when
+/// the test does not settle the run itself. The gate opens after the last
+/// statement of `body`, thus it does not change what `body` checks.
+///
+/// - Parameters:
+///   - context: the session context to start the run on.
+///   - clock: the run clock of the session of `context`.
+///   - tool: the tool's name that owns the run; also the run's op.
+///   - detail: what the call returns once it finishes.
+///   - progress: the latest progress detail `status()` should report, or `nil`.
+///   - failing: whether the run throws once its gate opens.
+///   - body: the work that uses the run.
+/// - Returns: what `body` returned.
+/// - Throws: what ``startScriptedRun(on:clock:tool:detail:progress:failing:)``
+///   throws, or what `body` threw.
+func withScriptedRun<Result>(
+    on context: ToolContext,
+    clock: ManualRunClock,
+    tool: String = "shell",
+    detail: String = "scripted-terminal-detail",
+    progress: String? = nil,
+    failing: Bool = false,
+    _ body: (ScriptedRun) async throws -> Result
+) async throws -> Result {
+    let run = try await startScriptedRun(
+        on: context, clock: clock, tool: tool, detail: detail, progress: progress, failing: failing)
+    return try await ensuring({ await run.gate.open() }) { try await body(run) }
 }
 
 /// Checks one time that the run's status row reports `detail` as its latest

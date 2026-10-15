@@ -178,31 +178,33 @@ struct WebCapabilityTests {
     /// its value in band.
     @Test("a search verb mounted by the session answers its value inline")
     func aSearchVerbMountedByTheSessionAnswersInline() async throws {
-        let context = try await makeOuterRunContext()
-        let search = try Self.mountedInline(Self.verb(Search.self, in: makeCapability()), in: context)
+        try await withOuterRunContext { context in
+            let search = try Self.mountedInline(Self.verb(Search.self, in: makeCapability()), in: context)
 
-        let result = try await search.call(
-            arguments: .init(query: Self.rejectedQuery, count: nil, freshness: nil, site: nil))
+            let result = try await search.call(
+                arguments: .init(query: Self.rejectedQuery, count: nil, freshness: nil, site: nil))
 
-        #expect(result.correction != nil)
-        #expect(await context.backgroundRuns().isEmpty)
-        #expect(stub.requests.isEmpty)
+            #expect(result.correction != nil)
+            #expect(await context.backgroundRuns().isEmpty)
+            #expect(stub.requests.isEmpty)
+        }
     }
 
     /// `fetch` declares no background mount, thus a mounted fetch answers
     /// its value in band.
     @Test("a fetch verb mounted by the session answers its value inline")
     func aFetchVerbMountedByTheSessionAnswersInline() async throws {
-        let context = try await makeOuterRunContext()
-        let fetch = try Self.mountedInline(Self.verb(Fetch.self, in: makeCapability()), in: context)
+        try await withOuterRunContext { context in
+            let fetch = try Self.mountedInline(Self.verb(Fetch.self, in: makeCapability()), in: context)
 
-        let result = try await fetch.call(
-            arguments: .init(
-                url: Self.rejectedURL, format: nil, offset: nil, maxCharacters: nil))
+            let result = try await fetch.call(
+                arguments: .init(
+                    url: Self.rejectedURL, format: nil, offset: nil, maxCharacters: nil))
 
-        #expect(result.correction != nil)
-        #expect(await context.backgroundRuns().isEmpty)
-        #expect(stub.requests.isEmpty)
+            #expect(result.correction != nil)
+            #expect(await context.backgroundRuns().isEmpty)
+            #expect(stub.requests.isEmpty)
+        }
     }
 
     // MARK: - The rendered surface

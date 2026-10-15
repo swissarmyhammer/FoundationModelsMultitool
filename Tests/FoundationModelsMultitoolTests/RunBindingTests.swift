@@ -38,16 +38,17 @@ struct RunBindingTests {
     @Test("a slow inner call still returns its real value, and never goes to the background")
     func slowInnerCallReturnsItsRealValueWithoutBackgrounding() async throws {
         let slowTool = WindowRecordingTool(name: "slow")
-        let context = try await makeOuterRunContext()
-        let binding = RunBinding(context: context)
+        try await withOuterRunContext { context in
+            let binding = RunBinding(context: context)
 
-        async let invoked = binding.invoke(slowTool, arguments: NoArguments(unused: nil))
-        try await slowTool.hold.releaseOnArrival()
-        let output = try await invoked
+            async let invoked = binding.invoke(slowTool, arguments: NoArguments(unused: nil))
+            try await slowTool.hold.releaseOnArrival()
+            let output = try await invoked
 
-        #expect(output == "slow-result")
-        #expect(!PendingRunEnvelope.isRendered(text: output))
-        #expect(await context.backgroundRuns().isEmpty)
+            #expect(output == "slow-result")
+            #expect(!PendingRunEnvelope.isRendered(text: output))
+            #expect(await context.backgroundRuns().isEmpty)
+        }
     }
 
     // MARK: - Parallel inner calls correlate independently
@@ -61,27 +62,28 @@ struct RunBindingTests {
             .addTool(beta)
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let run = try await makeStubRun()
-        let context = run.context
+        try await withStubRun { run in
+            let context = run.context
 
-        let output = try await ToolContext.$current.withValue(context) {
-            try await multiTool.call(
-                arguments: RunCodeArguments(code: "return await Promise.all([tools.alpha(), tools.beta()]);")
-            )
+            let output = try await ToolContext.$current.withValue(context) {
+                try await multiTool.call(
+                    arguments: RunCodeArguments(code: "return await Promise.all([tools.alpha(), tools.beta()]);")
+                )
+            }
+
+            #expect(output == "[\"alpha-result\",\"beta-result\"]")
+            let observations = alpha.observations + beta.observations
+            #expect(observations.count == 2)
+            #expect(Set(observations.compactMap(\.completionToken)).count == 2)
+            #expect(observations.allSatisfy { $0.completionToken != context.completionToken })
+            #expect(observations.allSatisfy { $0.sessionID == context.sessionID })
+            // Each inner call posts its own progress detail. The terminal event of
+            // each inner call also reaches the session as a progress event, with
+            // the output of that call as its detail.
+            #expect(
+                Set(await settledOperationEvents(of: run, ofKind: .progress).map(\.detail))
+                    == ["alpha ran", "beta ran", "alpha-result", "beta-result"])
         }
-
-        #expect(output == "[\"alpha-result\",\"beta-result\"]")
-        let observations = alpha.observations + beta.observations
-        #expect(observations.count == 2)
-        #expect(Set(observations.compactMap(\.completionToken)).count == 2)
-        #expect(observations.allSatisfy { $0.completionToken != context.completionToken })
-        #expect(observations.allSatisfy { $0.sessionID == context.sessionID })
-        // Each inner call posts its own progress detail. The terminal event of
-        // each inner call also reaches the session as a progress event, with
-        // the output of that call as its detail.
-        #expect(
-            Set(await settledOperationEvents(of: run, ofKind: .progress).map(\.detail))
-                == ["alpha ran", "beta ran", "alpha-result", "beta-result"])
     }
 
     // MARK: - Binding capture, not inheritance
@@ -90,30 +92,32 @@ struct RunBindingTests {
     func concurrentInstancesOverOneRegistryNeverCrossRoute() async throws {
         let shared = AmbientRecordingTool(name: "shared")
         let registry = try MultiTool.Builder().addTool(shared).buildRegistry()
-        let firstRun = try await makeStubRun()
-        let secondRun = try await makeStubRun()
-        let firstContext = firstRun.context
-        let secondContext = secondRun.context
-        let code = "return await tools.shared();"
-        let first = MultiTool(registry: registry)
-        let second = MultiTool(registry: registry)
+        try await withStubRun { firstRun in
+            try await withStubRun { secondRun in
+                let firstContext = firstRun.context
+                let secondContext = secondRun.context
+                let code = "return await tools.shared();"
+                let first = MultiTool(registry: registry)
+                let second = MultiTool(registry: registry)
 
-        async let firstOutput = ToolContext.$current.withValue(firstContext) {
-            try await first.call(arguments: RunCodeArguments(code: code))
-        }
-        async let secondOutput = ToolContext.$current.withValue(secondContext) {
-            try await second.call(arguments: RunCodeArguments(code: code))
-        }
-        _ = try await (firstOutput, secondOutput)
+                async let firstOutput = ToolContext.$current.withValue(firstContext) {
+                    try await first.call(arguments: RunCodeArguments(code: code))
+                }
+                async let secondOutput = ToolContext.$current.withValue(secondContext) {
+                    try await second.call(arguments: RunCodeArguments(code: code))
+                }
+                _ = try await (firstOutput, secondOutput)
 
-        for (run, context) in [(firstRun, firstContext), (secondRun, secondContext)] {
-            let events = await recordedOperationEvents(of: run)
-            #expect(!events.isEmpty)
-            #expect(events.allSatisfy { $0.correlationID == context.completionToken })
+                for (run, context) in [(firstRun, firstContext), (secondRun, secondContext)] {
+                    let events = await recordedOperationEvents(of: run)
+                    #expect(!events.isEmpty)
+                    #expect(events.allSatisfy { $0.correlationID == context.completionToken })
+                }
+                #expect(
+                    Set(shared.observations.compactMap(\.sessionID)) == [firstContext.sessionID, secondContext.sessionID]
+                )
+            }
         }
-        #expect(
-            Set(shared.observations.compactMap(\.sessionID)) == [firstContext.sessionID, secondContext.sessionID]
-        )
     }
 
     // MARK: - Explicit re-bind across the JS seam
@@ -123,16 +127,16 @@ struct RunBindingTests {
         let recorder = AmbientRecordingTool(name: "recorder")
         let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let context = try await makeOuterRunContext()
+        try await withOuterRunContext { context in
+            _ = try await ToolContext.$current.withValue(context) {
+                try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.recorder();"))
+            }
 
-        _ = try await ToolContext.$current.withValue(context) {
-            try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.recorder();"))
+            let observation = try #require(recorder.observations.first)
+            #expect(observation.completionToken != nil)
+            #expect(observation.completionToken != context.completionToken)
+            #expect(observation.sessionID == context.sessionID)
+            #expect(observation.uninheritedContextWasNil)
         }
-
-        let observation = try #require(recorder.observations.first)
-        #expect(observation.completionToken != nil)
-        #expect(observation.completionToken != context.completionToken)
-        #expect(observation.sessionID == context.sessionID)
-        #expect(observation.uninheritedContextWasNil)
     }
 }

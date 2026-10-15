@@ -484,8 +484,11 @@ func makeStubProfile(
 ///     directory per call keeps runs of one suite apart.
 ///   - runClock: The run clock of the session, or `nil` for the real time.
 ///     See ``makeStubProfile(recorder:loader:standardModel:in:runClock:)``.
-/// - Returns: The session and its context.
-/// - Throws: Whatever resolving the profile throws.
+/// - Returns: The session and its context. The caller owns the session and
+///   must close it on every path. ``withStubRun(in:runClock:_:)`` does that.
+/// - Throws: Whatever resolving the profile throws, or
+///   ``StubRunFailure/noContextCaptured``. Before this function throws after
+///   it made the session, it closes the session.
 func makeStubRun(
     in directory: URL = FileManager.default.temporaryDirectory
         .appendingPathComponent("multitool-stub-\(ULID.generate())"),
@@ -494,14 +497,116 @@ func makeStubRun(
     let box = CapturedContextBox()
     let stub = try await makeStubSession(
         mounting: [ContextCaptureTool(box: box)], in: directory, runClock: runClock)
-    _ = try await stub.session.respond(to: "capture", maxTokens: nil)
-    guard let context = box.context else {
-        throw StubRunFailure.noContextCaptured
+    let context: ToolContext
+    do {
+        _ = try await stub.session.respond(to: "capture", maxTokens: nil)
+        guard let captured = box.context else {
+            throw StubRunFailure.noContextCaptured
+        }
+        context = captured
+    } catch {
+        // No caller gets this session, thus close it here.
+        await stub.session.close()
+        throw error
     }
     // The capture call above is real, and it posted its own events. Drop them
     // so a test reads only what it caused.
     await stub.recorder.reset()
     return StubRun(session: stub.session, context: context, recorder: stub.recorder)
+}
+
+/// Runs `body`, and then closes `session`. It closes the session when `body`
+/// returns and when `body` throws.
+///
+/// Swift has no `defer` that can wait for an `async` call, thus the two
+/// paths each close the session. A session that is not closed has no
+/// contract: its tasks can still run after the test.
+///
+/// `RoutedSession.close()` is idempotent. Thus `body` can close the session
+/// itself, for example through ``settledOperationEvents(of:ofKind:)``.
+///
+/// - Parameters:
+///   - session: The session to close.
+///   - body: The work that uses the session.
+/// - Returns: What `body` returned.
+/// - Throws: What `body` threw, after the session is closed.
+func closing<Result>(
+    _ session: any RoutedSession, after body: () async throws -> Result
+) async throws -> Result {
+    try await ensuring({ await session.close() }, after: body)
+}
+
+/// Runs `body`, and then runs `cleanup`. It runs `cleanup` when `body`
+/// returns and when `body` throws.
+///
+/// Swift has no `defer` that can wait for an `async` call. This function is
+/// the scoped form of that `defer`.
+///
+/// - Parameters:
+///   - cleanup: The work that must run on every path, for example the
+///     release of a gate that holds a run body.
+///   - body: The work to do first.
+/// - Returns: What `body` returned.
+/// - Throws: What `body` threw, after `cleanup` ran.
+func ensuring<Result>(
+    _ cleanup: () async -> Void, after body: () async throws -> Result
+) async throws -> Result {
+    let result: Result
+    do {
+        result = try await body()
+    } catch {
+        await cleanup()
+        throw error
+    }
+    await cleanup()
+    return result
+}
+
+/// Makes a stub run, gives it to `body`, and closes its session on every
+/// path.
+///
+/// - Parameters:
+///   - directory: Where the router caches and records. See
+///     ``makeStubRun(in:runClock:)``.
+///   - runClock: The run clock of the session, or `nil` for the real time.
+///   - body: The work that uses the run.
+/// - Returns: What `body` returned.
+/// - Throws: What making the run throws, or what `body` threw.
+func withStubRun<Result>(
+    in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    runClock: (any RunClock)? = nil,
+    _ body: (StubRun) async throws -> Result
+) async throws -> Result {
+    let run = try await makeStubRun(in: directory, runClock: runClock)
+    return try await closing(run.session) { try await body(run) }
+}
+
+/// Makes a stub session that mounts `tools`, gives it to `body`, and closes
+/// the session on every path.
+///
+/// - Parameters:
+///   - tools: The tools the session mounts.
+///   - loader: The loader the router loads its models through.
+///   - standardModel: The model reference of the `standard` slot.
+///   - directory: Where the router caches and records.
+///   - runClock: The run clock of the session, or `nil` for the real time.
+///   - body: The work that uses the session and its recorder.
+/// - Returns: What `body` returned.
+/// - Throws: What making the session throws, or what `body` threw.
+/// - SeeAlso: ``makeStubSession(mounting:loader:standardModel:in:runClock:)``.
+func withStubSession<Result>(
+    mounting tools: [any Tool],
+    loader: StubModelLoader = StubModelLoader(),
+    standardModel: ModelRef = stubStandardModel,
+    in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    runClock: (any RunClock)? = nil,
+    _ body: (any RoutedSession, CollectingTranscriptRecorder) async throws -> Result
+) async throws -> Result {
+    let stub = try await makeStubSession(
+        mounting: tools, loader: loader, standardModel: standardModel, in: directory, runClock: runClock)
+    return try await closing(stub.session) { try await body(stub.session, stub.recorder) }
 }
 
 /// Runs one mounted call that must go to the background, and moves the run

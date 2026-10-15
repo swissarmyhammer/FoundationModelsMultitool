@@ -206,18 +206,19 @@ struct MetricsTests {
     @Test("a tools.* call under a session goes through the Extras mount: Extras counts it, and the library does not count it again")
     func mountedInnerCallIsCountedByExtrasOnly() async throws {
         let multiTool = try Self.makeMultiTool()
-        let toolContext = try await makeOuterRunContext()
-        try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
-            _ = try await ToolContext.$current.withValue(toolContext) {
-                try await multiTool.call(arguments: RunCodeArguments(code: Self.snippet(calling: Self.innerToolName)))
-            }
+        try await withOuterRunContext { toolContext in
+            try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
+                _ = try await ToolContext.$current.withValue(toolContext) {
+                    try await multiTool.call(arguments: RunCodeArguments(code: Self.snippet(calling: Self.innerToolName)))
+                }
 
-            let extrasCalls = context.metricsFactory.counters.filter { counter in
-                counter.label == Self.extrasToolCallsLabel
-                    && counter.dimensions.contains { $0 == (Self.extrasToolNameKey, Self.innerToolName) }
+                let extrasCalls = context.metricsFactory.counters.filter { counter in
+                    counter.label == Self.extrasToolCallsLabel
+                        && counter.dimensions.contains { $0 == (Self.extrasToolNameKey, Self.innerToolName) }
+                }
+                #expect(extrasCalls.count == Self.once)
+                #expect(Self.counters(.toolCalls, in: context).isEmpty)
             }
-            #expect(extrasCalls.count == Self.once)
-            #expect(Self.counters(.toolCalls, in: context).isEmpty)
         }
     }
 

@@ -214,51 +214,55 @@ struct MCPSessionSweepTests {
     @Test("parked shape: the sweep sends the advisory cancel and records .cancelled before the transport closes")
     func parkedCallGetsTheAdvisoryCancelAndCancelledBeforeTheTransportCloses() async throws {
         let (ground, registry) = try await Self.makeGround()
-        let run = try await makeStubRun()
-        let context = run.context
-        // No inline wait, so the call answers with the pending envelope at
-        // once and the run parks. The stock `inlineSettleGrace` would hold
-        // the call for its whole length before the sweep can run.
-        let mounted = try #require(
-            SessionMount.synchronous(
-                MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)),
-                on: context)
-                as? any FoundationModels.Tool<RunCodeArguments, String>)
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
-        #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
-        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        try await Self.waitForTheCall(on: ground)
+        // The test closes the session itself, at the point its assertions
+        // need. The scope also closes the session when the test throws
+        // before that point. A second close does nothing.
+        try await withStubRun { run in
+            let context = run.context
+            // No inline wait, so the call answers with the pending envelope at
+            // once and the run parks. The stock `inlineSettleGrace` would hold
+            // the call for its whole length before the sweep can run.
+            let mounted = try #require(
+                SessionMount.synchronous(
+                    MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)),
+                    on: context)
+                    as? any FoundationModels.Tool<RunCodeArguments, String>)
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
+            #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
+            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+            try await Self.waitForTheCall(on: ground)
 
-        // `RoutedSession.close()` runs the sweep — it cancels every background
-        // run, rejects every pending elicitation, and journals the terminal
-        // events before it returns. A consumer cannot call the sweep of the run
-        // plane of the session, so this is the public route to the same behaviour.
-        await run.session.close()
-        let terminals = await recordedOperationEvents(
-            of: run, ofKind: .completed,
-            correlatedTo: [envelope.completionToken],
-            awaiting: Self.terminalEventsPerRun)
-        await ground.wire.mark(as: Self.terminalMarker)
-        await ground.pool.shutdownAll()
+            // `RoutedSession.close()` runs the sweep — it cancels every background
+            // run, rejects every pending elicitation, and journals the terminal
+            // events before it returns. A consumer cannot call the sweep of the run
+            // plane of the session, so this is the public route to the same behaviour.
+            await run.session.close()
+            let terminals = await recordedOperationEvents(
+                of: run, ofKind: .completed,
+                correlatedTo: [envelope.completionToken],
+                awaiting: Self.terminalEventsPerRun)
+            await ground.wire.mark(as: Self.terminalMarker)
+            await ground.pool.shutdownAll()
 
-        // Diagnostic: this passes here and fails on CI, and the failure is a
-        // count that is too HIGH rather than too low, so the message carries
-        // what actually landed.
-        #expect(
-            terminals.count == Self.terminalEventsPerRun,
-            """
-            terminals=\(terminals.count)             kinds=\(terminals.map(\.kind))             outcomes=\(terminals.map { String(describing: $0.outcome) })             correlations=\(terminals.map(\.correlationID))             envelope=\(envelope.completionToken)             outer=\(run.context.completionToken)
-            """
-        )
-        let terminal = try #require(terminals.first)
-        #expect(terminal.correlationID == envelope.completionToken)
-        #expect(terminal.kind == .completed)
-        #expect(terminal.outcome == .cancelled)
-        await Self.expectServerReceivedTheCancel(from: ground.scripted)
-        try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
-        try await Self.expectOrder(
-            of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
-        #expect(await context.backgroundRuns().isEmpty)
+            // Diagnostic: this passes here and fails on CI, and the failure is a
+            // count that is too HIGH rather than too low, so the message carries
+            // what actually landed.
+            #expect(
+                terminals.count == Self.terminalEventsPerRun,
+                """
+                terminals=\(terminals.count)             kinds=\(terminals.map(\.kind))             outcomes=\(terminals.map { String(describing: $0.outcome) })             correlations=\(terminals.map(\.correlationID))             envelope=\(envelope.completionToken)             outer=\(run.context.completionToken)
+                """
+            )
+            let terminal = try #require(terminals.first)
+            #expect(terminal.correlationID == envelope.completionToken)
+            #expect(terminal.kind == .completed)
+            #expect(terminal.outcome == .cancelled)
+            await Self.expectServerReceivedTheCancel(from: ground.scripted)
+            try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
+            try await Self.expectOrder(
+                of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
+            #expect(await context.backgroundRuns().isEmpty)
+        }
         await ground.held.release()
         withExtendedLifetime(ground.scripted) {}
     }
@@ -273,25 +277,26 @@ struct MCPSessionSweepTests {
     @Test("native shape: the cancelled answer sends the advisory cancel before the transport closes")
     func nativeCallGetsTheAdvisoryCancelBeforeTheTransportCloses() async throws {
         let (ground, _) = try await Self.makeGround()
-        let run = try await makeStubRun()
-        let context = run.context
-        let entry = try #require(await ground.server.tool(named: Self.heldToolName))
-        let mounted = try #require(
-            SessionMount.synchronous(
-                MCPTool(entry: entry, server: ground.server), on: context)
-                as? any FoundationModels.Tool<GeneratedContent, String>)
-        let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
-        try await Self.waitForTheCall(on: ground)
-        #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
+        try await withStubRun { run in
+            let context = run.context
+            let entry = try #require(await ground.server.tool(named: Self.heldToolName))
+            let mounted = try #require(
+                SessionMount.synchronous(
+                    MCPTool(entry: entry, server: ground.server), on: context)
+                    as? any FoundationModels.Tool<GeneratedContent, String>)
+            let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
+            try await Self.waitForTheCall(on: ground)
+            #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
-        answer.cancel()
-        await #expect(throws: CancellationError.self) {
-            _ = try await answer.value
+            answer.cancel()
+            await #expect(throws: CancellationError.self) {
+                _ = try await answer.value
+            }
+            await ground.pool.shutdownAll()
+
+            await Self.expectServerReceivedTheCancel(from: ground.scripted)
+            try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
         }
-        await ground.pool.shutdownAll()
-
-        await Self.expectServerReceivedTheCancel(from: ground.scripted)
-        try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
         await ground.held.release()
         withExtendedLifetime(ground.scripted) {}
     }

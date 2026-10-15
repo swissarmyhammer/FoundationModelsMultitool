@@ -130,18 +130,19 @@ struct FilesCapabilityTests {
         let capability = FilesCapability(root: root)
         let path = root.appendingPathComponent("note.txt", isDirectory: false).path
         try Self.sharedContextContent.write(toFile: path, atomically: true, encoding: .utf8)
-        let context = try await makeOuterRunContext()
-        let read = try #require(
-            context.mount(try Self.verb(Read.self, in: capability), as: .synchronous)
-                as? any Tool<ReadArguments, ReadResult>
-        )
+        try await withOuterRunContext { context in
+            let read = try #require(
+                context.mount(try Self.verb(Read.self, in: capability), as: .synchronous)
+                    as? any Tool<ReadArguments, ReadResult>
+            )
 
-        let result = try await read.call(
-            arguments: ReadArguments(path: path, offset: nil, limit: nil, format: "plain"))
+            let result = try await read.call(
+                arguments: ReadArguments(path: path, offset: nil, limit: nil, format: "plain"))
 
-        #expect(result.correction == nil)
-        #expect(result.lines == ["alpha", "beta"])
-        #expect(await context.backgroundRuns().isEmpty)
+            #expect(result.correction == nil)
+            #expect(result.lines == ["alpha", "beta"])
+            #expect(await context.backgroundRuns().isEmpty)
+        }
     }
 
     // MARK: - The noun and its verbs

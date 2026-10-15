@@ -347,17 +347,17 @@ struct ShellExecuteTests {
     private func refusal(forEnvironmentValueLiteral valueLiteral: String) async throws -> String {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
+        return try await withOuterRunContext { context in
+            let output = try await Self.call(
+                verb,
+                ExecuteArguments(
+                    command: "echo \(Self.inlineMarker)",
+                    environment: Self.environmentJSON(valueLiteral: valueLiteral)),
+                under: context)
 
-        let output = try await Self.call(
-            verb,
-            ExecuteArguments(
-                command: "echo \(Self.inlineMarker)",
-                environment: Self.environmentJSON(valueLiteral: valueLiteral)),
-            under: context)
-
-        #expect(await state.listCommands().isEmpty)
-        return try #require(try Self.report(output)["correction"] as? String)
+            #expect(await state.listCommands().isEmpty)
+            return try #require(try Self.report(output)["correction"] as? String)
+        }
     }
 
     // MARK: - The rendered surface
@@ -407,16 +407,16 @@ struct ShellExecuteTests {
     func aShortCommandAnswersWithItsOutputInline() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
+        try await withOuterRunContext { context in
+            let output = try await Self.call(
+                verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+            let report = try Self.report(output)
 
-        let output = try await Self.call(
-            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
-        let report = try Self.report(output)
-
-        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
-        #expect(report["exitCode"] as? Int == Self.successExitCode)
-        let lines = try #require(report["output"] as? [String])
-        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+            #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+            #expect(report["exitCode"] as? Int == Self.successExitCode)
+            let lines = try #require(report["output"] as? [String])
+            #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+        }
     }
 
     // MARK: - One string on two planes
@@ -432,18 +432,19 @@ struct ShellExecuteTests {
     func theThreeIdentifiersAreOneString() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let run = try await makeStubRun()
-        let context = run.context
-        let token = context.completionToken
+        try await withStubRun { run in
+            let context = run.context
+            let token = context.completionToken
 
-        let output = try await Self.call(
-            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+            let output = try await Self.call(
+                verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
 
-        #expect(try Self.report(output)["commandID"] as? String == token)
-        #expect(await state.record(commandID: token) != nil)
+            #expect(try Self.report(output)["commandID"] as? String == token)
+            #expect(await state.record(commandID: token) != nil)
 
-        let correlations = await Set(recordedOperationEvents(of: run).map(\.correlationID))
-        #expect(correlations == [token], "correlations were: \(correlations)")
+            let correlations = await Set(recordedOperationEvents(of: run).map(\.correlationID))
+            #expect(correlations == [token], "correlations were: \(correlations)")
+        }
     }
 
     // MARK: - The events of one run
@@ -454,26 +455,27 @@ struct ShellExecuteTests {
     func oneTerminalEventStandsAfterTheProgressEvents() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let run = try await makeStubRun()
-        let context = run.context
-        let command = (1...Self.progressLineCount).map { "echo line\($0)" }.joined(separator: "; ")
+        try await withStubRun { run in
+            let context = run.context
+            let command = (1...Self.progressLineCount).map { "echo line\($0)" }.joined(separator: "; ")
 
-        _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
+            _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
 
-        let events = await recordedOperationEvents(of: run)
-        let kinds = events.map(\.kind)
-        #expect(
-            kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
-            "kinds were: \(kinds)")
-        #expect(kinds.contains(.progress), "kinds were: \(kinds)")
-        let terminalIndex = try #require(kinds.firstIndex(of: .completed))
-        #expect(
-            kinds[..<terminalIndex].contains(.progress),
-            "no progress event stands before the terminal one: \(kinds)")
-        #expect(events[terminalIndex].outcome == .succeeded)
-        #expect(
-            events[terminalIndex].detail.contains(context.completionToken),
-            "the terminal detail carries no run identifier: \(events[terminalIndex].detail)")
+            let events = await recordedOperationEvents(of: run)
+            let kinds = events.map(\.kind)
+            #expect(
+                kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
+                "kinds were: \(kinds)")
+            #expect(kinds.contains(.progress), "kinds were: \(kinds)")
+            let terminalIndex = try #require(kinds.firstIndex(of: .completed))
+            #expect(
+                kinds[..<terminalIndex].contains(.progress),
+                "no progress event stands before the terminal one: \(kinds)")
+            #expect(events[terminalIndex].outcome == .succeeded)
+            #expect(
+                events[terminalIndex].detail.contains(context.completionToken),
+                "the terminal detail carries no run identifier: \(events[terminalIndex].detail)")
+        }
     }
 
     // MARK: - The live view of a subscribed host
@@ -488,18 +490,19 @@ struct ShellExecuteTests {
     func aHostStreamReceivesTheChunksOfARunAndItsMarker() async throws {
         let stream = ShellOutputChunkStream()
         let verb = try makeVerb(teeing: stream)
-        let context = try await makeOuterRunContext()
-        let token = context.completionToken
+        try await withOuterRunContext { context in
+            let token = context.completionToken
 
-        _ = try await Self.call(
-            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+            _ = try await Self.call(
+                verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
 
-        let events = await Self.events(of: stream)
-        let written = Self.stdoutText(in: events, of: token)
-        #expect(written.contains(Self.inlineMarker), "the host stream carried: \(written)")
-        #expect(
-            events.contains { $0.commandID == token && $0.kind == .completed },
-            "the host stream carried no terminal marker: \(events)")
+            let events = await Self.events(of: stream)
+            let written = Self.stdoutText(in: events, of: token)
+            #expect(written.contains(Self.inlineMarker), "the host stream carried: \(written)")
+            #expect(
+                events.contains { $0.commandID == token && $0.kind == .completed },
+                "the host stream carried no terminal marker: \(events)")
+        }
     }
 
     /// The `progress` events of a run stand as they are with no host stream:
@@ -513,18 +516,19 @@ struct ShellExecuteTests {
     func theProgressEventsStandAsTheyDoWithNoHostStream() async throws {
         let stream = ShellOutputChunkStream()
         let verb = try makeVerb(teeing: stream)
-        let run = try await makeStubRun()
-        let context = run.context
+        try await withStubRun { run in
+            let context = run.context
 
-        _ = try await Self.call(
-            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+            _ = try await Self.call(
+                verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
 
-        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
-        #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
-        let kinds = await recordedOperationEvents(of: run).map(\.kind)
-        #expect(
-            kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
-            "kinds were: \(kinds)")
+            let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+            #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
+            let kinds = await recordedOperationEvents(of: run).map(\.kind)
+            #expect(
+                kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
+                "kinds were: \(kinds)")
+        }
 
         stream.finish()
     }
@@ -567,27 +571,28 @@ struct ShellExecuteTests {
     func singleByteWritesGiveFewProgressEvents() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state, pacedBy: GatedClock())
-        let run = try await makeStubRun()
-        let context = run.context
-        let command =
-            "i=0; while [ $i -lt \(Self.singleByteWriteCount) ]; do "
-            + "printf '\(Self.singleByteWriteCharacter)' >&2; i=$((i+1)); done"
+        try await withStubRun { run in
+            let context = run.context
+            let command =
+                "i=0; while [ $i -lt \(Self.singleByteWriteCount) ]; do "
+                + "printf '\(Self.singleByteWriteCharacter)' >&2; i=$((i+1)); done"
 
-        _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
+            _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
 
-        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
-        #expect(
-            progress.count < Self.collectedProgressEventCeiling,
-            "the run posted \(progress.count) progress events")
-        #expect(
-            Self.count(of: Self.singleByteWriteCharacter, in: progress) == Self.singleByteWriteCount)
-        let stored = try await Self.storedLines(of: context.completionToken, in: state)
-        #expect(Self.count(of: Self.singleByteWriteCharacter, in: stored) == Self.singleByteWriteCount)
-        // The fields of the report and not its rendered text: the one line of
-        // the output is longer than the cap of `ResultRenderer`, which cuts
-        // the rendered text before the JSON ends.
-        let report = await Execute.reportFields(of: context.completionToken, in: state)
-        #expect(report["output"] == .array(stored.map { .string($0) }))
+            let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+            #expect(
+                progress.count < Self.collectedProgressEventCeiling,
+                "the run posted \(progress.count) progress events")
+            #expect(
+                Self.count(of: Self.singleByteWriteCharacter, in: progress) == Self.singleByteWriteCount)
+            let stored = try await Self.storedLines(of: context.completionToken, in: state)
+            #expect(Self.count(of: Self.singleByteWriteCharacter, in: stored) == Self.singleByteWriteCount)
+            // The fields of the report and not its rendered text: the one line of
+            // the output is longer than the cap of `ResultRenderer`, which cuts
+            // the rendered text before the JSON ends.
+            let report = await Execute.reportFields(of: context.completionToken, in: state)
+            #expect(report["output"] == .array(stored.map { .string($0) }))
+        }
     }
 
     /// A command that writes one line and ends posts that line as its one
@@ -597,16 +602,16 @@ struct ShellExecuteTests {
     func aOneLineCommandStillPostsItsProgressEvent() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state, pacedBy: GatedClock())
-        let run = try await makeStubRun()
+        try await withStubRun { run in
+            _ = try await Self.call(
+                verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: run.context)
 
-        _ = try await Self.call(
-            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: run.context)
-
-        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
-        #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
-        let kinds = await recordedOperationEvents(of: run).map(\.kind)
-        let terminalIndex = try #require(kinds.firstIndex(of: .completed))
-        #expect(kinds[..<terminalIndex].contains(.progress), "kinds were: \(kinds)")
+            let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+            #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
+            let kinds = await recordedOperationEvents(of: run).map(\.kind)
+            let terminalIndex = try #require(kinds.firstIndex(of: .completed))
+            #expect(kinds[..<terminalIndex].contains(.progress), "kinds were: \(kinds)")
+        }
     }
 
     /// Output that holds still goes out when its collection interval ends,
@@ -623,28 +628,29 @@ struct ShellExecuteTests {
         let state = try makeState()
         let clock = GatedClock()
         let verb = makeVerb(over: state, pacedBy: clock)
-        let run = try await makeStubRun()
-        let context = run.context
-        let stop = ShellRunner(state: state).canceler(completionToken: context.completionToken)
-        let interval = OutputProgressCollector.collectionInterval
-        let gate = try ShellCommandGate()
-        let command = "echo \(Self.inlineMarker); \(gate.waitCommand)"
+        try await withStubRun { run in
+            let context = run.context
+            let stop = ShellRunner(state: state).canceler(completionToken: context.completionToken)
+            let interval = OutputProgressCollector.collectionInterval
+            let gate = try ShellCommandGate()
+            let command = "echo \(Self.inlineMarker); \(gate.waitCommand)"
 
-        async let answer = Self.call(verb, ExecuteArguments(command: command), under: context)
-        try await clock.waitForRecordedSleeps(atLeast: 1)
-        let isCollecting = clock.recordedSleeps.contains(interval)
-        let progressBeforeInterval = await recordedOperationEvents(of: run, ofKind: .progress)
-        clock.open(sleepsOf: interval)
-        let progressAfterInterval = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1)
-            .map(\.detail)
-        _ = await stop()
-        _ = try await answer
+            async let answer = Self.call(verb, ExecuteArguments(command: command), under: context)
+            try await clock.waitForRecordedSleeps(atLeast: 1)
+            let isCollecting = clock.recordedSleeps.contains(interval)
+            let progressBeforeInterval = await recordedOperationEvents(of: run, ofKind: .progress)
+            clock.open(sleepsOf: interval)
+            let progressAfterInterval = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1)
+                .map(\.detail)
+            _ = await stop()
+            _ = try await answer
 
-        #expect(isCollecting, "the collection never waited on its interval")
-        #expect(progressBeforeInterval.isEmpty, "progress before the interval: \(progressBeforeInterval)")
-        #expect(
-            progressAfterInterval == ["stdout: \(Self.inlineMarker)"],
-            "progress after the interval: \(progressAfterInterval)")
+            #expect(isCollecting, "the collection never waited on its interval")
+            #expect(progressBeforeInterval.isEmpty, "progress before the interval: \(progressBeforeInterval)")
+            #expect(
+                progressAfterInterval == ["stdout: \(Self.inlineMarker)"],
+                "progress after the interval: \(progressAfterInterval)")
+        }
     }
 
     /// A collection closes when it holds the byte limit, and not only on its
@@ -656,22 +662,23 @@ struct ShellExecuteTests {
     func aCollectionAtTheByteLimitGoesOut() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state, pacedBy: GatedClock())
-        let run = try await makeStubRun()
-        let command =
-            "for i in $(seq \(Self.byteLimitLineCount)); do "
-            + "printf '%0\(Self.byteLimitLineDigitCount)d\\n' \(Self.byteLimitLineDigit); done"
-        let outputByteCount = Self.byteLimitLineCount * Self.byteLimitLineByteCount
-        let maximumEventCount = outputByteCount / OutputProgressCollector.collectionByteLimit + 1
+        try await withStubRun { run in
+            let command =
+                "for i in $(seq \(Self.byteLimitLineCount)); do "
+                + "printf '%0\(Self.byteLimitLineDigitCount)d\\n' \(Self.byteLimitLineDigit); done"
+            let outputByteCount = Self.byteLimitLineCount * Self.byteLimitLineByteCount
+            let maximumEventCount = outputByteCount / OutputProgressCollector.collectionByteLimit + 1
 
-        _ = try await Self.call(verb, ExecuteArguments(command: command), under: run.context)
+            _ = try await Self.call(verb, ExecuteArguments(command: command), under: run.context)
 
-        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
-        #expect(
-            (Self.byteLimitMinimumEventCount...maximumEventCount).contains(progress.count),
-            "the run posted \(progress.count) progress events")
-        #expect(
-            Self.count(of: Self.byteLimitLineDigit, in: progress)
-                == Self.byteLimitLineCount * Self.byteLimitLineDigitCount)
+            let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+            #expect(
+                (Self.byteLimitMinimumEventCount...maximumEventCount).contains(progress.count),
+                "the run posted \(progress.count) progress events")
+            #expect(
+                Self.count(of: Self.byteLimitLineDigit, in: progress)
+                    == Self.byteLimitLineCount * Self.byteLimitLineDigitCount)
+        }
     }
 
     // MARK: - The background run
@@ -684,26 +691,27 @@ struct ShellExecuteTests {
     @Test("a mounted execute call with no settle period answers with the pending envelope, and the report settles behind it")
     func aMountedCallWithNoSettlePeriodAnswersWithThePendingEnvelope() async throws {
         let state = try makeState()
-        let context = try await makeOuterRunContext()
-        // A settle period of 0 sends the call to the background at once, so that
-        // the short command settles behind the pending envelope.
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
+        try await withOuterRunContext { context in
+            // A settle period of 0 sends the call to the background at once, so that
+            // the short command settles behind the pending envelope.
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
 
-        let output = try await engine.call(
-            arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
+            let output = try await engine.call(
+                arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
 
-        #expect(PendingRunEnvelope.isRendered(text: output), "answer was: \(output)")
-        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
-        let settlement = await context.wait(
-            completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
-        guard case .settled(let terminal) = settlement else {
-            Issue.record("the run never settled: \(settlement)")
-            return
+            #expect(PendingRunEnvelope.isRendered(text: output), "answer was: \(output)")
+            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
+            let settlement = await context.wait(
+                completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
+            guard case .settled(let terminal) = settlement else {
+                Issue.record("the run never settled: \(settlement)")
+                return
+            }
+            let report = try Self.report(terminal.detail)
+            #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+            let lines = try #require(report["output"] as? [String])
+            #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
         }
-        let report = try Self.report(terminal.detail)
-        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
-        let lines = try #require(report["output"] as? [String])
-        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
     }
 
     /// The `wait` argument selected a block window. There is no block window:
@@ -756,22 +764,23 @@ struct ShellExecuteTests {
     func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
         let clock = ManualRunClock()
-        let context = try await makeOuterRunContext(runClock: clock)
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
-        let gate = try ShellCommandGate()
+        try await withOuterRunContext(runClock: clock) { context in
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+            let gate = try ShellCommandGate()
 
-        let output = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
+            let output = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
 
-        let going = try await ShellRunPlane.backgroundRun(in: context)
+            let going = try await ShellRunPlane.backgroundRun(in: context)
 
-        #expect(
-            output.contains(going.completionToken),
-            "the answer carries no run identifier: \(output)")
+            #expect(
+                output.contains(going.completionToken),
+                "the answer carries no run identifier: \(output)")
 
-        // Awaited rather than deferred into a task of its own: an unstructured
-        // task started at the end of a test need never run, and the command
-        // this one stops never ends by itself.
-        _ = await context.cancel(completionToken: going.completionToken)
+            // Awaited rather than deferred into a task of its own: an unstructured
+            // task started at the end of a test need never run, and the command
+            // this one stops never ends by itself.
+            _ = await context.cancel(completionToken: going.completionToken)
+        }
     }
 
     /// eventplan.md § "Processes and tasks stay different kinds": an OS
@@ -780,29 +789,30 @@ struct ShellExecuteTests {
     func aBackgroundRunStandsInTheRunPlaneAsAProcess() async throws {
         let state = try makeState()
         let clock = ManualRunClock()
-        let context = try await makeOuterRunContext(runClock: clock)
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
-        let gate = try ShellCommandGate()
+        try await withOuterRunContext(runClock: clock) { context in
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+            let gate = try ShellCommandGate()
 
-        _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
+            _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
 
-        let going = try await ShellRunPlane.backgroundRun(in: context)
+            let going = try await ShellRunPlane.backgroundRun(in: context)
 
-        #expect(going.kind == .process)
-        // The record is written by the run body, which can start after the
-        // call already answered its envelope; one read here is a race, not a
-        // check. The runner records the command before it registers the pid,
-        // and `pidToCancel` returns only after the registration (or after the
-        // end of the command). Thus the wait is an event, and the record
-        // stands after it.
-        _ = await state.pidToCancel(commandID: going.completionToken)
-        #expect(
-            await state.record(commandID: going.completionToken) != nil,
-            "the store holds no record of the run")
+            #expect(going.kind == .process)
+            // The record is written by the run body, which can start after the
+            // call already answered its envelope; one read here is a race, not a
+            // check. The runner records the command before it registers the pid,
+            // and `pidToCancel` returns only after the registration (or after the
+            // end of the command). Thus the wait is an event, and the record
+            // stands after it.
+            _ = await state.pidToCancel(commandID: going.completionToken)
+            #expect(
+                await state.record(commandID: going.completionToken) != nil,
+                "the store holds no record of the run")
 
-        // Awaited rather than deferred into a task of its own — see the reason
-        // in the test above.
-        _ = await context.cancel(completionToken: going.completionToken)
+            // Awaited rather than deferred into a task of its own — see the reason
+            // in the test above.
+            _ = await context.cancel(completionToken: going.completionToken)
+        }
     }
 
     /// eventplan.md § "Processes and tasks stay different kinds":
@@ -812,17 +822,18 @@ struct ShellExecuteTests {
     func cancelOfABackgroundRunReportsStopped() async throws {
         let state = try makeState()
         let clock = ManualRunClock()
-        let context = try await makeOuterRunContext(runClock: clock)
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
-        let gate = try ShellCommandGate()
+        try await withOuterRunContext(runClock: clock) { context in
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+            let gate = try ShellCommandGate()
 
-        _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
-        let going = try await ShellRunPlane.backgroundRun(in: context)
+            _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
+            let going = try await ShellRunPlane.backgroundRun(in: context)
 
-        let outcome = await context.cancel(completionToken: going.completionToken)
+            let outcome = await context.cancel(completionToken: going.completionToken)
 
-        #expect(outcome == .reported(.stopped))
-        #expect(await state.record(commandID: going.completionToken)?.status == .killed)
+            #expect(outcome == .reported(.stopped))
+            #expect(await state.record(commandID: going.completionToken)?.status == .killed)
+        }
     }
 
     /// How many times the cap on the report the overlong command writes.
@@ -847,21 +858,22 @@ struct ShellExecuteTests {
     @Test("the detail of a background run with ten times too much output stays within the report cap and keeps the commandID")
     func anOverlongBackgroundRunGivesADetailWithinTheCap() async throws {
         let state = try makeState()
-        let context = try await makeOuterRunContext()
-        // A settle period of 0 sends the call to the background at once, so that
-        // the report comes back as the detail of the terminal event.
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
-        let command =
-            "for i in $(seq \(Self.overlongLineCount)); do printf '%0\(Self.overlongLineLength)d\\n' 0; done"
+        try await withOuterRunContext { context in
+            // A settle period of 0 sends the call to the background at once, so that
+            // the report comes back as the detail of the terminal event.
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
+            let command =
+                "for i in $(seq \(Self.overlongLineCount)); do printf '%0\(Self.overlongLineLength)d\\n' 0; done"
 
-        let output = try await engine.call(arguments: ExecuteArguments(command: command))
-        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
-        let terminal = try await TerminalDetail.settledEvent(
-            of: envelope.completionToken, in: context)
+            let output = try await engine.call(arguments: ExecuteArguments(command: command))
+            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
+            let terminal = try await TerminalDetail.settledEvent(
+                of: envelope.completionToken, in: context)
 
-        let kept = try #require(TerminalDetail.keptText(of: terminal.detail))
-        #expect(kept.count <= ResultRendererLimits.default.returnValueCharacterLimit)
-        #expect(kept.contains(envelope.completionToken), "kept part was: \(kept.prefix(Self.overlongLineLength))")
+            let kept = try #require(TerminalDetail.keptText(of: terminal.detail))
+            #expect(kept.count <= ResultRendererLimits.default.returnValueCharacterLimit)
+            #expect(kept.contains(envelope.completionToken), "kept part was: \(kept.prefix(Self.overlongLineLength))")
+        }
     }
 
     // MARK: - The corrective answers
@@ -870,27 +882,27 @@ struct ShellExecuteTests {
     func aBlankCommandAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
+        try await withOuterRunContext { context in
+            let output = try await Self.call(verb, ExecuteArguments(command: "   "), under: context)
 
-        let output = try await Self.call(verb, ExecuteArguments(command: "   "), under: context)
-
-        #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
-        #expect(await state.listCommands().isEmpty)
+            #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
+            #expect(await state.listCommands().isEmpty)
+        }
     }
 
     @Test("an environment that is not a JSON object of strings answers with a correction")
     func anUnparsableEnvironmentAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
+        try await withOuterRunContext { context in
+            let output = try await Self.call(
+                verb,
+                ExecuteArguments(command: "echo \(Self.inlineMarker)", environment: "not-json"),
+                under: context)
 
-        let output = try await Self.call(
-            verb,
-            ExecuteArguments(command: "echo \(Self.inlineMarker)", environment: "not-json"),
-            under: context)
-
-        #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
-        #expect(await state.listCommands().isEmpty)
+            #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
+            #expect(await state.listCommands().isEmpty)
+        }
     }
 
     // MARK: - The bare session
@@ -964,34 +976,34 @@ struct ShellExecuteTests {
     func aCommandOfExactlyTheCapRuns() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
+        try await withOuterRunContext { context in
+            let output = try await Self.call(
+                verb,
+                ExecuteArguments(command: Self.command(ofByteCount: Execute.maximumCommandLengthBytes)),
+                under: context)
+            let report = try Self.report(output)
 
-        let output = try await Self.call(
-            verb,
-            ExecuteArguments(command: Self.command(ofByteCount: Execute.maximumCommandLengthBytes)),
-            under: context)
-        let report = try Self.report(output)
-
-        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
-        let lines = try #require(report["output"] as? [String])
-        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+            #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+            let lines = try #require(report["output"] as? [String])
+            #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+        }
     }
 
     @Test("a command one byte over the cap answers with a correction and runs nothing")
     func aCommandOneByteOverTheCapAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
         let byteCount = Execute.maximumCommandLengthBytes + 1
+        try await withOuterRunContext { context in
+            let output = try await Self.call(
+                verb, ExecuteArguments(command: Self.command(ofByteCount: byteCount)), under: context)
 
-        let output = try await Self.call(
-            verb, ExecuteArguments(command: Self.command(ofByteCount: byteCount)), under: context)
-
-        let message = try #require(try Self.report(output)["correction"] as? String)
-        #expect(
-            message.contains("\(Execute.maximumCommandLengthBytes)"), "message was: \(message)")
-        #expect(message.contains("\(byteCount)"), "message was: \(message)")
-        #expect(await state.listCommands().isEmpty)
+            let message = try #require(try Self.report(output)["correction"] as? String)
+            #expect(
+                message.contains("\(Execute.maximumCommandLengthBytes)"), "message was: \(message)")
+            #expect(message.contains("\(byteCount)"), "message was: \(message)")
+            #expect(await state.listCommands().isEmpty)
+        }
     }
 
     /// The cap counts UTF-8 BYTES and never characters, because `E2BIG` from
@@ -1001,17 +1013,18 @@ struct ShellExecuteTests {
     func aMultiByteCommandOverTheByteCapAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = try await makeOuterRunContext()
         let command = String(
             repeating: Self.fourByteCharacter, count: Self.multiByteCommandCharacterCount)
 
         #expect(command.count < Execute.maximumCommandLengthBytes)
         #expect(command.utf8.count > Execute.maximumCommandLengthBytes)
 
-        let output = try await Self.call(verb, ExecuteArguments(command: command), under: context)
+        try await withOuterRunContext { context in
+            let output = try await Self.call(verb, ExecuteArguments(command: command), under: context)
 
-        #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
-        #expect(await state.listCommands().isEmpty)
+            #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
+            #expect(await state.listCommands().isEmpty)
+        }
     }
 
     @Test("an environment value over the cap answers with a correction")

@@ -56,97 +56,98 @@ struct SuspendedContextTests {
         // tool's own declaration wins over it. No inline wait: the stock
         // `inlineSettleGrace` holds a snippet that does not settle for that
         // long, and this test is about the mount, not about that wait.
-        let harness = try await Self.makeHarness(
-            configuration: MultiToolConfiguration(inlineSettleGrace: 0), mount: .synchronous)
+        try await Self.withHarness(
+            configuration: MultiToolConfiguration(inlineSettleGrace: 0), mount: .synchronous
+        ) { harness in
+            let rendered = try await harness.mounted.call(
+                arguments: RunCodeArguments(code: Self.gatedSnippet)
+            )
 
-        let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet)
-        )
+            // The gated snippet cannot settle before the test releases its latch.
+            // Thus a call that answered at all did not wait for the snippet, and
+            // its run still stands in the background. The test reads no real time
+            // (card `^tm4x2hp`: no test checks the speed of the machine). The
+            // order is fixed: the mount starts the run on the plane before it
+            // returns the pending envelope, thus one read finds the run.
+            #expect(PendingRunEnvelope.isRendered(text: rendered))
+            let token = try Self.completionToken(of: rendered)
+            #expect(await harness.run.context.backgroundRuns().contains { $0.completionToken == token })
+            #expect(!harness.latch.isReleased)
 
-        // The gated snippet cannot settle before the test releases its latch.
-        // Thus a call that answered at all did not wait for the snippet, and
-        // its run still stands in the background. The test reads no real time
-        // (card `^tm4x2hp`: no test checks the speed of the machine). The
-        // order is fixed: the mount starts the run on the plane before it
-        // returns the pending envelope, thus one read finds the run.
-        #expect(PendingRunEnvelope.isRendered(text: rendered))
-        let token = try Self.completionToken(of: rendered)
-        #expect(await harness.run.context.backgroundRuns().contains { $0.completionToken == token })
-        #expect(!harness.latch.isReleased)
-
-        harness.latch.release()
-        _ = try await Self.settledTerminal(
-            of: try Self.completionToken(of: rendered), on: harness.run.context
-        )
+            harness.latch.release()
+            _ = try await Self.settledTerminal(
+                of: try Self.completionToken(of: rendered), on: harness.run.context
+            )
+        }
     }
 
     // MARK: - The suspended context stays alive after the call returned
 
     @Test("a snippet whose call returned the envelope is still alive well after it, and still settles with its real result")
     func backgroundSnippetStaysAliveWellPastItsCall() async throws {
-        let harness = try await Self.makeHarness()
+        try await Self.withHarness { harness in
+            let rendered = try await harness.mounted.call(
+                arguments: RunCodeArguments(code: Self.gatedSnippet)
+            )
+            let token = try Self.completionToken(of: rendered)
+            // The run plane waits on the manual clock of the harness: the timeout
+            // of the run is the one wait on it. The clock moves past the alive
+            // window only after that timer waits, in a fixed order. A timer that
+            // ends inside the window ends here, and no real time passes.
+            await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers)
+            harness.clock.advance(by: Self.aliveWindow)
 
-        let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet)
-        )
-        let token = try Self.completionToken(of: rendered)
-        // The run plane waits on the manual clock of the harness: the timeout
-        // of the run is the one wait on it. The clock moves past the alive
-        // window only after that timer waits, in a fixed order. A timer that
-        // ends inside the window ends here, and no real time passes.
-        await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers)
-        harness.clock.advance(by: Self.aliveWindow)
+            // Alive: the run plane still holds the background run, and the
+            // promise that the snippet awaits is still there.
+            let backgrounded = await harness.run.context.backgroundRuns()
+            #expect(backgrounded.contains { $0.completionToken == token })
+            #expect(!harness.gated.wasCancelled)
 
-        // Alive: the run plane still holds the background run, and the
-        // promise that the snippet awaits is still there.
-        let backgrounded = await harness.run.context.backgroundRuns()
-        #expect(backgrounded.contains { $0.completionToken == token })
-        #expect(!harness.gated.wasCancelled)
-
-        // Resumable: releasing the inner call still produces the snippet's own
-        // value, long after the call returned.
-        harness.latch.release()
-        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
-        #expect(terminal.detail == Self.renderedGatedResult)
-        #expect(terminal.outcome == .succeeded)
+            // Resumable: releasing the inner call still produces the snippet's own
+            // value, long after the call returned.
+            harness.latch.release()
+            let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
+            #expect(terminal.detail == Self.renderedGatedResult)
+            #expect(terminal.outcome == .succeeded)
+        }
     }
 
     // MARK: - The background run composes
 
     @Test("a snippet whose inner call is in flight settles into exactly one terminal event carrying its result")
     func backgroundSnippetSettlesIntoExactlyOneTerminalEvent() async throws {
-        let harness = try await Self.makeHarness()
+        try await Self.withHarness { harness in
+            let rendered = try await harness.mounted.call(
+                arguments: RunCodeArguments(code: Self.gatedSnippet)
+            )
 
-        let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet)
-        )
+            #expect(PendingRunEnvelope.isRendered(text: rendered))
+            // The inner fixture call runs under the background run — the pending
+            // promise, not a finished one. Awaited rather than read at the instant
+            // the envelope returned: that instant races JSC start-up, which made a
+            // true statement about the product fail whenever the machine was
+            // loaded. The latch is still closed here, so the call starting at all
+            // is what the assertion was always after.
+            try await harness.gated.waitUntilStarted()
+            #expect(!harness.gated.wasCancelled)
 
-        #expect(PendingRunEnvelope.isRendered(text: rendered))
-        // The inner fixture call runs under the background run — the pending
-        // promise, not a finished one. Awaited rather than read at the instant
-        // the envelope returned: that instant races JSC start-up, which made a
-        // true statement about the product fail whenever the machine was
-        // loaded. The latch is still closed here, so the call starting at all
-        // is what the assertion was always after.
-        try await harness.gated.waitUntilStarted()
-        #expect(!harness.gated.wasCancelled)
+            let token = try Self.completionToken(of: rendered)
+            // Subscribed BEFORE the latch releases the run; the stream is live and
+            // has no replay.
+            harness.latch.release()
+            let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
 
-        let token = try Self.completionToken(of: rendered)
-        // Subscribed BEFORE the latch releases the run; the stream is live and
-        // has no replay.
-        harness.latch.release()
-        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
-
-        #expect(terminal.detail == Self.renderedGatedResult)
-        // Read off the caller-supplied sink, which observes each run's OWN
-        // completionToken. The mount's own sink would re-stamp onto the
-        // mounting run and this count could not be attributed.
-        let completions = await harness.sink.events.filter {
-            $0.kind == .completed && $0.correlationID == token
+            #expect(terminal.detail == Self.renderedGatedResult)
+            // Read off the caller-supplied sink, which observes each run's OWN
+            // completionToken. The mount's own sink would re-stamp onto the
+            // mounting run and this count could not be attributed.
+            let completions = await harness.sink.events.filter {
+                $0.kind == .completed && $0.correlationID == token
+            }
+            #expect(completions.count == 1)
+            #expect(completions.first?.correlationID == token)
+            #expect(completions.first?.detail == Self.renderedGatedResult)
         }
-        #expect(completions.count == 1)
-        #expect(completions.first?.correlationID == token)
-        #expect(completions.first?.detail == Self.renderedGatedResult)
     }
 
     // MARK: - The hard unblock
@@ -155,47 +156,48 @@ struct SuspendedContextTests {
     func cancellingASuspendedRunTearsDownItsContext() async throws {
         // A settle period of 0 sends each call to the background at once, so
         // that the cancel snippet also gives a token and a terminal event.
-        let harness = try await Self.makeHarness(configuration: MultiToolConfiguration(inlineSettleGrace: 0))
-        let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet)
-        )
-        let token = try Self.completionToken(of: rendered)
+        try await Self.withHarness(configuration: MultiToolConfiguration(inlineSettleGrace: 0)) { harness in
+            let rendered = try await harness.mounted.call(
+                arguments: RunCodeArguments(code: Self.gatedSnippet)
+            )
+            let token = try Self.completionToken(of: rendered)
 
-        // The envelope returns before JSC starts the first snippet. A cancel
-        // that lands before the gated call starts leaves nothing to unwind,
-        // so `wasCancelled` would never be written. Wait for the call to
-        // start, then cancel.
-        try await harness.gated.waitUntilStarted()
+            // The envelope returns before JSC starts the first snippet. A cancel
+            // that lands before the gated call starts leaves nothing to unwind,
+            // so `wasCancelled` would never be written. Wait for the call to
+            // start, then cancel.
+            try await harness.gated.waitUntilStarted()
 
-        // A second snippet, in the same session and through the same mounted
-        // tool, cancels the first through the sandbox's own `cancel()` global.
-        //
-        // The settle period is 0, thus that second snippet goes to the
-        // background as well. The call hands back its own token, and the test
-        // reads its answer from the background run, not from the call. The
-        // cancel still occurs on its own run.
-        let cancelRendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: "return await cancel(\"\(token)\");")
-        )
-        let cancelTerminal = try await Self.settledTerminal(
-            of: try Self.completionToken(of: cancelRendered), on: harness.run.context
-        )
-        #expect(cancelTerminal.detail.contains("\"result\":\"cancelled\""))
+            // A second snippet, in the same session and through the same mounted
+            // tool, cancels the first through the sandbox's own `cancel()` global.
+            //
+            // The settle period is 0, thus that second snippet goes to the
+            // background as well. The call hands back its own token, and the test
+            // reads its answer from the background run, not from the call. The
+            // cancel still occurs on its own run.
+            let cancelRendered = try await harness.mounted.call(
+                arguments: RunCodeArguments(code: "return await cancel(\"\(token)\");")
+            )
+            let cancelTerminal = try await Self.settledTerminal(
+                of: try Self.completionToken(of: cancelRendered), on: harness.run.context
+            )
+            #expect(cancelTerminal.detail.contains("\"result\":\"cancelled\""))
 
-        // The outcome `.cancelled` proves that the cancel ended the run, and
-        // not the time limit of the run: a time limit gives another outcome.
-        // The test reads no real time (card `^tm4x2hp`).
-        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
-        #expect(terminal.outcome == .cancelled)
-        // The pending promise's own work was torn down with the context —
-        // nothing released the gate. `wasCancelled` is written by the tool's
-        // own task as it unwinds, and the terminal event above can be observed
-        // before that write lands, so wait for that event — sampling it here
-        // is a race, not a check.
-        try await harness.gated.waitUntilCancelled()
-        #expect(!harness.latch.isReleased)
-        let backgrounded = await harness.run.context.backgroundRuns()
-        #expect(backgrounded.isEmpty)
+            // The outcome `.cancelled` proves that the cancel ended the run, and
+            // not the time limit of the run: a time limit gives another outcome.
+            // The test reads no real time (card `^tm4x2hp`).
+            let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
+            #expect(terminal.outcome == .cancelled)
+            // The pending promise's own work was torn down with the context —
+            // nothing released the gate. `wasCancelled` is written by the tool's
+            // own task as it unwinds, and the terminal event above can be observed
+            // before that write lands, so wait for that event — sampling it here
+            // is a race, not a check.
+            try await harness.gated.waitUntilCancelled()
+            #expect(!harness.latch.isReleased)
+            let backgrounded = await harness.run.context.backgroundRuns()
+            #expect(backgrounded.isEmpty)
+        }
     }
 
     // MARK: - Fixtures
@@ -300,6 +302,24 @@ struct SuspendedContextTests {
             sink: sink,
             clock: clock
         )
+    }
+
+    /// Makes a harness, gives it to `body`, and closes the session of its stub
+    /// run when `body` returns or throws.
+    ///
+    /// - Parameters:
+    ///   - configuration: the `MultiTool` knobs under test.
+    ///   - mount: the site's own mount.
+    ///   - body: the work that uses the harness.
+    /// - Returns: what `body` returned.
+    /// - Throws: what making the harness throws, or what `body` threw.
+    private static func withHarness<Result>(
+        configuration: MultiToolConfiguration = MultiToolConfiguration(inlineSettleGrace: 0),
+        mount: ToolMount = .synchronous,
+        _ body: (Harness) async throws -> Result
+    ) async throws -> Result {
+        let harness = try await makeHarness(configuration: configuration, mount: mount)
+        return try await closing(harness.run.session) { try await body(harness) }
     }
 
     /// The per-call work bound `multiTool` reports for one `runCode` call.

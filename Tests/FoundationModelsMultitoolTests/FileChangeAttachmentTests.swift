@@ -107,18 +107,25 @@ struct FileChangeAttachmentTests {
 
     /// Runs one snippet inside a live session call and reads the stream of the answer.
     ///
+    /// The function reads the stream to its end, and then closes the two
+    /// sessions it made, on every path. The answer keeps the files ground,
+    /// and a test reads only its registry, its root and its journal.
+    ///
     /// - Parameter code: the snippet to run.
     /// - Returns: the answer.
     /// - Throws: whatever standing up the session, or the answer itself, throws.
     private static func runAnswer(_ code: String) async throws -> Answer {
-        let ground = try await makeFilesRun(named: testDirectoryName, recordsChanges: true)
-        let stub = try await makeStubSession(
-            mounting: [SnippetRunningTool(multiTool: MultiTool(registry: ground.registry), code: code)])
-        var events: [SessionEvent] = []
-        for try await event in await stub.session.streamEvents(to: prompt) {
-            events.append(event)
+        try await withFilesRun(named: testDirectoryName, recordsChanges: true) { ground in
+            try await withStubSession(
+                mounting: [SnippetRunningTool(multiTool: MultiTool(registry: ground.registry), code: code)]
+            ) { session, _ in
+                var events: [SessionEvent] = []
+                for try await event in await session.streamEvents(to: prompt) {
+                    events.append(event)
+                }
+                return Answer(ground: ground, events: events)
+            }
         }
-        return Answer(ground: ground, events: events)
     }
 
     /// Runs the write snippet of this suite inside a live session call.

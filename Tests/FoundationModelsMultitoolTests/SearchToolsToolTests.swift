@@ -425,18 +425,19 @@ struct SearchToolsToolTests {
         // the site, so discovery still blocks. Asserted against a mount rather
         // than by timing a real search: "however long it takes" is a property
         // of the mount, not of a stopwatch.
-        let context = try await makeOuterRunContext()
-        let mounted = try #require(
-            context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
-                as? any Tool<SearchToolsArguments, String>
-        )
+        try await withOuterRunContext { context in
+            let mounted = try #require(
+                context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
+                    as? any Tool<SearchToolsArguments, String>
+            )
 
-        async let called = mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
-        try await hold.releaseOnArrival()
-        let feedback = try await called
+            async let called = mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+            try await hold.releaseOnArrival()
+            let feedback = try await called
 
-        #expect(!PendingRunEnvelope.isRendered(text: feedback))
-        #expect(feedback.contains("getCities"))
+            #expect(!PendingRunEnvelope.isRendered(text: feedback))
+            #expect(feedback.contains("getCities"))
+        }
     }
 
     @Test("a searcher that fails surfaces its own error, never a timeout and never a token")
@@ -451,18 +452,19 @@ struct SearchToolsToolTests {
             )
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
-        let context = try await makeOuterRunContext()
-        let mounted = try #require(
-            context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
-                as? any Tool<SearchToolsArguments, String>
-        )
+        try await withOuterRunContext { context in
+            let mounted = try #require(
+                context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
+                    as? any Tool<SearchToolsArguments, String>
+            )
 
-        // Slow is not broken, and broken is not slow: a real failure reaches the
-        // model as a failure. What must never happen is the other two shapes —
-        // a `ToolMountError.timedOut` blaming the clock, or a completion
-        // token for a search that already failed.
-        await #expect(throws: SelectionSearchFailure.self) {
-            try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+            // Slow is not broken, and broken is not slow: a real failure reaches the
+            // model as a failure. What must never happen is the other two shapes —
+            // a `ToolMountError.timedOut` blaming the clock, or a completion
+            // token for a search that already failed.
+            await #expect(throws: SelectionSearchFailure.self) {
+                try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+            }
         }
     }
 }

@@ -144,12 +144,12 @@ struct RegisteredJournalOpTests {
         let registry = try MultiTool.Builder()
             .register(noun: Self.demoNoun, tool: probe)
             .buildRegistry()
-        let context = try await makeOuterRunContext()
-
-        try await Self.run(
-            "return await tools.\(Self.demoNoun).\(Self.demoVerb)();",
-            over: registry,
-            under: context)
+        try await withOuterRunContext { context in
+            try await Self.run(
+                "return await tools.\(Self.demoNoun).\(Self.demoVerb)();",
+                over: registry,
+                under: context)
+        }
 
         let observation = try #require(probe.observations.first)
         #expect(observation.stampedOp == "\(Self.demoVerb) \(Self.demoNoun)")
@@ -162,9 +162,9 @@ struct RegisteredJournalOpTests {
         let registry = try MultiTool.Builder()
             .addTool(probe)
             .buildRegistry()
-        let context = try await makeOuterRunContext()
-
-        try await Self.run("return await tools.\(Self.demoVerb)();", over: registry, under: context)
+        try await withOuterRunContext { context in
+            try await Self.run("return await tools.\(Self.demoVerb)();", over: registry, under: context)
+        }
 
         let observation = try #require(probe.observations.first)
         #expect(observation.stampedOp == Self.demoVerb)
@@ -181,22 +181,23 @@ struct RegisteredJournalOpTests {
     func anInnerShellRunStaysOffTheRunPlane() async throws {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
-        let context = try await makeOuterRunContext()
-        let run = Task {
-            try await Self.run(
-                """
-                return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-                command: "\(Self.heldCommand)" });
-                """,
-                over: registry,
-                under: context)
+        try await withOuterRunContext { context in
+            let run = Task {
+                try await Self.run(
+                    """
+                    return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
+                    command: "\(Self.heldCommand)" });
+                    """,
+                    over: registry,
+                    under: context)
+            }
+
+            try await sandbox.waitUntilConsulted()
+
+            #expect(await context.backgroundRuns().isEmpty)
+            run.cancel()
+            await #expect(throws: CancellationError.self) { try await run.value }
         }
-
-        try await sandbox.waitUntilConsulted()
-
-        #expect(await context.backgroundRuns().isEmpty)
-        run.cancel()
-        await #expect(throws: CancellationError.self) { try await run.value }
     }
 
     // MARK: - The stamp the shell verb itself reads
@@ -214,15 +215,15 @@ struct RegisteredJournalOpTests {
     func aShellRunCarriesThePairIntoItsOwnCall() async throws {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
-        let context = try await makeOuterRunContext()
-
-        try await Self.run(
-            """
-            return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "\(Self.shortCommand)" });
-            """,
-            over: registry,
-            under: context)
+        try await withOuterRunContext { context in
+            try await Self.run(
+                """
+                return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
+                command: "\(Self.shortCommand)" });
+                """,
+                over: registry,
+                under: context)
+        }
 
         // A fixed order, not a wait: the inner call ran to completion before
         // the snippet returned, thus the run consulted its sandbox already.
@@ -255,21 +256,22 @@ struct RegisteredJournalOpTests {
         let registry = try await MultiTool.Builder()
             .withMCP(servers: [server])
             .buildRegistry()
-        let context = try await makeOuterRunContext()
+        let stampedOp = try await withOuterRunContext { context in
+            let run = Task {
+                try await Self.run(
+                    "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
+                    over: registry,
+                    under: context)
+            }
 
-        let run = Task {
-            try await Self.run(
-                "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
-                over: registry,
-                under: context)
+            // The server records the call in flight before it sends the request,
+            // thus when the call arrives at the held tool, the record stands.
+            try await held.waitForArrival()
+            let stampedOp = await server.inFlightCalls.values.first?.context?.op
+            await held.release()
+            try await run.value
+            return stampedOp
         }
-
-        // The server records the call in flight before it sends the request,
-        // thus when the call arrives at the held tool, the record stands.
-        try await held.waitForArrival()
-        let stampedOp = await server.inFlightCalls.values.first?.context?.op
-        await held.release()
-        try await run.value
 
         #expect(stampedOp == "\(Self.mcpHeldVerb) \(Self.mcpServerName)")
         withExtendedLifetime(scripted) {}

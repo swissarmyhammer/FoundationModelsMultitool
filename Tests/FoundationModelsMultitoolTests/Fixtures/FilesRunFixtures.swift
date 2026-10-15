@@ -75,6 +75,27 @@ func makeFilesRun(
     return FilesRun(run: run, registry: registry, root: root, journal: write.context.changes)
 }
 
+/// Builds a files run, gives it to `body`, and closes the session of its stub
+/// run on every path.
+///
+/// - Parameters:
+///   - directoryName: the prefix of the temporary root.
+///   - recordsChanges: whether the capability records changes.
+///   - tools: the standalone tools to register beside the files verbs.
+///   - body: the work that uses the files run.
+/// - Returns: what `body` returned.
+/// - Throws: what building the files run throws, or what `body` threw.
+/// - SeeAlso: ``makeFilesRun(named:recordsChanges:alongside:)``.
+func withFilesRun<Result>(
+    named directoryName: String,
+    recordsChanges: Bool,
+    alongside tools: [any Tool] = [],
+    _ body: (FilesRun) async throws -> Result
+) async throws -> Result {
+    let ground = try await makeFilesRun(named: directoryName, recordsChanges: recordsChanges, alongside: tools)
+    return try await closing(ground.run.session) { try await body(ground) }
+}
+
 /// Runs one `runCode` snippet through a new `MultiTool` over `registry`,
 /// under `context` when one is given.
 ///

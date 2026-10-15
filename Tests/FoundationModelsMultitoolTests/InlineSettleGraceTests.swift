@@ -50,10 +50,17 @@ struct InlineSettleGraceTests {
     /// answers inside its settle period, and only a period of `0` gives the
     /// pending envelope. No test here reads real time.
     ///
-    /// - Returns: The context.
-    /// - Throws: Whatever standing up the stub session throws.
-    private static func makeContextOnStoppedClock() async throws -> ToolContext {
-        try await makeStubRun(runClock: ManualRunClock()).context
+    /// The helper gives the context to `body`, and closes the session of the
+    /// context when `body` returns or throws.
+    ///
+    /// - Parameter body: The work that uses the context.
+    /// - Returns: What `body` returned.
+    /// - Throws: Whatever standing up the stub session throws, or what `body`
+    ///   threw.
+    private static func withContextOnStoppedClock<Result>(
+        _ body: (ToolContext) async throws -> Result
+    ) async throws -> Result {
+        try await withOuterRunContext(runClock: ManualRunClock(), body)
     }
 
     /// Mounts `tool` the way a Router session mounts every tool.
@@ -102,14 +109,15 @@ struct InlineSettleGraceTests {
 
     @Test("a snippet that finishes inside the wait answers with its own result, with no envelope")
     func quickSnippetAnswersWithItsResult() async throws {
-        let context = try await Self.makeContextOnStoppedClock()
-        let runCode = MultiTool(registry: try Self.registry())
-        let mounted = try Self.mounted(runCode, on: context)
+        try await Self.withContextOnStoppedClock { context in
+            let runCode = MultiTool(registry: try Self.registry())
+            let mounted = try Self.mounted(runCode, on: context)
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.quickSnippet))
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.quickSnippet))
 
-        #expect(rendered == Self.quickSnippetResult)
-        #expect(!PendingRunEnvelope.isRendered(text: rendered))
+            #expect(rendered == Self.quickSnippetResult)
+            #expect(!PendingRunEnvelope.isRendered(text: rendered))
+        }
     }
 
     /// The slow snippet runs on a mount with no wait, thus its call answers
@@ -124,30 +132,36 @@ struct InlineSettleGraceTests {
         let latch = ToolReleaseLatch()
         defer { latch.release() }
         let hog = CooperativePoolHogTool(latch: latch)
-        let context = try await Self.makeContextOnStoppedClock()
-        let registry = try MultiTool.Builder().addTool(hog).buildRegistry()
-        let slowMount = try Self.mounted(
-            MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)), on: context)
-        let quickMount = try Self.mounted(
-            MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: Self.besideSlowToolGrace)),
-            on: try await Self.makeContextOnStoppedClock()
-        )
-        let slow = try Self.envelope(
-            try await slowMount.call(arguments: RunCodeArguments(code: "return await tools.hog();"))
-        )
-        #expect(slow.pending)
-        // The event of the slow tool: a child started to spin.
-        try await hog.waitUntilStarted()
+        try await Self.withContextOnStoppedClock { context in
+            try await Self.withContextOnStoppedClock { quickContext in
+                let registry = try MultiTool.Builder().addTool(hog).buildRegistry()
+                let slowMount = try Self.mounted(
+                    MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)), on: context)
+                let quickMount = try Self.mounted(
+                    MultiTool(
+                        registry: registry,
+                        configuration: MultiToolConfiguration(inlineSettleGrace: Self.besideSlowToolGrace)),
+                    on: quickContext
+                )
+                let slow = try Self.envelope(
+                    try await slowMount.call(arguments: RunCodeArguments(code: "return await tools.hog();"))
+                )
+                #expect(slow.pending)
+                // The event of the slow tool: a child started to spin.
+                try await hog.waitUntilStarted()
 
-        let quick = try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
+                let quick = try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
 
-        #expect(quick == "\"x\"")
-        #expect(hog.isSpinning, "the quick snippet answered only after the slow tool stopped")
-        latch.release()
-        // The spin stops with the latch, and the slow snippet settles.
-        let settled = await context.wait(completionToken: slow.completionToken, seconds: scriptedRunSettlementSeconds)
-        if case .settled = settled {} else {
-            Issue.record("the slow snippet never settled: \(settled)")
+                #expect(quick == "\"x\"")
+                #expect(hog.isSpinning, "the quick snippet answered only after the slow tool stopped")
+                latch.release()
+                // The spin stops with the latch, and the slow snippet settles.
+                let settled = await context.wait(
+                    completionToken: slow.completionToken, seconds: scriptedRunSettlementSeconds)
+                if case .settled = settled {} else {
+                    Issue.record("the slow snippet never settled: \(settled)")
+                }
+            }
         }
     }
 
@@ -164,28 +178,29 @@ struct InlineSettleGraceTests {
 
     @Test("a host that turns the wait off gets the completion token back, as every mounted call did before")
     func noWaitAnswersWithTheCompletionToken() async throws {
-        let context = try await Self.makeContextOnStoppedClock()
-        let runCode = MultiTool(
-            registry: try Self.registry(),
-            configuration: MultiToolConfiguration(inlineSettleGrace: 0)
-        )
-        let mounted = try Self.mounted(runCode, on: context)
+        try await Self.withContextOnStoppedClock { context in
+            let runCode = MultiTool(
+                registry: try Self.registry(),
+                configuration: MultiToolConfiguration(inlineSettleGrace: 0)
+            )
+            let mounted = try Self.mounted(runCode, on: context)
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.quickSnippet))
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.quickSnippet))
 
-        let envelope = try Self.envelope(rendered)
-        #expect(envelope.pending)
-        #expect(
-            envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken)
-        )
+            let envelope = try Self.envelope(rendered)
+            #expect(envelope.pending)
+            #expect(
+                envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken)
+            )
 
-        let collected = await context.wait(
-            completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds
-        )
-        guard case .settled(let terminal) = collected else {
-            Issue.record("the snippet never settled: \(collected)")
-            return
+            let collected = await context.wait(
+                completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds
+            )
+            guard case .settled(let terminal) = collected else {
+                Issue.record("the snippet never settled: \(collected)")
+                return
+            }
+            #expect(terminal.detail == Self.quickSnippetResult)
         }
-        #expect(terminal.detail == Self.quickSnippetResult)
     }
 }

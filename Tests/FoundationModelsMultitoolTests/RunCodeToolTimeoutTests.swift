@@ -29,21 +29,22 @@ struct RunCodeToolTimeoutTests {
     @Test("a mounted runCode that spins with no progress ends as timedOut at the engine clock")
     func spinningSnippetEndsAtTheEngineClock() async throws {
         let clock = ManualRunClock()
-        let context = try await makeStubRun(runClock: clock).context
-        let mounted = try Self.mountedRunCode(
-            registry: try MultiTool.Builder().buildRegistry(),
-            window: Self.stallWindowSeconds,
-            on: context
-        )
+        try await withOuterRunContext(runClock: clock) { context in
+            let mounted = try Self.mountedRunCode(
+                registry: try MultiTool.Builder().buildRegistry(),
+                window: Self.stallWindowSeconds,
+                on: context
+            )
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
-        await Self.endOneWindow(of: clock)
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
+            await Self.endOneWindow(of: clock)
 
-        // The sandbox has no clock to end the loop, thus the outcome comes
-        // from the engine clock.
-        let terminal = try await Self.terminal(of: rendered, on: context)
-        #expect(terminal.outcome == .timedOut)
-        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+            // The sandbox has no clock to end the loop, thus the outcome comes
+            // from the engine clock.
+            let terminal = try await Self.terminal(of: rendered, on: context)
+            #expect(terminal.outcome == .timedOut)
+            #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+        }
     }
 
     @Test("a mounted runCode that awaits a tools.* call that never completes ends as timedOut at the engine clock")
@@ -74,26 +75,27 @@ struct RunCodeToolTimeoutTests {
         let web = WebCapability(
             configuration: .keyless, sessionConfiguration: stub.sessionConfiguration, resolver: PublicHostResolver())
         let clock = ManualRunClock()
-        let context = try await makeStubRun(runClock: clock).context
-        let mounted = try Self.mountedRunCode(
-            registry: try MultiTool.Builder().withCapability(web).buildRegistry(),
-            window: Self.stallWindowSeconds,
-            on: context
-        )
+        try await withOuterRunContext(runClock: clock) { context in
+            let mounted = try Self.mountedRunCode(
+                registry: try MultiTool.Builder().withCapability(web).buildRegistry(),
+                window: Self.stallWindowSeconds,
+                on: context
+            )
 
-        let snippet = "return await tools.web.fetch({ url: \"\(Self.hangingPageURL)\" });"
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
-        // The event of the stub: the request is in flight.
-        try await stub.waitForRequest()
-        await Self.endOneWindow(of: clock)
+            let snippet = "return await tools.web.fetch({ url: \"\(Self.hangingPageURL)\" });"
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+            // The event of the stub: the request is in flight.
+            try await stub.waitForRequest()
+            await Self.endOneWindow(of: clock)
 
-        let terminal = try await Self.terminal(of: rendered, on: context)
-        #expect(terminal.outcome == .timedOut)
-        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
-        // The event of the stub: the session stopped the request.
-        try await stub.waitForStop()
-        #expect(stub.stoppedURLs == [Self.hangingPageURL])
-        #expect(stub.requestedURLs == [Self.hangingPageURL])
+            let terminal = try await Self.terminal(of: rendered, on: context)
+            #expect(terminal.outcome == .timedOut)
+            #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+            // The event of the stub: the session stopped the request.
+            try await stub.waitForStop()
+            #expect(stub.stoppedURLs == [Self.hangingPageURL])
+            #expect(stub.requestedURLs == [Self.hangingPageURL])
+        }
     }
 
     // MARK: - A run with progress
@@ -113,27 +115,28 @@ struct RunCodeToolTimeoutTests {
         let pause = PacedPauseTool(name: "pause", turns: Self.turnCount)
         let sink = ProgressSignalSink()
         let clock = ManualRunClock()
-        let context = try await makeStubRun(runClock: clock).context
-        let mounted = try Self.mountedRunCode(
-            registry: try MultiTool.Builder().addTool(pause).buildRegistry(),
-            window: Self.progressWindowSeconds,
-            on: context,
-            postingTo: sink
-        )
+        try await withOuterRunContext(runClock: clock) { context in
+            let mounted = try Self.mountedRunCode(
+                registry: try MultiTool.Builder().addTool(pause).buildRegistry(),
+                window: Self.progressWindowSeconds,
+                on: context,
+                postingTo: sink
+            )
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.progressSnippet))
-        for turn in 0..<Self.turnCount {
-            try await sink.waitForProgress(Self.progressDetail(turn: turn))
-            try await pause.hold(turn: turn).arrival.wait()
-            await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
-            clock.advance(by: Self.pauseStep)
-            await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
-            pause.hold(turn: turn).release.open()
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.progressSnippet))
+            for turn in 0..<Self.turnCount {
+                try await sink.waitForProgress(Self.progressDetail(turn: turn))
+                try await pause.hold(turn: turn).arrival.wait()
+                await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                clock.advance(by: Self.pauseStep)
+                await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                pause.hold(turn: turn).release.open()
+            }
+
+            let terminal = try await Self.terminal(of: rendered, on: context)
+            #expect(terminal.outcome == .succeeded, "terminal was: \(terminal)")
+            #expect(terminal.detail == Self.renderedPauseResult)
         }
-
-        let terminal = try await Self.terminal(of: rendered, on: context)
-        #expect(terminal.outcome == .succeeded, "terminal was: \(terminal)")
-        #expect(terminal.detail == Self.renderedPauseResult)
     }
 
     // MARK: - Fixtures
@@ -290,18 +293,19 @@ struct RunCodeToolTimeoutTests {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
         let clock = ManualRunClock()
-        let context = try await makeStubRun(runClock: clock).context
-        let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
+        try await withOuterRunContext(runClock: clock) { context in
+            let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
-        try await gated.waitUntilStarted()
-        await endOneWindow(of: clock)
+            let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
+            try await gated.waitUntilStarted()
+            await endOneWindow(of: clock)
 
-        let terminal = try await Self.terminal(of: rendered, on: context)
-        #expect(terminal.outcome == .timedOut)
-        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
-        #expect(!latch.isReleased)
-        try await gated.waitUntilCancelled()
+            let terminal = try await Self.terminal(of: rendered, on: context)
+            #expect(terminal.outcome == .timedOut)
+            #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+            #expect(!latch.isReleased)
+            try await gated.waitUntilCancelled()
+        }
     }
 
     /// Waits for the terminal event of the run that a mounted call started.

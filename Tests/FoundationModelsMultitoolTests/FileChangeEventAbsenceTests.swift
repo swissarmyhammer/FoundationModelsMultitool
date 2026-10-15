@@ -99,13 +99,19 @@ struct FileChangeEventAbsenceTests {
     // MARK: - The ground of one test
 
     /// Builds the files run of one test: a canonical root named for this
-    /// suite, a files registry over it, its journal, and a stub run.
+    /// suite, a files registry over it, its journal, and a stub run. Gives
+    /// the files run to `body`, and closes the session of the stub run on
+    /// every path.
     ///
-    /// - Parameter recordsChanges: whether the capability records changes.
-    /// - Returns: the files run.
-    /// - Throws: whatever `makeFilesRun(named:recordsChanges:)` throws.
-    private static func makeGround(recordsChanges: Bool) async throws -> FilesRun {
-        try await makeFilesRun(named: testDirectoryName, recordsChanges: recordsChanges)
+    /// - Parameters:
+    ///   - recordsChanges: whether the capability records changes.
+    ///   - body: the work that uses the files run.
+    /// - Throws: whatever `withFilesRun(named:recordsChanges:alongside:_:)`
+    ///   throws.
+    private static func withGround(
+        recordsChanges: Bool, _ body: (FilesRun) async throws -> Void
+    ) async throws {
+        try await withFilesRun(named: testDirectoryName, recordsChanges: recordsChanges, body)
     }
 
     /// Puts the seeded file under the root of a ground.
@@ -161,47 +167,48 @@ struct FileChangeEventAbsenceTests {
 
     @Test("a snippet that only reads under a recording capability leaves no fileChanges event")
     func readsLeaveNoFileChangesEvent() async throws {
-        let ground = try await Self.makeGround(recordsChanges: true)
-        try Self.seed(ground)
+        try await Self.withGround(recordsChanges: true) { ground in
+            try Self.seed(ground)
 
-        let output = try await Self.run(
-            """
-            const read = await tools.files.read({ path: "\(Self.seededFileName)" });
-            if (read.correction) { return read.correction; }
-            const globbed = await tools.files.glob({ pattern: "\(Self.textFilePattern)" });
-            if (globbed.correction) { return globbed.correction; }
-            const grep = await tools.files.grep({ pattern: "\(Self.grepNeedle)" });
-            if (grep.correction) { return grep.correction; }
-            return {
-                lines: read.lines.length,
-                files: globbed.files.length,
-                matches: grep.matches.filter((m) => m.isMatch).length,
-            };
-            """, under: ground)
-        let value = try RunOutput.decoded(ReadValue.self, from: output)
-        let events = await Self.fileChangeEvents(of: ground.run)
+            let output = try await Self.run(
+                """
+                const read = await tools.files.read({ path: "\(Self.seededFileName)" });
+                if (read.correction) { return read.correction; }
+                const globbed = await tools.files.glob({ pattern: "\(Self.textFilePattern)" });
+                if (globbed.correction) { return globbed.correction; }
+                const grep = await tools.files.grep({ pattern: "\(Self.grepNeedle)" });
+                if (grep.correction) { return grep.correction; }
+                return {
+                    lines: read.lines.length,
+                    files: globbed.files.length,
+                    matches: grep.matches.filter((m) => m.isMatch).length,
+                };
+                """, under: ground)
+            let value = try RunOutput.decoded(ReadValue.self, from: output)
+            let events = await Self.fileChangeEvents(of: ground.run)
 
-        #expect(value.lines == Self.seededLineCount)
-        #expect(value.files == Self.globbedFileCount)
-        #expect(value.matches == Self.grepMatchCount)
-        #expect(events.isEmpty, "events were: \(events)")
+            #expect(value.lines == Self.seededLineCount)
+            #expect(value.files == Self.globbedFileCount)
+            #expect(value.matches == Self.grepMatchCount)
+            #expect(events.isEmpty, "events were: \(events)")
+        }
     }
 
     // MARK: - A capability that does not record
 
     @Test("a write under a non-recording capability leaves no event and an empty journal")
     func writeUnderNonRecordingCapabilityLeavesNothing() async throws {
-        let ground = try await Self.makeGround(recordsChanges: false)
+        try await Self.withGround(recordsChanges: false) { ground in
+            let output = try await Self.run(Self.writeSnippet, under: ground)
+            let bytesWritten = try RunOutput.decoded(Int.self, from: output)
+            let events = await Self.fileChangeEvents(of: ground.run)
+            let drained = await ground.journal.drain()
 
-        let output = try await Self.run(Self.writeSnippet, under: ground)
-        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
-        let events = await Self.fileChangeEvents(of: ground.run)
-        let drained = await ground.journal.drain()
-
-        #expect(bytesWritten == Self.writtenContent.utf8.count)
-        #expect(TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: ground.root)) == Self.writtenContent)
-        #expect(events.isEmpty, "events were: \(events)")
-        #expect(drained.changes.isEmpty)
+            #expect(bytesWritten == Self.writtenContent.utf8.count)
+            #expect(TestSupport.text(at: TestSupport.path(Self.writtenFileName, in: ground.root)) == Self.writtenContent)
+            #expect(events.isEmpty, "events were: \(events)")
+            #expect(drained.changes.isEmpty)
+        }
     }
 
     // MARK: - A mutation that does not land
@@ -218,78 +225,81 @@ struct FileChangeEventAbsenceTests {
 
     @Test("a write the path guard refuses and an edit that does not resolve leave no fileChanges event")
     func mutationsThatDoNotLandLeaveNoFileChangesEvent() async throws {
-        let ground = try await Self.makeGround(recordsChanges: true)
-        let seededPath = try Self.seed(ground)
-        let outside = TestSupport.makeTemporaryDirectory(named: Self.outsideDirectoryName)
-        let escapePath = TestSupport.path(Self.escapeFileName, in: outside)
+        try await Self.withGround(recordsChanges: true) { ground in
+            let seededPath = try Self.seed(ground)
+            let outside = TestSupport.makeTemporaryDirectory(named: Self.outsideDirectoryName)
+            let escapePath = TestSupport.path(Self.escapeFileName, in: outside)
 
-        let output = try await Self.run(
-            """
-            const refused = await tools.files.write({ path: "\(escapePath)", content: `\(Self.writtenContent)` });
-            const edited = await tools.files.edit({
-                path: "\(Self.seededFileName)",
-                find: ["\(Self.missingFindText)"],
-                replace: ["\(Self.replacementText)"],
-            });
-            if (edited.correction) { return edited.correction; }
-            return { refusedCorrection: refused.correction, editStatus: edited.status };
-            """, under: ground)
-        let value = try RunOutput.decoded(RefusedValue.self, from: output)
-        let events = await Self.fileChangeEvents(of: ground.run)
-        let drained = await ground.journal.drain()
+            let output = try await Self.run(
+                """
+                const refused = await tools.files.write({ path: "\(escapePath)", content: `\(Self.writtenContent)` });
+                const edited = await tools.files.edit({
+                    path: "\(Self.seededFileName)",
+                    find: ["\(Self.missingFindText)"],
+                    replace: ["\(Self.replacementText)"],
+                });
+                if (edited.correction) { return edited.correction; }
+                return { refusedCorrection: refused.correction, editStatus: edited.status };
+                """, under: ground)
+            let value = try RunOutput.decoded(RefusedValue.self, from: output)
+            let events = await Self.fileChangeEvents(of: ground.run)
+            let drained = await ground.journal.drain()
 
-        #expect(value.refusedCorrection.contains(Self.outsideRootFragment), "correction was: \(value.refusedCorrection)")
-        #expect(value.editStatus != EditOutcomeProjection.appliedStatus)
-        #expect(!FileManager.default.fileExists(atPath: escapePath), "a refused write must not create the file")
-        #expect(TestSupport.text(at: seededPath) == Self.seededContent)
-        #expect(events.isEmpty, "events were: \(events)")
-        #expect(drained.changes.isEmpty)
+            #expect(value.refusedCorrection.contains(Self.outsideRootFragment), "correction was: \(value.refusedCorrection)")
+            #expect(value.editStatus != EditOutcomeProjection.appliedStatus)
+            #expect(!FileManager.default.fileExists(atPath: escapePath), "a refused write must not create the file")
+            #expect(TestSupport.text(at: seededPath) == Self.seededContent)
+            #expect(events.isEmpty, "events were: \(events)")
+            #expect(drained.changes.isEmpty)
+        }
     }
 
     // MARK: - A run with no ambient context
 
     @Test("a run with no ambient context delivers nothing and keeps the change for drain")
     func runWithNoAmbientContextKeepsTheChangeForDrain() async throws {
-        let ground = try await Self.makeGround(recordsChanges: true)
-        let path = TestSupport.path(Self.writtenFileName, in: ground.root)
+        try await Self.withGround(recordsChanges: true) { ground in
+            let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
-        let output = try await runSnippet(Self.writeSnippet, over: ground.registry)
-        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
-        let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
-        let drained = await ground.journal.drain()
+            let output = try await runSnippet(Self.writeSnippet, over: ground.registry)
+            let bytesWritten = try RunOutput.decoded(Int.self, from: output)
+            let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
+            let drained = await ground.journal.drain()
 
-        #expect(bytesWritten == Self.writtenContent.utf8.count)
-        #expect(TestSupport.text(at: path) == Self.writtenContent)
-        #expect(events.isEmpty, "events were: \(events)")
-        #expect(drained.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+            #expect(bytesWritten == Self.writtenContent.utf8.count)
+            #expect(TestSupport.text(at: path) == Self.writtenContent)
+            #expect(events.isEmpty, "events were: \(events)")
+            #expect(drained.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+        }
     }
 
     // MARK: - A notice beside a write
 
     @Test("a notify() beside a write posts a plain-text progress event the envelope tells apart")
     func noticeBesideAWriteIsToldApartByTheEnvelope() async throws {
-        let ground = try await Self.makeGround(recordsChanges: true)
-        let path = TestSupport.path(Self.writtenFileName, in: ground.root)
+        try await Self.withGround(recordsChanges: true) { ground in
+            let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
-        let output = try await Self.run(
-            """
-            notify("\(Self.noticeDetail)");
-            \(Self.writeSnippet)
-            """, under: ground)
-        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
-        // The notice and the change set are consecutive progress events of one
-        // run. Router writes the second one in a merged row that only
-        // `close()` writes, so the read settles the session first.
-        let events = await settledOperationEvents(of: ground.run, ofKind: .progress)
-            .filter { $0.correlationID == ground.run.context.completionToken }
-        let notices = events.filter { $0.detail == Self.noticeDetail }
-        let changeSets = events.compactMap { FileChangeSet(operationEventDetail: $0.detail) }
+            let output = try await Self.run(
+                """
+                notify("\(Self.noticeDetail)");
+                \(Self.writeSnippet)
+                """, under: ground)
+            let bytesWritten = try RunOutput.decoded(Int.self, from: output)
+            // The notice and the change set are consecutive progress events of one
+            // run. Router writes the second one in a merged row that only
+            // `close()` writes, so the read settles the session first.
+            let events = await settledOperationEvents(of: ground.run, ofKind: .progress)
+                .filter { $0.correlationID == ground.run.context.completionToken }
+            let notices = events.filter { $0.detail == Self.noticeDetail }
+            let changeSets = events.compactMap { FileChangeSet(operationEventDetail: $0.detail) }
 
-        #expect(bytesWritten == Self.writtenContent.utf8.count)
-        #expect(events.count == Self.noticesPerCall + Self.eventsPerWrite, "events were: \(events)")
-        #expect(notices.count == Self.noticesPerCall)
-        #expect(notices.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) == nil })
-        #expect(changeSets.count == Self.eventsPerWrite)
-        #expect(changeSets.first?.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+            #expect(bytesWritten == Self.writtenContent.utf8.count)
+            #expect(events.count == Self.noticesPerCall + Self.eventsPerWrite, "events were: \(events)")
+            #expect(notices.count == Self.noticesPerCall)
+            #expect(notices.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) == nil })
+            #expect(changeSets.count == Self.eventsPerWrite)
+            #expect(changeSets.first?.changes == [FileChange(kind: .add, path: path, newContent: Self.writtenContent)])
+        }
     }
 }

@@ -126,24 +126,26 @@ struct LostCallTests {
         let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
         let sink = RecordingEventSink()
-        let engine = MCPCallProbe.mountedRunToCompletion(
-            MCPCallProbeTool(
-                server: server, toolName: ScriptedServer.echoToolName,
-                callArguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)]),
-            on: try await makeOuterRunContext(), postingTo: sink)
+        try await withOuterRunContext { context in
+            let engine = MCPCallProbe.mountedRunToCompletion(
+                MCPCallProbeTool(
+                    server: server, toolName: ScriptedServer.echoToolName,
+                    callArguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)]),
+                on: context, postingTo: sink)
 
-        await respawning.disconnect()
-        await server.waitUntilTransportDropped()
-        let thrown = await MCPCallProbe.thrownError {
-            _ = try await engine.call(arguments: NoArguments())
+            await respawning.disconnect()
+            await server.waitUntilTransportDropped()
+            let thrown = await MCPCallProbe.thrownError {
+                _ = try await engine.call(arguments: NoArguments())
+            }
+
+            #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
+            let completed = await sink.events.filter { $0.kind == .completed }
+            #expect(completed.count == Self.terminalEventCount)
+            // `.lost` must never flatten into `.failed` in the shared envelope
+            // vocabulary — the outcome is unknowable, not a reported failure.
+            #expect(completed.first?.outcome == .lost)
         }
-
-        #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
-        let completed = await sink.events.filter { $0.kind == .completed }
-        #expect(completed.count == Self.terminalEventCount)
-        // `.lost` must never flatten into `.failed` in the shared envelope
-        // vocabulary — the outcome is unknowable, not a reported failure.
-        #expect(completed.first?.outcome == .lost)
     }
 
     // MARK: - Never auto-retried, regardless of ToolAnnotations
@@ -190,34 +192,34 @@ struct LostCallTests {
         let wire = WireRecordingTransport(wrapping: respawning)
         let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: wire, backoffPolicy: .default)
-        let context = try await makeOuterRunContext()
-
-        let callTask = Task {
-            try await ToolContext.$current.withValue(context) {
-                try await server.call(name: Self.hangingToolName, arguments: nil)
+        try await withOuterRunContext { context in
+            let callTask = Task {
+                try await ToolContext.$current.withValue(context) {
+                    try await server.call(name: Self.hangingToolName, arguments: nil)
+                }
             }
-        }
-        try await arrival.wait()
-        #expect(counter.count == Self.oneInvocation)
-        await respawning.disconnect()
+            try await arrival.wait()
+            #expect(counter.count == Self.oneInvocation)
+            await respawning.disconnect()
 
-        let thrown = await MCPCallProbe.thrownError {
-            _ = try await callTask.value
-        }
-        #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
+            let thrown = await MCPCallProbe.thrownError {
+                _ = try await callTask.value
+            }
+            #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
 
-        await wire.mark(as: Self.reconnectMarker)
-        try await server.reconnect()
-        #expect(await server.state == .ready)
-        let probe = try await ToolContext.$current.withValue(context) {
-            try await server.call(
-                name: ScriptedServer.echoToolName,
-                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+            await wire.mark(as: Self.reconnectMarker)
+            try await server.reconnect()
+            #expect(await server.state == .ready)
+            let probe = try await ToolContext.$current.withValue(context) {
+                try await server.call(
+                    name: ScriptedServer.echoToolName,
+                    arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+            }
+            #expect(probe.isError != true, "the probe call failed: \(probe)")
+            let callsAfterReconnect = try await Self.callsSent(after: Self.reconnectMarker, on: wire)
+            let ledger = await wire.ledger
+            #expect(callsAfterReconnect == Self.oneCallAfterReconnect, "the ledger: \(ledger)")
+            #expect(counter.count == Self.oneInvocation)
         }
-        #expect(probe.isError != true, "the probe call failed: \(probe)")
-        let callsAfterReconnect = try await Self.callsSent(after: Self.reconnectMarker, on: wire)
-        let ledger = await wire.ledger
-        #expect(callsAfterReconnect == Self.oneCallAfterReconnect, "the ledger: \(ledger)")
-        #expect(counter.count == Self.oneInvocation)
     }
 }
