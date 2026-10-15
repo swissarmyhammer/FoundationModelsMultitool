@@ -103,12 +103,6 @@ extension MultiTool {
         /// The catalog + live tool instances this bundle dispatches into.
         let registry: Registry
 
-        /// `help()`/`docs()`'s `HostFunction` bridges — the surface-reading
-        /// synchronous globals a run installs. Built one time here, and
-        /// re-installed fresh into every `runCode` call's own sandbox by
-        /// `Interpreter.run` — installing them is cheap.
-        let hostFunctions: [HostFunction]
-
         /// Every registry entry that has a live tool to dispatch to, paired
         /// with the flat host-function name its `tools.*` binding installs
         /// under. The `AsyncHostFunction`s built from it are not precomputed:
@@ -147,7 +141,6 @@ extension MultiTool {
         init(registry: Registry, shape: RegistryBundleShape) {
             self.registry = registry
             self.shape = shape
-            self.hostFunctions = MultiTool.makeHelpDocsHostFunctions(for: registry)
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
             self.hintSearcher = MetadataSearcher(

@@ -4,9 +4,9 @@ import ULID
 
 // MARK: - The ambient sandbox globals (eventplan.md § "The sandbox globals")
 //
-// Five globals beyond `tools.*`/`help()`/`docs()`, installed unconditionally
-// into every `runCode` sandbox by the same `HostFunction`/`AsyncHostFunction`
-// mechanism `help()`/`docs()` use, and built by the same
+// Five globals beyond `tools.*`/`help()`/`docs()`, installed into each
+// `runCode` sandbox by the same `HostFunction`/`AsyncHostFunction` mechanism
+// `help()`/`docs()` use, and built by the same
 // `makeHelpDocsHostFunctions`-style factories:
 //
 // - `status()`, `cancel()` — the session's background runs.
@@ -17,6 +17,15 @@ import ULID
 //   elicitation is.
 // - `notify()`, `progress()` — enqueue-and-continue notices (see
 //   `SandboxNoticeOutbox`).
+//
+// **`elicit()` is installed only when a user can answer.** A session whose
+// `ToolContext.userPresence` is `.headless` has no user to ask, thus its
+// sandbox has no `elicit` global, and `docs("globals")` and `docs("elicit")`
+// do not declare it (see ``MultiTool/asksUser(_:)``). A snippet in that
+// session that calls `elicit()` gets a `ReferenceError` with the hint
+// ``MultiTool/noUserPresentHint``. The other four globals are installed in
+// each sandbox. A run with no session keeps `elicit()`: it rejects with
+// ``SandboxGlobalError/noSession``, as the other promise globals do.
 //
 // The one-rule contract (eventplan.md § "Async JavaScript") decides which
 // mechanism each uses: "each call that goes into Swift effects returns a
@@ -34,7 +43,8 @@ import ULID
 // not declare it.
 //
 // None of the five is a `searchTools` entry. A search result implies an item that
-// can be found or be absent; these are always present. `MultiTool
+// can be found or be absent; the session alone decides if these are present,
+// and no search changes it. `MultiTool
 // .description` is therefore where the model learns they exist — but it
 // carries only that pointer. The contract itself is read on demand, through
 // `docs("globals")` or `docs(<one global's name>)`, which is `help()`/`docs()`
@@ -172,31 +182,99 @@ extension MultiTool {
     /// on one constant.
     static let sandboxGlobalsDocsTopic = "globals"
 
+    /// The name of the one ambient global that asks the user a question.
+    ///
+    /// Named here because three sites must agree on it: the factory that
+    /// installs the global only when ``asksUser(_:)`` is true, the docs that
+    /// declare it only then, and the hint that a headless `ReferenceError`
+    /// on this name gets.
+    static let elicitGlobalName = "elicit"
+
+    /// The hint a snippet gets when it calls `elicit()` in a session that has
+    /// no user to ask, and the sandbox thus has no `elicit` global.
+    static let noUserPresentHint = "elicit is not available: no user is present in this session"
+
+    /// Tells if the sandbox of one `runCode` invocation gets the `elicit`
+    /// global.
+    ///
+    /// Only a headless session removes it. A run with no session keeps it,
+    /// because there `elicit()` rejects with ``SandboxGlobalError/noSession``,
+    /// as `status()` and `cancel()` do.
+    ///
+    /// - Parameter binding: the captured session binding of the invocation,
+    ///   or `nil` when it has none.
+    /// - Returns: `false` only when the session of `binding` is
+    ///   `UserPresence.headless`.
+    static func asksUser(_ binding: RunBinding?) -> Bool {
+        binding?.context.userPresence != .headless
+    }
+
+    /// The hint for a `ReferenceError` on `elicit` in a sandbox that has no
+    /// `elicit` global, or `nil`.
+    ///
+    /// The static rows of ``UnavailableGlobalHint`` hold only names that are
+    /// undefined in each sandbox. `elicit` is undefined only in a headless
+    /// session, thus its hint is here and not in those rows.
+    ///
+    /// - Parameters:
+    ///   - message: the message text of the thrown JS exception.
+    ///   - asksUser: tells if the sandbox has the `elicit` global.
+    /// - Returns: ``noUserPresentHint`` when `asksUser` is `false` and
+    ///   `message` names `elicit` as a missing variable; else `nil`.
+    static func headlessElicitHint(message: String, asksUser: Bool) -> String? {
+        guard !asksUser else { return nil }
+        let pattern = /Can't find variable: ([A-Za-z_$][A-Za-z0-9_$]*)/
+        guard message.firstMatch(of: pattern)?.1 == Substring(elicitGlobalName) else { return nil }
+        return noUserPresentHint
+    }
+
     /// The whole ambient-globals page — what `docs("globals")` hands back.
     ///
-    /// The preface followed by every global's block, separated by a blank
-    /// line, exactly as ``APISurface/source`` concatenates the wrapped tools'
-    /// blocks.
-    static var sandboxGlobalsPage: String {
-        ([sandboxGlobalsPreface] + sandboxGlobalDocs.map(\.block)).joined(separator: "\n\n")
+    /// The preface followed by the block of each installed global, separated
+    /// by a blank line, exactly as ``APISurface/source`` concatenates the
+    /// wrapped tools' blocks.
+    ///
+    /// - Parameter asksUser: tells if the sandbox has the `elicit` global
+    ///   (see ``asksUser(_:)``).
+    /// - Returns: the page, which declares only the installed globals.
+    static func sandboxGlobalsPage(asksUser: Bool) -> String {
+        let docs = sandboxGlobalDocs(asksUser: asksUser)
+        return ([sandboxGlobalsPreface(for: docs)] + docs.map(\.block)).joined(separator: "\n\n")
     }
 
     /// The documentation `docs(name)` answers `name` with, when `name` is the
-    /// globals topic or one global's own name.
+    /// globals topic or the name of one installed global.
     ///
-    /// - Parameter name: the name a `docs(name)` call asked for.
-    /// - Returns: the whole page for the topic, one global's block for a
-    ///   global's name, or `nil` when `name` is neither.
-    static func sandboxGlobalsDocumentation(for name: String) -> String? {
+    /// - Parameters:
+    ///   - name: the name a `docs(name)` call asked for.
+    ///   - asksUser: tells if the sandbox has the `elicit` global (see
+    ///     ``asksUser(_:)``).
+    /// - Returns: the whole page for the topic, one global's block for the
+    ///   name of an installed global, or `nil` when `name` is neither.
+    static func sandboxGlobalsDocumentation(for name: String, asksUser: Bool) -> String? {
         if name == sandboxGlobalsDocsTopic {
-            return sandboxGlobalsPage
+            return sandboxGlobalsPage(asksUser: asksUser)
         }
-        return sandboxGlobalDocs.first { $0.name == name }?.block
+        return sandboxGlobalDocs(asksUser: asksUser).first { $0.name == name }?.block
+    }
+
+    /// The doc entries of the globals that one sandbox installs.
+    ///
+    /// - Parameter asksUser: tells if the sandbox has the `elicit` global.
+    /// - Returns: each entry of ``allSandboxGlobalDocs``, without the `elicit`
+    ///   entry when `asksUser` is `false`.
+    private static func sandboxGlobalDocs(asksUser: Bool) -> [SandboxGlobalDoc] {
+        allSandboxGlobalDocs.filter { asksUser || $0.name != elicitGlobalName }
     }
 
     /// The page's preface: what the ambient globals are, the one rule saying
     /// which of them a snippet awaits, the two discriminator fields, and the
-    /// object shapes the run verbs and `elicit()` hand back.
+    /// object shapes the installed globals hand back.
+    ///
+    /// The promise globals that the preface tells a snippet to await are the
+    /// names of `docs` that are not in ``voidGlobalNames``, thus the text and
+    /// the entries cannot drift apart. The `ElicitationAnswer` type is
+    /// declared only when `docs` holds the `elicit` entry.
     ///
     /// Every `state` value is spliced from ``RunState`` and every `result`
     /// value from ``CallResult``, rather than retyped, so the documented
@@ -209,37 +287,48 @@ extension MultiTool {
     /// snippet already learns at the moment it needs them — chiefly the
     /// no-session rejection, which ``SandboxGlobalError/noSession``
     /// states in full — belong there rather than here.
-    private static let sandboxGlobalsPreface = """
-        // globals
-        /**
-         * The ambient globals every snippet already has, beyond `tools.*`.
-         * They are installed in every runCode sandbox, so they never appear
-         * in a searchTools result and nothing has to be discovered before
-         * calling them. Await the three that return a promise; `notify()` and
-         * `progress()` return nothing, so never await those.
-         *
-         * Two fields tell the shapes apart, and an object carries one or the
-         * other, never both: `state` says what a run is doing — "error" means
-         * it finished without a usable result and `outcome` says why — and
-         * `result` says how your own call went.
-         */
-        declare type BackgroundRun = { state: "\(RunState.running)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
-        declare type FinishedRun = { state: "\(RunState.complete)" | "\(RunState.error)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
-        declare type NoResult = { result: "\(CallResult.unknown)"; completionToken: string };
-        declare type Cancelled = { result: "\(CallResult.cancelled)"; completionToken: string; outcome: string };
-        declare type ElicitationAnswer = { action: string; content: object | null };
-        """
+    ///
+    /// - Parameter docs: the doc entries of the installed globals.
+    /// - Returns: the preface.
+    private static func sandboxGlobalsPreface(for docs: [SandboxGlobalDoc]) -> String {
+        let promiseNames = docs.map(\.name).filter { !voidGlobalNames.contains($0) }
+        let awaited = promiseNames.map { "`\($0)()`" }.joined(separator: ", ")
+        let elicitationAnswer = promiseNames.contains(elicitGlobalName)
+            ? "\ndeclare type ElicitationAnswer = { action: string; content: object | null };"
+            : ""
+        return """
+            // globals
+            /**
+             * The ambient globals every snippet already has, beyond `tools.*`.
+             * They are installed in this runCode sandbox, so they never appear
+             * in a searchTools result and nothing has to be discovered before
+             * calling them. Await the ones that return a promise:
+             * \(awaited). `notify()` and `progress()` return nothing, so never
+             * await those.
+             *
+             * Two fields tell the shapes apart, and an object carries one or the
+             * other, never both: `state` says what a run is doing — "error" means
+             * it finished without a usable result and `outcome` says why — and
+             * `result` says how your own call went.
+             */
+            declare type BackgroundRun = { state: "\(RunState.running)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
+            declare type FinishedRun = { state: "\(RunState.complete)" | "\(RunState.error)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
+            declare type NoResult = { result: "\(CallResult.unknown)"; completionToken: string };
+            declare type Cancelled = { result: "\(CallResult.cancelled)"; completionToken: string; outcome: string };
+            """ + elicitationAnswer
+    }
 
     /// Every ambient global's `docs(name)` entry, in the order the preface
     /// introduces them — the two run verbs, the elicitation, then the two
-    /// notice calls.
+    /// notice calls. ``sandboxGlobalDocs(asksUser:)`` selects the entries of
+    /// the globals that one sandbox installs.
     ///
     /// No `@param` trailers, unlike ``APISurface/Entry/block``: a wrapped
     /// tool's `args` fields carry meaning only its author's `@Guide` prose
     /// states, whereas each global's own parameter is named and typed in the
     /// declaration right below. Repeating it would spend the page's budget
-    /// (see ``sandboxGlobalsPreface``) on text the reader already has.
-    private static let sandboxGlobalDocs: [SandboxGlobalDoc] = [
+    /// (see ``sandboxGlobalsPreface(for:)``) on text the reader already has.
+    private static let allSandboxGlobalDocs: [SandboxGlobalDoc] = [
         SandboxGlobalDoc(
             name: "status",
             block: """
@@ -342,7 +431,7 @@ extension MultiTool {
 
     // MARK: - The background runs: status(), cancel(), and elicit()
 
-    /// Builds the three promise-returning ambient globals for one `runCode`
+    /// Builds the promise-returning ambient globals for one `runCode`
     /// invocation.
     ///
     /// Per invocation rather than per registry, for exactly the reason
@@ -350,23 +439,31 @@ extension MultiTool {
     /// because the `Task` the promise pump starts for it lands outside every
     /// task tree and can inherit no ambient context (see `RunBinding`).
     ///
-    /// - Parameter binding: this `runCode` invocation's captured session
-    ///   binding, or `nil` when it has none — in which case every one of the
-    ///   three rejects with ``SandboxGlobalError/noSession``.
-    /// - Returns: three async host functions, named `"status"`, `"cancel"`,
-    ///   and `"elicit"`.
-    static func makeBackgroundRunHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
-        [
+    /// - Parameters:
+    ///   - binding: this `runCode` invocation's captured session binding, or
+    ///     `nil` when it has none — in which case each of the globals rejects
+    ///     with ``SandboxGlobalError/noSession``.
+    ///   - asksUser: tells if a user can answer a question (see
+    ///     ``asksUser(_:)``). When it is `false`, the `elicit` global is not
+    ///     installed.
+    /// - Returns: the async host functions named `"status"` and `"cancel"`,
+    ///   and `"elicit"` when `asksUser` is `true`.
+    static func makeBackgroundRunHostFunctions(binding: RunBinding?, asksUser: Bool) -> [AsyncHostFunction] {
+        var functions = [
             AsyncHostFunction(name: "status") { arguments in
                 try await reportStatus(of: arguments.first, binding: binding)
             },
             AsyncHostFunction(name: "cancel") { arguments in
                 try await requestCancellation(of: arguments.first, binding: binding)
             },
-            AsyncHostFunction(name: "elicit") { arguments in
-                try await raiseElicitation(arguments.first, binding: binding)
-            },
         ]
+        if asksUser {
+            functions.append(
+                AsyncHostFunction(name: elicitGlobalName) { arguments in
+                    try await raiseElicitation(arguments.first, binding: binding)
+                })
+        }
+        return functions
     }
 
     /// The captured session context the run globals read, or a repairable

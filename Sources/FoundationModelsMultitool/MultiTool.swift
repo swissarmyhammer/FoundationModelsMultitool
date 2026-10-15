@@ -313,7 +313,9 @@ public struct RunCodeArguments {
 ///    `help()`/`docs()` and the five ambient globals — `status()`,
 ///    `cancel()`, `elicit()`, `notify()`, `progress()`, see
 ///    `MultiTool+SandboxGlobals.swift` — also installed, together with the
-///    `wait` name that only tells a snippet that `wait()` is removed;
+///    `wait` name that only tells a snippet that `wait()` is removed.
+///    `elicit()` is installed only when a user is present: a session whose
+///    `ToolContext.userPresence` is `.headless` gets no `elicit` global;
 /// 3. renders the result, or a thrown `InterpreterError`, through
 ///    `ResultRenderer`.
 ///
@@ -552,6 +554,10 @@ public struct MultiTool: Tool {
         // takes the binding of the outer run for that reason (see
         // ``EnclosingRun``).
         let binding = runBinding
+        // Read from the binding, thus a nested run gets the user presence of
+        // the outer run. A headless session gets no `elicit` global, and its
+        // `docs()` does not declare one (see `MultiTool+SandboxGlobals.swift`).
+        let asksUser = Self.asksUser(binding)
         // One notice chain per invocation, for the same reason: `notify()`
         // and `progress()` post through the captured context, never an
         // inherited one. `nil` when this run has no session — both globals
@@ -586,10 +592,11 @@ public struct MultiTool: Tool {
             snippetEnd: snippetEnd)
         let outcome = await Self.runCapturingOutcome(
             code: Self.wrappingSnippet(arguments.code, after: bundle.preamble),
-            installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices)
+            installing: Self.makeHelpDocsHostFunctions(for: bundle.registry, asksUser: asksUser)
+                + Self.makeNoticeHostFunctions(outbox: notices)
                 + Self.makeRemovedGlobalHostFunctions() + [Self.makeSnippetEndHostFunction(marking: snippetEnd)],
             installingAsync: makeAsyncHostFunctions(over: bundle, binding: binding, reportingTo: records)
-                + Self.makeBackgroundRunHostFunctions(binding: binding),
+                + Self.makeBackgroundRunHostFunctions(binding: binding, asksUser: asksUser),
             using: interpreter,
             cancelling: inFlight
         )
@@ -629,9 +636,14 @@ public struct MultiTool: Tool {
             // The `tools.*` hint comes first. A message that names an
             // unknown path is about that path, and a message about a missing
             // Node.js global (see ``UnavailableGlobalHint``) names no path.
+            // An `elicit` that is missing because no user is present gets its
+            // own hint: the static rows of `UnavailableGlobalHint` hold only
+            // names that are missing in each sandbox.
             let rendered = ResultRenderer.render(
                 interpreterError,
-                hint: resolution?.text ?? UnavailableGlobalHint.hint(message: interpreterError.message),
+                hint: resolution?.text
+                    ?? Self.headlessElicitHint(message: interpreterError.message, asksUser: asksUser)
+                    ?? UnavailableGlobalHint.hint(message: interpreterError.message),
                 directive: resolution?.directive ?? .repairSnippet
             )
             // A snippet that failed can still have started a call that it did
@@ -1506,14 +1518,22 @@ public struct MultiTool: Tool {
     /// plan-and-stop happens at the `searchTools` → `runCode` submission boundary,
     /// and this path removes the boundary.
     ///
-    /// Internal, not `private`: `RegistryBundle.init` builds the pair.
-    static func makeHelpDocsHostFunctions(for registry: Registry) -> [HostFunction] {
+    /// Built for each `runCode` invocation, because the `docs()` text of the
+    /// ambient globals changes with the user presence of the session.
+    ///
+    /// - Parameters:
+    ///   - registry: the catalog that `help()` lists and `docs()` reads.
+    ///   - asksUser: tells if the sandbox has the `elicit` global (see
+    ///     ``asksUser(_:)``). When it is `false`, `docs()` does not declare
+    ///     `elicit`.
+    /// - Returns: the host functions named `"help"` and `"docs"`.
+    static func makeHelpDocsHostFunctions(for registry: Registry, asksUser: Bool) -> [HostFunction] {
         [
             HostFunction(name: "help") { _ in
                 .array(registry.surface.entries.map { .string($0.path) })
             },
             HostFunction(name: "docs") { arguments in
-                .string(renderDocs(for: arguments.first, in: registry.surface))
+                .string(renderDocs(for: arguments.first, in: registry.surface, asksUser: asksUser))
             },
         ]
     }
@@ -1524,7 +1544,13 @@ public struct MultiTool: Tool {
     /// When `name` matches no entry — which includes `argument` not being a
     /// string at all — the result is an error naming the closest known names,
     /// never a crash.
-    private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface) -> String {
+    ///
+    /// - Parameters:
+    ///   - argument: the argument of the `docs()` call.
+    ///   - surface: the catalog the entries are read from.
+    ///   - asksUser: tells if the sandbox has the `elicit` global.
+    /// - Returns: the documentation, or an error text.
+    private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface, asksUser: Bool) -> String {
         guard case .string(let name) = argument else {
             return "docs(name) requires a string tool name, e.g. docs(\"getWeather\")."
         }
@@ -1534,7 +1560,7 @@ public struct MultiTool: Tool {
         // After the catalog, never before it: a wrapped tool actually named
         // `globals` keeps its own block, and the ambient page is what `name`
         // resolves to only when no entry claimed it.
-        if let globals = sandboxGlobalsDocumentation(for: name) {
+        if let globals = sandboxGlobalsDocumentation(for: name, asksUser: asksUser) {
             return globals
         }
 

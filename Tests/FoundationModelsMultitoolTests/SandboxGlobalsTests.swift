@@ -112,7 +112,7 @@ struct SandboxGlobalsTests {
     func theGlobalsPageReachesTheSnippetWhole() async throws {
         let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
 
-        #expect(try RunOutput.decoded(String.self, from: output) == MultiTool.sandboxGlobalsPage)
+        #expect(try RunOutput.decoded(String.self, from: output) == MultiTool.sandboxGlobalsPage(asksUser: true))
     }
 
     @Test("docs(name) resolves each ambient global on its own, returning that one's block alone")
@@ -127,7 +127,7 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page states which calls are awaited by declaring their return types")
     func theGlobalsPageStatesWhichCallsAreAwaited() {
-        let page = MultiTool.sandboxGlobalsPage
+        let page = MultiTool.sandboxGlobalsPage(asksUser: true)
 
         for name in sandboxGlobalNames where !MultiTool.voidGlobalNames.contains(name) {
             #expect(declaredReturnType(of: name, in: page)?.hasPrefix("Promise<") == true)
@@ -151,7 +151,7 @@ struct SandboxGlobalsTests {
                 )
 
                 let observed = try RunOutput.decoded([String].self, from: output)
-                let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage))
+                let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage(asksUser: true)))
                 #expect(documented == observed)
             }
         }
@@ -172,10 +172,77 @@ struct SandboxGlobalsTests {
 
                 let observed = try RunOutput.decoded([String].self, from: output)
                 let documented = try #require(
-                    declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
+                    declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage(asksUser: true)))
                 #expect(documented == observed)
             }
         }
+    }
+
+    // MARK: - User presence: elicit() only when a user can answer
+
+    @Test("a headless session has no elicit global, and docs() does not declare one")
+    func userPresenceHeadlessHasNoElicit() async throws {
+        let output = try await runSnippet(elicitPresenceProbe, under: makeContext(userPresence: .headless))
+
+        let probe = try RunOutput.decoded(ElicitPresenceProbe.self, from: output)
+        #expect(probe.type == "undefined")
+        #expect(!probe.listed)
+        #expect(probe.entry.hasPrefix("Unknown tool \"elicit\""), "the entry was: \(probe.entry)")
+    }
+
+    @Test("an interactive session has the elicit global, and docs() declares it")
+    func userPresenceInteractiveHasElicit() async throws {
+        let output = try await runSnippet(elicitPresenceProbe, under: makeContext(userPresence: .interactive))
+
+        let probe = try RunOutput.decoded(ElicitPresenceProbe.self, from: output)
+        #expect(probe.type == "function")
+        #expect(probe.listed)
+        #expect(probe.entry.hasPrefix("// elicit\n"), "the entry was: \(probe.entry)")
+        #expect(probe.entry.contains("declare function elicit("))
+    }
+
+    /// For each user presence, the promise globals that the sandbox installs,
+    /// the promise functions that `docs("globals")` declares, and the
+    /// promise globals that the preface tells a snippet to await are the
+    /// same set. The `ElicitationAnswer` type is declared only when `elicit`
+    /// is installed.
+    @Test("for each user presence, each installed promise global has a doc entry, and each doc entry has a global")
+    func userPresenceDocsMatchTheInstalledGlobals() async throws {
+        for presence in [UserPresence.headless, .interactive] {
+            let output = try await runSnippet(
+                """
+                return {
+                    installed: \(jsArrayLiteral(of: sandboxGlobalNames))
+                        .filter(name => typeof globalThis[name] === "function"),
+                    page: docs("\(MultiTool.sandboxGlobalsDocsTopic)"),
+                };
+                """,
+                under: makeContext(userPresence: presence)
+            )
+
+            let observed = try RunOutput.decoded(InstalledGlobalsProbe.self, from: output)
+            let installedPromises = observed.installed.filter { !MultiTool.voidGlobalNames.contains($0) }
+            let documentedPromises = declaredFunctionNames(in: observed.page).filter {
+                declaredReturnType(of: $0, in: observed.page)?.hasPrefix("Promise<") == true
+            }
+            #expect(installedPromises == documentedPromises, "presence: \(presence)")
+            #expect(awaitedNames(in: observed.page) == installedPromises, "presence: \(presence)")
+            #expect(
+                (declaredFields(of: "ElicitationAnswer", in: observed.page) != nil)
+                    == installedPromises.contains("elicit"),
+                "presence: \(presence)")
+        }
+    }
+
+    @Test("a headless snippet that calls elicit() fails with a ReferenceError that holds the no-user hint")
+    func userPresenceHeadlessElicitFailsWithTheHint() async throws {
+        let output = try await runSnippet(
+            "return await elicit(\"q\");", under: makeContext(userPresence: .headless))
+
+        // JavaScriptCore words a `ReferenceError` for an undeclared name as
+        // "Can't find variable: <name>", and the rendered failure keeps that text.
+        #expect(output.contains("Can't find variable: elicit"), "the output was: \(output)")
+        #expect(output.contains(noUserPresentHintText), "the output was: \(output)")
     }
 
     // MARK: - The two discriminators
@@ -367,8 +434,10 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page and docs(\"wait\") declare no wait global")
     func theGlobalsPageDeclaresNoWait() {
-        #expect(!MultiTool.sandboxGlobalsPage.contains("\(MultiTool.removedWaitGlobalName)("))
-        #expect(MultiTool.sandboxGlobalsDocumentation(for: MultiTool.removedWaitGlobalName) == nil)
+        for asksUser in [false, true] {
+            #expect(!MultiTool.sandboxGlobalsPage(asksUser: asksUser).contains("\(MultiTool.removedWaitGlobalName)("))
+            #expect(MultiTool.sandboxGlobalsDocumentation(for: MultiTool.removedWaitGlobalName, asksUser: asksUser) == nil)
+        }
     }
 
     // MARK: - cancel()
@@ -737,8 +806,8 @@ struct SandboxGlobalsTests {
 /// `context` when one is given.
 ///
 /// An empty registry keeps every assertion about the globals themselves: the
-/// five are installed unconditionally, so no wrapped tool has to exist for them
-/// to be reachable. Passing `nil` for `context` is the no-ambient-context mode
+/// registry does not change which globals are installed, so no wrapped tool
+/// has to exist for them to be reachable. Passing `nil` for `context` is the no-ambient-context mode
 /// every other unit suite in this package runs in — a `MultiTool` constructed
 /// and called directly, outside any session.
 ///
@@ -787,6 +856,91 @@ private func declaredReturnType(of name: String, in page: String) -> String? {
         return nil
     }
     return String(line[arguments.upperBound...].dropLast())
+}
+
+/// The hint that a headless snippet gets when it calls `elicit()`. The text
+/// is written here, and not read from the source, so that the test holds the
+/// text that the owner accepted.
+private let noUserPresentHintText = "elicit is not available: no user is present in this session"
+
+/// A snippet that reports if `elicit` is a global, if `docs("globals")` names
+/// it, and what `docs("elicit")` gives.
+private let elicitPresenceProbe = """
+    return {
+        type: typeof elicit,
+        listed: docs("globals").includes("elicit"),
+        entry: docs("elicit"),
+    };
+    """
+
+/// What ``elicitPresenceProbe`` returns.
+private struct ElicitPresenceProbe: Decodable {
+    /// The `typeof` of the `elicit` global.
+    let type: String
+
+    /// Tells if the globals page holds the text `elicit`.
+    let listed: Bool
+
+    /// What `docs("elicit")` gives.
+    let entry: String
+}
+
+/// What the parity snippet returns: the names of the globals that are
+/// installed, and the globals page.
+private struct InstalledGlobalsProbe: Decodable {
+    /// The names of ``sandboxGlobalNames`` that are functions in the sandbox,
+    /// in that order.
+    let installed: [String]
+
+    /// What `docs("globals")` gives.
+    let page: String
+}
+
+/// Makes a session context whose run plane has the user presence
+/// `userPresence`.
+///
+/// The context has a run plane of its own and a sink that records, and no
+/// Router session: the user presence is the only fact that these tests read.
+///
+/// - Parameter userPresence: tells if a user can answer questions.
+/// - Returns: the context.
+private func makeContext(userPresence: UserPresence) -> ToolContext {
+    ToolContext(
+        sessionID: ULID(),
+        runPlane: RunPlane(userPresence: userPresence),
+        sink: RecordingEventSink(),
+        tool: "runCode",
+        op: "runCode",
+        completionToken: ToolContext.makeCompletionToken(),
+        isCancelled: { false }
+    )
+}
+
+/// The name of each function that the globals page declares, in page order.
+///
+/// - Parameter page: the rendered globals page.
+/// - Returns: the declared function names.
+private func declaredFunctionNames(in page: String) -> [String] {
+    let prefix = "declare function "
+    return page.split(separator: "\n")
+        .filter { $0.hasPrefix(prefix) }
+        .compactMap { $0.dropFirst(prefix.count).split(separator: "(").first.map(String.init) }
+}
+
+/// The names of the globals that the preface of the page tells a snippet to
+/// await, in page order.
+///
+/// - Parameter page: the rendered globals page.
+/// - Returns: each `name` of a `` `name()` `` between the await sentence and
+///   the sentence on `notify()`; empty when the page has no such sentence.
+private func awaitedNames(in page: String) -> [String] {
+    guard
+        let start = page.range(of: "Await the ones that return a promise:"),
+        let end = page.range(of: "`notify()` and", range: start.upperBound..<page.endIndex)
+    else {
+        return []
+    }
+    return page[start.upperBound..<end.lowerBound].matches(of: /`(\w+)\(\)`/).map { String($0.1) }
 }
 
 /// The field names the globals page's `declare type` line for `name` lists,

@@ -260,6 +260,14 @@ it. The name stays only so that a call to `wait()` fails with a repair text:
 return the completion token, and the result comes back as mail. The repair
 text then gives the same pending text that each pending result gives.
 
+`elicit` is installed only when a user can answer. In a session whose
+`ToolContext.userPresence` is `.headless`, the sandbox has no `elicit` global,
+and `docs("globals")` does not declare it. A snippet there that calls
+`elicit()` fails with a `ReferenceError` and the hint "elicit is not
+available: no user is present in this session". A `MultiTool` that is called
+outside each session keeps `elicit`, which then rejects with a no-session
+error.
+
 This list is not documentation alone. `HardeningTests` parses it out of this
 file and asserts it is set-equal to the globals the sandbox enumerates at
 runtime, so a global added to the code and not to this list fails the suite.
