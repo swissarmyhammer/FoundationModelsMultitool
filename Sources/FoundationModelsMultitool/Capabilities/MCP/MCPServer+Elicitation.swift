@@ -186,12 +186,16 @@ extension MCPServer {
     ///    token that names no call in flight comes to this rule too.
     /// 3. Else `nil`: the host's handler, or a cancel, answers.
     ///
-    /// Two contexts are of one run when their `completionToken` is the same.
-    /// The token is the correlation id of the run, and each run gets a new
-    /// one. The session id, the tool name and the op do not tell two runs
-    /// apart, because two runs can share them. Each inner `tools.*` call of a
-    /// `runCode` snippet is a run with its own token, thus two inner calls of
-    /// one snippet come to rule 1 or rule 3, not rule 2.
+    /// Two contexts are of one run when their `holdingRunToken` is the same.
+    /// That token is the completion token of the run that holds the call,
+    /// and each run gets a new one. The session id, the tool name and the op
+    /// do not tell two runs apart, because two runs can share them. The
+    /// `completionToken` of a context does not tell it either: each inner
+    /// `tools.*` call of a `runCode` snippet has its own completion token,
+    /// but the snippet runs each of them to completion, thus the `runCode`
+    /// run holds each of them. Two inner calls of one snippet come to rule 2,
+    /// and the question goes to the `runCode` run. A call that a run mounts
+    /// in the background is a run of its own, with its own holding token.
     ///
     /// A server is linked to one of two calls from different runs only when
     /// it echoes the `progressToken` of the call in the `_meta` of
@@ -212,13 +216,13 @@ extension MCPServer {
     /// The context of the one run that made each call in flight, or `nil`
     /// when no call is in flight, when a call has no context, or when two
     /// calls are of different runs. Two contexts are of one run when their
-    /// `completionToken` is the same — see ``callingContext(linkedBy:)``.
+    /// `holdingRunToken` is the same — see ``callingContext(linkedBy:)``.
     ///
     /// - Returns: The context, or `nil`.
     private func contextOfTheOneRunInFlight() -> ToolContext? {
         let contexts = inFlightCalls.values.map(\.context)
         guard let first = contexts.first, let context = first,
-            contexts.allSatisfy({ $0?.completionToken == context.completionToken })
+            contexts.allSatisfy({ $0?.holdingRunToken == context.holdingRunToken })
         else {
             return nil
         }

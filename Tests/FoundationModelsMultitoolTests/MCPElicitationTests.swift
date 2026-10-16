@@ -159,6 +159,31 @@ struct MCPElicitationTests {
     private static let elicitEchoSnippet =
         "return await tools.\(serverName).\(ScriptedServer.elicitEchoToolName)({});"
 
+    /// The name of the tool that answers when a call of the held tool arrived
+    /// at the server. A snippet awaits it, thus the held call is in flight
+    /// before the snippet starts its next call.
+    private static let arrivalWaitToolName = "awaitHeldArrival"
+
+    /// The name of the tool that releases the held tool. A snippet calls it
+    /// when it does not need the held call in flight any more.
+    private static let releaseToolName = "releaseHeld"
+
+    /// The `runCode` snippet that has two inner calls in flight on one server
+    /// at the same time: the held call, and the eliciting call, which sends
+    /// no progress token in its `_meta`. The order is fixed: the snippet
+    /// starts the held call, waits until it arrived at the server, and only
+    /// then starts the eliciting call. After the eliciting call ends, the
+    /// snippet releases the held call, awaits it, and returns the result of
+    /// the eliciting call.
+    private static let heldAndElicitingSnippet = """
+        const held = tools.\(serverName).\(heldToolName)({});
+        await tools.\(serverName).\(arrivalWaitToolName)({});
+        const asked = await tools.\(serverName).\(ScriptedServer.elicitEchoToolName)({});
+        await tools.\(serverName).\(releaseToolName)({});
+        await held;
+        return asked;
+        """
+
     /// The accept every accepting case answers with: ``scriptedAnswer`` under
     /// the answer field the loopback tool requests.
     private static let scriptedAccept = ElicitationResponse.accept(
@@ -713,10 +738,46 @@ struct MCPElicitationTests {
         }
     }
 
-    /// A fresh scripted server that serves the held tool, the loopback tools,
-    /// the tool that echoes its progress token, and the tool that sends a
-    /// token of no call, beside a server named ``serverName`` connected
-    /// against it over `kind`.
+    /// A scripted tool with no arguments that does `step`, and then answers
+    /// its own name as text.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the tool.
+    ///   - description: The description of the tool.
+    ///   - step: The work of each call.
+    /// - Returns: The tool.
+    private static func steppingTool(
+        named name: String, description: String, step: @escaping @Sendable () async throws -> Void
+    ) -> ScriptedTool {
+        ScriptedTool(
+            definition: MCP.Tool(name: name, description: description, inputSchema: JSONSchemaBuilder.emptySchema)
+        ) { _ in
+            try await step()
+            return CallTool.Result(content: [.text(text: name, annotations: nil, _meta: nil)])
+        }
+    }
+
+    /// The two tools that let a snippet set the order of its calls around
+    /// `held`: one waits until a call of `held` arrived at the server, and
+    /// one releases `held`. Thus a snippet orders its calls by events, and
+    /// not by time.
+    ///
+    /// - Parameter held: The held tool.
+    /// - Returns: The tool named ``arrivalWaitToolName`` and the tool named
+    ///   ``releaseToolName``.
+    private static func orderingTools(for held: HeldScriptedTool) -> [ScriptedTool] {
+        [
+            steppingTool(
+                named: arrivalWaitToolName, description: "Answers when a call of the held tool arrived."
+            ) { try await held.waitForArrival() },
+            steppingTool(named: releaseToolName, description: "Releases the held tool.") { await held.release() },
+        ]
+    }
+
+    /// A fresh scripted server that serves the held tool, the two tools that
+    /// order calls around it, the loopback tools, the tool that echoes its
+    /// progress token, and the tool that sends a token of no call, beside a
+    /// server named ``serverName`` connected against it over `kind`.
     ///
     /// - Parameters:
     ///   - kind: The transport to connect over.
@@ -730,6 +791,9 @@ struct MCPElicitationTests {
         let scripted = ScriptedServer()
         let held = HeldScriptedTool(named: heldToolName)
         await scripted.addTool(held.scriptedTool)
+        for tool in orderingTools(for: held) {
+            await scripted.addTool(tool)
+        }
         await scripted.addLoopbackTools()
         await scripted.addElicitingTool(
             named: tokenEchoToolName, message: ScriptedServer.elicitEchoMessage,
@@ -845,6 +909,38 @@ struct MCPElicitationTests {
 
         #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
         #expect(await holding.sink.questions.count == Self.oneQuestion)
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// Each inner `tools.*` call of a snippet is a run with its own
+    /// completion token, and the `runCode` run holds each of them. Thus a
+    /// question of one of two inner calls in flight, with no progress token,
+    /// links to the `runCode` run. A comparison by the completion token of
+    /// each call sees two runs, and cancels the question.
+    @Test(
+        "with two inner calls of one runCode snippet in flight and no progress token, the question reaches the runCode run",
+        arguments: transports)
+    func twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun(kind: MCPTransportKind) async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
+        defer { Task { await server.disconnect() } }
+        let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+        let (snippetRun, _) = Self.twoRunsOfOneSession()
+
+        let snippet = Task {
+            try await ToolContext.$current.withValue(snippetRun.context) {
+                try await multiTool.call(arguments: RunCodeArguments(code: Self.heldAndElicitingSnippet))
+            }
+        }
+        let output = await snippet.result
+        // A snippet that failed before its own release leaves the held call
+        // open. The release ends it, and a second release changes nothing.
+        await held.release()
+
+        let returned = try JSONDecoder().decode(String.self, from: Data(output.get().utf8))
+        #expect(returned.contains(Self.holdingRunAnswer), "the snippet returned: \(returned)")
+        #expect(returned.contains(Self.acceptText), "the snippet returned: \(returned)")
+        #expect(await snippetRun.sink.questions.count == Self.oneQuestion)
         withExtendedLifetime(scripted) {}
     }
 
