@@ -13,6 +13,8 @@
 
 import Darwin
 import Foundation
+import Subprocess
+import System
 
 /// The shared search-root resolution and git-aware walk behind the glob and grep engines.
 ///
@@ -57,8 +59,8 @@ enum FileWalker {
     ///   - walkRoot: the canonical search root.
     ///   - respectGitIgnore: whether to prefer the git-aware listing.
     /// - Returns: the absolute paths of the candidate regular files.
-    static func collectFiles(walkRoot: URL, respectGitIgnore: Bool) -> [String] {
-        if respectGitIgnore, let relativePaths = gitListedFiles(in: walkRoot) {
+    static func collectFiles(walkRoot: URL, respectGitIgnore: Bool) async -> [String] {
+        if respectGitIgnore, let relativePaths = await gitListedFiles(in: walkRoot) {
             return relativePaths.map { walkRoot.path + "/" + $0 }
         }
         return enumeratedRegularFiles(under: walkRoot)
@@ -108,9 +110,9 @@ enum FileWalker {
         excludePatterns: ExcludePatterns,
         accept: (_ absolutePath: String, _ walkRelativePath: String) -> Bool,
         build: (_ absolutePath: String, _ sessionRelativePath: String) -> Element?
-    ) -> [Element] {
+    ) async -> [Element] {
         var results: [Element] = []
-        for absolute in collectFiles(walkRoot: walkRoot, respectGitIgnore: respectGitIgnore) {
+        for absolute in await collectFiles(walkRoot: walkRoot, respectGitIgnore: respectGitIgnore) {
             guard let relativeToWalk = relativePath(ofAbsolute: absolute, under: walkRoot.path) else { continue }
             guard let relativeToSession = relativePath(ofAbsolute: absolute, under: sessionRoot.path) else { continue }
             guard !excludePatterns.excludes(relativePath: relativeToSession) else { continue }
@@ -133,28 +135,50 @@ enum FileWalker {
     /// - Parameter directory: the directory to list, used as git's working directory.
     /// - Returns: the NUL-separated relative paths, or `nil` when git is
     ///   unavailable or the directory is not a repository.
-    private static func gitListedFiles(in directory: URL) -> [String]? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
-        process.currentDirectoryURL = directory
-        let standardOutput = Pipe()
-        let standardError = Pipe()
-        process.standardOutput = standardOutput
-        process.standardError = standardError
+    private static func gitListedFiles(in directory: URL) async -> [String]? {
+        await listedFiles(byRunning: environmentProgramPath, arguments: gitListingArguments, in: directory)
+    }
 
+    /// The program that finds `git` on the `PATH` of this process.
+    private static let environmentProgramPath = "/usr/bin/env"
+
+    /// The arguments of `environmentProgramPath` that list the tracked and
+    /// the untracked-but-not-ignored files, one NUL-terminated path each.
+    private static let gitListingArguments = ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+
+    /// The NUL-separated paths that a listing program writes to its standard
+    /// output, or `nil` when the program does not start or does not exit
+    /// with status zero.
+    ///
+    /// `Subprocess.run` reads the standard output and drops the standard
+    /// error at the same time, and it waits for the exit with no blocked
+    /// thread. Thus a program that writes more to its standard error than a
+    /// pipe holds cannot stop the read of its standard output, and the
+    /// caller holds no thread of the Swift cooperative pool.
+    ///
+    /// - Parameters:
+    ///   - executable: the absolute path of the listing program.
+    ///   - arguments: the arguments of the program.
+    ///   - directory: the working directory of the program.
+    /// - Returns: the NUL-separated paths, or `nil` when the program fails.
+    static func listedFiles(byRunning executable: String, arguments: [String], in directory: URL) async
+        -> [String]?
+    {
         do {
-            try process.run()
+            let result = try await Subprocess.run(
+                .path(FilePath(executable)),
+                arguments: Arguments(arguments),
+                workingDirectory: FilePath(directory.path),
+                input: .none,
+                output: .bytes(limit: .max),
+                error: .discarded
+            )
+            guard case .exited(0) = result.terminationStatus else { return nil }
+            let text = String(decoding: result.standardOutput, as: UTF8.self)
+            return text.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
         } catch {
             return nil
         }
-        let data = standardOutput.fileHandleForReading.readDataToEndOfFile()
-        _ = try? standardError.fileHandleForReading.readToEnd()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-
-        let text = String(decoding: data, as: UTF8.self)
-        return text.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
     }
 
     /// The absolute paths of the regular files under a directory, walked recursively.

@@ -32,10 +32,13 @@
 // nothing structurally awaiting it the whole time. So this type spawns through
 // raw `posix_spawn` — `POSIX_SPAWN_SETPGROUP` sets the group as part of the
 // spawn — and owns the reap itself: every teardown path below calls both
-// `killpg` and `waitpid`, never just one.
+// `killpg` and `waitpid`, never just one. `waitpid` blocks the thread that
+// calls it, thus each async path reaps on a thread of its own
+// (`DedicatedThread`), and never on a thread of the Swift cooperative pool.
+// Only `deinit`, which cannot `await`, reaps on the thread that runs it.
 //
 // **Four teardown triggers, one idempotent funnel.** Each one reaches
-// `ProcessState.terminate(where:)` — through `terminateCurrent()`, or through
+// `ProcessState.take(where:)` — through `terminateCurrent()`, or through
 // `terminateIfCurrent(pid:)` for a transport that tears down only its own
 // pid — so a call to any of them, in any order, any number of times, is safe:
 //
@@ -269,10 +272,12 @@ public struct StdioServerProcess: Sendable {
     ///   on a `command` that will never spawn; `pipeCreationFailed` still
     ///   takes the normal retry schedule.
     public func respawn() async throws -> any Transport {
-        state.terminateCurrent()
+        await state.terminateCurrent()
         let spawned = try Self.spawn(command: command, args: args, env: env)
-        state.recordSpawn(spawned.pid)
-        return StdioServerTransport(inner: spawned.transport, state: state, pid: spawned.pid)
+        await state.recordSpawn(spawned.pid)
+        return StdioServerTransport(
+            inner: spawned.transport, state: state, pid: spawned.pid,
+            requestDescriptor: spawned.requestDescriptor)
     }
 
     /// Group-terminates and reaps whatever subprocess this value fronts
@@ -283,7 +288,7 @@ public struct StdioServerProcess: Sendable {
     /// subprocess goes away promptly instead of waiting for connection
     /// teardown or owner teardown to catch it.
     public func shutdown() async {
-        state.terminateCurrent()
+        await state.terminateCurrent()
     }
 
     // MARK: - Spawning
@@ -294,6 +299,9 @@ public struct StdioServerProcess: Sendable {
         let pid: pid_t
         /// The transport wired to its stdio pipes.
         let transport: StdioTransport
+        /// The write end of the stdin pipe of the subprocess: the descriptor
+        /// `transport` writes each request to.
+        let requestDescriptor: FileDescriptor
     }
 
     /// The fd of the child that becomes its standard input.
@@ -374,12 +382,13 @@ public struct StdioServerProcess: Sendable {
         // must close here or every spawn leaks two fds.
         closeAll([stdinReadFd, stdoutWriteFd])
 
+        let requestDescriptor = FileDescriptor(rawValue: stdinWriteFd)
         let transport = StdioTransport(
             input: FileDescriptor(rawValue: stdoutReadFd),
-            output: FileDescriptor(rawValue: stdinWriteFd),
+            output: requestDescriptor,
             logger: MultitoolTelemetry.logger
         )
-        return Spawned(pid: pid, transport: transport)
+        return Spawned(pid: pid, transport: transport, requestDescriptor: requestDescriptor)
     }
 
     /// Closes each fd of `fds` in this process.
@@ -571,7 +580,7 @@ private final class ProcessState: Sendable {
     /// returns, so at most one live, registered pid survives any interleaving.
     ///
     /// - Parameter pid: The freshly spawned pid to record.
-    func recordSpawn(_ pid: pid_t) {
+    func recordSpawn(_ pid: pid_t) async {
         let evicted = currentPid.withLock { current -> pid_t? in
             let previous = current
             current = pid
@@ -579,7 +588,7 @@ private final class ProcessState: Sendable {
         }
         registry.register(pid)
         if let evicted {
-            killReapAndDeregister(evicted)
+            await killReapAndDeregister(evicted)
         }
     }
 
@@ -591,8 +600,9 @@ private final class ProcessState: Sendable {
     /// any number of times, with no double kill and no double reap: `killpg`
     /// on a dead group is a harmless `ESRCH`, and `waitpid` runs exactly one
     /// time per pid, when this method took it out of `currentPid`.
-    func terminateCurrent() {
-        terminate(where: { _ in true })
+    func terminateCurrent() async {
+        guard let taken = take(where: { _ in true }) else { return }
+        await killReapAndDeregister(taken)
     }
 
     /// Group-kills and reaps `pid`, but only when `pid` is still the recorded
@@ -610,53 +620,69 @@ private final class ProcessState: Sendable {
     /// has in mind is still that".
     ///
     /// - Parameter pid: The pid to terminate, only when `currentPid` holds it.
-    func terminateIfCurrent(pid: pid_t) {
-        terminate(where: { $0 == pid })
+    func terminateIfCurrent(pid: pid_t) async {
+        guard let taken = take(where: { $0 == pid }) else { return }
+        await killReapAndDeregister(taken)
     }
 
-    /// Takes the recorded pid out of `currentPid` when `accepts` says so, and
-    /// group-kills, reaps and deregisters it — the one "take and clear" that
-    /// `terminateCurrent()` and `terminateIfCurrent(pid:)` share, so the lock,
-    /// the clear and the reap cannot drift apart between the two.
+    /// Takes the recorded pid out of `currentPid` when `accepts` says so — the
+    /// one "take and clear" that `terminateCurrent()`,
+    /// `terminateIfCurrent(pid:)` and `deinit` share, so the lock and the
+    /// clear cannot drift apart between them.
     ///
     /// The check and the clear happen inside one lock hold, so a pid that
-    /// `accepts` approved is the pid this call tears down, and no other caller
-    /// can take it in between. A no-op when nothing is recorded, or when
-    /// `accepts` refuses the recorded pid.
+    /// `accepts` approved is the pid the caller tears down, and no other caller
+    /// can take it in between.
     ///
     /// - Parameter accepts: Whether the recorded pid is one to tear down.
-    private func terminate(where accepts: (pid_t) -> Bool) {
-        let taken = currentPid.withLock { current -> pid_t? in
+    /// - Returns: The pid taken, or `nil` when nothing is recorded or when
+    ///   `accepts` refuses the recorded pid.
+    private func take(where accepts: (pid_t) -> Bool) -> pid_t? {
+        currentPid.withLock { current -> pid_t? in
             guard let recorded = current, accepts(recorded) else { return nil }
             current = nil
             return recorded
         }
-        guard let taken else { return }
-        killReapAndDeregister(taken)
     }
 
     /// Group-kills and reaps `pid` unconditionally, then deregisters it — the
-    /// OS-level teardown sequence that `recordSpawn`, `terminateCurrent()` and
-    /// `terminateIfCurrent(pid:)` share, so it stands in one place.
+    /// teardown that `recordSpawn`, `terminateCurrent()` and
+    /// `terminateIfCurrent(pid:)` share.
     ///
-    /// The caller has already decided `pid` must go; this does the kill, the
-    /// reap and the deregister, and none of the `currentPid` bookkeeping that
-    /// decides WHICH pid that is.
+    /// `waitpid` blocks the thread that calls it until the kernel ends the
+    /// child. Thus the kill and the reap run on a thread of their own
+    /// (``DedicatedThread``), and the caller suspends and holds no thread of
+    /// the Swift cooperative pool.
     ///
     /// - Parameter pid: The pid to group-kill, reap, and deregister.
-    private func killReapAndDeregister(_ pid: pid_t) {
-        _ = killpg(pid, SIGKILL)
-        var status: Int32 = 0
-        _ = waitpid(pid, &status, 0)
+    private func killReapAndDeregister(_ pid: pid_t) async {
+        await DedicatedThread.run { Self.killAndReap(pid) }
         registry.deregister(pid)
     }
 
+    /// Group-kills `pid` with `SIGKILL`, and waits until the kernel ends it
+    /// and reaps it. This blocks the calling thread.
+    ///
+    /// - Parameter pid: The pid to group-kill and reap.
+    private static func killAndReap(_ pid: pid_t) {
+        _ = killpg(pid, SIGKILL)
+        var status: Int32 = 0
+        _ = waitpid(pid, &status, 0)
+    }
+
     /// Owner teardown (path 4 in the header of this file): once nothing
-    /// retains this state, ARC runs this synchronously — the same idempotent
-    /// teardown every other trigger uses, so it is safe even after an explicit
-    /// `shutdown()` already ran.
+    /// retains this state, ARC runs this — the same idempotent take as every
+    /// other trigger, so it is safe even after an explicit `shutdown()`
+    /// already ran.
+    ///
+    /// `deinit` cannot `await`. Thus it is the one path that reaps on the
+    /// thread that runs it. A caller tells the end of the teardown from the
+    /// return of the last release of this state, so the reap must end
+    /// before `deinit` returns.
     deinit {
-        terminateCurrent()
+        guard let taken = take(where: { _ in true }) else { return }
+        Self.killAndReap(taken)
+        registry.deregister(taken)
     }
 }
 
@@ -664,7 +690,9 @@ private final class ProcessState: Sendable {
 /// the subprocess it is wired to (teardown path 2 in the header of this file)
 /// — the path a host's disconnect of the server built over this transport
 /// reaches, without a call to `StdioServerProcess.shutdown()`.
-private actor StdioServerTransport: Transport, DisposableTransport {
+///
+/// Internal and not private, thus a test can read ``requestDescriptor``.
+actor StdioServerTransport: Transport, DisposableTransport {
     /// The real transport this actor delegates every protocol operation to.
     private let inner: StdioTransport
 
@@ -686,6 +714,12 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     /// writes nothing of its own through it.
     nonisolated let logger: Logging.Logger
 
+    /// The write end of the stdin pipe of the subprocess: the descriptor
+    /// `inner` writes each request to. `spawn` sets `F_SETNOSIGPIPE` on it,
+    /// thus a write after the subprocess died fails with `EPIPE`, and no
+    /// `SIGPIPE` reaches the host process.
+    nonisolated let requestDescriptor: FileDescriptor
+
     /// The receive stream of `inner`, cached by `connect()` — `receive()` is
     /// not `async` in the protocol, so it cannot fetch the stream of `inner`
     /// on demand and returns what `connect()` cached here instead.
@@ -697,10 +731,12 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     ///   - inner: The real transport to delegate to.
     ///   - state: The shared process bookkeeping to tear down on `disconnect()`.
     ///   - pid: The pid of the subprocess spawned for this transport.
-    init(inner: StdioTransport, state: ProcessState, pid: pid_t) {
+    ///   - requestDescriptor: The descriptor `inner` writes each request to.
+    fileprivate init(inner: StdioTransport, state: ProcessState, pid: pid_t, requestDescriptor: FileDescriptor) {
         self.inner = inner
         self.state = state
         self.pid = pid
+        self.requestDescriptor = requestDescriptor
         self.logger = inner.logger
     }
 
@@ -722,7 +758,7 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     /// the newer spawn evicted it, thus nothing stays alive.
     func disconnect() async {
         await inner.disconnect()
-        state.terminateIfCurrent(pid: pid)
+        await state.terminateIfCurrent(pid: pid)
     }
 
     /// Delegates to `inner`.
@@ -744,7 +780,7 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     /// "whatever is current now" would then kill that live process in place of
     /// the dead one this instance owns.
     func dispose() async {
-        state.terminateIfCurrent(pid: pid)
+        await state.terminateIfCurrent(pid: pid)
     }
 
     /// The receive stream of `inner`, cached by the most recent `connect()` —

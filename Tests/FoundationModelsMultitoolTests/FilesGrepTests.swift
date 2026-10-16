@@ -166,13 +166,13 @@ import Testing
 
     /// The engine's own `caseSensitive` flag controls matching in both
     /// directions, thus the flag's polarity agrees with its name.
-    @Test func engineCaseSensitiveFlagControlsMatching() throws {
+    @Test func engineCaseSensitiveFlagControlsMatching() async throws {
         let root = Self.makeDirectory()
         try Self.write("a.txt", in: root, contents: "Hello World\n")
 
-        let insensitive = GrepEngine().run(
+        let insensitive = await GrepEngine().run(
             pattern: "WORLD", caseSensitive: false, contextLines: 0, in: FileContext(root: root))
-        let sensitive = GrepEngine().run(
+        let sensitive = await GrepEngine().run(
             pattern: "WORLD", caseSensitive: true, contextLines: 0, in: FileContext(root: root))
 
         #expect(try #require(insensitive.successResult).matchCount == 1)
@@ -181,11 +181,11 @@ import Testing
 
     /// The engine surfaces a recoverable failure through
     /// ``GrepOutput/correctiveMessage``, never through a throw.
-    @Test func engineCorrectiveSurfacesThroughCorrectiveMessage() throws {
+    @Test func engineCorrectiveSurfacesThroughCorrectiveMessage() async throws {
         let root = Self.makeDirectory()
         try Self.write("a.txt", in: root, contents: "text\n")
 
-        let output = GrepEngine().run(pattern: "(unterminated", in: FileContext(root: root))
+        let output = await GrepEngine().run(pattern: "(unterminated", in: FileContext(root: root))
         let message = try #require(output.correctiveMessage)
 
         #expect(!message.isEmpty)
@@ -496,7 +496,7 @@ import Testing
     /// An unscoped search never descends into a gitignored directory.
     @Test func gitignoredDirectoryIsNeverSearchedUnscoped() async throws {
         let root = Self.makeDirectory()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try Self.write(".gitignore", in: root, contents: "build/\n")
         try Self.write("keep.txt", in: root, contents: "match\n")
         try Self.write("build/generated.txt", in: root, contents: "match\n")

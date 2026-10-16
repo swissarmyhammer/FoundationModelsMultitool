@@ -245,7 +245,7 @@ extension RemoveDirectory {
         guard recursive || Self.isEmptyDirectory(url) else {
             return Self.corrective(PathCorrective.pathErrorMessage(description: Self.notEmptyDescription, path: path))
         }
-        let files = FileWalker.collectFiles(walkRoot: url, respectGitIgnore: false)
+        let files = await FileWalker.collectFiles(walkRoot: url, respectGitIgnore: false)
         let changes = context.changes.isRecording ? Self.deleteChanges(of: files) : []
         do {
             try FileManager.default.removeItem(at: url)

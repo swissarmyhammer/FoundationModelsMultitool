@@ -81,7 +81,7 @@ struct GitCommitTests {
     @Test("a tag and HEAD~1 give their commits")
     func aTagAndHeadTildeOneGiveTheirCommits() async throws {
         let (repository, shas) = try GitTestHistory.makeThreeCommits()
-        try TestSupport.runGit(["tag", "v1", shas[0]], in: repository.workDirectory)
+        try await TestSupport.runGit(["tag", "v1", shas[0]], in: repository.workDirectory)
         let context = GitContext(root: repository.workDirectory)
 
         let tagged = try await Self.commit(in: context, ref: "v1")

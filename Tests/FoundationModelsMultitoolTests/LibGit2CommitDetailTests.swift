@@ -81,19 +81,19 @@ struct LibGit2CommitDetailTests {
     /// A merge commit diffs from its first parent only, thus a file that only
     /// the second parent added is not in the list.
     @Test("a merge commit uses only its first parent")
-    func aMergeCommitUsesOnlyItsFirstParent() throws {
+    func aMergeCommitUsesOnlyItsFirstParent() async throws {
         let repository = try TemporaryGitRepository()
         try repository.write("a\n", to: "a.txt")
         try repository.commit(message: "first")
         try repository.createBranch(named: Self.sideBranch)
         try repository.write("main\n", to: "main.txt")
         let mainTip = try repository.commit(message: "second")
-        try Self.git(["checkout", "--quiet", Self.sideBranch], in: repository)
+        try await Self.git(["checkout", "--quiet", Self.sideBranch], in: repository)
         try repository.write("side\n", to: "side.txt")
-        try Self.git(["add", "side.txt"], in: repository)
-        try Self.git(Self.gitIdentity + ["commit", "--quiet", "-m", "side"], in: repository)
-        try Self.git(["checkout", "--quiet", TemporaryGitRepository.defaultBranch], in: repository)
-        try Self.git(
+        try await Self.git(["add", "side.txt"], in: repository)
+        try await Self.git(Self.gitIdentity + ["commit", "--quiet", "-m", "side"], in: repository)
+        try await Self.git(["checkout", "--quiet", TemporaryGitRepository.defaultBranch], in: repository)
+        try await Self.git(
             Self.gitIdentity + ["merge", "--quiet", "--no-ff", "-m", "merge", Self.sideBranch], in: repository)
 
         let sideTip = try #require(try Self.detail(of: repository, revision: Self.sideBranch)).facts.sha
@@ -172,7 +172,7 @@ struct LibGit2CommitDetailTests {
     ///   - arguments: The `git` subcommand and its arguments.
     ///   - repository: The repository.
     /// - Throws: When the process cannot start.
-    private static func git(_ arguments: [String], in repository: TemporaryGitRepository) throws {
-        try TestSupport.runGit(arguments, in: repository.workDirectory)
+    private static func git(_ arguments: [String], in repository: TemporaryGitRepository) async throws {
+        try await TestSupport.runGit(arguments, in: repository.workDirectory)
     }
 }

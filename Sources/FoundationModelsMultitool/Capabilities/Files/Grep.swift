@@ -158,7 +158,7 @@ extension Grep {
     ///   the answer.
     /// - Returns: The mode-shaped matches, or the correction.
     func call(arguments: GrepArguments) async throws -> GrepResult {
-        let output = GrepEngine().run(
+        let output = await GrepEngine().run(
             pattern: arguments.pattern,
             path: arguments.path,
             glob: arguments.glob,

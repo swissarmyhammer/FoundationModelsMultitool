@@ -1,4 +1,6 @@
 import Foundation
+import Subprocess
+import System
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -145,29 +147,32 @@ struct OutputBufferTests {
     /// bytes of the fixture, and no escape rule of a shell can change them. A
     /// null byte is the byte that a shell most easily loses.
     ///
+    /// `Subprocess.run` reads the pipe and waits for the exit with no blocked
+    /// thread, thus the test holds no thread of the Swift cooperative pool
+    /// while `cat` runs.
+    ///
     /// - Parameter fixture: The bytes the child must write.
     /// - Returns: One array for each read of the pipe, in the order of arrival.
     /// - Throws: When the directory, the file, or the child does not start.
-    private func catFixtureChunks(_ fixture: [UInt8]) throws -> [[UInt8]] {
+    private func catFixtureChunks(_ fixture: [UInt8]) async throws -> [[UInt8]] {
         let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         let url = directory.appendingPathComponent(Self.fixtureFileName)
         try Data(fixture).write(to: url)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: Self.catExecutablePath)
-        process.arguments = [url.path]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try process.run()
-
-        var chunks: [[UInt8]] = []
-        while true {
-            let data = pipe.fileHandleForReading.availableData
-            if data.isEmpty { break }
-            chunks.append(Array(data))
+        let result = try await Subprocess.run(
+            .path(FilePath(Self.catExecutablePath)),
+            arguments: Arguments([url.path]),
+            input: .none,
+            output: .sequence,
+            error: .discarded
+        ) { execution in
+            var chunks: [[UInt8]] = []
+            for try await chunk in execution.standardOutput {
+                chunks.append(chunk.withUnsafeBytes { Array($0) })
+            }
+            return chunks
         }
-        process.waitUntilExit()
-        return chunks
+        return result.closureResult
     }
 
     // MARK: - Basic capture
@@ -697,10 +702,10 @@ struct OutputBufferTests {
     // MARK: - The raw bytes of a real child process
 
     @Test("The bytes of a child process reach the raw view unchanged")
-    func theBytesOfAChildProcessReachTheRawViewUnchanged() throws {
+    func theBytesOfAChildProcessReachTheRawViewUnchanged() async throws {
         let fixture = Self.everyByteValue(repeating: Self.smallFixtureRepeatCount)
         var buffer = OutputBuffer(maxSize: Self.childOutputCapBytes)
-        for chunk in try catFixtureChunks(fixture) {
+        for chunk in try await catFixtureChunks(fixture) {
             buffer.appendStdout(chunk)
         }
 
@@ -711,10 +716,10 @@ struct OutputBufferTests {
     }
 
     @Test("The raw drains join to the full output of the child")
-    func theRawDrainsJoinToTheFullOutputOfTheChild() throws {
+    func theRawDrainsJoinToTheFullOutputOfTheChild() async throws {
         let fixture = Self.everyByteValue(repeating: Self.largeFixtureRepeatCount)
         var buffer = OutputBuffer(maxSize: Self.childOutputCapBytes)
-        let chunks = try catFixtureChunks(fixture)
+        let chunks = try await catFixtureChunks(fixture)
         #expect(chunks.count > 1, "the fixture must be large enough for several reads")
 
         var streamed: [UInt8] = []

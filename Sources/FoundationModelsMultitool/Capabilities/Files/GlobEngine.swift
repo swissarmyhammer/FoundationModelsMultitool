@@ -135,10 +135,10 @@ struct GlobEngine: Sendable {
         caseSensitive: Bool = false,
         respectGitIgnore: Bool = true,
         in context: FileContext
-    ) -> GlobOutput {
-        Self.prepare(pattern: pattern, path: path, in: context)
-            .resolve(corrective: GlobOutput.corrective) { prepared in
-                let matches = Self.collectMatches(
+    ) async -> GlobOutput {
+        await Self.prepare(pattern: pattern, path: path, in: context)
+            .resolveAsync(corrective: GlobOutput.corrective) { prepared in
+                let matches = await Self.collectMatches(
                     compiled: prepared.compiled,
                     caseSensitive: caseSensitive,
                     respectGitIgnore: respectGitIgnore,
@@ -162,7 +162,7 @@ struct GlobEngine: Sendable {
     /// so they share one error type, ``CorrectiveRejection``. It conforms to
     /// ``CorrectiveFailure``, which is what lets
     /// ``run(pattern:path:caseSensitive:respectGitIgnore:in:)`` unwrap them
-    /// through the shared ``Swift/Result/resolve(corrective:then:)`` rather
+    /// through the shared ``Swift/Result/resolveAsync(corrective:then:)`` rather
     /// than its own `switch`. ``PathViolation`` is deliberately not reused:
     /// only one of these rejections is about a path.
     private typealias Rejection = CorrectiveRejection
@@ -271,8 +271,8 @@ struct GlobEngine: Sendable {
         excludePatterns: ExcludePatterns,
         walkRoot: URL,
         sessionRoot: URL
-    ) -> [Match] {
-        var matches = FileWalker.walkAndFilter(
+    ) async -> [Match] {
+        var matches = await FileWalker.walkAndFilter(
             walkRoot: walkRoot,
             sessionRoot: sessionRoot,
             respectGitIgnore: respectGitIgnore,

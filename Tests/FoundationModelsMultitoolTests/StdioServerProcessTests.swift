@@ -102,6 +102,10 @@ struct StdioServerProcessTests {
     /// `initialize` — `serverName` in its `main.swift`.
     private static let testServerReportedName = "mcp-test-server"
 
+    /// The value `fcntl` with `F_GETNOSIGPIPE` gives back for a descriptor
+    /// that carries `F_SETNOSIGPIPE`.
+    private static let flagIsSet: Int32 = 1
+
     /// The text the handshake test sends through the echo tool.
     private static let echoedText = "hello"
 
@@ -201,7 +205,7 @@ struct StdioServerProcessTests {
         ProcessLiveness.isGone(pid)
     }
 
-    /// Blocks until the child `pid` exited and is a zombie, and does not reap
+    /// Waits until the child `pid` exited and is a zombie, and does not reap
     /// it.
     ///
     /// `waitid` with `WNOWAIT` ends when the child can be reaped, thus when
@@ -210,10 +214,16 @@ struct StdioServerProcessTests {
     /// reaps it. A kqueue exit event is not enough here: the kernel can send
     /// it before it closed the descriptors.
     ///
+    /// `waitid` with no `WNOHANG` blocks its thread until the child exits.
+    /// Thus it runs on a thread of its own (``DedicatedThread``), and the
+    /// test suspends and holds no thread of the Swift cooperative pool.
+    ///
     /// - Parameter pid: A child of this process.
-    private static func waitUntilZombie(_ pid: pid_t) {
-        var info = siginfo_t()
-        _ = waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT)
+    private static func waitUntilZombie(_ pid: pid_t) async {
+        await DedicatedThread.run {
+            var info = siginfo_t()
+            _ = waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT)
+        }
     }
 
     /// Whether `pid` names a live process (or a zombie) — see
@@ -419,20 +429,16 @@ struct StdioServerProcessTests {
     /// `shutdown()` — must reach the caller as an ordinary thrown error on
     /// the next call, and never as a `SIGPIPE` that ends the host process.
     ///
-    /// The test forces the default `SIGPIPE` disposition (`SIG_DFL`) instead
-    /// of ignoring it: `spawn(command:args:env:)` protects the write end of
-    /// the stdin pipe of the child with `F_SETNOSIGPIPE`, so a write after
-    /// the child died returns `EPIPE` whatever the process-wide disposition
-    /// is. That per-fd mitigation is what this proves, deterministically:
-    /// with `SIGPIPE` ignored process-wide, the test would pass with the
-    /// mitigation removed.
+    /// The test changes no process-wide state: a change of the `SIGPIPE`
+    /// disposition would reach each test that runs at the same time. The
+    /// per-descriptor mitigation that keeps the `SIGPIPE` away
+    /// (`F_SETNOSIGPIPE`) has its own check in
+    /// `theRequestPipeOfTheChildRaisesNoSIGPIPE`, which reads the flag of
+    /// the descriptor.
     ///
     /// The reconnect through a fresh spawn that the source went on to prove
     /// stands in `killingTheChildExternallyIsHealedByAReconnectThroughRespawn`.
     @Test func killingTheChildExternallySurfacesAsAThrownErrorAndNotASignal() async throws {
-        let previousSigpipeDisposition = signal(SIGPIPE, SIG_DFL)
-        defer { signal(SIGPIPE, previousSigpipeDisposition) }
-
         let stdio = try Self.makeTestServer(mode: .echo, named: "external-kill-test")
         let (client, _) = try await Self.connectClient(to: stdio, clientName: "ExternalKillTestClient")
         guard let pid = stdio.currentPid else {
@@ -447,7 +453,7 @@ struct StdioServerProcessTests {
         // `shutdown()`) sent `killpg` and `waitpid` to a pid that the kernel
         // could already give to an unrelated process.
         kill(pid, SIGKILL)
-        Self.waitUntilZombie(pid)
+        await Self.waitUntilZombie(pid)
 
         await #expect(throws: (any Error).self) {
             _ = try await client.callTool(
@@ -458,6 +464,26 @@ struct StdioServerProcessTests {
         await client.disconnect()
         await stdio.shutdown()
         #expect(Self.isGone(pid))
+        Self.confirmNoLeaks()
+    }
+
+    // MARK: - The request pipe of the child raises no SIGPIPE
+
+    /// The write end of the stdin pipe of the child carries `F_SETNOSIGPIPE`.
+    /// Thus a write after the child died fails with `EPIPE`, and no `SIGPIPE`
+    /// reaches the host process, whatever the process-wide disposition is.
+    ///
+    /// The test reads the flag of that one descriptor with
+    /// `F_GETNOSIGPIPE`. It changes no process-wide state, thus it is safe
+    /// while other tests run.
+    @Test func theRequestPipeOfTheChildRaisesNoSIGPIPE() async throws {
+        let stdio = try makeHeldChild(named: "no-sigpipe-test")
+        let transport = try await stdio.respawn()
+        let vended = try #require(transport as? StdioServerTransport)
+
+        #expect(fcntl(vended.requestDescriptor.rawValue, F_GETNOSIGPIPE) == Self.flagIsSet)
+
+        await stdio.shutdown()
         Self.confirmNoLeaks()
     }
 
@@ -481,7 +507,7 @@ struct StdioServerProcessTests {
         // teardown sent `killpg` and `waitpid` to a pid that the kernel could
         // already give to an unrelated process.
         kill(firstPid, SIGKILL)
-        Self.waitUntilZombie(firstPid)
+        await Self.waitUntilZombie(firstPid)
 
         try await server.reconnect()
 

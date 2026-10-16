@@ -1,7 +1,9 @@
 import Foundation
 import FoundationModelsExtras
 import FoundationModelsRouter
+import Subprocess
 import Synchronization
+import System
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -214,23 +216,21 @@ struct ShellRunnerTests {
     /// The pids of the live processes whose whole command line matches
     /// `pattern`, through `pgrep -f`.
     ///
+    /// `Subprocess.run` reads the output and waits for the exit with no
+    /// blocked thread, thus the test holds no thread of the Swift
+    /// cooperative pool while `pgrep` runs.
+    ///
     /// - Parameter pattern: The pattern `pgrep -f` reads.
     /// - Returns: The pids, and an empty list when `pgrep` finds none.
-    private func processIDs(matching pattern: String) -> [pid_t] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-f", pattern]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            return []
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
+    private func processIDs(matching pattern: String) async -> [pid_t] {
+        let result = try? await Subprocess.run(
+            .path(FilePath("/usr/bin/pgrep")),
+            arguments: Arguments(["-f", pattern]),
+            input: .none,
+            output: .string(limit: .max),
+            error: .discarded
+        )
+        let text = result?.standardOutput ?? ""
         return text.split(separator: "\n").compactMap { pid_t($0) }
     }
 
@@ -489,7 +489,7 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let members = processIDs(matching: pattern)
+        let members = await processIDs(matching: pattern)
         #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
         clock.open()
@@ -790,7 +790,7 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the command never reported that it runs")
-        let members = processIDs(matching: pattern)
+        let members = await processIDs(matching: pattern)
         #expect(members.count >= 1, "expected the command to run, saw \(members.count)")
 
         let outcome = await runner.canceler(completionToken: token)()
@@ -873,7 +873,7 @@ struct ShellRunnerTests {
         defer { runTask.cancel() }
 
         #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let members = processIDs(matching: pattern)
+        let members = await processIDs(matching: pattern)
         #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
         let outcome = await runner.canceler(completionToken: token)()

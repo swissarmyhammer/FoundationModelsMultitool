@@ -93,7 +93,7 @@ import Testing
     /// git-aware inside a repository.
     @Test func gitignoredFileIsAbsentByDefault() async throws {
         let root = Self.makeDirectory()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("debug.log", in: root)
@@ -109,7 +109,7 @@ import Testing
     /// With `respectGitIgnore` off, the walk shows the gitignored file.
     @Test func gitignoredFileIsPresentWhenRespectGitIgnoreIsFalse() async throws {
         let root = Self.makeDirectory()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("debug.log", in: root)
@@ -124,7 +124,7 @@ import Testing
     /// Tracked and untracked files that no ignore rule covers stay visible.
     @Test func gitTrackedAndUntrackedNonIgnoredFilesAreVisible() async throws {
         let root = Self.makeDirectory()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("notes.txt", in: root)
@@ -140,7 +140,7 @@ import Testing
     /// session root, not to the subdirectory.
     @Test func gitScopedSubdirectoryReturnsSessionRelativePaths() async throws {
         let root = Self.makeDirectory()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try Self.write("sub/a.txt", in: root)
         try Self.write("sub/deep/b.txt", in: root)
         try Self.write("top.txt", in: root)
@@ -262,7 +262,7 @@ import Testing
     /// When the matches overflow the cap, exactly the cap's worth of the
     /// newest matches comes back and the `capped` flag says so. The cap is
     /// the engine's injectable seam, thus this test drives the engine.
-    @Test func capIsHonoredWithHonestCappedFlag() throws {
+    @Test func capIsHonoredWithHonestCappedFlag() async throws {
         let root = Self.makeDirectory()
         let now = Date()
         for index in 1...Self.cappedTestFileCount {
@@ -271,7 +271,7 @@ import Testing
                 modified: now.addingTimeInterval(Double(index) * Self.modificationStride))
         }
 
-        let output = GlobEngine(maxResults: Self.smallResultCap)
+        let output = await GlobEngine(maxResults: Self.smallResultCap)
             .run(pattern: "*.txt", in: FileContext(root: root))
         let matches = try #require(output.successResult)
 
@@ -283,11 +283,11 @@ import Testing
 
     /// Below the cap, the `capped` flag stays off and the total agrees with
     /// the files.
-    @Test func belowCapReportsNotCapped() throws {
+    @Test func belowCapReportsNotCapped() async throws {
         let root = Self.makeDirectory()
         try Self.write("only.txt", in: root)
 
-        let output = GlobEngine(maxResults: Self.roomyResultCap)
+        let output = await GlobEngine(maxResults: Self.roomyResultCap)
             .run(pattern: "*.txt", in: FileContext(root: root))
         let matches = try #require(output.successResult)
 

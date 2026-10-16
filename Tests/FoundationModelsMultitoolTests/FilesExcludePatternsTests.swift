@@ -123,7 +123,7 @@ import Testing
     /// `respectGitIgnore: false` does not turn the host patterns off.
     @Test func globSkipsTheExcludedFolderWhenRespectGitIgnoreIsFalse() async throws {
         let root = try Self.makeAgentTree()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         let files = try await Self.globbedFiles(
             root: root, excludePatterns: Self.agentFolderPatterns, respectGitIgnore: false)
         #expect(files == [Self.notesPath])
@@ -160,8 +160,8 @@ import Testing
     /// tracks the file, which `git ls-files --exclude` cannot do.
     @Test func grepSkipsATrackedFileInTheExcludedFolder() async throws {
         let root = try Self.makeAgentTree()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
-        try TestSupport.runGit(["add", "."], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["add", "."], in: root)
         let files = try await Self.greppedFiles(root: root, excludePatterns: Self.agentFolderPatterns)
         #expect(files == [Self.notesPath])
     }
@@ -197,9 +197,9 @@ import Testing
 
     /// The shared walk skips the excluded folder with `respectGitIgnore`
     /// false, thus each search verb that walks keeps the host patterns on.
-    @Test func walkSkipsTheExcludedFolderWhenRespectGitIgnoreIsFalse() throws {
+    @Test func walkSkipsTheExcludedFolderWhenRespectGitIgnoreIsFalse() async throws {
         let root = try Self.makeAgentTree()
-        let walked = FileWalker.walkAndFilter(
+        let walked = await FileWalker.walkAndFilter(
             walkRoot: root,
             sessionRoot: root,
             respectGitIgnore: false,
@@ -212,9 +212,9 @@ import Testing
 
     /// The patterns match the path relative to the session root, also when
     /// the walk starts in a subfolder.
-    @Test func walkMatchesThePathRelativeToTheSessionRoot() throws {
+    @Test func walkMatchesThePathRelativeToTheSessionRoot() async throws {
         let root = try Self.makeAgentTree()
-        let walked = FileWalker.walkAndFilter(
+        let walked = await FileWalker.walkAndFilter(
             walkRoot: root.appendingPathComponent(".acp-agent", isDirectory: true),
             sessionRoot: root,
             respectGitIgnore: true,

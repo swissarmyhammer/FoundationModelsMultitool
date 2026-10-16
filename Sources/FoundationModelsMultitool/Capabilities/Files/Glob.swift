@@ -112,7 +112,7 @@ extension Glob {
     /// - Parameter arguments: What to match, and how.
     /// - Returns: The matches newest first, or the correction.
     func call(arguments: GlobArguments) async throws -> GlobResult {
-        let output = GlobEngine().run(
+        let output = await GlobEngine().run(
             pattern: arguments.pattern,
             path: arguments.path,
             caseSensitive: arguments.caseSensitive ?? Self.defaultCaseSensitive,

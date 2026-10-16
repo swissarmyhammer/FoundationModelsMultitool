@@ -73,33 +73,86 @@ import Testing
 
     /// A plain walk returns each nested regular file as an absolute path and
     /// never returns a directory.
-    @Test func collectFilesWalksNestedRegularFilesOnly() throws {
+    @Test func collectFilesWalksNestedRegularFilesOnly() async throws {
         let (root, rootFile, nestedFile) = try Self.makeTree()
-        let collected = FileWalker.collectFiles(walkRoot: root, respectGitIgnore: false).sorted()
+        let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: false).sorted()
         #expect(collected == [root.path + "/" + rootFile, root.path + "/" + nestedFile])
     }
 
     /// Inside a repository the git-aware listing skips an ignored directory,
     /// thus a file under it never appears among the candidates.
-    @Test func collectFilesHonorsGitIgnoreInsideARepository() throws {
+    @Test func collectFilesHonorsGitIgnoreInsideARepository() async throws {
         let (root, rootFile, _) = try Self.makeTree()
-        try TestSupport.runGit(["init", "--quiet"], in: root)
+        try await TestSupport.runGit(["init", "--quiet"], in: root)
         try "build/\n".write(to: root.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
         let ignored = root.appendingPathComponent("build", isDirectory: true)
         try FileManager.default.createDirectory(at: ignored, withIntermediateDirectories: true)
         try "junk\n".write(to: ignored.appendingPathComponent("out.txt"), atomically: true, encoding: .utf8)
 
-        let collected = FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
+        let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
         #expect(collected.contains(root.path + "/" + rootFile))
         #expect(!collected.contains { $0.hasPrefix(ignored.path + "/") })
     }
 
     /// Outside a repository the git listing yields nothing, thus the walk
     /// falls back to the plain enumeration and still returns the files.
-    @Test func collectFilesFallsBackToAPlainWalkOutsideARepository() throws {
+    @Test func collectFilesFallsBackToAPlainWalkOutsideARepository() async throws {
         let (root, rootFile, nestedFile) = try Self.makeTree()
-        let collected = FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true).sorted()
+        let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true).sorted()
         #expect(collected == [root.path + "/" + rootFile, root.path + "/" + nestedFile])
+    }
+
+    // MARK: Listing program
+
+    /// The shell that runs the stand-in listing program.
+    private static let shellPath = "/bin/sh"
+
+    /// The flag that makes the shell read its script from the next argument.
+    private static let shellScriptFlag = "-c"
+
+    /// More bytes than one pipe holds: a pipe on Darwin holds at most 64 KiB.
+    /// A listing program that writes this much to its standard error stops
+    /// in its write until a reader drains the pipe.
+    private static let overfullStandardErrorByteCount = 131_072
+
+    /// The paths the stand-in listing program writes, in order.
+    private static let listedPaths = ["a.txt", "sub/b.txt"]
+
+    /// A listing program that writes more to its standard error than a pipe
+    /// holds, and only then writes its listing, still gives its listing.
+    ///
+    /// The program must finish its write to the standard error before it
+    /// writes the standard output. Thus a walk that reads the standard
+    /// error only after the end of the standard output never sees a
+    /// listing: the program and the walk wait on each other. A walk that
+    /// drains both streams at the same time gets the listing. The program
+    /// is `/bin/sh`, and not `git`, because no git command writes a known
+    /// quantity to its standard error.
+    ///
+    /// A walk that reads in that order does not fail this test: it stops in
+    /// the read. Thus this test is not run on that code; see the card of
+    /// this fix.
+    @Test func aListingProgramThatFillsItsStandardErrorStillGivesItsListing() async throws {
+        let (root, _, _) = try Self.makeTree()
+        let listing = Self.listedPaths.map { "\($0)\\0" }.joined()
+        let script =
+            "head -c \(Self.overfullStandardErrorByteCount) /dev/zero >&2; printf '\(listing)'"
+
+        let listed = await FileWalker.listedFiles(
+            byRunning: Self.shellPath, arguments: [Self.shellScriptFlag, script], in: root)
+
+        #expect(listed == Self.listedPaths)
+    }
+
+    /// A listing program that exits with a status other than zero gives no
+    /// listing, thus the walk falls back to the plain enumeration.
+    @Test func aListingProgramThatFailsGivesNoListing() async throws {
+        let (root, _, _) = try Self.makeTree()
+
+        let listed = await FileWalker.listedFiles(
+            byRunning: Self.shellPath, arguments: [Self.shellScriptFlag, "printf 'a.txt\\0'; exit 1"], in: root)
+
+        #expect(listed == nil)
     }
 
     // MARK: Collect-filter-assemble
@@ -107,11 +160,11 @@ import Testing
     /// The shared loop applies the acceptance predicate against the
     /// walk-relative path, builds each kept result from the session-relative
     /// path, and drops a file whose build returns `nil`.
-    @Test func walkAndFilterAppliesTheAcceptancePredicateAndBuildsSessionRelativeResults() throws {
+    @Test func walkAndFilterAppliesTheAcceptancePredicateAndBuildsSessionRelativeResults() async throws {
         let (root, rootFile, nestedFile) = try Self.makeTree()
         let walkRoot = root.appendingPathComponent("sub", isDirectory: true)
 
-        let accepted = FileWalker.walkAndFilter(
+        let accepted = await FileWalker.walkAndFilter(
             walkRoot: walkRoot,
             sessionRoot: root,
             respectGitIgnore: false,
@@ -121,7 +174,7 @@ import Testing
         )
         #expect(accepted == [nestedFile])
 
-        let dropped = FileWalker.walkAndFilter(
+        let dropped = await FileWalker.walkAndFilter(
             walkRoot: root,
             sessionRoot: root,
             respectGitIgnore: false,

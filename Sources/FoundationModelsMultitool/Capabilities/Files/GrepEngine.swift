@@ -304,7 +304,7 @@ struct GrepEngine: Sendable {
         contextLines: Int? = nil,
         outputMode: String? = nil,
         in context: FileContext
-    ) -> GrepOutput {
+    ) async -> GrepOutput {
         guard let mode = Self.resolveOutputMode(name: outputMode) else {
             return .corrective(Self.unknownOutputModeMessage)
         }
@@ -334,10 +334,10 @@ struct GrepEngine: Sendable {
             return .corrective(Self.invalidPatternMessage(pattern: pattern))
         }
 
-        return Self.resolveTarget(path: path, in: context)
-            .resolve(corrective: GrepOutput.corrective) { target in
+        return await Self.resolveTarget(path: path, in: context)
+            .resolveAsync(corrective: GrepOutput.corrective) { target in
                 let sessionRoot = FileWalker.canonicalDirectory(context.root)
-                let candidates = Self.candidateFiles(
+                let candidates = await Self.candidateFiles(
                     target: target,
                     sessionRoot: sessionRoot,
                     excludePatterns: context.excludePatterns,
@@ -612,7 +612,7 @@ struct GrepEngine: Sendable {
         excludePatterns: ExcludePatterns,
         glob: GlobPattern?,
         typeExtensions: Set<String>?
-    ) -> [Candidate] {
+    ) async -> [Candidate] {
         switch target {
         case .singleFile(let file):
             let relativePath =
@@ -620,7 +620,7 @@ struct GrepEngine: Sendable {
                 ?? URL(fileURLWithPath: file.path).lastPathComponent
             return [Candidate(absolutePath: file.path, relativePath: relativePath)]
         case .directory(let walkRoot):
-            return directoryCandidates(
+            return await directoryCandidates(
                 walkRoot: walkRoot, sessionRoot: sessionRoot, excludePatterns: excludePatterns, glob: glob,
                 typeExtensions: typeExtensions)
         }
@@ -642,8 +642,8 @@ struct GrepEngine: Sendable {
         excludePatterns: ExcludePatterns,
         glob: GlobPattern?,
         typeExtensions: Set<String>?
-    ) -> [Candidate] {
-        FileWalker.walkAndFilter(
+    ) async -> [Candidate] {
+        let candidates = await FileWalker.walkAndFilter(
             walkRoot: walkRoot,
             sessionRoot: sessionRoot,
             respectGitIgnore: true,
@@ -657,7 +657,7 @@ struct GrepEngine: Sendable {
                 Candidate(absolutePath: absolute, relativePath: relativeToSession)
             }
         )
-        .sorted { $0.relativePath < $1.relativePath }
+        return candidates.sorted { $0.relativePath < $1.relativePath }
     }
 
     /// The lowercased filename extension of a path, or the empty string when there is none.
