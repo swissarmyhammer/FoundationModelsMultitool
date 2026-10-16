@@ -1,5 +1,4 @@
 import Foundation
-import JavaScriptCore
 import Testing
 
 import FoundationModels
@@ -258,34 +257,7 @@ struct HardeningTests {
     ///
     /// - Returns: the set of injected global names.
     private static func injectedGlobals() async throws -> Set<String> {
-        try await Self.multiToolRunGlobals().subtracting(Self.rawJSContextGlobals())
-    }
-
-    /// Every own-property name on `globalThis` in a completely vanilla
-    /// `JSContext` — the baseline JavaScriptCore itself ships with, before
-    /// this package injects anything — **except** `console`.
-    ///
-    /// `console` is deliberately excluded from this baseline, even though
-    /// it's already an own property of a bare `JSContext()` on this SDK
-    /// (measured directly: a fresh `JSContext()`'s `globalThis` already has
-    /// a `console`, one of Apple's own `JSContext` wrapper class's default
-    /// conveniences — not an ECMAScript builtin at all, unlike this
-    /// baseline's other members). `JSCInterpreter.installConsole` always
-    /// *replaces* `globalThis.console` outright (`context.setObject(console,
-    /// forKeyedSubscript: "console")`, where `console` is a brand-new
-    /// object carrying only `log`) rather than extending whatever was there
-    /// — so nothing of JSC's own default `console` (whatever other methods
-    /// it might expose) is ever reachable from a `MultiTool` run; the
-    /// `console` a snippet actually sees is 100% this package's minimal
-    /// shim. Counting it as part of the untouched baseline here would make
-    /// this test (and the README↔code sync it backs) miss that this
-    /// package fully owns and controls `console`'s reachable surface, same
-    /// as `tools`/`help`/`docs`.
-    private static func rawJSContextGlobals() throws -> Set<String> {
-        let context = try #require(JSContext())
-        let namesValue = try #require(context.evaluateScript("Object.getOwnPropertyNames(globalThis)"))
-        let names = try #require(namesValue.toArray() as? [String])
-        return Set(names).subtracting(["console"])
+        try await Self.multiToolRunGlobals().subtracting(JSContextBaseline.globalNames())
     }
 
     /// Every own-property name on `globalThis` inside one fresh `MultiTool`

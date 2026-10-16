@@ -7,10 +7,6 @@ import Testing
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
 
-/// Every sandbox global this suite pins, in the order the surface documents
-/// them — the run verbs, the elicitation, and the two notice calls.
-private let sandboxGlobalNames = ["status", "cancel", "elicit", "notify", "progress"]
-
 /// The seconds argument a snippet gives the removed `wait()`. The call throws
 /// before it reads the argument, thus the value has no effect.
 private let removedWaitSecondsArgument = 1
@@ -39,16 +35,20 @@ private let removedWaitCatchingSnippet = """
 struct SandboxGlobalsTests {
     // MARK: - Reachability and the promise-vs-sync contract
 
-    @Test("all five globals are reachable in a fresh run")
-    func allFiveGlobalsAreReachable() async throws {
+    @Test("each global that the globals page declares is a function in a fresh run")
+    func eachDocumentedGlobalIsReachable() async throws {
+        let names = documentedGlobalNames()
+        try #require(!names.isEmpty)
+
         let output = try await runSnippet(
             """
-            return \(jsArrayLiteral(of: sandboxGlobalNames)).map(name => typeof globalThis[name]);
+            return \(jsArrayLiteral(of: names))
+                .map(name => typeof name.split(".").reduce((owner, key) => owner[key], globalThis));
             """
         )
 
         let kinds = try RunOutput.decoded([String].self, from: output)
-        #expect(kinds == Array(repeating: "function", count: sandboxGlobalNames.count))
+        #expect(kinds == Array(repeating: "function", count: names.count))
     }
 
     @Test("the globals are not discoverable entries — help() and the searchTools surface list none of them")
@@ -61,7 +61,7 @@ struct SandboxGlobalsTests {
         let helpPaths = try RunOutput.decoded([String].self, from: output)
         #expect(helpPaths == ["getCities"])
         let surfacePaths = Set(registry.surface.entries.map(\.path))
-        #expect(surfacePaths.isDisjoint(with: sandboxGlobalNames))
+        #expect(surfacePaths.isDisjoint(with: documentedGlobalNames()))
     }
 
     @Test("the run verbs return promises; notify, progress, help, and docs return plain values")
@@ -98,16 +98,6 @@ struct SandboxGlobalsTests {
 
     // MARK: - Discovery: docs() carries the contract the description points at
 
-    @Test("docs(\"globals\") declares every ambient global")
-    func docsGlobalsDeclaresEveryAmbientGlobal() async throws {
-        let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
-
-        let page = try RunOutput.decoded(String.self, from: output)
-        for name in sandboxGlobalNames {
-            #expect(page.contains("declare function \(name)("))
-        }
-    }
-
     @Test("docs(\"globals\") reaches the snippet whole — runCode's return cap never truncates the contract")
     func theGlobalsPageReachesTheSnippetWhole() async throws {
         let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
@@ -117,11 +107,11 @@ struct SandboxGlobalsTests {
 
     @Test("docs(name) resolves each ambient global on its own, returning that one's block alone")
     func docsResolvesEachAmbientGlobalByName() async throws {
-        for name in sandboxGlobalNames {
+        for name in documentedGlobalNames() {
             let output = try await runSnippet("return docs(\"\(name)\");")
 
             let block = try RunOutput.decoded(String.self, from: output)
-            #expect(sandboxGlobalNames.filter { block.contains("declare function \($0)(") } == [name])
+            #expect(declaredFunctionNames(in: block) == [name])
         }
     }
 
@@ -129,7 +119,7 @@ struct SandboxGlobalsTests {
     func theGlobalsPageStatesWhichCallsAreAwaited() {
         let page = MultiTool.sandboxGlobalsPage(asksUser: true)
 
-        for name in sandboxGlobalNames where !MultiTool.voidGlobalNames.contains(name) {
+        for name in documentedGlobalNames() where !MultiTool.voidGlobalNames.contains(name) {
             #expect(declaredReturnType(of: name, in: page)?.hasPrefix("Promise<") == true)
         }
         for name in MultiTool.voidGlobalNames {
@@ -201,37 +191,30 @@ struct SandboxGlobalsTests {
         #expect(probe.entry.contains("declare function elicit("))
     }
 
-    /// For each user presence, the promise globals that the sandbox installs,
-    /// the promise functions that `docs("globals")` declares, and the
-    /// promise globals that the preface tells a snippet to await are the
-    /// same set. The `ElicitationAnswer` type is declared only when `elicit`
-    /// is installed.
-    @Test("for each user presence, each installed promise global has a doc entry, and each doc entry has a global")
-    func userPresenceDocsMatchTheInstalledGlobals() async throws {
-        for presence in [UserPresence.headless, .interactive] {
-            let output = try await runSnippet(
-                """
-                return {
-                    installed: \(jsArrayLiteral(of: sandboxGlobalNames))
-                        .filter(name => typeof globalThis[name] === "function"),
-                    page: docs("\(MultiTool.sandboxGlobalsDocsTopic)"),
-                };
-                """,
-                under: makeContext(userPresence: presence)
-            )
+    /// For one user presence, the globals that the sandbox really installs
+    /// and the globals that `docs("globals")` declares are the same set. The
+    /// installed side is read at run time, and no list in this suite names
+    /// it: each own function of `globalThis` that a new `JSContext` does not
+    /// have, without `help`, `docs` and the removed `wait`, and each own
+    /// function member of such a global as `name.member`. Each name has a
+    /// `docs(name)` block that starts with `// <name>`. The preface tells a
+    /// snippet to await each promise global, and it declares
+    /// `ElicitationAnswer` only when `elicit` is installed.
+    @Test(
+        "for each user presence, the installed globals and the globals that docs declares are the same set",
+        arguments: [UserPresence.headless, .interactive]
+    )
+    func installedGlobalsMatchTheDocumentedGlobals(presence: UserPresence) async throws {
+        let page = MultiTool.sandboxGlobalsPage(asksUser: presence != .headless)
+        let observed = try await installedGlobalsProbe(expecting: page, under: makeContext(userPresence: presence))
+        let installed = Set(observed.installed)
+        try #require(!installed.isEmpty)
 
-            let observed = try RunOutput.decoded(InstalledGlobalsProbe.self, from: output)
-            let installedPromises = observed.installed.filter { !MultiTool.voidGlobalNames.contains($0) }
-            let documentedPromises = declaredFunctionNames(in: observed.page).filter {
-                declaredReturnType(of: $0, in: observed.page)?.hasPrefix("Promise<") == true
-            }
-            #expect(installedPromises == documentedPromises, "presence: \(presence)")
-            #expect(awaitedNames(in: observed.page) == installedPromises, "presence: \(presence)")
-            #expect(
-                (declaredFields(of: "ElicitationAnswer", in: observed.page) != nil)
-                    == installedPromises.contains("elicit"),
-                "presence: \(presence)")
-        }
+        #expect(observed.pageIsServed)
+        #expect(installed == Set(declaredFunctionNames(in: page)))
+        #expect(observed.misnamedBlocks.isEmpty, "these docs(name) blocks do not start with their name")
+        #expect(Set(awaitedNames(in: page)) == installed.subtracting(MultiTool.voidGlobalNames))
+        #expect((declaredFields(of: "ElicitationAnswer", in: page) != nil) == installed.contains(MultiTool.elicitGlobalName))
     }
 
     @Test("a headless snippet that calls elicit() fails with a ReferenceError that holds the no-user hint")
@@ -885,13 +868,130 @@ private func jsArrayLiteral(of names: [String]) -> String {
 /// - Returns: the declared return type, or `nil` when the page declares no
 ///   such function.
 private func declaredReturnType(of name: String, in page: String) -> String? {
-    guard
-        let line = page.split(separator: "\n").first(where: { $0.hasPrefix("declare function \(name)(") }),
-        let arguments = line.range(of: "): ", options: .backwards)
-    else {
-        return nil
+    DeclaredFunction.all(in: page).first { $0.name == name }?.returnType
+}
+
+/// One function that a globals page or a `docs(name)` block declares.
+private struct DeclaredFunction: Equatable {
+    /// The name a snippet calls the function by: `name` for a
+    /// `declare function name(...)` line, and `space.name` for a
+    /// `function name(...)` line in a `declare namespace space { ... }` block.
+    let name: String
+
+    /// The declared return type, for example `Promise<NoResult>` or `void`.
+    let returnType: String
+
+    /// The text that opens a top-level declaration.
+    private static let topLevelPrefix = "declare function "
+
+    /// The text that opens a declaration in a namespace block.
+    private static let memberPrefix = "function "
+
+    /// The text between the parameter list and the return type.
+    private static let returnSeparator = "): "
+
+    /// Each function that `text` declares, in text order.
+    ///
+    /// - Parameter text: a globals page or one `docs(name)` block.
+    /// - Returns: the declared functions.
+    static func all(in text: String) -> [DeclaredFunction] {
+        var namespace: String?
+        var functions: [DeclaredFunction] = []
+        for line in text.split(separator: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            if let opened = line.wholeMatch(of: /declare namespace ([A-Za-z_$][A-Za-z0-9_$]*) \{/) {
+                namespace = String(opened.1)
+            } else if line == "}" {
+                namespace = nil
+            } else if let function = parse(line, in: namespace) {
+                functions.append(function)
+            }
+        }
+        return functions
     }
-    return String(line[arguments.upperBound...].dropLast())
+
+    /// Reads one declaration line.
+    ///
+    /// - Parameters:
+    ///   - line: one trimmed line of the text.
+    ///   - namespace: the namespace block that holds the line, or `nil`.
+    /// - Returns: the declared function, or `nil` when the line declares none.
+    private static func parse(_ line: String, in namespace: String?) -> DeclaredFunction? {
+        let prefix = namespace == nil ? topLevelPrefix : memberPrefix
+        guard
+            line.hasPrefix(prefix),
+            let open = line.firstIndex(of: "("),
+            let returns = line.range(of: returnSeparator, options: .backwards)
+        else {
+            return nil
+        }
+        let name = String(line[line.index(line.startIndex, offsetBy: prefix.count)..<open])
+        return DeclaredFunction(
+            name: namespace.map { "\($0).\(name)" } ?? name,
+            returnType: String(line[returns.upperBound...].dropLast()))
+    }
+}
+
+/// The name of each global that the interactive globals page declares, in
+/// page order — the names this suite iterates. They are read from the page,
+/// and no list in this suite names them.
+///
+/// - Returns: the declared names.
+private func documentedGlobalNames() -> [String] {
+    declaredFunctionNames(in: MultiTool.sandboxGlobalsPage(asksUser: true))
+}
+
+/// Renders `text` as a JavaScript string literal.
+///
+/// A JSON string is a JavaScript string literal, thus the JSON encoder gives
+/// the escapes.
+///
+/// - Parameter text: the text to render.
+/// - Returns: the literal.
+/// - Throws: when the encoder fails.
+private func jsStringLiteral(_ text: String) throws -> String {
+    String(decoding: try JSONEncoder().encode(text), as: UTF8.self)
+}
+
+/// Runs the enumeration snippet of
+/// ``SandboxGlobalsTests/installedGlobalsMatchTheDocumentedGlobals(presence:)``
+/// under `context`.
+///
+/// The snippet returns only names and flags, never the page itself: the page
+/// fills most of the return cap of `runCode` by itself.
+///
+/// - Parameters:
+///   - page: the globals page that `docs("globals")` must give.
+///   - context: the session context of the run.
+/// - Returns: what the snippet found.
+/// - Throws: when the run fails, or when its output does not decode.
+private func installedGlobalsProbe(expecting page: String, under context: ToolContext) async throws -> InstalledGlobalsProbe {
+    let skipped = try JSContextBaseline.globalNames().sorted()
+        + [MultiTool.helpGlobalName, MultiTool.docsGlobalName, MultiTool.removedWaitGlobalName]
+    let output = try await runSnippet(
+        """
+        const skipped = new Set(\(jsArrayLiteral(of: skipped)));
+        const plainMembers = new Set(Object.getOwnPropertyNames(function () {}));
+        const installed = [];
+        for (const name of Object.getOwnPropertyNames(globalThis)) {
+            if (skipped.has(name) || typeof globalThis[name] !== "function") {
+                continue;
+            }
+            installed.push(name);
+            for (const member of Object.getOwnPropertyNames(globalThis[name])) {
+                if (!plainMembers.has(member) && typeof globalThis[name][member] === "function") {
+                    installed.push(name + "." + member);
+                }
+            }
+        }
+        return {
+            installed,
+            misnamedBlocks: installed.filter(name => !docs(name).startsWith("// " + name + "\\n")),
+            pageIsServed: docs("\(MultiTool.sandboxGlobalsDocsTopic)") === \(try jsStringLiteral(page)),
+        };
+        """,
+        under: context
+    )
+    return try RunOutput.decoded(InstalledGlobalsProbe.self, from: output)
 }
 
 /// The hint that a headless snippet gets when it calls `elicit()`. The text
@@ -969,15 +1069,19 @@ private func elicitationAnswerProbe(answering response: ElicitationResponse) asy
     }
 }
 
-/// What the parity snippet returns: the names of the globals that are
-/// installed, and the globals page.
+/// What the enumeration snippet of ``installedGlobalsProbe(expecting:under:)``
+/// returns.
 private struct InstalledGlobalsProbe: Decodable {
-    /// The names of ``sandboxGlobalNames`` that are functions in the sandbox,
-    /// in that order.
+    /// The name of each installed global, and `name.member` for each own
+    /// function member of one.
     let installed: [String]
 
-    /// What `docs("globals")` gives.
-    let page: String
+    /// The names in ``installed`` whose `docs(name)` block does not start
+    /// with the line `// <name>`.
+    let misnamedBlocks: [String]
+
+    /// Tells if `docs("globals")` gave the expected page.
+    let pageIsServed: Bool
 }
 
 /// Makes a session context whose run plane has the user presence
@@ -1000,15 +1104,13 @@ private func makeContext(userPresence: UserPresence) -> ToolContext {
     )
 }
 
-/// The name of each function that the globals page declares, in page order.
+/// The name of each function that a globals page or a `docs(name)` block
+/// declares, in text order. A member of a namespace is named `space.member`.
 ///
-/// - Parameter page: the rendered globals page.
+/// - Parameter text: the rendered page or block.
 /// - Returns: the declared function names.
-private func declaredFunctionNames(in page: String) -> [String] {
-    let prefix = "declare function "
-    return page.split(separator: "\n")
-        .filter { $0.hasPrefix(prefix) }
-        .compactMap { $0.dropFirst(prefix.count).split(separator: "(").first.map(String.init) }
+private func declaredFunctionNames(in text: String) -> [String] {
+    DeclaredFunction.all(in: text).map(\.name)
 }
 
 /// The names of the globals that the preface of the page tells a snippet to
@@ -1024,20 +1126,23 @@ private func awaitedNames(in page: String) -> [String] {
     else {
         return []
     }
-    return page[start.upperBound..<end.lowerBound].matches(of: /`(\w+)\(\)`/).map { String($0.1) }
+    return page[start.upperBound..<end.lowerBound].matches(of: /`([\w.]+)\(\)`/).map { String($0.1) }
 }
 
 /// The field names the globals page's `declare type` line for `name` lists,
-/// sorted.
+/// sorted. The type can have type parameters, as `ElicitationAnswer<T>` has.
 ///
 /// - Parameters:
-///   - name: the declared type's name.
+///   - name: the declared type's name, without type parameters.
 ///   - page: the rendered globals page.
 /// - Returns: the declared field names in sorted order, or `nil` when the page
 ///   declares no such type.
 private func declaredFields(of name: String, in page: String) -> [String]? {
+    let opening = "declare type \(name)"
     guard
-        let line = page.split(separator: "\n").first(where: { $0.hasPrefix("declare type \(name) = {") }),
+        let line = page.split(separator: "\n").first(where: { line in
+            line.hasPrefix(opening) && line.dropFirst(opening.count).wholeMatch(of: /(<[^>]*>)? = \{.*/) != nil
+        }),
         let open = line.firstIndex(of: "{"),
         let close = line.lastIndex(of: "}")
     else {

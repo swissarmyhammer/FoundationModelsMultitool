@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m524q75xd1smq0f4bxtttsjp
+  text: 'Owner note (2026-10-16): Extras makes ToolContext.holdingRunToken public. It groups the SYNCHRONOUS inner calls of one run (also nested calls). An inner tools.* call that is mounted as BACKGROUND is a run of its own and has its own token. When this card starts: check how runCode mounts the tools.* calls that reach MCP servers (synchronous or background), and record the result here. Start only after the owner says that Extras has pushed, and after phase 5.'
+  timestamp: 2026-10-16T10:39:28.445533+00:00
 position_column: todo
 position_ordinal: '8880'
 title: Link a server elicitation to the one holding run of two inner runCode calls

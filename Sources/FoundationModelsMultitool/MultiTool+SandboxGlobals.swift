@@ -1,6 +1,5 @@
 import Foundation
 import FoundationModelsExtras
-import ULID
 
 // MARK: - The ambient sandbox globals (eventplan.md § "The sandbox globals")
 //
@@ -137,22 +136,15 @@ private enum CallResult {
 /// never suspends the calling snippet.
 private let lifecycleProbeSeconds: Double = 0
 
-/// The usage sentence every malformed `elicit()` call is repaired with —
-/// shared by both of ``SandboxGlobalError``'s elicitation cases so a snippet
-/// is told the same shape either way.
-private let elicitUsage = """
-    elicit("question") takes a question string, or a request object — \
-    elicit({ message, requestedSchema }) for a form, \
-    elicit({ message, url }) for a URL flow.
-    """
-
 /// One ambient global's `docs(name)` entry.
 ///
 /// Rendered in the same shape ``APISurface/Entry/block`` gives a wrapped tool
 /// — a banner naming the call, a JSDoc comment, and a `declare function`
 /// signature — so a snippet that reads `docs("elicit")` and
-/// `docs("getWeather")` reads one format for both.
-private struct SandboxGlobalDoc: Sendable {
+/// `docs("getWeather")` reads one format for both. The entries of the
+/// elicitation globals are made from their table (see
+/// ``ElicitationGlobal/doc``).
+struct SandboxGlobalDoc: Sendable {
     /// The name a snippet calls this global under, which is also the
     /// `docs(name)` key that resolves this entry.
     let name: String
@@ -230,16 +222,20 @@ extension MultiTool {
 
     /// The whole ambient-globals page — what `docs("globals")` hands back.
     ///
-    /// The preface followed by the block of each installed global, separated
+    /// The preface followed by the section of each installed global, separated
     /// by a blank line, exactly as ``APISurface/source`` concatenates the
-    /// wrapped tools' blocks.
+    /// wrapped tools' blocks. The sections of the elicitation globals come
+    /// from their table (see ``elicitationPageSections``).
     ///
     /// - Parameter asksUser: tells if the sandbox has the `elicit` global
     ///   (see ``asksUser(_:)``).
     /// - Returns: the page, which declares only the installed globals.
     static func sandboxGlobalsPage(asksUser: Bool) -> String {
-        let docs = sandboxGlobalDocs(asksUser: asksUser)
-        return ([sandboxGlobalsPreface(for: docs)] + docs.map(\.block)).joined(separator: "\n\n")
+        let sections = runGlobalDocs.map(\.block)
+            + (asksUser ? elicitationPageSections : [])
+            + noticeGlobalDocs.map(\.block)
+        return ([sandboxGlobalsPreface(for: sandboxGlobalDocs(asksUser: asksUser))] + sections)
+            .joined(separator: "\n\n")
     }
 
     /// The documentation `docs(name)` answers `name` with, when `name` is the
@@ -261,10 +257,10 @@ extension MultiTool {
     /// The doc entries of the globals that one sandbox installs.
     ///
     /// - Parameter asksUser: tells if the sandbox has the `elicit` global.
-    /// - Returns: each entry of ``allSandboxGlobalDocs``, without the `elicit`
-    ///   entry when `asksUser` is `false`.
+    /// - Returns: the entries of the run globals, of the elicitation globals
+    ///   when `asksUser` is `true`, and of the notice globals, in that order.
     private static func sandboxGlobalDocs(asksUser: Bool) -> [SandboxGlobalDoc] {
-        allSandboxGlobalDocs.filter { asksUser || $0.name != elicitGlobalName }
+        runGlobalDocs + (asksUser ? elicitationGlobalDocs : []) + noticeGlobalDocs
     }
 
     /// The page's preface: what the ambient globals are, the one rule saying
@@ -293,9 +289,7 @@ extension MultiTool {
     private static func sandboxGlobalsPreface(for docs: [SandboxGlobalDoc]) -> String {
         let promiseNames = docs.map(\.name).filter { !voidGlobalNames.contains($0) }
         let awaited = promiseNames.map { "`\($0)()`" }.joined(separator: ", ")
-        let elicitationAnswer = promiseNames.contains(elicitGlobalName)
-            ? "\ndeclare type ElicitationAnswer = { action: \"accept\" | \"decline\" | \"cancel\"; content: object | null; reason: string | null };"
-            : ""
+        let elicitationAnswer = promiseNames.contains(elicitGlobalName) ? "\n" + elicitationAnswerDeclaration : ""
         return """
             // globals
             /**
@@ -318,17 +312,18 @@ extension MultiTool {
             """ + elicitationAnswer
     }
 
-    /// Every ambient global's `docs(name)` entry, in the order the preface
-    /// introduces them — the two run verbs, the elicitation, then the two
-    /// notice calls. ``sandboxGlobalDocs(asksUser:)`` selects the entries of
-    /// the globals that one sandbox installs.
+    /// The `docs(name)` entries of the two run verbs, which open the page.
+    /// The entries of the elicitation globals come next, from their table
+    /// (see ``elicitationGlobalDocs``), and the two notice calls close the
+    /// page (see ``noticeGlobalDocs``). ``sandboxGlobalDocs(asksUser:)``
+    /// selects the entries of the globals that one sandbox installs.
     ///
     /// No `@param` trailers, unlike ``APISurface/Entry/block``: a wrapped
     /// tool's `args` fields carry meaning only its author's `@Guide` prose
     /// states, whereas each global's own parameter is named and typed in the
     /// declaration right below. Repeating it would spend the page's budget
     /// (see ``sandboxGlobalsPreface(for:)``) on text the reader already has.
-    private static let allSandboxGlobalDocs: [SandboxGlobalDoc] = [
+    private static let runGlobalDocs: [SandboxGlobalDoc] = [
         SandboxGlobalDoc(
             name: "status",
             block: """
@@ -357,19 +352,11 @@ extension MultiTool {
                 declare function cancel(completionToken: string): Promise<Cancelled | FinishedRun | NoResult>;
                 """
         ),
-        SandboxGlobalDoc(
-            name: "elicit",
-            block: """
-                // elicit
-                /**
-                 * Asks the user a question in the middle of a snippet, and resolves to their
-                 * answer. \(elicitUsage)
-                 * @returns Promise<ElicitationAnswer> — `content` is null when the user declined or cancelled, so read `action` first. `reason` is the reason of a decline or a cancel, for example "\(RunPlane.runCancelledReason)", the decline text of a client, or "\(ElicitationRequestedSchema.invalidAnswerReasonPrefix)…"; else it is null.
-                 * @example const answer = await elicit("Which repository should I target?");
-                 */
-                declare function elicit(request: string | { message: string; requestedSchema?: object; url?: string }): Promise<ElicitationAnswer>;
-                """
-        ),
+    ]
+
+    /// The `docs(name)` entries of the two notice calls, which close the
+    /// page. Written as ``runGlobalDocs`` is.
+    private static let noticeGlobalDocs: [SandboxGlobalDoc] = [
         SandboxGlobalDoc(
             name: "notify",
             block: """
@@ -444,12 +431,13 @@ extension MultiTool {
     ///     `nil` when it has none — in which case each of the globals rejects
     ///     with ``SandboxGlobalError/noSession``.
     ///   - asksUser: tells if a user can answer a question (see
-    ///     ``asksUser(_:)``). When it is `false`, the `elicit` global is not
+    ///     ``asksUser(_:)``). When it is `false`, no elicitation global is
     ///     installed.
     /// - Returns: the async host functions named `"status"` and `"cancel"`,
-    ///   and `"elicit"` when `asksUser` is `true`.
+    ///   and the host function of each elicitation global (see
+    ///   ``elicitationGlobals``) when `asksUser` is `true`.
     static func makeBackgroundRunHostFunctions(binding: RunBinding?, asksUser: Bool) -> [AsyncHostFunction] {
-        var functions = [
+        let runFunctions = [
             AsyncHostFunction(name: "status") { arguments in
                 try await reportStatus(of: arguments.first, binding: binding)
             },
@@ -457,22 +445,16 @@ extension MultiTool {
                 try await requestCancellation(of: arguments.first, binding: binding)
             },
         ]
-        if asksUser {
-            functions.append(
-                AsyncHostFunction(name: elicitGlobalName) { arguments in
-                    try await raiseElicitation(arguments.first, binding: binding)
-                })
-        }
-        return functions
+        return runFunctions + (asksUser ? makeElicitationHostFunctions(binding: binding) : [])
     }
 
-    /// The captured session context the run globals read, or a repairable
-    /// rejection when this invocation has none.
+    /// The captured session context the run globals and the elicitation
+    /// globals read, or a repairable rejection when this invocation has none.
     ///
     /// - Parameter binding: the invocation's captured binding.
     /// - Returns: the session context.
     /// - Throws: ``SandboxGlobalError/noSession`` when `binding` is `nil`.
-    private static func sessionContext(from binding: RunBinding?) throws -> ToolContext {
+    static func sessionContext(from binding: RunBinding?) throws -> ToolContext {
         guard let binding else { throw SandboxGlobalError.noSession }
         return binding.context
     }
@@ -649,132 +631,6 @@ extension MultiTool {
         return try completionToken(argument, usage: usage)
     }
 
-    // MARK: - elicit()
-
-    /// `elicit()`'s implementation: suspends the snippet on the run plane of
-    /// the session through `ToolContext.elicit` — the same background path every
-    /// other elicitor takes — and resumes with the user's answer.
-    ///
-    /// - Parameters:
-    ///   - argument: the call's first argument: a question string, or a
-    ///     request object.
-    ///   - binding: the invocation's captured session binding.
-    /// - Returns: the answer, as `{ action, content, reason }` — `content` is
-    ///   `null` for a decline or a cancel, and `reason` is `null` when the
-    ///   answer has no reason, so a snippet can read each of the three keys
-    ///   without one being absent.
-    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
-    ///   context; ``SandboxGlobalError/malformedElicitationRequest`` or
-    ///   ``SandboxGlobalError/undecodableElicitationRequest(reason:)`` when the
-    ///   argument is not a request this boundary accepts.
-    private static func raiseElicitation(
-        _ argument: InterpreterValue?,
-        binding: RunBinding?
-    ) async throws -> InterpreterValue {
-        let context = try sessionContext(from: binding)
-        let request = try makeElicitationRequest(from: argument)
-        return renderElicitationResponse(try await context.elicit(request))
-    }
-
-    /// Builds the typed request one `elicit()` call raises.
-    ///
-    /// A bare string is the shorthand eventplan.md § "The sandbox globals"
-    /// shows (`await elicit("Which repository should I target?")`): a
-    /// form-mode request with a message and no fields to fill in. An object
-    /// carries the full restricted MCP shape, decoded by the
-    /// `ElicitationRequestedSchema` of FoundationModelsExtras so this boundary enforces exactly the
-    /// subset every other elicitor does — a snippet cannot widen it.
-    ///
-    /// The `elicitationId` is minted here, never taken from the snippet: it is
-    /// the key the run plane holds the continuation under, and a snippet-chosen
-    /// id could collide with a pending one.
-    ///
-    /// - Parameter argument: the call's first argument.
-    /// - Returns: the typed request.
-    /// - Throws: ``SandboxGlobalError/malformedElicitationRequest`` when the
-    ///   argument is neither a question string nor an object with a `message`;
-    ///   ``SandboxGlobalError/undecodableElicitationRequest(reason:)`` when its
-    ///   `url` is not a URL or its `requestedSchema` is outside the subset.
-    private static func makeElicitationRequest(from argument: InterpreterValue?) throws -> ElicitationRequest {
-        let elicitationId = ULID()
-        if case .string(let question)? = argument {
-            return ElicitationRequest(
-                message: question,
-                elicitationId: elicitationId,
-                requestedSchema: ElicitationRequestedSchema(properties: [:])
-            )
-        }
-        guard case .object(let fields)? = argument, case .string(let message)? = fields["message"] else {
-            throw SandboxGlobalError.malformedElicitationRequest
-        }
-        if case .string(let urlText)? = fields["url"] {
-            guard let url = URL(string: urlText) else {
-                throw SandboxGlobalError.undecodableElicitationRequest(reason: "\"\(urlText)\" is not a URL")
-            }
-            return ElicitationRequest(message: message, elicitationId: elicitationId, url: url)
-        }
-        return ElicitationRequest(
-            message: message,
-            elicitationId: elicitationId,
-            requestedSchema: try decodeRequestedSchema(fields["requestedSchema"])
-        )
-    }
-
-    /// Decodes a form request's `requestedSchema` through the `Codable`
-    /// conformance of the `ElicitationRequestedSchema` of
-    /// FoundationModelsExtras, so the restricted MCP subset is enforced by the
-    /// one implementation that defines it.
-    ///
-    /// - Parameter value: the `requestedSchema` field, or `nil`/`null` for a
-    ///   message-only form — the same request the string shorthand produces.
-    /// - Returns: the decoded schema.
-    /// - Throws: ``SandboxGlobalError/undecodableElicitationRequest(reason:)``
-    ///   when the value is outside the subset.
-    private static func decodeRequestedSchema(_ value: InterpreterValue?) throws -> ElicitationRequestedSchema {
-        guard let value, value != .null else {
-            return ElicitationRequestedSchema(properties: [:])
-        }
-        do {
-            return try JSONDecoder().decode(
-                ElicitationRequestedSchema.self,
-                from: try JSONEncoder().encode(value)
-            )
-        } catch {
-            throw SandboxGlobalError.undecodableElicitationRequest(reason: "\(error)")
-        }
-    }
-
-    /// Renders the user's answer for the snippet.
-    ///
-    /// The object always has the three keys `action`, `content`, and
-    /// `reason`. `content` is `null` for a decline or a cancel. `reason` is
-    /// the reason of a decline or a cancel, and `null` when the response has
-    /// no reason. Thus `action` alone tells the three actions apart, and a
-    /// read of `content` or `reason` never finds an undefined property.
-    ///
-    /// - Parameter response: the user's answer.
-    /// - Returns: the JS-visible answer object.
-    private static func renderElicitationResponse(_ response: ElicitationResponse) -> InterpreterValue {
-        .object([
-            "action": .string(response.action.rawValue),
-            "content": response.content.map { .object($0.mapValues(renderElicitationValue)) } ?? .null,
-            "reason": response.reason.map { .string($0) } ?? .null,
-        ])
-    }
-
-    /// Converts one elicitation content value to its JS-visible equivalent.
-    ///
-    /// - Parameter value: the answered value.
-    /// - Returns: the equivalent interpreter value.
-    private static func renderElicitationValue(_ value: ElicitationValue) -> InterpreterValue {
-        switch value {
-        case .string(let text): .string(text)
-        case .number(let number): .number(number)
-        case .boolean(let flag): .bool(flag)
-        case .stringArray(let items): .array(items.map { .string($0) })
-        }
-    }
-
     // MARK: - notify() / progress()
 
     /// Builds the two synchronous, void ambient globals for one `runCode`
@@ -865,13 +721,15 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// mail (`generation-queue.md` §5.5).
     case waitRemoved
 
-    /// `elicit()`'s argument was neither a question string nor an object
-    /// carrying a `message`.
-    case malformedElicitationRequest
+    /// The arguments of an elicitation global do not have the shape of a call
+    /// to it. `usage` is the usage text of that global (see
+    /// ``ElicitationGlobal/usage``).
+    case malformedElicitationRequest(usage: String)
 
-    /// `elicit()`'s request object could not be read into the restricted MCP
-    /// elicitation subset.
-    case undecodableElicitationRequest(reason: String)
+    /// A value in the arguments of an elicitation global could not be read
+    /// into the restricted MCP elicitation subset. `usage` is the usage text
+    /// of that global.
+    case undecodableElicitationRequest(reason: String, usage: String)
 
     /// A human-readable description of the failure, satisfying
     /// `CustomStringConvertible`.
@@ -892,10 +750,10 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
             return "wait() does not exist. Do not wait for a run inside a snippet. "
                 + "Return the completion token of the run. "
                 + PendingRunEnvelope.pendingWorkInstruction
-        case .malformedElicitationRequest:
-            return elicitUsage
-        case .undecodableElicitationRequest(let reason):
-            return "\(reason). \(elicitUsage)"
+        case .malformedElicitationRequest(let usage):
+            return usage
+        case .undecodableElicitationRequest(let reason, let usage):
+            return "\(reason). \(usage)"
         }
     }
 }

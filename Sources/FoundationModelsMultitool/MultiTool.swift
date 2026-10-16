@@ -1510,6 +1510,18 @@ public struct MultiTool: Tool {
     // containing a quote or newline just becomes a JS string value like any
     // other, safe by construction.
 
+    /// The name of the global that lists the paths of the catalog.
+    ///
+    /// Named here because the globals page does not declare `help`, and a
+    /// test that compares the installed globals with the page drops it by
+    /// this name.
+    static let helpGlobalName = "help"
+
+    /// The name of the global that gives the documentation of one name.
+    ///
+    /// Named for the same reason as ``helpGlobalName``.
+    static let docsGlobalName = "docs"
+
     /// Builds the `help()` and `docs(name)` host functions — the two
     /// surface-reading globals `MultiTool` installs beyond `tools.*` itself.
     ///
@@ -1529,10 +1541,10 @@ public struct MultiTool: Tool {
     /// - Returns: the host functions named `"help"` and `"docs"`.
     static func makeHelpDocsHostFunctions(for registry: Registry, asksUser: Bool) -> [HostFunction] {
         [
-            HostFunction(name: "help") { _ in
+            HostFunction(name: helpGlobalName) { _ in
                 .array(registry.surface.entries.map { .string($0.path) })
             },
-            HostFunction(name: "docs") { arguments in
+            HostFunction(name: docsGlobalName) { arguments in
                 .string(renderDocs(for: arguments.first, in: registry.surface, asksUser: asksUser))
             },
         ]
