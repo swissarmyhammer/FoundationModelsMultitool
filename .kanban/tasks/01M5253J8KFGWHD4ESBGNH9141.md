@@ -160,8 +160,24 @@ comments:
     - evidence: 0aa1db8 refactor(sandbox): read elicit helper settings through shared readers
     - next: review
   timestamp: 2026-10-16T16:04:11.063304+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m52qfbdzgbw208rch4w38exn
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit a969d09). The engine reviewed 2 files and found 0 findings (confirmed 0, refuted 0, attempted 7, failed 0). The ignore rule excluded 2 files in `.kanban/`. All 10 items in "Review Findings (2026-10-16 10:45)" are checked.
+    - next: None. The task moved to done.
+  timestamp: 2026-10-16T16:07:13.599816+00:00
+- actor: claude-code
+  id: 01m52qftwbq6t96dsfevzvac2w
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 2 files (10 of 10 review findings fixed)
+    - test: green — swift test, 2424 passed, 0 failed, 0 skipped
+    - commit: a969d09
+    - review: clean — 0 findings
+  timestamp: 2026-10-16T16:07:29.419230+00:00
+position_column: done
+position_ordinal: ffffff8380
 title: 'Elicitation helpers from one declarative table: elicit.confirm/choose/chooseMany/askText/askNumber and the text short form (elicitation-plan tasks 20, 21, 22)'
 ---
 Spike (task 27): an installed host function takes properties. The preamble can move an installed host function "elicit.<m>" onto elicit. Proof: a probe run of 5 tests passed (the probe was deleted). Recommendation: the namespace elicit.<m>, not flat names. Flat `confirm` clashes with snippet code (`const confirm = await confirm(..)` fails; a snippet `function confirm` silently replaces it). The headless gate stays one name, and the current hint covers each helper.
