@@ -623,6 +623,42 @@ struct SandboxGlobalsTests {
         }
     }
 
+    /// The sink answers with a decline or a cancel that has a reason. The
+    /// snippet must get that reason, and `content` must be `null`. Each
+    /// argument runs one snippet in a fixed order: the snippet asks, the sink
+    /// answers, and the snippet returns what it got.
+    @Test(
+        "a decline or a cancel with a reason gives that reason to the snippet",
+        arguments: [
+            ElicitationResponse.decline(reason: "not now"),
+            ElicitationResponse.cancel(reason: "run cancelled"),
+        ]
+    )
+    func elicitGivesTheReasonOfADeclineOrACancel(response: FoundationModelsExtras.ElicitationResponse) async throws {
+        let answer = try await elicitationAnswerProbe(answering: response)
+
+        let expected = ElicitationAnswerProbe(
+            keys: elicitationAnswerKeys,
+            action: response.action.rawValue,
+            content: nil,
+            reason: response.reason
+        )
+        #expect(answer == expected)
+    }
+
+    @Test("an accepted elicitation gives a null reason to the snippet")
+    func elicitGivesANullReasonOnAnAccept() async throws {
+        let answer = try await elicitationAnswerProbe(answering: .accept(content: ["repo": .string("sah")]))
+
+        let expected = ElicitationAnswerProbe(
+            keys: elicitationAnswerKeys,
+            action: "accept",
+            content: ["repo": "sah"],
+            reason: nil
+        )
+        #expect(answer == expected)
+    }
+
     @Test("elicit({ message, requestedSchema }) carries the restricted form schema through unchanged")
     func elicitCarriesAFormSchemaThrough() async throws {
         try await withStubRun { stub in
@@ -883,6 +919,54 @@ private struct ElicitPresenceProbe: Decodable {
 
     /// What `docs("elicit")` gives.
     let entry: String
+}
+
+/// The keys that each elicitation answer must have, sorted. The keys are
+/// written here, and not read from the source, so that the test holds the
+/// shape that the plan sets.
+private let elicitationAnswerKeys = ["action", "content", "reason"]
+
+/// A snippet that asks one question and returns the sorted keys and the three
+/// fields of the answer it gets.
+private let elicitationAnswerSnippet = """
+    const answer = await elicit("Proceed?");
+    return {
+        keys: Object.keys(answer).sort(),
+        action: answer.action,
+        content: answer.content,
+        reason: answer.reason,
+    };
+    """
+
+/// What ``elicitationAnswerSnippet`` returns.
+private struct ElicitationAnswerProbe: Decodable, Equatable {
+    /// The sorted keys of the answer.
+    let keys: [String]
+
+    /// The `action` of the answer.
+    let action: String
+
+    /// The `content` of the answer, or `nil` when it is `null`.
+    let content: [String: String]?
+
+    /// The `reason` of the answer, or `nil` when it is `null`.
+    let reason: String?
+}
+
+/// Runs ``elicitationAnswerSnippet`` under a stub run whose scripted sink
+/// answers with `response`, and decodes what the snippet returns.
+///
+/// - Parameter response: the answer the sink gives.
+/// - Returns: what the snippet got.
+/// - Throws: when the run fails, or when its output does not decode.
+private func elicitationAnswerProbe(answering response: ElicitationResponse) async throws -> ElicitationAnswerProbe {
+    try await withStubRun { stub in
+        let context = stub.context
+        return try await withScriptedElicitationSink(run: stub, answering: response) { _ in
+            let output = try await runSnippet(elicitationAnswerSnippet, under: context)
+            return try RunOutput.decoded(ElicitationAnswerProbe.self, from: output)
+        }
+    }
 }
 
 /// What the parity snippet returns: the names of the globals that are

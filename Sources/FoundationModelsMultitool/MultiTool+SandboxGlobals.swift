@@ -294,7 +294,7 @@ extension MultiTool {
         let promiseNames = docs.map(\.name).filter { !voidGlobalNames.contains($0) }
         let awaited = promiseNames.map { "`\($0)()`" }.joined(separator: ", ")
         let elicitationAnswer = promiseNames.contains(elicitGlobalName)
-            ? "\ndeclare type ElicitationAnswer = { action: string; content: object | null };"
+            ? "\ndeclare type ElicitationAnswer = { action: \"accept\" | \"decline\" | \"cancel\"; content: object | null; reason: string | null };"
             : ""
         return """
             // globals
@@ -364,7 +364,7 @@ extension MultiTool {
                 /**
                  * Asks the user a question in the middle of a snippet, and resolves to their
                  * answer. \(elicitUsage)
-                 * @returns Promise<ElicitationAnswer> — `content` is null when the user declined or cancelled, so read `action` first.
+                 * @returns Promise<ElicitationAnswer> — `content` is null when the user declined or cancelled, so read `action` first. `reason` is the reason of a decline or a cancel, for example "\(RunPlane.runCancelledReason)", the decline text of a client, or "\(ElicitationRequestedSchema.invalidAnswerReasonPrefix)…"; else it is null.
                  * @example const answer = await elicit("Which repository should I target?");
                  */
                 declare function elicit(request: string | { message: string; requestedSchema?: object; url?: string }): Promise<ElicitationAnswer>;
@@ -659,9 +659,10 @@ extension MultiTool {
     ///   - argument: the call's first argument: a question string, or a
     ///     request object.
     ///   - binding: the invocation's captured session binding.
-    /// - Returns: the answer, as `{ action, content }` — `content` is `null`
-    ///   for a decline or a cancel, so a snippet can read `action` and
-    ///   `content` without either being absent.
+    /// - Returns: the answer, as `{ action, content, reason }` — `content` is
+    ///   `null` for a decline or a cancel, and `reason` is `null` when the
+    ///   answer has no reason, so a snippet can read each of the three keys
+    ///   without one being absent.
     /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
     ///   context; ``SandboxGlobalError/malformedElicitationRequest`` or
     ///   ``SandboxGlobalError/undecodableElicitationRequest(reason:)`` when the
@@ -745,9 +746,11 @@ extension MultiTool {
 
     /// Renders the user's answer for the snippet.
     ///
-    /// `content` is always present — `null` rather than absent for a decline
-    /// or a cancel — so the three actions are told apart by `action` alone and
-    /// reading `content` never trips over an undefined property.
+    /// The object always has the three keys `action`, `content`, and
+    /// `reason`. `content` is `null` for a decline or a cancel. `reason` is
+    /// the reason of a decline or a cancel, and `null` when the response has
+    /// no reason. Thus `action` alone tells the three actions apart, and a
+    /// read of `content` or `reason` never finds an undefined property.
     ///
     /// - Parameter response: the user's answer.
     /// - Returns: the JS-visible answer object.
@@ -755,6 +758,7 @@ extension MultiTool {
         .object([
             "action": .string(response.action.rawValue),
             "content": response.content.map { .object($0.mapValues(renderElicitationValue)) } ?? .null,
+            "reason": response.reason.map { .string($0) } ?? .null,
         ])
     }
 
