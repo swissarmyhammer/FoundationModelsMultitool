@@ -240,13 +240,16 @@ extension MCPServer {
     /// return from `disconnect()`.
     ///
     /// A connect attempt that started before this call and still runs is
-    /// ended too. This method calls the `disconnect()` of the transport of
-    /// each such attempt itself, also when the `connect()` of that transport
-    /// did not return, and waits until the transport closed. For an attempt
-    /// whose factory did not return yet, this method waits until the factory
-    /// returned: the attempt is stale, thus it releases that transport at
-    /// once and never connects it. Thus no transport and no stdio subprocess
-    /// of this server stays or appears after this method returns.
+    /// ended too. This method first stops the message loop of the client of
+    /// each such attempt: it starts the teardown of that client, and waits
+    /// until the teardown returned or the transport closed. Then it calls the
+    /// `disconnect()` of the transport of the attempt itself, also when the
+    /// `connect()` of that transport did not return, and waits until the
+    /// transport closed. For an attempt whose factory did not return yet,
+    /// this method waits until the factory returned: the attempt is stale,
+    /// thus it releases that transport at once and never connects it. Thus
+    /// no transport and no stdio subprocess of this server stays or appears
+    /// after this method returns.
     ///
     /// A factory that never returns makes this method wait for it. Such a
     /// factory has a defect, the same as a transport whose `disconnect()`
@@ -257,6 +260,9 @@ extension MCPServer {
         let teardownGeneration = connectGeneration
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)
+        // The teardown of the current client starts here. `endAttempts`
+        // waits until that teardown stopped the message loop of the client,
+        // and only then closes the transport of the client itself.
         if let retired = currentClient {
             dropAttemptClient(retired)
         }

@@ -13,28 +13,38 @@
 // thrown — to `MCPServer.handleTransportDrop(generation:)`, which fails every
 // in-flight call as `.lost`.
 //
-// **A disconnect the client asked for is not a drop.** `MCP.Client.disconnect()`
-// calls the `disconnect()` of this wrapper, and the wrapped stream ends as a
-// result. That end is the host's own doing, and it is not reported.
+// **A disconnect the host asked for is not a drop.** `MCP.Client.disconnect()`
+// and the teardown of `MCPServer` call the `disconnect()` of this wrapper, and
+// the wrapped stream ends as a result. That end is the host's own doing, and
+// it is not reported. It still ends the mirror with an error — see below.
 //
 // **The close is reported.** When the `disconnect()` of the wrapped transport
 // returns, the transport is closed: a stdio transport killed and reaped its
 // subprocess. This wrapper then reports the close to
 // `MCPServer.closeOpenTransport(_:)`. A connect attempt and `disconnect()`
-// of the server wait for that report, and never for the `disconnect()` of the
-// client, which can hang on a suspended server-to-client handler — see
-// `MCPServer+ClientLifecycle.swift`.
+// of the server wait for that report, and never for the end of the
+// `disconnect()` of the client, which can hang on a suspended server-to-client
+// handler — see `MCPServer+ClientLifecycle.swift`.
 //
-// **A drop ends the mirror with an error, and never without one.** The message
-// loop of `MCP.Client` is `repeat { for try await data in await
-// connection.receive() } while true`. It leaves that loop when its task is
-// cancelled, or when the stream ends with a THROW, which its `catch` breaks on.
-// A stream that ends with no error sends the loop straight back to `receive()`,
-// which gives back that same ended stream, and the loop then spins hot on one
-// cooperative-pool thread for the life of the process. Nothing cancels that
-// task: `handleTransportDrop(generation:)` fails the calls in flight and leaves
-// the client where it is. So every end this wrapper reports as a drop carries
-// an error, and so does the stream of a wrapper that never connected.
+// **Every end of the mirror throws.** The message loop of `MCP.Client` is
+// `repeat { for try await data in await connection.receive() } while true`. It
+// leaves that loop when its task is cancelled, or when the stream ends with a
+// THROW, which its `catch` breaks on. A stream that ends with no error sends
+// the loop straight back to `receive()`, and the loop then spins hot on one
+// cooperative-pool thread until its task is cancelled. After a drop, nothing
+// cancels that task: `handleTransportDrop(generation:)` fails the calls in
+// flight and leaves the client where it is. After a disconnect of this
+// wrapper, the loop can still run too: the teardown of `MCPServer` stops the
+// loop of the client before it calls the `disconnect()` of this wrapper
+// itself, but a client whose connect was still on its way can start its loop
+// after that stop. So each end throws:
+//
+// - A drop ends the mirror with the error of the wrapped stream, or with
+//   `MCPError.connectionClosed` when the wrapped stream threw nothing.
+// - A disconnect of this wrapper ends the mirror with
+//   `DropObservingTransport.Disconnected`.
+// - Each `receive()` after the end gives a stream that throws the same error
+//   at once. The stream of a wrapper that never connected throws too.
 //
 // **The relay reads one notification before the client.** The message loop of
 // `MCP.Client` calls the handler of a server-to-client request inline. Under a
@@ -72,6 +82,15 @@ actor DropObservingTransport: Transport {
     /// disconnection, and `MCPServer` already reads it as the loss of a call.
     private static let dropError = MCPError.connectionClosed
 
+    /// The error the mirror ends with after a ``disconnect()`` of this
+    /// wrapper, and the error each later ``receive()`` stream ends with.
+    ///
+    /// The host asked for this end, thus it is not a drop, and nothing is
+    /// reported. The end still has to carry an error, or the message loop of
+    /// `MCP.Client` spins — see the header of this file. A type of its own
+    /// keeps this end apart from ``dropError``.
+    struct Disconnected: Error {}
+
     /// The transport every operation delegates to.
     private let wrapped: any Transport
 
@@ -104,6 +123,14 @@ actor DropObservingTransport: Transport {
     /// stream of `wrapped` on demand; ``connect()`` fetches it and builds the
     /// mirror, and ``receive()`` returns the mirror.
     private var mirroredReceiveStream: AsyncThrowingStream<Data, Swift.Error>?
+
+    /// The error the mirror ended with, or `nil` while the mirror did not
+    /// end. Set by ``end(_:after:)`` before it ends the mirror, and cleared
+    /// by ``connect()`` when it builds a new mirror.
+    ///
+    /// A stream that ended gives no error to a second reader, thus
+    /// ``receive()`` gives a new stream that throws this error.
+    private var endError: (any Swift.Error)?
 
     /// Whether ``disconnect()`` ran on this wrapper — read by the relay task
     /// once the wrapped stream ended, to tell the host's disconnect from a
@@ -167,6 +194,7 @@ actor DropObservingTransport: Transport {
             await wrapped.disconnect()
             throw Self.dropError
         }
+        endError = nil
         mirroredReceiveStream = mirror(await wrapped.receive())
     }
 
@@ -199,14 +227,16 @@ actor DropObservingTransport: Transport {
     }
 
     /// The mirror of the wrapped receive stream, built by the most recent
-    /// ``connect()`` — or a stream that ends with ``dropError`` when no
-    /// `connect()` ran. That end carries an error for the reason the header of
-    /// this file states.
+    /// ``connect()``, while that mirror did not end. Otherwise a stream that
+    /// throws at once: the error the mirror ended with, or ``dropError`` when
+    /// no `connect()` ran. Each end carries an error for the reason the header
+    /// of this file states.
     func receive() -> AsyncThrowingStream<Data, Swift.Error> {
-        guard let mirroredReceiveStream else {
-            return AsyncThrowingStream { $0.finish(throwing: Self.dropError) }
+        if endError == nil, let mirroredReceiveStream {
+            return mirroredReceiveStream
         }
-        return mirroredReceiveStream
+        let failure = endError ?? Self.dropError
+        return AsyncThrowingStream { $0.finish(throwing: failure) }
     }
 
     /// Builds the stream the client iterates: every element of `inner`, and an
@@ -276,10 +306,14 @@ actor DropObservingTransport: Transport {
     /// Ends `continuation` and reports a drop — the one place the end of the
     /// wrapped stream is classified.
     ///
-    /// A ``disconnect()`` of this wrapper caused this end, thus the end stands
-    /// as the wrapped stream gave it and nothing is reported. Otherwise the end
-    /// is a drop: it carries ``dropError`` when the wrapped stream threw
-    /// nothing of its own, and ``onDrop`` is called.
+    /// When a ``disconnect()`` of this wrapper caused this end, the end
+    /// carries ``Disconnected``, and nothing is reported. Otherwise the end is
+    /// a drop: it carries what the wrapped stream threw, or ``dropError`` when
+    /// the wrapped stream threw nothing, and ``onDrop`` is called. Each end
+    /// throws, for the reason the header of this file states.
+    ///
+    /// The error goes into ``endError`` before the mirror ends. Thus a reader
+    /// that saw the end and then calls ``receive()`` gets the same error.
     ///
     /// - Parameters:
     ///   - continuation: The continuation of the mirror.
@@ -289,11 +323,11 @@ actor DropObservingTransport: Transport {
         _ continuation: AsyncThrowingStream<Data, Swift.Error>.Continuation,
         after failure: (any Swift.Error)?
     ) async {
-        guard !wasDisconnected else {
-            continuation.finish(throwing: failure)
-            return
-        }
-        continuation.finish(throwing: failure ?? Self.dropError)
+        let isDrop = !wasDisconnected
+        let endedWith: any Swift.Error = isDrop ? failure ?? Self.dropError : Disconnected()
+        endError = endedWith
+        continuation.finish(throwing: endedWith)
+        guard isDrop else { return }
         await onDrop()
     }
 }

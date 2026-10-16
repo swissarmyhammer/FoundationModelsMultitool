@@ -16,11 +16,12 @@ import Testing
 /// stream, and the loop then spins on one cooperative-pool thread for the life
 /// of the process.
 ///
-/// So the end of the wrapped stream is one of two ends, and each case here
-/// reads one of them: a drop, which the client did not ask for and must end the
-/// mirror with an error, and a disconnect this wrapper's own ``disconnect()``
-/// caused, which needs no error because `MCP.Client.disconnect()` cancels its
-/// message loop first.
+/// So every end of the mirror carries an error. The end of the wrapped stream
+/// is one of two ends, and each case here reads one of them: a drop, which the
+/// client did not ask for, and a disconnect this wrapper's own ``disconnect()``
+/// caused. The teardown of the server can disconnect the wrapper while the loop
+/// of the client still runs, thus the second end throws as well, and so does
+/// each receive stream after that end.
 ///
 /// What the report of a drop then does — `handleTransportDrop(generation:)` and
 /// the `.lost` calls that follow — is read by `LostCallTests`.
@@ -105,19 +106,36 @@ struct DropObservingTransportTests {
 
     // MARK: - A disconnect the host asked for
 
-    @Test("a disconnect of this wrapper ends the mirrored receive stream with no error, and reports no drop")
-    func aDisconnectEndsTheMirroredStreamWithNoError() async throws {
-        let droppable = Self.droppableTransport()
+    /// The order is fixed, and each read ends: the wrapped in-memory stream
+    /// ends when the wrapper disconnects, thus the mirror ends, and the
+    /// second stream is taken only after that end.
+    ///
+    /// 1. The test takes the mirrored stream, and then disconnects the wrapper.
+    /// 2. The test reads the mirror to its end. The end must throw.
+    /// 3. The test takes a second receive stream, the one the message loop of
+    ///    `MCP.Client` takes next, and reads it. Its end must throw too.
+    ///
+    /// An end with no error at step 2 or step 3 sends the loop of the client
+    /// back to `receive()`, and the loop spins.
+    @Test("a disconnect of this wrapper ends the mirror and each later receive stream with an error, and reports no drop")
+    func aDisconnectEndsEachReceiveStreamWithAnError() async throws {
+        let (clientEnd, serverEnd) = await InMemoryTransport.createConnectedPair()
         let reporter = DropReporter()
-        let observed = DropObservingTransport(wrapping: droppable, onDrop: reporter.onDrop)
+        let observed = DropObservingTransport(wrapping: clientEnd, onDrop: reporter.onDrop)
         try await observed.connect()
         let mirrored = await observed.receive()
 
         await observed.disconnect()
-        let thrown = await Self.endOf(mirrored)
 
-        #expect(thrown == nil, "the host asked for this end, thus it is not a fault: \(String(describing: thrown))")
+        await #expect(throws: DropObservingTransport.Disconnected.self) {
+            for try await _ in mirrored {}
+        }
+        let later = await observed.receive()
+        await #expect(throws: DropObservingTransport.Disconnected.self) {
+            for try await _ in later {}
+        }
         #expect(await reporter.count == Self.noDropReports)
+        withExtendedLifetime(serverEnd) {}
     }
 
     // MARK: - Before any connect

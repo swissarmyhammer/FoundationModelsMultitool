@@ -23,12 +23,17 @@
 // out again and tears it down. A new attempt and `disconnect()` take the
 // current client out and tear it down.
 //
-// **A teardown that no caller waits for.** An old client is torn down with
-// its own `disconnect()`, in a task that no caller waits on.
-// `MCP.Client.disconnect()` closes its transport, and then waits for the end
-// of its message-handling task. That wait does not end while a
+// **A teardown that no caller waits for to its end.** An old client is torn
+// down with its own `disconnect()`, in a task. `MCP.Client.disconnect()`
+// cancels its message-handling task, closes its transport, and then waits for
+// the end of its message-handling task. That wait does not end while a
 // server-to-client request handler is suspended on that connection. Thus the
-// call can hang, and it hangs alone.
+// call can hang, and it hangs alone: no caller waits for the end of it. Before
+// `disconnect()` of the server closes the transport of an attempt itself, it
+// waits for the first of two events: the teardown of the client of that
+// attempt returned, or the transport closed. Each event comes after the
+// cancel of the message loop, thus no loop reads the receive stream when that
+// stream ends — see `stopClientLoop(ofAttempt:)`.
 //
 // **The set of open attempts.** Each connect attempt goes into
 // ``MCPServer/openTransports`` when it starts, before it calls the factory.
@@ -43,9 +48,10 @@
 // - A connect attempt that replaces the current client waits until the
 //   transport of that client closed, and only then calls the factory. A new
 //   stdio subprocess is spawned only after the old one is gone.
-// - `disconnect()` ends each attempt of an earlier generation. It calls the
-//   `disconnect()` of each transport in the set itself, also the transport of
-//   a straggler whose `connect()` did not return, and waits for each close. It
+// - `disconnect()` ends each attempt of an earlier generation. It stops the
+//   message loop of the client of each attempt in the set, and then calls the
+//   `disconnect()` of the transport of that attempt itself, also the transport
+//   of a straggler whose `connect()` did not return, and waits for each close. It
 //   waits for each attempt whose factory did not return yet: that attempt is
 //   stale when its factory returns, and it releases the transport at once and
 //   never connects it. Thus no transport and no stdio subprocess of an
@@ -81,8 +87,21 @@ extension MCPServer {
         /// return.
         var transport: DropObservingTransport?
 
+        /// The client of the attempt, or `nil` while no client was made for
+        /// its transport.
+        var client: MCP.Client?
+
+        /// The teardown of ``client``: its own `disconnect()`, started one
+        /// time. `nil` while no teardown started.
+        var clientTeardown: Task<Void, Never>?
+
         /// Each caller that waits for the close of the transport.
         var closeWaiters: [CheckedContinuation<Void, Never>] = []
+
+        /// What the close of the transport calls, for a caller that waits for
+        /// the first of the close and another event. The test hook
+        /// `waitUntilTransportCloseIsAwaited()` does not read these.
+        var closeObservers: [@Sendable () -> Void] = []
     }
 
     // MARK: - The client of an attempt
@@ -145,6 +164,7 @@ extension MCPServer {
         openTransports[transportID]?.transport = observed
         let client = Client(
             name: name, version: clientVersion, capabilities: Self.clientCapabilities(for: userPresence))
+        openTransports[transportID]?.client = client
         await setupHandlers(on: client)
         return AttemptClient(client: client, transport: observed, transportID: transportID)
     }
@@ -160,8 +180,55 @@ extension MCPServer {
         if currentClient?.client === attempt.client {
             currentClient = nil
         }
-        let client = attempt.client
-        Task { await client.disconnect() }
+        tearDownClient(attempt.client, transportID: attempt.transportID)
+    }
+
+    /// Starts the teardown of `client` — its own `disconnect()` — in a task
+    /// that no caller must wait on, and records that task in the open attempt
+    /// `transportID`. A second call for the same open attempt gives the
+    /// teardown that the first call started. For an attempt that left
+    /// ``openTransports``, each call starts a teardown with no record.
+    ///
+    /// - Parameters:
+    ///   - client: The client of the attempt.
+    ///   - transportID: The id of the attempt in ``openTransports``.
+    /// - Returns: The task of the teardown.
+    @discardableResult
+    private func tearDownClient(_ client: MCP.Client, transportID: Int) -> Task<Void, Never> {
+        if let started = openTransports[transportID]?.clientTeardown {
+            return started
+        }
+        let teardown = Task { await client.disconnect() }
+        openTransports[transportID]?.clientTeardown = teardown
+        return teardown
+    }
+
+    /// Stops the message loop of the client of the attempt `transportID`,
+    /// before the caller closes the transport of that attempt itself. Returns
+    /// at once when the attempt has no client.
+    ///
+    /// `MCP.Client.disconnect()` cancels the task of its message loop first.
+    /// Then it closes its transport, and then it waits for the end of that
+    /// task. That last wait can hang — see the header of this file. Thus this
+    /// method starts the teardown of the client (or takes the one that
+    /// started before), and waits for the first of two events: the teardown
+    /// returned, or the transport of the attempt closed. Each event comes
+    /// after the cancel of the loop. A client whose `connect(transport:)` did
+    /// not start has no loop and no connection, and its teardown returns at
+    /// once.
+    ///
+    /// - Parameter transportID: The id of the attempt in ``openTransports``.
+    private func stopClientLoop(ofAttempt transportID: Int) async {
+        guard let client = openTransports[transportID]?.client else { return }
+        let teardown = tearDownClient(client, transportID: transportID)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let firstEvent = SingleResume(continuation)
+            openTransports[transportID]?.closeObservers.append { firstEvent.resume(with: .success(())) }
+            Task {
+                await teardown.value
+                firstEvent.resume(with: .success(()))
+            }
+        }
     }
 
     /// Takes the current client out, tears it down, and waits until its
@@ -185,6 +252,9 @@ extension MCPServer {
         for waiter in closed.closeWaiters {
             waiter.resume()
         }
+        for observer in closed.closeObservers {
+            observer()
+        }
     }
 
     /// Waits until the attempt of `transportID` left ``openTransports``.
@@ -206,18 +276,22 @@ extension MCPServer {
     /// Ends each attempt of a generation before `generation`, and returns
     /// when none stays in ``openTransports``.
     ///
-    /// For an attempt with a transport, this calls the `disconnect()` of
-    /// that transport itself — also when its `connect()` did not return — and
-    /// that call returns once the transport closed. For an attempt whose
-    /// factory did not return, this waits: that attempt is stale, and it
-    /// releases its transport at once when the factory returns. An attempt
-    /// of such a generation that starts during the wait is ended too.
+    /// For an attempt with a transport, this first stops the message loop of
+    /// the client of the attempt — see `stopClientLoop(ofAttempt:)` — thus no
+    /// loop reads the receive stream when the transport closes under it. Then
+    /// this calls the `disconnect()` of that transport itself — also when its
+    /// `connect()` did not return — and that call returns once the transport
+    /// closed. For an attempt whose factory did not return, this waits: that
+    /// attempt is stale, and it releases its transport at once when the
+    /// factory returns. An attempt of such a generation that starts during
+    /// the wait is ended too.
     ///
     /// - Parameter generation: The first generation whose attempts this
     ///   call leaves alone: the attempts of a connect that started later.
     func endAttempts(before generation: Int) async {
         while let (transportID, open) = openTransports.first(where: { $0.value.generation < generation }) {
             if let transport = open.transport {
+                await stopClientLoop(ofAttempt: transportID)
                 await transport.disconnect()
                 closeOpenTransport(transportID)
             } else {
