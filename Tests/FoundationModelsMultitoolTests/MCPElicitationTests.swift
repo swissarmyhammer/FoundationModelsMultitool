@@ -511,6 +511,27 @@ struct MCPElicitationTests {
         withExtendedLifetime(scripted) {}
     }
 
+    /// The host shows the `source` of a question as the one that asks. For a
+    /// question of an MCP server, that is the server, and not the `runCode`
+    /// tool whose snippet made the call. The sink answers each question of
+    /// the run, thus the snippet returns, and then the test reads the request
+    /// that the sink observed.
+    @Test("a question of an MCP server reaches the sink with the name of the server as its source")
+    func aServerQuestionHasTheServerNameAsItsSource() async throws {
+        let (scripted, server) = try await Self.connected(over: .inMemory)
+        defer { Task { await server.disconnect() } }
+        let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+        try await withStubRun { stub in
+            try await withScriptedElicitationSink(run: stub, answering: Self.scriptedAccept) { sink in
+                _ = try await runSnippet(Self.elicitEchoSnippet, over: registry, under: stub.context)
+                let request = try #require(await sink.observedRequest)
+
+                #expect(request.source == Self.serverName)
+            }
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
     // MARK: - Case 2: the host's handler answers a bare call
 
     @Test("with no context bound, the handler's answer reaches elicitEcho and the rendered result")

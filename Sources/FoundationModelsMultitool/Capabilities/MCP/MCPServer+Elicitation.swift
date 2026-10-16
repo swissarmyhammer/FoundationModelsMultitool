@@ -107,6 +107,11 @@ extension MCPServer {
     /// at once: before the schema decode, the context and the host's
     /// handler.
     ///
+    /// The `source` of the request is the ``name`` of this server, the noun
+    /// that its tools have in `tools.<name>`. Thus the host shows the server
+    /// as the one that asks, and not the `runCode` tool whose snippet made
+    /// the call. A relay keeps a `source` that is set.
+    ///
     /// - Parameter parameters: The request as the server sent it — form
     ///   mode with a `requestedSchema`, or URL mode with a `url` and an
     ///   `elicitationId`.
@@ -122,7 +127,7 @@ extension MCPServer {
                 return Self.wireResult(of: .decline)
             }
             let request = ElicitationRequest(
-                message: form.message, elicitationId: ULID(), requestedSchema: requestedSchema)
+                message: form.message, elicitationId: ULID(), requestedSchema: requestedSchema, source: name)
             return Self.wireResult(of: await resolve(request, urlElicitationId: nil, linkedBy: form._meta))
         case .url(let url):
             guard let link = URL(string: url.url) else {
@@ -133,7 +138,7 @@ extension MCPServer {
                     metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(url.elicitationId)"])
                 return Self.wireResult(of: .decline)
             }
-            let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link)
+            let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link, source: name)
             return Self.wireResult(
                 of: await resolve(request, urlElicitationId: url.elicitationId, linkedBy: url._meta))
         }

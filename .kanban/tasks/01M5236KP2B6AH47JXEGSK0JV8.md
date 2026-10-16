@@ -46,8 +46,31 @@ comments:
     - warnings: The build gave zero compiler warnings. The build system printed one line: "warning: missing creator for mutated node" for the mlx-swift_Cmlx.bundle path in .build. It comes from the build tool and a dependency bundle. It does not come from project source.
     - next: review.
   timestamp: 2026-10-16T16:22:03.277700+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m52rbb854v36mw14gxccsdt3
+  text: |-
+    ### commit — changed
+    - evidence: 5caf6fb fix(mcp): link a server question to the one holding run of two inner calls
+    - next: review
+  timestamp: 2026-10-16T16:22:30.917849+00:00
+- actor: claude-code
+  id: 01m52rhw1jga31b1m19y6yyry7
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 5caf6fb). 0 findings, 0 confirmed, 0 refuted. 2 code files were reviewed. 4 .kanban files were not reviewed because .reviewignore excludes them. The task had no prior review findings.
+    - next: The task moved to done. No more work is necessary on this task.
+  timestamp: 2026-10-16T16:26:04.722543+00:00
+- actor: claude-code
+  id: 01m52rjb942jj9nsyt1ze1h3vc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (inner MCP calls are synchronous; compare by holdingRunToken)
+    - test: green — swift test, exit 0, 2425 passed, 0 failed, 0 skipped
+    - commit: 5caf6fb
+    - review: clean — 0 findings
+  timestamp: 2026-10-16T16:26:20.324242+00:00
+position_column: done
+position_ordinal: ffffff8480
 title: Link a server elicitation to the one holding run of two inner runCode calls
 ---
 Found in ^djgymyd. MCPServer+Elicitation.swift step 2 (one run) compares the ToolContext of each call in flight by completionToken. Each inner tools.* call of one runCode snippet is a mounted run with its own completionToken (RunBinding.invoke). Thus two inner MCP calls of one snippet on one server, with no progressToken echo from the server, get cancel with the reason "the question cannot be linked to one tool call". Both calls are held by the same run (the runCode run), and a question through either context links to that run.

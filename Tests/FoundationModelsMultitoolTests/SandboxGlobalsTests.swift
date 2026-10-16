@@ -668,6 +668,21 @@ struct SandboxGlobalsTests {
         }
     }
 
+    /// A question of the snippet itself sets no `source`: the host shows
+    /// the tool of the run, `runCode`, as the one that asks. Only a question
+    /// of an MCP server sets the `source`, to the name of the server.
+    @Test("a question of elicit() reaches the sink with no source")
+    func elicitSetsNoSource() async throws {
+        try await withStubRun { stub in
+            try await withScriptedElicitationSink(run: stub, answering: .decline) { sink in
+                _ = try await runSnippet(elicitationActionAndContentSnippet, under: stub.context)
+                let request = try #require(await sink.observedRequest)
+
+                #expect(request.source == nil)
+            }
+        }
+    }
+
     @Test("elicit({ message, url }) resolves only once the out-of-band flow completes")
     func elicitUrlModeResolvesAfterCompletion() async throws {
         try await withStubRun { stub in
