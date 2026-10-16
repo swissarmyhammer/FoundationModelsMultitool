@@ -18,12 +18,13 @@ import ULID
 //
 // The first row is `elicit()`, the general question. The other rows are the
 // helpers `elicit.confirm`, `elicit.choose`, `elicit.chooseMany`,
-// `elicit.askText` and `elicit.askNumber`. Each helper sends a form with one
-// required field, `answer`, and an accept gives the plain value of that field
-// as `content`. The host function of a helper installs under its dotted name.
-// The preamble then moves it onto the `elicit` function as a property that a
-// snippet cannot write, delete or configure, and removes the dotted global
-// (see ``MultiTool/elicitationPreamble``). The preamble is made one time for
+// `elicit.askText` and `elicit.askNumber`. Each helper, and the text short
+// form `elicit("question")`, sends a form with one required field, `answer`,
+// and an accept gives the plain value of that field as `content`. The host
+// function of a helper installs under its dotted name. The preamble then
+// moves it onto the `elicit` function as a property that a snippet cannot
+// write, delete or configure, and removes the dotted global (see
+// ``MultiTool/elicitationPreamble``). The preamble is made one time for
 // each registry, thus the move has a gate in JS: it occurs only when the
 // sandbox has the `elicit` function.
 //
@@ -371,13 +372,14 @@ extension MultiTool {
 
     /// The usage text of each malformed `elicit()` call.
     static let elicitUsage = """
-        elicit("question") takes a question string, or a request object — \
-        elicit({ message, requestedSchema }) for a form, \
-        elicit({ message, url }) for a URL flow.
+        elicit("question") asks for a text: on an accept, content is the text. \
+        elicit({ message, requestedSchema }) asks with a form: on an accept, \
+        content is the object of the fields. elicit({ message, url }) starts a URL flow.
         """
 
-    /// The TypeScript type of the `content` of an accepted `elicit()` answer.
-    private static let elicitContentType = "object"
+    /// The TypeScript type of the `content` of an accepted `elicit()` answer:
+    /// the text of the short form, or the object of a request object.
+    private static let elicitContentType = "string | object"
 
     /// The row of `elicit()`, the general question.
     static let elicitGlobal = ElicitationGlobal(
@@ -406,12 +408,14 @@ extension MultiTool {
     ///
     /// A bare string is the shorthand eventplan.md § "The sandbox globals"
     /// shows (`await elicit("Which repository should I target?")`): a
-    /// form-mode request with a message and no fields to fill in. An object
-    /// carries the full restricted MCP shape, decoded by the
-    /// `ElicitationRequestedSchema` of FoundationModelsExtras so this boundary
-    /// enforces exactly the subset every other elicitor does — a snippet
-    /// cannot widen it. The content of an accept is the object of the filled
-    /// fields, and `null` for a URL flow.
+    /// form-mode request with one required free-text field,
+    /// ``elicitationAnswerField``, as `elicit.askText` sends. The content of
+    /// its accept is the text. An object carries the full restricted MCP
+    /// shape, decoded by the `ElicitationRequestedSchema` of
+    /// FoundationModelsExtras so this boundary enforces exactly the subset
+    /// every other elicitor does — a snippet cannot widen it. The content of
+    /// its accept is the object of the filled fields, and `null` for a URL
+    /// flow.
     ///
     /// - Parameter argument: the first argument of the call.
     /// - Returns: the question.
@@ -422,12 +426,15 @@ extension MultiTool {
     private static func makeElicitQuestion(
         from argument: InterpreterValue?
     ) throws(ElicitationArgumentError) -> ElicitationQuestion {
-        ElicitationQuestion(request: try makeElicitRequest(from: argument)) { content in
+        if case .string(let question)? = argument {
+            return makeHelperQuestion(message: question, field: .string(ElicitationStringSchema()))
+        }
+        return ElicitationQuestion(request: try makeElicitRequest(from: argument)) { content in
             content.map { .object($0.mapValues(ElicitationQuestion.renderValue)) } ?? .null
         }
     }
 
-    /// Builds the typed request of one `elicit()` call.
+    /// Builds the typed request of one `elicit()` call with a request object.
     ///
     /// - Parameter argument: the first argument of the call.
     /// - Returns: the typed request.
@@ -436,13 +443,6 @@ extension MultiTool {
         from argument: InterpreterValue?
     ) throws(ElicitationArgumentError) -> ElicitationRequest {
         let elicitationId = ULID()
-        if case .string(let question)? = argument {
-            return ElicitationRequest(
-                message: question,
-                elicitationId: elicitationId,
-                requestedSchema: ElicitationRequestedSchema(properties: [:])
-            )
-        }
         guard case .object(let fields)? = argument, case .string(let message)? = fields["message"] else {
             throw .malformed
         }
@@ -465,7 +465,7 @@ extension MultiTool {
     /// one implementation that defines it.
     ///
     /// - Parameter value: the `requestedSchema` field, or `nil`/`null` for a
-    ///   message-only form — the same request the string shorthand produces.
+    ///   message-only form, which is a free answer.
     /// - Returns: the decoded schema.
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
     ///   value is outside the subset.
@@ -489,8 +489,9 @@ extension MultiTool {
 // MARK: - The helpers: elicit.confirm, choose, chooseMany, askText, askNumber
 
 extension MultiTool {
-    /// The one field of the form that each helper sends. An accept gives the
-    /// value of this field, and no more, as `content`.
+    /// The one field of the form that each helper and `elicit("question")`
+    /// send. An accept gives the value of this field, and no more, as
+    /// `content`.
     static let elicitationAnswerField = "answer"
 
     /// The `message` parameter, which each helper takes first.
@@ -662,9 +663,9 @@ extension MultiTool {
         return ElicitationParameter(name: name, tsType: "{ \(fields) }", isOptional: true)
     }
 
-    /// Makes the question of one helper call: a form with the one required
-    /// field ``elicitationAnswerField``. An accept gives the value of that
-    /// field as `content`.
+    /// Makes the question of one helper call, or of one `elicit("question")`
+    /// call: a form with the one required field ``elicitationAnswerField``.
+    /// An accept gives the value of that field as `content`.
     ///
     /// `ToolContext.elicit` checks an accepted answer against the form, and
     /// changes an answer that is not valid to a decline. Thus an accept

@@ -66,6 +66,46 @@ comments:
     - evidence: swift test — 2422 tests in 211 suites passed, 0 failed, 0 skipped. No compiler warning from the package. The only warning line is a build system message about a dependency bundle (mlx-swift_Cmlx.bundle).
     - next: review
   timestamp: 2026-10-16T15:32:18.627646+00:00
+- actor: claude-code
+  id: 01m52nggq4yekr7yf79vwnfa6z
+  text: |-
+    ### commit — changed
+    - evidence: d65b9c3 feat(sandbox): add five typed elicit helpers to the elicit global
+    - next: review. This comment file is written after the commit, so it is not in d65b9c3.
+  timestamp: 2026-10-16T15:32:54.628141+00:00
+- actor: claude-code
+  id: 01m52nh1567d5prp06p2yv2pwk
+  text: |-
+    ### finish iteration 1 — changed
+    - implement: changed — 4 files (task 21, the five elicit helpers)
+    - test: green — swift test, 2422 passed, 0 failed, 0 skipped
+    - commit: d65b9c3
+    - review: not run yet. The card holds tasks 21 and 22; a clean review moves the card to done. Thus the review runs on d65b9c3 and commit 3 together, after task 22.
+  timestamp: 2026-10-16T15:33:11.462646+00:00
+- actor: claude-code
+  id: 01m52p22pzbsxaj8hs2t3bjqbv
+  text: |-
+    Task 22 (commit 3) implementation landed. Not committed.
+    - Behavior change: elicit("question") now uses makeHelperQuestion with .string(ElicitationStringSchema()). Thus it sends the form { answer: string } with required ["answer"], and an accept gives the plain text as `content`. An accept with no `answer` field becomes a decline with the invalid-answer prefix (ToolContext.elicit does the check). The request-object forms do not change.
+    - Docs: elicitUsage now tells the content of each form. The content type of the elicit row is "string | object", thus the declaration is `Promise<ElicitationAnswer<string | object>>`. I kept one call shape (not two TS overloads), so that the page keeps one elicit line (test theGlobalsPageGivesOneLineToElicit) and stays under the cap.
+    - Tests changed to the new behavior: theGlobalsPageMatchesTheElicitationAnswerItDocuments, theDeliveriesReadWaitsForTheRecord, elicitStringShorthandRoundTripsAnAcceptedAnswer (now checks the schema and a string content), elicitGivesANullReasonOnAnAccept (ElicitationAnswerProbe.content is now String?). New tests: elicitStringShorthandTurnsAnAcceptWithNoAnswerIntoADecline, theGlobalsPageDeclaresTheContentTypesOfElicit. No test deleted.
+    - README and docs/SECURITY.md: one paragraph each about the short form and the five elicit.* helpers. The README paragraph is prose, not list items, because HardeningTests parses the "- `name`" items of the Injected globals list.
+    - RED: the filtered run had 4 failures (3 changed tests and the new content-type test). GREEN: SandboxGlobalsTests and HardeningTests, 62 tests passed.
+  timestamp: 2026-10-16T15:42:30.111047+00:00
+- actor: claude-code
+  id: 01m52p24znqqg7gnm8cs1ppjfj
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift, Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift, README.md, docs/SECURITY.md. `swift test` one full run: "Test run with 2424 tests in 211 suites passed". No compiler warning; the one SwiftPM build-graph warning (mlx-swift_Cmlx.bundle) was there before.
+    - next: review of d65b9c3 and task 22 together. Task stays in doing.
+  timestamp: 2026-10-16T15:42:32.437632+00:00
+- actor: claude-code
+  id: 01m52p4zqevmzvk0vztmx3yrc3
+  text: |-
+    ### test — green
+    - evidence: swift test, one run. 2424 tests in 211 suites passed. 0 failed. 0 skipped. No compiler warning from project sources. The only warning line is a build tool note about the mlx-swift_Cmlx bundle, outside project code.
+    - next: review
+  timestamp: 2026-10-16T15:44:05.358557+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'Elicitation helpers from one declarative table: elicit.confirm/choose/chooseMany/askText/askNumber and the text short form (elicitation-plan tasks 20, 21, 22)'

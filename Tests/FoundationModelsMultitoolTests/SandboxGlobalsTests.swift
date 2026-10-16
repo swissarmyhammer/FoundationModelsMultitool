@@ -153,7 +153,7 @@ struct SandboxGlobalsTests {
             let context = stub.context
             // The sink answers the elicitation of the snippet.
             try await withScriptedElicitationSink(
-                run: stub, answering: .accept(content: ["repo": .string("sah")])
+                run: stub, answering: .accept(content: [elicitHelperAnswerField: .string("sah")])
             ) { _ in
                 let output = try await runSnippet(
                     "return Object.keys(await elicit(\"Which repository?\")).sort();",
@@ -519,7 +519,7 @@ struct SandboxGlobalsTests {
             let context = stub.context
             try await withScriptedElicitationSink(
                 run: stub,
-                answering: .accept(content: ["repo": .string("sah")]),
+                answering: .accept(content: [elicitHelperAnswerField: .string("sah")]),
                 holdingRecordAt: record
             ) { sink in
                 let output = try await runSnippet(
@@ -539,33 +539,50 @@ struct SandboxGlobalsTests {
         }
     }
 
-    @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
+    /// The text short form sends a form with one required string field,
+    /// `answer`, and an accept gives the plain string as `content`.
+    @Test("elicit(\"question\") suspends the snippet, sends one required text field, and resumes with the plain text")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
         try await withStubRun { stub in
             let context = stub.context
             try await withScriptedElicitationSink(
                 run: stub,
-                answering: .accept(content: ["repo": .string("swissarmyhammer")])
+                answering: .accept(content: [elicitHelperAnswerField: .string("swissarmyhammer")])
             ) { sink in
                 let output = try await runSnippet(
                     """
                     const pending = elicit("Which repository should I target?");
                     const isThenable = typeof pending.then === "function";
                     const answer = await pending;
-                    return [String(isThenable), answer.action, answer.content.repo];
+                    return [String(isThenable), answer.action, typeof answer.content, answer.content];
                     """,
                     under: context
                 )
 
-                #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
+                #expect(
+                    try RunOutput.decoded([String].self, from: output) == ["true", "accept", "string", "swissarmyhammer"])
                 let request = try #require(await sink.observedRequest)
                 #expect(request.mode == .form)
                 #expect(request.message == "Which repository should I target?")
-                #expect(request.requestedSchema?.properties.isEmpty == true)
+                #expect(request.requestedSchema == elicitShortFormSchema)
                 // The snippet can return before the sink records the delivery.
                 #expect(await sink.deliveries(count: 1) == [.delivered])
             }
         }
+    }
+
+    /// The form of the text short form requires `answer`. Thus an accept that
+    /// does not hold it is not a valid answer, and the snippet gets a decline
+    /// with the invalid-answer reason in place of the accept.
+    @Test("an accept of elicit(\"question\") with no answer field gives a decline with the invalid-answer reason")
+    func elicitStringShorthandTurnsAnAcceptWithNoAnswerIntoADecline() async throws {
+        let answer = try await elicitationAnswerProbe(answering: .accept(content: ["repo": .string("sah")]))
+
+        #expect(answer.action == "decline")
+        #expect(answer.content == nil)
+        #expect(
+            answer.reason?.hasPrefix(ElicitationRequestedSchema.invalidAnswerReasonPrefix) == true,
+            "the reason was: \(String(describing: answer.reason))")
     }
 
     @Test("a declined elicitation surfaces as a decline, distinct from a cancel")
@@ -631,12 +648,12 @@ struct SandboxGlobalsTests {
 
     @Test("an accepted elicitation gives a null reason to the snippet")
     func elicitGivesANullReasonOnAnAccept() async throws {
-        let answer = try await elicitationAnswerProbe(answering: .accept(content: ["repo": .string("sah")]))
+        let answer = try await elicitationAnswerProbe(answering: .accept(content: [elicitHelperAnswerField: .string("sah")]))
 
         let expected = ElicitationAnswerProbe(
             keys: elicitationAnswerKeys,
             action: "accept",
-            content: ["repo": "sah"],
+            content: "sah",
             reason: nil
         )
         #expect(answer == expected)
@@ -880,6 +897,18 @@ struct SandboxGlobalsTests {
         #expect(declarations.count == 1, "the declarations of elicit were: \(declarations)")
         #expect(!page.contains(MultiTool.elicitUsage))
         #expect(block.contains(MultiTool.elicitUsage))
+    }
+
+    /// An accept of `elicit("question")` gives the text, and an accept of a
+    /// request object gives the object of the fields. Thus the declaration
+    /// of `elicit` names both content types.
+    @Test("the globals page declares string or object content for elicit")
+    func theGlobalsPageDeclaresTheContentTypesOfElicit() {
+        let page = MultiTool.sandboxGlobalsPage(asksUser: true)
+
+        #expect(
+            declaredReturnType(of: MultiTool.elicitGlobalName, in: page)
+                == "Promise<\(ElicitationGlobal.answerTypeName)<string | object>>")
     }
 
     /// `docs("elicit.<m>")` gives the full block of the helper: its banner,
@@ -1260,8 +1289,9 @@ private struct ElicitationAnswerProbe: Decodable, Equatable {
     /// The `action` of the answer.
     let action: String
 
-    /// The `content` of the answer, or `nil` when it is `null`.
-    let content: [String: String]?
+    /// The `content` of the answer: the text of an accept of the text short
+    /// form, or `nil` when it is `null`.
+    let content: String?
 
     /// The `reason` of the answer, or `nil` when it is `null`.
     let reason: String?
@@ -1374,6 +1404,11 @@ private func declaredFields(of name: String, in page: String) -> [String]? {
 /// written here, and not read from the source, so that the test holds the
 /// field that the owner accepted.
 private let elicitHelperAnswerField = "answer"
+
+/// The form that `elicit("question")` sends: one required string field,
+/// ``elicitHelperAnswerField``, with no constraints.
+private let elicitShortFormSchema = ElicitationRequestedSchema(
+    properties: [elicitHelperAnswerField: .string(ElicitationStringSchema())], required: [elicitHelperAnswerField])
 
 /// The question that each helper call of this suite asks.
 private let elicitHelperMessage = "Proceed?"

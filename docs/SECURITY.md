@@ -55,7 +55,16 @@ allows:
   `ToolContext.elicit`, the same path a wrapped `Tool` uses. The request is
   the restricted MCP form/URL schema, decoded by Router's own
   `ElicitationRequest`, so a snippet can neither widen the schema nor reach
-  the user by any other route.
+  the user by any other route. `elicit("question")` sends a form with one
+  required string field, `answer`, and an accept gives the text as
+  `content`. The five helpers `elicit.confirm()`, `elicit.choose()`,
+  `elicit.chooseMany()`, `elicit.askText()` and `elicit.askNumber()` are
+  properties of `elicit` that a snippet cannot write or delete. Each one
+  sends a form with the one required field `answer` on the same path, and an
+  accept gives the plain value of that field as `content`. A bad argument
+  throws before a request goes to the user. `ToolContext.elicit` checks each
+  accepted answer against its form, and changes an answer that is not valid
+  to a decline.
 - `notify()` and `progress()` enqueue one event apiece onto the session's
   outbox and return nothing. They cannot read anything back.
 

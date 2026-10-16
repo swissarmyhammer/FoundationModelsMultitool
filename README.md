@@ -268,6 +268,20 @@ available: no user is present in this session". A `MultiTool` that is called
 outside each session keeps `elicit`, which then rejects with a no-session
 error.
 
+`elicit("question")` asks the user for a text. It sends a form with one
+required string field, `answer`. On an accept, `content` is the text itself,
+not an object. A snippet that needs a form of its own calls
+`elicit({ message, requestedSchema })`, and on an accept `content` is the object
+of the fields. The `elicit` function also holds five typed helpers:
+`elicit.confirm()`, `elicit.choose()`, `elicit.chooseMany()`,
+`elicit.askText()` and `elicit.askNumber()`. Each helper sends a form with the
+one required field `answer`, and on an accept `content` is the plain value of
+that field. An accept that is not a valid answer to the form becomes a decline.
+`docs("elicit")` and `docs("elicit.<name>")` give the full text. The helpers
+are properties of `elicit` and not globals of their own, thus the list above
+does not name them. A headless session has no helper, because it has no
+`elicit`.
+
 This list is not documentation alone. `HardeningTests` parses it out of this
 file and asserts it is set-equal to the globals the sandbox enumerates at
 runtime, so a global added to the code and not to this list fails the suite.
