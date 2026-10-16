@@ -168,13 +168,18 @@ struct MCPServerCallTests {
 
     /// A scripted tool that never answers, and does not respond to
     /// cancellation — the hang of ``HangingTransport``, on the server side of
-    /// a connected transport.
-    private static var hangingTool: ScriptedTool {
+    /// a connected transport. The handler opens `arrival` first, thus a test
+    /// knows when the request reached the server.
+    ///
+    /// - Parameter arrival: The gate the handler opens when it runs.
+    /// - Returns: The scripted tool.
+    private static func hangingTool(arrival: TestGate) -> ScriptedTool {
         ScriptedTool(
             definition: MCP.Tool(
                 name: hangingToolName, description: "Never answers.",
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
+            arrival.open()
             await HangingTransport.hangForever()
         }
     }
@@ -441,12 +446,31 @@ struct MCPServerCallTests {
     ///
     /// The timer of the mount waits on the run clock of the context. Here
     /// that clock is a `ManualRunClock`, and the order is fixed: the test
-    /// waits until the timer sleeps on the clock, checks that the call did
-    /// not end, and then moves the clock by exactly the bound. No real time
-    /// passes.
+    /// waits until the request reached the server and the timer sleeps on
+    /// the clock, checks that the call did not end, and then moves the clock
+    /// by exactly the bound. No real time passes.
+    ///
+    /// The clock moves only after the arrival. A bound that fires before the
+    /// call put its request in flight cancels a call that sent nothing, thus
+    /// no `notifications/cancelled` goes out, and a wait for one never ends.
+    ///
+    /// Each wait of this test is for an event that the test made occur first:
+    ///
+    /// - The arrival: the test started the call, the clock does not move
+    ///   until the test moves it, and the server serves the tool. Thus the
+    ///   request reaches the handler, and the handler opens the gate first.
+    /// - The sleeper: the mount started its timer with the call, and the
+    ///   timer sleeps on this clock until the clock moves.
+    /// - The end of the call: the move of the clock ends the sleep of the
+    ///   timer, and the mount then cancels the call and returns at once.
+    /// - The notification: the request arrived, thus the call put it in
+    ///   flight and installed its cancel handler before it sent it. The
+    ///   cancel of the mount runs that handler, and the handler sends
+    ///   `notifications/cancelled` to the server.
     @Test("a call under a context to a server that makes no progress ends at the inner-call bound")
     func aCallUnderAContextEndsAtTheInnerCallBound() async throws {
-        let (scripted, server) = try await Self.connected(serving: [Self.hangingTool])
+        let arrival = TestGate()
+        let (scripted, server) = try await Self.connected(serving: [Self.hangingTool(arrival: arrival)])
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
             let binding = RunBinding(context: context, innerMount: Self.shortInnerCallMount)
@@ -460,6 +484,7 @@ struct MCPServerCallTests {
                         Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
                 }
             }
+            try await arrival.wait()
             await clock.waitForSleepers(atLeast: sleepersBefore + Self.innerCallBoundSleepers)
             #expect(!invokeEnded.isOpen)
             clock.advance(by: .seconds(Self.innerCallBoundSeconds))
