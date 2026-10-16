@@ -44,7 +44,10 @@
 // until the flow ends. Under a context, the `RunPlane` keeps the run
 // suspended after the accept until the flow completes, so the accept reaches
 // the wire only after the flow closed. Under the handler, this actor holds
-// the accept the same way until `complete(elicitationId:)`.
+// the accept the same way until `complete(elicitationId:)`. A disconnect and
+// each new connect end the held accepts of the handler: each such flow
+// answers `cancel`, with `connectionEndedReason` under the `reason` key of
+// `_meta`, because its completion can no longer arrive.
 //
 // **The relay of the completion.** The swift-sdk client runs a request
 // handler inline in its message loop, so the loop reads no wire message while
@@ -174,10 +177,10 @@ extension MCPServer {
             return cancelWithNoAnswerer()
         }
         let response = await elicitationHandler(request)
-        if let urlElicitationId, response.action == .accept {
-            await awaitHostCompletion(of: urlElicitationId)
+        guard let urlElicitationId, response.action == .accept else {
+            return response
         }
-        return response
+        return await awaitHostCompletion(of: urlElicitationId) ?? response
     }
 
     /// The context of the call that a server elicitation belongs to, or
@@ -316,16 +319,24 @@ extension MCPServer {
 
     // MARK: - The URL flow under the handler
 
+    /// The reason of the cancel that ends a held URL flow of the handler when
+    /// its connection ends — see ``endHeldHostElicitations()``.
+    static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
+
     /// Holds a URL-mode accept the handler gave until ``complete(elicitationId:)``
     /// names `elicitationId` — the third message of the flow, on the host's
-    /// side. A second flow opened under an id that is still held resumes the
-    /// earlier one, so no accept waits forever.
+    /// side — or until the connection of the flow ends. A second flow opened
+    /// under an id that is still held resumes the earlier one, so no accept
+    /// waits forever.
     ///
     /// - Parameter elicitationId: The wire id of the flow.
-    private func awaitHostCompletion(of elicitationId: String) async {
+    /// - Returns: `nil` when the flow completed, thus the accept goes to the
+    ///   server. Else the cancel that ended the flow, which goes to the
+    ///   server in place of the accept.
+    private func awaitHostCompletion(of elicitationId: String) async -> ElicitationResponse? {
         await withCheckedContinuation { continuation in
             if let earlier = pendingHostElicitations.removeValue(forKey: elicitationId) {
-                earlier.resume()
+                earlier.resume(returning: nil)
             }
             pendingHostElicitations[elicitationId] = continuation
             resumeHostElicitationHeldWaiters(of: elicitationId)
@@ -389,7 +400,7 @@ extension MCPServer {
             MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(elicitationId)"
         ]
         if let continuation = pendingHostElicitations.removeValue(forKey: elicitationId) {
-            continuation.resume()
+            continuation.resume(returning: nil)
             return
         }
         guard let open = pendingContextElicitations[elicitationId], open.generation == generation else {
@@ -402,6 +413,23 @@ extension MCPServer {
             metadata: metadata.merging([
                 MultitoolTelemetry.LogMetadataKey.elicitationCompletionDelivery.rawValue: "\(delivery)"
             ]) { wireId, _ in wireId })
+    }
+
+    /// Ends each URL-mode flow that the handler accepted and this actor
+    /// holds, with a cancel that gives ``connectionEndedReason``. The
+    /// handler of each flow then returns that cancel to the server, in place
+    /// of the accept.
+    ///
+    /// A held flow waits for a completion that only its connection can
+    /// carry. `disconnect()` and each new connect end that connection, and
+    /// each calls this first. Thus no handler waits for ever, and the
+    /// teardown of the old client, which waits for its handlers, can end.
+    func endHeldHostElicitations() {
+        let held = pendingHostElicitations
+        pendingHostElicitations = [:]
+        for continuation in held.values {
+            continuation.resume(returning: .cancel(reason: Self.connectionEndedReason))
+        }
     }
 
     /// The wire ids of the URL-mode flows the handler accepted and this actor

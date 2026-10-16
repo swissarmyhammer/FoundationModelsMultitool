@@ -231,9 +231,14 @@ extension MCPServer {
         }
     }
 
-    /// Takes the current client out, tears it down, and waits until its
-    /// transport closed. Returns at once when there is no current client.
+    /// Ends each held URL-mode accept of the host's handler, takes the current
+    /// client out, tears it down, and waits until its transport closed. Each
+    /// connect attempt calls this before it starts, thus a new connect ends
+    /// the held flows of the connection that it replaces — see
+    /// `endHeldHostElicitations()`. Returns after the end of the held flows
+    /// when there is no current client.
     func retireCurrentClient() async {
+        endHeldHostElicitations()
         guard let retired = currentClient else { return }
         dropAttemptClient(retired)
         await waitUntilTransportClosed(retired.transportID)

@@ -229,8 +229,10 @@ extension MCPServer {
     /// `.ready`, and cancels a `tools/list_changed` watcher still waiting out
     /// its coalesce window, so it re-lists nothing against the disconnected
     /// client. Every call still in flight ends as `MCPServerError.lost`: the
-    /// answer it waited for can no longer arrive. A later `connect(via:)` is
-    /// what drives the next transition.
+    /// answer it waited for can no longer arrive. For the same reason, each
+    /// URL-mode accept that the host's handler gave and this actor holds ends
+    /// with a cancel that gives `connectionEndedReason`. A later
+    /// `connect(via:)` is what drives the next transition.
     ///
     /// This method returns when the transport that the client used is
     /// closed, or when the client had no transport to close. No clock bounds
@@ -260,6 +262,7 @@ extension MCPServer {
         let teardownGeneration = connectGeneration
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)
+        endHeldHostElicitations()
         // The teardown of the current client starts here. `endAttempts`
         // waits until that teardown stopped the message loop of the client,
         // and only then closes the transport of the client itself.

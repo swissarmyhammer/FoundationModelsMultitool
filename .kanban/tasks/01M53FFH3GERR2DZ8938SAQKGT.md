@@ -20,8 +20,24 @@ comments:
     - evidence: local commit with the .kanban files only (new elicitation-fixes cards and step records). No source file changed. FoundationModelsExtras resolves to main 7a40759 (was 782b8d3); one full swift test run: 2427 tests in 211 suites passed.
     - next: none. Not pushed.
   timestamp: 2026-10-16T23:21:31.116301+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m53gfh4p5pm6svk8bcx77rg6
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 384224d). Counts: 0 findings, 0 confirmed, 0 refuted. The commit has 18 files. All 18 files are in `.kanban/`. The `.reviewignore` rule excludes them, thus the engine reviewed 0 files. The source did not change. FoundationModelsExtras resolves to 7a40759. One full run: 2427 passed.
+    - next: The task is in done. No work remains on this task.
+  timestamp: 2026-10-16T23:24:13.846780+00:00
+- actor: claude-code
+  id: 01m53gg3ardsw5hrk7sr8x2t4h
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: no-change — Extras resolved to 7a40759 (was 782b8d3); Package.swift already tracks main
+    - test: green — the one full run of the card: swift test, exit 0, 2427 passed
+    - commit: 384224d (kanban files only)
+    - review: clean — 0 findings
+  timestamp: 2026-10-16T23:24:32.472520+00:00
+position_column: done
+position_ordinal: ffffff8680
 title: Move the FoundationModelsExtras dependency to 7a40759 or later (main) and do one full run
 ---
 Start of the elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10).

@@ -155,6 +155,18 @@ struct MCPElicitationTests {
     private static let notLinkedLogMessage =
         "mcp elicitation cancelled: the question cannot be linked to one tool call"
 
+    /// The reason of the cancel that ends a held URL flow when its connection
+    /// ends. The test spells it out, and does not read the constant of the
+    /// product, so the test compiles on the code before the change.
+    private static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
+
+    /// A URL-mode `elicitation/create` with the message, the link and the
+    /// wire id of the loopback URL tool.
+    private static let urlElicitation = CreateElicitation.Parameters.url(
+        .init(
+            message: ScriptedServer.elicitURLMessage, url: ScriptedServer.elicitURLLink,
+            elicitationId: ScriptedServer.elicitURLElicitationId))
+
     /// The `runCode` snippet that awaits the eliciting verb with no arguments.
     private static let elicitEchoSnippet =
         "return await tools.\(serverName).\(ScriptedServer.elicitEchoToolName)({});"
@@ -409,6 +421,38 @@ struct MCPElicitationTests {
         try await tool.call(arguments: GeneratedContent(properties: [:]))
     }
 
+    /// The error of a transport factory that makes no transport. A connect
+    /// through it fails before it reaches a far end.
+    private struct RefusedTransport: Error {}
+
+    /// Starts one URL-mode question on `server`, and waits until `server`
+    /// holds the accept of its handler.
+    ///
+    /// The wait ends on the first of two events: `server` holds the flow, or
+    /// the answer ended with no hold. Each of the two events can occur, thus
+    /// the wait always ends. When no flow is held, the test fails at once.
+    ///
+    /// - Parameter server: The server, whose handler accepts the question.
+    /// - Returns: The task of the answer that `server` gives.
+    /// - Throws: When the answer ended before `server` held the flow.
+    private static func startHeldHostFlow(on server: MCPServer) async throws -> Task<CreateElicitation.Result, Never> {
+        let firstEvent = TestGate()
+        let answer = Task {
+            let result = await server.answerElicitation(parameters: urlElicitation)
+            firstEvent.open()
+            return result
+        }
+        Task {
+            await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+            firstEvent.open()
+        }
+        try await firstEvent.wait()
+        try #require(
+            await server.pendingHostElicitationIds == [ScriptedServer.elicitURLElicitationId],
+            "the answer ended before the server held the URL flow")
+        return answer
+    }
+
     // MARK: - Case 1: a bound context answers
 
     @Test("the answer the test delivers through the session reaches elicitEcho", arguments: transports)
@@ -591,6 +635,51 @@ struct MCPElicitationTests {
 
         #expect(heldAfterTheCall.isEmpty)
         withExtendedLifetime(scripted) {}
+    }
+
+    /// A held accept of the handler waits for a completion that only its
+    /// connection can carry. A disconnect ends that connection, thus it ends
+    /// the flow with a cancel and a reason, and the handler returns. Before
+    /// the fix, the flow stayed held after the disconnect, and the teardown
+    /// of the client then waited for ever on the handler.
+    ///
+    /// The order is fixed: the server holds the flow, the test disconnects,
+    /// and then the test reads the held flows before it waits for the answer.
+    /// Thus a flow that stays held fails the test, and no wait stays open.
+    @Test("with no context bound, a disconnect ends the held URL accept of the handler with cancel and a reason")
+    func aDisconnectEndsTheHeldHandlerAccept() async throws {
+        let probe = HandlerProbe(responding: Self.urlAccept)
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: probe.handler)
+        let answer = try await Self.startHeldHostFlow(on: server)
+
+        await server.disconnect()
+
+        try #require(await server.pendingHostElicitationIds.isEmpty, "the disconnect left the URL flow held")
+        let result = await answer.value
+        #expect(result.action == .cancel)
+        #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
+    }
+
+    /// A new connect replaces the connection of a held accept, thus it ends
+    /// the flow with a cancel and a reason, as a disconnect does. The new
+    /// connect then fails, because its factory makes no transport: the old
+    /// connection ended when the new connect started.
+    ///
+    /// The order is fixed, for the reason the disconnect case states.
+    @Test("with no context bound, a new connect ends the held URL accept of the handler with cancel and a reason")
+    func aNewConnectEndsTheHeldHandlerAccept() async throws {
+        let probe = HandlerProbe(responding: Self.urlAccept)
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: probe.handler)
+        let answer = try await Self.startHeldHostFlow(on: server)
+
+        await #expect(throws: RefusedTransport.self) {
+            try await server.connect(via: { throw RefusedTransport() })
+        }
+
+        try #require(await server.pendingHostElicitationIds.isEmpty, "the new connect left the URL flow held")
+        let result = await answer.value
+        #expect(result.action == .cancel)
+        #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
     }
 
     // MARK: - Case 3: nothing answers

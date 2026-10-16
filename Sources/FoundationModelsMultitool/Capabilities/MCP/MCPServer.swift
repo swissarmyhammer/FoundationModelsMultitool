@@ -378,8 +378,10 @@ public actor MCPServer {
 
     /// Every URL-mode elicitation the host's ``elicitationHandler`` accepted
     /// and this actor still holds open, keyed by the wire `elicitationId` —
-    /// resumed by `complete(elicitationId:)`. See `MCPServer+Elicitation.swift`.
-    var pendingHostElicitations: [String: CheckedContinuation<Void, Never>] = [:]
+    /// resumed with `nil` by `complete(elicitationId:)`, and with a cancel by
+    /// `endHeldHostElicitations()` when the connection ends. See
+    /// `MCPServer+Elicitation.swift`.
+    var pendingHostElicitations: [String: CheckedContinuation<ElicitationResponse?, Never>] = [:]
 
     /// Every URL-mode elicitation that a bound `ToolContext` answers and that
     /// is still open, keyed by the wire `elicitationId`. Each entry holds the
