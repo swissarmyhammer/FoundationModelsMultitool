@@ -829,9 +829,7 @@ struct ElicitationHelperSettings {
     ///   count is not a whole number, 0 or more, or when `min` is more than
     ///   `max`.
     func countRange() throws(ElicitationArgumentError) -> (minimum: Int?, maximum: Int?) {
-        let range = (minimum: try count(.min), maximum: try count(.max))
-        try Self.checkOrder(range.minimum, range.maximum)
-        return range
+        try range(count)
     }
 
     /// The ``ElicitationHelperSetting/min`` and ``ElicitationHelperSetting/max``
@@ -842,9 +840,7 @@ struct ElicitationHelperSettings {
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when a
     ///   limit is not a finite number, or when `min` is more than `max`.
     func numberRange() throws(ElicitationArgumentError) -> (minimum: Double?, maximum: Double?) {
-        let range = (minimum: try number(.min), maximum: try number(.max))
-        try Self.checkOrder(range.minimum, range.maximum)
-        return range
+        try range(number)
     }
 
     /// The value of a true-or-false setting.
@@ -854,9 +850,7 @@ struct ElicitationHelperSettings {
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
     ///   value is not `true` or `false`.
     func flag(_ setting: ElicitationHelperSetting) throws(ElicitationArgumentError) -> Bool? {
-        guard let value = values[setting] else { return nil }
-        guard case .bool(let flag) = value else { throw .undecodable(reason: "\(setting.rawValue) must be true or false") }
-        return flag
+        try value(of: setting, mustBe: "true or false", Self.boolPayload(of:))
     }
 
     /// The ``ElicitationHelperSetting/format`` setting.
@@ -893,9 +887,10 @@ struct ElicitationHelperSettings {
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
     ///   value is not a whole number, 0 or more.
     private func count(_ setting: ElicitationHelperSetting) throws(ElicitationArgumentError) -> Int? {
-        guard let value = values[setting] else { return nil }
-        guard case .number(let number) = value, let count = Int(exactly: number), count >= 0 else {
-            throw .undecodable(reason: "\(setting.rawValue) must be a whole number, 0 or more")
+        let requirement = "a whole number, 0 or more"
+        guard let number = try value(of: setting, mustBe: requirement, Self.numberPayload(of:)) else { return nil }
+        guard let count = Int(exactly: number), count >= 0 else {
+            throw Self.mismatch(of: setting, mustBe: requirement)
         }
         return count
     }
@@ -907,10 +902,9 @@ struct ElicitationHelperSettings {
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
     ///   value is not a finite number.
     private func number(_ setting: ElicitationHelperSetting) throws(ElicitationArgumentError) -> Double? {
-        guard let value = values[setting] else { return nil }
-        guard case .number(let number) = value, number.isFinite else {
-            throw .undecodable(reason: "\(setting.rawValue) must be a number")
-        }
+        let requirement = "a number"
+        guard let number = try value(of: setting, mustBe: requirement, Self.numberPayload(of:)) else { return nil }
+        guard number.isFinite else { throw Self.mismatch(of: setting, mustBe: requirement) }
         return number
     }
 
@@ -921,8 +915,91 @@ struct ElicitationHelperSettings {
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
     ///   value is not a string.
     private func text(_ setting: ElicitationHelperSetting) throws(ElicitationArgumentError) -> String? {
-        guard let value = values[setting] else { return nil }
-        guard case .string(let text) = value else { throw .undecodable(reason: "\(setting.rawValue) must be a string") }
+        try value(of: setting, mustBe: "a string", Self.stringPayload(of:))
+    }
+
+    /// The ``ElicitationHelperSetting/min`` and ``ElicitationHelperSetting/max``
+    /// limits, each read with `read`.
+    ///
+    /// - Parameter read: the typed reader of one limit, for example ``count(_:)``.
+    /// - Returns: each limit, or `nil` for a limit that the object does not
+    ///   give.
+    /// - Throws: what `read` throws, or
+    ///   ``ElicitationArgumentError/undecodable(reason:)`` when `min` is more
+    ///   than `max`.
+    private func range<Bound: Comparable>(
+        _ read: (ElicitationHelperSetting) throws(ElicitationArgumentError) -> Bound?
+    ) throws(ElicitationArgumentError) -> (minimum: Bound?, maximum: Bound?) {
+        let range = (minimum: try read(.min), maximum: try read(.max))
+        try Self.checkOrder(range.minimum, range.maximum)
+        return range
+    }
+
+    /// The typed value of a setting.
+    ///
+    /// - Parameters:
+    ///   - setting: the setting.
+    ///   - requirement: what the value must be, for the error text, for
+    ///     example `a string`.
+    ///   - extract: gives the typed value of a raw value, or `nil` when the
+    ///     raw value has a different type.
+    /// - Returns: the typed value, or `nil` when the object does not give the
+    ///   setting.
+    /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when
+    ///   `extract` gives `nil`.
+    private func value<Value>(
+        of setting: ElicitationHelperSetting, mustBe requirement: String,
+        _ extract: (InterpreterValue) -> Value?
+    ) throws(ElicitationArgumentError) -> Value? {
+        guard let raw = givenValue(of: setting) else { return nil }
+        guard let value = extract(raw) else { throw Self.mismatch(of: setting, mustBe: requirement) }
+        return value
+    }
+
+    /// The raw value of a setting.
+    ///
+    /// - Parameter setting: the setting.
+    /// - Returns: the value, or `nil` when the object does not give it.
+    private func givenValue(of setting: ElicitationHelperSetting) -> InterpreterValue? {
+        values[setting]
+    }
+
+    /// The error for a setting whose value is not what it must be.
+    ///
+    /// - Parameters:
+    ///   - setting: the setting.
+    ///   - requirement: what the value must be, for example `a string`.
+    /// - Returns: the error, with the text "`<setting>` must be `<requirement>`".
+    private static func mismatch(
+        of setting: ElicitationHelperSetting, mustBe requirement: String
+    ) -> ElicitationArgumentError {
+        .undecodable(reason: "\(setting.rawValue) must be \(requirement)")
+    }
+
+    /// The payload of a true-or-false value.
+    ///
+    /// - Parameter value: the raw value.
+    /// - Returns: the payload, or `nil` when `value` is not `true` or `false`.
+    private static func boolPayload(of value: InterpreterValue) -> Bool? {
+        guard case .bool(let flag) = value else { return nil }
+        return flag
+    }
+
+    /// The payload of a number value.
+    ///
+    /// - Parameter value: the raw value.
+    /// - Returns: the payload, or `nil` when `value` is not a number.
+    private static func numberPayload(of value: InterpreterValue) -> Double? {
+        guard case .number(let number) = value else { return nil }
+        return number
+    }
+
+    /// The payload of a string value.
+    ///
+    /// - Parameter value: the raw value.
+    /// - Returns: the payload, or `nil` when `value` is not a string.
+    private static func stringPayload(of value: InterpreterValue) -> String? {
+        guard case .string(let text) = value else { return nil }
         return text
     }
 

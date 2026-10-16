@@ -106,6 +106,60 @@ comments:
     - evidence: swift test, one run. 2424 tests in 211 suites passed. 0 failed. 0 skipped. No compiler warning from project sources. The only warning line is a build tool note about the mlx-swift_Cmlx bundle, outside project code.
     - next: review
   timestamp: 2026-10-16T15:44:05.358557+00:00
+- actor: claude-code
+  id: 01m52p6223f4bhpffnmkscc0xd
+  text: |-
+    ### commit — changed
+    - evidence: ddcef8f feat(sandbox)!: send the elicit text short form as an answer form
+    - note: accepted BEHAVIOR CHANGE. elicit("question") sends { answer: string }. Content is the plain string on an accept. An accept with no answer becomes a decline.
+    - tests: swift test, 2424 passed, 0 failed, 0 skipped
+    - next: review
+  timestamp: 2026-10-16T15:44:40.515024+00:00
+- actor: claude-code
+  id: 01m52prcgv7xw950h3bbjbzmkv
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~2..HEAD (d65b9c3 task 21, ddcef8f task 22). 10 findings (11 confirmed, 1 refuted). Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:844, :856, :895 (2 findings), :909, :923; Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1505, :1517, :1520, :1564. README.md and docs/SECURITY.md had no matching validator. The accepted design decisions (elicit namespace helpers, decision A for docs("globals"), short form behavior change) did not cause a finding.
+    - next: implement the 10 items in the "Review Findings (2026-10-16 10:45)" section. The task stays in review.
+  timestamp: 2026-10-16T15:54:41.051517+00:00
+- actor: claude-code
+  id: 01m52ps9ys47r37dzaxrr90s4x
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 4 files (task 22, the text short form)
+    - test: green — swift test, 2424 passed, 0 failed, 0 skipped
+    - commit: ddcef8f
+    - review (HEAD~2..HEAD, d65b9c3 and ddcef8f): findings — Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:844, :856, :895, :895, :909, :923; Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1505, :1517, :1520, :1564
+  timestamp: 2026-10-16T15:55:11.193939+00:00
+- actor: claude-code
+  id: 01m52q5f2zx4fk84zp016ek5p4
+  text: |-
+    Review findings (2026-10-16 10:45) done. No behavior change.
+    - ElicitationHelperSettings: one raw-value helper givenValue(of:), one generic typed reader value(of:mustBe:_:) with an extractor closure (boolPayload, numberPayload, stringPayload), one error maker mismatch(of:mustBe:), and one generic range(_:) that reads min and max and calls checkOrder. flag and text are one-line calls. count keeps its whole-number check and number keeps its finite-number check after the read. The error texts did not change.
+    - SandboxGlobalsTests: named constants elicitHelperPickLimits, elicitHelperNumberLimits, elicitHelperFractionAnswer and elicitHelperWholeAnswer. The call strings and the expected schemas both read them. swiftlint no_magic_numbers (allowed 0, 1, -1, 100) now gives 0 findings on the test file and on the source file.
+    - SandboxGlobalsTests: one generic runElicitationSnippet(_:answering:decoding:). elicitationAnswerProbe and elicitHelperAnswers call it. The same scaffold was also in theGlobalsPageMatchesTheElicitationAnswerItDocuments, elicitSurfacesADeclineDistinctly and elicitSurfacesACancelDistinctly; these now call it too (the two decline/cancel tests share the new elicitationActionAndContentSnippet). The tests that read the sink keep their own scaffold, because they need the sink. No test deleted.
+  timestamp: 2026-10-16T16:01:49.663477+00:00
+- actor: claude-code
+  id: 01m52q5gv3ryh969z00k8rtm0r
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift, Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift. Findings checked 10/10. `swift test` one full run: "Test run with 2424 tests in 211 suites passed". No compiler warning; the one SwiftPM build-graph warning (mlx-swift_Cmlx.bundle) was there before.
+    - next: review. Task stays in doing.
+  timestamp: 2026-10-16T16:01:51.459140+00:00
+- actor: claude-code
+  id: 01m52q896b8kcbfpcrm7m982ze
+  text: |-
+    ### test — green
+    - evidence: swift test (one run) — 2424 tests in 211 suites passed, 0 failed, 0 skipped. No Swift compiler warning. One build-system note only: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path (not from our code).
+    - next: review
+  timestamp: 2026-10-16T16:03:21.931176+00:00
+- actor: claude-code
+  id: 01m52q9s5q3pb6a0kr54th4efp
+  text: |-
+    ### commit — changed
+    - evidence: 0aa1db8 refactor(sandbox): read elicit helper settings through shared readers
+    - next: review
+  timestamp: 2026-10-16T16:04:11.063304+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'Elicitation helpers from one declarative table: elicit.confirm/choose/chooseMany/askText/askNumber and the text short form (elicitation-plan tasks 20, 21, 22)'
@@ -124,3 +178,25 @@ h. Commits: 20 (table, no behavior change), 21 (helpers), 22 (short form, behavi
 Open for the owner: plan section 3 shows flat names; help() lists only registry paths (the plan says one line for each helper "in help()"); the page must stay under the 4,000-character cap; optional non-writable install with Object.defineProperty.
 
 #elicitation-phase-5
+
+## Review Findings (2026-10-16 10:45)
+
+> Scope: `review sha HEAD~2..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 6 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+> - `docs/SECURITY.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:844` `duplication/duplication` — `numberRange()` repeats the body of `countRange()` (lines 831-835): it reads the `min` and `max` settings, runs `checkOrder`, and returns the pair. Only the reader and the value type differ. Both bodies can drift apart, for example if the ordering rule changes for one and not the other. Extract one generic helper, for example `func range<Bound: Comparable>(_ read: (ElicitationHelperSetting) throws(ElicitationArgumentError) -> Bound?) throws(ElicitationArgumentError) -> (minimum: Bound?, maximum: Bound?)`, that reads both limits and calls `checkOrder`. Have `countRange()` and `numberRange()` call it with `count` and `number`.
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:856` `duplication/duplication` — `flag(_:)` repeats the accessor pattern of `count`, `number` and `text` (lines 895-927). Each one takes `values[setting]`, returns `nil` when it is absent, and throws `undecodable` with the setting name when the case is wrong. Four copies of this shape can drift apart in the nil handling or the message format. Extract one private helper that returns the raw value of a setting or `nil`, and one generic typed reader that takes a `case` extractor and a message. Have `flag`, `count`, `number` and `text` call it. Only the extractor and the message differ per type.
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:895` `duplication/duplication` — `count(_:)` repeats the absent-value guard and the typed-read shape of `flag`, `number` and `text`. The copy is part of the same four-way duplicate. Use the shared typed reader from the fix for line 856. `count` then only states its own range check, whole number and 0 or more, as a validation step after the read.
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:895` `reuse/reuse` — `count` repeats the same accessor shape as `flag`, `number`, and `text` in the same struct: read `values[setting]`, return `nil` when absent, then check the case with a `guard case` and throw `undecodable` with a per-type message. Four copies of that shape will drift apart. Add one private generic accessor on `ElicitationHelperSettings` that takes the setting and an extractor closure, and returns `nil` or throws the `\(setting.rawValue) must be ...` message. Then `flag`, `count`, `number`, and `text` each become a one-line call with their own extractor.
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:909` `duplication/duplication` — `number(_:)` repeats the absent-value guard and the typed-read shape of `flag`, `count` and `text`. The copy is part of the same four-way duplicate. Use the shared typed reader from the fix for line 856, with the finite-number check as a validation step after the read.
+- [x] `Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift:923` `duplication/duplication` — `text(_:)` repeats the absent-value guard and the typed-read shape of `flag`, `count` and `number`. The copy is part of the same four-way duplicate. Use the shared typed reader from the fix for line 856, so that `text`, `format` and `pattern` all read through it.
+- [x] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1505` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1517` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1520` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift:1564` `reuse/reuse` — `elicitHelperAnswers` rebuilds the scaffold that the existing `elicitationAnswerProbe` already runs: `withStubRun`, then `withScriptedElicitationSink(run:answering:)`, then `runSnippet(_:under:)`, then `RunOutput.decoded`. The only differences are the snippet text and the decoded type. The duplicate will drift when that scaffold changes. Generalize the existing probe into one helper that takes the snippet and the decoded type, for example `runElicitationSnippet<T: Decodable>(_ snippet: String, answering response: ElicitationResponse, decoding: T.Type) -> T`. Then `elicitationAnswerProbe` and `elicitHelperAnswers` both call it with their own snippet, and neither keeps its own copy of the scaffold.

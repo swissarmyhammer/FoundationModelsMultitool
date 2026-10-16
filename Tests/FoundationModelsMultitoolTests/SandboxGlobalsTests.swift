@@ -149,23 +149,16 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page declares the exact fields an elicitation answer really carries")
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
-        try await withStubRun { stub in
-            let context = stub.context
-            // The sink answers the elicitation of the snippet.
-            try await withScriptedElicitationSink(
-                run: stub, answering: .accept(content: [elicitHelperAnswerField: .string("sah")])
-            ) { _ in
-                let output = try await runSnippet(
-                    "return Object.keys(await elicit(\"Which repository?\")).sort();",
-                    under: context
-                )
+        // The sink answers the elicitation of the snippet.
+        let observed = try await runElicitationSnippet(
+            "return Object.keys(await elicit(\"Which repository?\")).sort();",
+            answering: .accept(content: [elicitHelperAnswerField: .string("sah")]),
+            decoding: [String].self
+        )
 
-                let observed = try RunOutput.decoded([String].self, from: output)
-                let documented = try #require(
-                    declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage(asksUser: true)))
-                #expect(documented == observed)
-            }
-        }
+        let documented = try #require(
+            declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage(asksUser: true)))
+        #expect(documented == observed)
     }
 
     // MARK: - User presence: elicit() only when a user can answer
@@ -587,40 +580,20 @@ struct SandboxGlobalsTests {
 
     @Test("a declined elicitation surfaces as a decline, distinct from a cancel")
     func elicitSurfacesADeclineDistinctly() async throws {
-        try await withStubRun { stub in
-            let context = stub.context
-            // The sink answers the elicitation of the snippet.
-            try await withScriptedElicitationSink(run: stub, answering: .decline) { _ in
-                let output = try await runSnippet(
-                    """
-                    const answer = await elicit("Proceed?");
-                    return [answer.action, String(answer.content)];
-                    """,
-                    under: context
-                )
+        // The sink answers the elicitation of the snippet.
+        let observed = try await runElicitationSnippet(
+            elicitationActionAndContentSnippet, answering: .decline, decoding: [String].self)
 
-                #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
-            }
-        }
+        #expect(observed == ["decline", "null"])
     }
 
     @Test("a cancelled elicitation surfaces as a cancel, distinct from a decline")
     func elicitSurfacesACancelDistinctly() async throws {
-        try await withStubRun { stub in
-            let context = stub.context
-            // The sink answers the elicitation of the snippet.
-            try await withScriptedElicitationSink(run: stub, answering: .cancel) { _ in
-                let output = try await runSnippet(
-                    """
-                    const answer = await elicit("Proceed?");
-                    return [answer.action, String(answer.content)];
-                    """,
-                    under: context
-                )
+        // The sink answers the elicitation of the snippet.
+        let observed = try await runElicitationSnippet(
+            elicitationActionAndContentSnippet, answering: .cancel, decoding: [String].self)
 
-                #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
-            }
-        }
+        #expect(observed == ["cancel", "null"])
     }
 
     /// The sink answers with a decline or a cancel that has a reason. The
@@ -1269,6 +1242,13 @@ private struct ElicitPresenceProbe: Decodable {
 /// shape that the plan sets.
 private let elicitationAnswerKeys = ["action", "content", "reason"]
 
+/// A snippet that asks one question and returns the `action` of the answer
+/// and `String(content)`.
+private let elicitationActionAndContentSnippet = """
+    const answer = await elicit("Proceed?");
+    return [answer.action, String(answer.content)];
+    """
+
 /// A snippet that asks one question and returns the sorted keys and the three
 /// fields of the answer it gets.
 private let elicitationAnswerSnippet = """
@@ -1297,6 +1277,27 @@ private struct ElicitationAnswerProbe: Decodable, Equatable {
     let reason: String?
 }
 
+/// Runs `snippet` under a stub run whose scripted sink gives `response` to
+/// each elicitation, and decodes what the snippet returns.
+///
+/// - Parameters:
+///   - snippet: the code to run.
+///   - response: the answer the sink gives to each elicitation.
+///   - type: the type that the output of the snippet decodes to.
+/// - Returns: what the snippet returned.
+/// - Throws: when the run fails, or when its output does not decode.
+private func runElicitationSnippet<T: Decodable>(
+    _ snippet: String, answering response: ElicitationResponse, decoding type: T.Type
+) async throws -> T {
+    try await withStubRun { stub in
+        let context = stub.context
+        return try await withScriptedElicitationSink(run: stub, answering: response) { _ in
+            let output = try await runSnippet(snippet, under: context)
+            return try RunOutput.decoded(type, from: output)
+        }
+    }
+}
+
 /// Runs ``elicitationAnswerSnippet`` under a stub run whose scripted sink
 /// answers with `response`, and decodes what the snippet returns.
 ///
@@ -1304,13 +1305,7 @@ private struct ElicitationAnswerProbe: Decodable, Equatable {
 /// - Returns: what the snippet got.
 /// - Throws: when the run fails, or when its output does not decode.
 private func elicitationAnswerProbe(answering response: ElicitationResponse) async throws -> ElicitationAnswerProbe {
-    try await withStubRun { stub in
-        let context = stub.context
-        return try await withScriptedElicitationSink(run: stub, answering: response) { _ in
-            let output = try await runSnippet(elicitationAnswerSnippet, under: context)
-            return try RunOutput.decoded(ElicitationAnswerProbe.self, from: output)
-        }
-    }
+    try await runElicitationSnippet(elicitationAnswerSnippet, answering: response, decoding: ElicitationAnswerProbe.self)
 }
 
 /// What the enumeration snippet of ``installedGlobalsProbe(expecting:under:)``
@@ -1430,6 +1425,21 @@ private let elicitHelperOptionsLiteral = jsArrayLiteral(of: elicitHelperOptions)
 /// A string that no helper call of ``elicitHelperCalls`` takes as an answer.
 private let elicitHelperInvalidAnswer = "not an option"
 
+/// The `min` and `max` counts of the `chooseMany` round trip that sets both.
+/// The upper count lets the answer pick all of ``elicitHelperOptions``.
+private let elicitHelperPickLimits = (minimum: 1, maximum: 2)
+
+/// The `min` and `max` limits of the `askNumber` round trip that sets both.
+private let elicitHelperNumberLimits = (minimum: 1, maximum: 10)
+
+/// The answer of the `askNumber` round trip with no limits: a number that is
+/// not a whole number.
+private let elicitHelperFractionAnswer = 0.5
+
+/// The answer of the `askNumber` round trip with limits: a whole number in
+/// ``elicitHelperNumberLimits``.
+private let elicitHelperWholeAnswer = 3
+
 /// One call to each helper, in the order that a snippet makes them. The
 /// `askText` call has a pattern that ``elicitHelperInvalidAnswer`` does not
 /// match.
@@ -1500,9 +1510,15 @@ let elicitHelperRoundTrips: [ElicitHelperRoundTrip] = [
         answer: .stringArray(["us"]), field: .multiSelect(ElicitationMultiSelectSchema(values: elicitHelperOptions)),
         content: "[\"us\"]"),
     ElicitHelperRoundTrip(
-        call: "elicit.chooseMany(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral), { min: 1, max: 2 })",
+        call: """
+            elicit.chooseMany(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral), \
+            { min: \(elicitHelperPickLimits.minimum), max: \(elicitHelperPickLimits.maximum) })
+            """,
         answer: .stringArray(["us", "eu"]),
-        field: .multiSelect(ElicitationMultiSelectSchema(values: elicitHelperOptions, minItems: 1, maxItems: 2)),
+        field: .multiSelect(
+            ElicitationMultiSelectSchema(
+                values: elicitHelperOptions,
+                minItems: elicitHelperPickLimits.minimum, maxItems: elicitHelperPickLimits.maximum)),
         content: "[\"us\",\"eu\"]"),
     ElicitHelperRoundTrip(
         call: "elicit.askText(\(elicitHelperMessageLiteral))",
@@ -1514,11 +1530,19 @@ let elicitHelperRoundTrips: [ElicitHelperRoundTrip] = [
         content: "\"ada@example.com\""),
     ElicitHelperRoundTrip(
         call: "elicit.askNumber(\(elicitHelperMessageLiteral))",
-        answer: .number(0.5), field: .number(ElicitationNumberSchema(type: .number)), content: "0.5"),
+        answer: .number(elicitHelperFractionAnswer), field: .number(ElicitationNumberSchema(type: .number)),
+        content: "\(elicitHelperFractionAnswer)"),
     ElicitHelperRoundTrip(
-        call: "elicit.askNumber(\(elicitHelperMessageLiteral), { min: 1, max: 10, integer: true })",
-        answer: .number(3), field: .number(ElicitationNumberSchema(type: .integer, minimum: 1, maximum: 10)),
-        content: "3"),
+        call: """
+            elicit.askNumber(\(elicitHelperMessageLiteral), \
+            { min: \(elicitHelperNumberLimits.minimum), max: \(elicitHelperNumberLimits.maximum), integer: true })
+            """,
+        answer: .number(Double(elicitHelperWholeAnswer)),
+        field: .number(
+            ElicitationNumberSchema(
+                type: .integer,
+                minimum: Double(elicitHelperNumberLimits.minimum), maximum: Double(elicitHelperNumberLimits.maximum))),
+        content: "\(elicitHelperWholeAnswer)"),
 ]
 
 /// One helper call with bad arguments.
@@ -1562,24 +1586,19 @@ let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
 /// - Returns: the answer to each call, in call order.
 /// - Throws: when the run fails, or when its output does not decode.
 private func elicitHelperAnswers(answering response: ElicitationResponse) async throws -> [ElicitHelperAnswer] {
-    try await withStubRun { stub in
-        let context = stub.context
-        return try await withScriptedElicitationSink(run: stub, answering: response) { _ in
-            let output = try await runSnippet(
-                """
-                const calls = [\(elicitHelperCalls.map { "() => \($0)" }.joined(separator: ", "))];
-                const answers = [];
-                for (const call of calls) {
-                    const answer = await call();
-                    answers.push({ action: answer.action, content: JSON.stringify(answer.content), reason: answer.reason });
-                }
-                return answers;
-                """,
-                under: context
-            )
-            return try RunOutput.decoded([ElicitHelperAnswer].self, from: output)
+    try await runElicitationSnippet(
+        """
+        const calls = [\(elicitHelperCalls.map { "() => \($0)" }.joined(separator: ", "))];
+        const answers = [];
+        for (const call of calls) {
+            const answer = await call();
+            answers.push({ action: answer.action, content: JSON.stringify(answer.content), reason: answer.reason });
         }
-    }
+        return answers;
+        """,
+        answering: response,
+        decoding: [ElicitHelperAnswer].self
+    )
 }
 
 /// The member name of each helper that the interactive globals page
