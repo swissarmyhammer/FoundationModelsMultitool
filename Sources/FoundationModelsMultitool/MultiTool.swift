@@ -1225,8 +1225,9 @@ public struct MultiTool: Tool {
     ///     rather than bound to a host function that was never installed.
     /// - Returns: the JS preamble, one `tools.*` assignment per entry with a
     ///   live tool, preceded by `globalThis.tools = {};`, by the void
-    ///   re-binding of every name in `voidGlobalNames`, and by the sibling
-    ///   paths this tool binds itself.
+    ///   re-binding of every name in `voidGlobalNames`, by the move of each
+    ///   elicit helper onto `elicit` (`elicitationPreamble`), and by the
+    ///   sibling paths this tool binds itself.
     ///
     /// Internal, not `private`: `RegistryBundle.init` builds the preamble.
     static func makePreamble(for registry: Registry, bindsSearchTools: Bool) -> String {
@@ -1251,8 +1252,13 @@ public struct MultiTool: Tool {
         // as little as possible.
         var lines = [
             "globalThis.tools = {};",
-            voidGlobalNames
+            // The elicit helpers install under dotted names, and the end of
+            // this line moves each one onto `elicit` (see
+            // `elicitationPreamble`). It shares the line of the void
+            // re-binding, for the same reason of line numbers.
+            (voidGlobalNames
                 .map { "globalThis.\($0) = (function (send) { return function (detail) { send(detail); }; })(globalThis.\($0));" }
+                + [elicitationPreamble])
                 .joined(separator: " "),
         ]
         // Emitted before the registry's own entries, so a host that mounts a

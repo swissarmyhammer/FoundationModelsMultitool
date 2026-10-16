@@ -24,6 +24,48 @@ comments:
     - message: the deleted test docsGlobalsDeclaresEveryAmbientGlobal is replaced by the run-time check installedGlobalsMatchTheDocumentedGlobals (owner accepted).
     - next: commit 2 (task 21, helpers as the elicit namespace), then commit 3 (task 22, text short form). Report to the owner before the push.
   timestamp: 2026-10-16T12:48:20.564334+00:00
+- actor: claude-code
+  id: 01m52dgrp9n6h9rqp785ecm382
+  text: |-
+    Task 21 (commit 2) started. Research facts:
+    - The preamble is made one time for each registry (RegistryBundle). Thus the move of each host function "elicit.<m>" onto `elicit` is a JS line with a gate: when globalThis["elicit.<m>"] is a function, Object.defineProperty puts it on elicit (writable and configurable are false by default), and delete removes the flat key. Thus globalThis keeps no dotted name, and the HardeningTests globals list does not change.
+    - Commit 1 already made the test parsers accept `declare namespace elicit { function m(...) }`, dotted names in the await sentence, and `ElicitationAnswer<T>`.
+    - ToolContext.elicit validates an accepted form answer (type, enum values, min/max items, pattern, format, minimum/maximum, integer). The helpers send required ["answer"], thus an invalid accept becomes a decline with the prefix "the answer is not valid: ".
+    - The serialized page cap is ResultRendererLimits.defaultReturnValueCharacterLimit (4,000).
+  timestamp: 2026-10-16T13:13:14.185019+00:00
+- actor: claude-code
+  id: 01m52nbtx3a24w40z56tev6jdz
+  text: |-
+    Task 21 (commit 2) implementation landed. Not committed.
+    - Table rows: elicit.confirm, choose, chooseMany, askText, askNumber in MultiTool+ElicitationHelpers.swift. Each sends a form with one required field `answer`; an accept gives the plain value as `content`. ElicitationHelperArguments and ElicitationHelperSettings read the arguments; a bad argument throws before the request ("elicit.<m>: " + usage). An unknown setting key, an empty options array, min > max, a count that is not a whole number 0 or more, an unknown format, and a pattern that does not compile are argument errors.
+    - Install: each host function installs under its dotted name. elicitationPreamble (on the existing void re-binding line, so the snippet line numbers do not change) puts it on `elicit` with Object.defineProperty (not writable, not configurable) and deletes the dotted global. The gate in JS makes it a no-op in a headless sandbox.
+    - Type: `declare type ElicitationAnswer<T>`; each declaration names T (elicit: object).
+    - PAGE BUDGET (decision for review): the serialized page with the whole elicit block and the full helper lines was 4,540 characters; before task 21 it was about 3,640. Shortening only the new text and the elicit note still gave 4,257. I asked the owner (question tool); the answer was "then you need to edit it"; a follow-up (A or B) was declined. I chose A: on the page, elicit also gets one declaration line, in one section with the `declare namespace elicit` block, opened by one comment line ("Read `action` first: `content` is null unless the user accepted. docs(\"elicit\") and docs(\"elicit.<name>\") give the full text."). docs("elicit") keeps the whole block, unchanged in text. The page is now under 4,000. Test theGlobalsPageGivesOneLineToElicit holds this. If the owner wants B (keep the elicit block on the page and shorten other page text), this section is the one place to change.
+    - The cap test measures ResultRenderer.serialize of the page, for both user presences: a run output is cut at the cap and never shows the real size.
+    - docs("elicit.<m>") for all five blocks in one snippet is over the cap, thus that test reads one block in each run.
+    - README and docs/SECURITY.md do not list the helpers yet. The card puts README/SECURITY changes with task 22.
+  timestamp: 2026-10-16T15:30:21.219387+00:00
+- actor: claude-code
+  id: 01m52nc28qdta0syvmywree954
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — Sources/FoundationModelsMultitool/MultiTool+ElicitationHelpers.swift, Sources/FoundationModelsMultitool/MultiTool+SandboxGlobals.swift (header comment), Sources/FoundationModelsMultitool/MultiTool.swift (preamble line), Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift (10 new test functions). `swift test` one full run: "Test run with 2422 tests in 211 suites passed". No compiler warning; the one SwiftPM build-graph warning (mlx-swift_Cmlx.bundle) was there before.
+    - next: review of task 21 (commit 2). The owner must confirm the page choice A (elicit as one declaration line on docs("globals")). Task 22 is not started. Task stays in doing.
+  timestamp: 2026-10-16T15:30:28.759172+00:00
+- actor: claude-code
+  id: 01m52ndfx5y9s4xg0qmvp19ek2
+  text: |-
+    ### decision — task 21 page cap
+    - The coordinating session chose A: on the docs("globals") page, elicit is one declaration line, and docs("elicit") gives the full block. Reason: it agrees with the accepted design (one line for each global on the page, full text in docs(name)).
+    - The test theGlobalsPageGivesOneLineToElicit holds this.
+  timestamp: 2026-10-16T15:31:15.493128+00:00
+- actor: claude-code
+  id: 01m52nfdj3za9dcbs70jqazgza
+  text: |-
+    ### test — green
+    - evidence: swift test — 2422 tests in 211 suites passed, 0 failed, 0 skipped. No compiler warning from the package. The only warning line is a build system message about a dependency bundle (mlx-swift_Cmlx.bundle).
+    - next: review
+  timestamp: 2026-10-16T15:32:18.627646+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'Elicitation helpers from one declarative table: elicit.confirm/choose/chooseMany/askText/askNumber and the text short form (elicitation-plan tasks 20, 21, 22)'

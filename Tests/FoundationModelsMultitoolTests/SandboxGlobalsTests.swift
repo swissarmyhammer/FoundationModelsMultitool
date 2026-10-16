@@ -725,6 +725,220 @@ struct SandboxGlobalsTests {
         }
     }
 
+    // MARK: - The elicit helpers: elicit.confirm, choose, chooseMany, askText, askNumber
+
+    /// Each helper sends a form with one required field `answer`, and the
+    /// snippet reads the plain value of that field as `content`. Each case
+    /// runs in a fixed order: the snippet asks, the sink answers, and the
+    /// snippet returns what it got.
+    @Test("each elicit helper sends its one-field form, and an accept gives the plain answer", arguments: elicitHelperRoundTrips)
+    func elicitHelperSendsItsFormAndGivesThePlainAnswer(roundTrip: ElicitHelperRoundTrip) async throws {
+        try await withStubRun { stub in
+            let context = stub.context
+            try await withScriptedElicitationSink(
+                run: stub, answering: .accept(content: [elicitHelperAnswerField: roundTrip.answer])
+            ) { sink in
+                let output = try await runSnippet(
+                    """
+                    const answer = await \(roundTrip.call);
+                    return { action: answer.action, content: JSON.stringify(answer.content), reason: answer.reason };
+                    """,
+                    under: context
+                )
+
+                let observed = try RunOutput.decoded(ElicitHelperAnswer.self, from: output)
+                #expect(observed == ElicitHelperAnswer(action: "accept", content: roundTrip.content, reason: nil))
+                let request = try #require(await sink.observedRequest)
+                #expect(request.mode == .form)
+                #expect(request.message == elicitHelperMessage)
+                #expect(request.requestedSchema == roundTrip.schema)
+            }
+        }
+    }
+
+    /// The sink declines or cancels each helper with a reason. Each helper
+    /// must give that reason, with `null` content. The snippet asks with each
+    /// helper in turn, and the sink answers each request in that order.
+    @Test(
+        "each elicit helper gives the reason of a decline or a cancel, and null content",
+        arguments: [
+            ElicitationResponse.decline(reason: "not now"),
+            ElicitationResponse.cancel(reason: "run cancelled"),
+        ]
+    )
+    func elicitHelperGivesTheReasonOfADeclineOrACancel(response: FoundationModelsExtras.ElicitationResponse) async throws {
+        let answers = try await elicitHelperAnswers(answering: response)
+
+        let expected = ElicitHelperAnswer(action: response.action.rawValue, content: "null", reason: response.reason)
+        #expect(answers == Array(repeating: expected, count: elicitHelperCalls.count))
+    }
+
+    /// The sink accepts each helper with a string that no helper takes:
+    /// `confirm`, `chooseMany` and `askNumber` take no string, the string is
+    /// not an option of `choose`, and it does not match the pattern of
+    /// `askText`. Each helper must give a decline with the invalid-answer
+    /// reason in place of the accept.
+    @Test("an accept that is not a valid answer to an elicit helper gives a decline with the invalid-answer reason")
+    func elicitHelperTurnsAnInvalidAcceptIntoADecline() async throws {
+        let answers = try await elicitHelperAnswers(
+            answering: .accept(content: [elicitHelperAnswerField: .string(elicitHelperInvalidAnswer)]))
+
+        #expect(answers.count == elicitHelperCalls.count)
+        for answer in answers {
+            #expect(answer.action == "decline")
+            #expect(answer.content == "null")
+            #expect(answer.reason?.hasPrefix(ElicitationRequestedSchema.invalidAnswerReasonPrefix) == true, "the reason was: \(String(describing: answer.reason))")
+        }
+    }
+
+    /// A call with bad arguments throws at the call, before a request goes to
+    /// the user. The order is fixed: the bad call throws, then the snippet
+    /// asks one valid question, and the sink answers it. Thus the valid
+    /// question is the only request that the sink observed.
+    @Test("an elicit helper with bad arguments throws its usage text, and sends no request", arguments: elicitHelperArgumentErrors)
+    func elicitHelperArgumentErrorSendsNoRequest(argumentError: ElicitHelperArgumentError) async throws {
+        let usage = try #require(MultiTool.elicitationGlobals.first { $0.name == argumentError.helper }?.usage)
+        #expect(usage.hasPrefix("\(argumentError.helper)("))
+        try await withStubRun { stub in
+            let context = stub.context
+            try await withScriptedElicitationSink(run: stub, answering: .decline) { sink in
+                let output = try await runSnippet(
+                    """
+                    let message = "no-throw";
+                    try {
+                        await \(argumentError.call);
+                    } catch (error) {
+                        message = String(error.message);
+                    }
+                    await elicit.confirm(\(try jsStringLiteral(elicitHelperFollowUpMessage)));
+                    return message;
+                    """,
+                    under: context
+                )
+
+                let message = try RunOutput.decoded(String.self, from: output)
+                #expect(message.hasPrefix("\(argumentError.helper): "), "the message was: \(message)")
+                #expect(message.contains(usage), "the message was: \(message)")
+                #expect(await sink.deliveries(count: 1) == [.delivered])
+                #expect(await sink.requests.map(\.message) == [elicitHelperFollowUpMessage])
+            }
+        }
+    }
+
+    /// A snippet cannot replace or remove a helper: an assignment and a
+    /// `delete` leave the installed function in place. The names come from
+    /// the globals page.
+    @Test("a snippet cannot replace or delete an elicit helper")
+    func elicitHelpersCannotBeReplaced() async throws {
+        let helpers = documentedElicitHelperMembers()
+        try #require(!helpers.isEmpty)
+
+        let output = try await runSnippet(
+            """
+            return \(jsArrayLiteral(of: helpers)).map(name => {
+                const installed = elicit[name];
+                try { elicit[name] = function () { return "replaced"; }; } catch (error) {}
+                try { delete elicit[name]; } catch (error) {}
+                return typeof installed === "function" && elicit[name] === installed;
+            });
+            """
+        )
+
+        #expect(try RunOutput.decoded([Bool].self, from: output) == Array(repeating: true, count: helpers.count))
+    }
+
+    /// The globals page gives each helper one line, its declaration in the
+    /// `elicit` namespace. The full text of a helper is in its own
+    /// `docs(name)` block only.
+    @Test("the globals page gives each elicit helper one declaration line, and no more")
+    func theGlobalsPageGivesOneLineToEachElicitHelper() throws {
+        let page = MultiTool.sandboxGlobalsPage(asksUser: true)
+        let helpers = MultiTool.elicitationGlobals.filter { $0.name != MultiTool.elicitGlobalName }
+        try #require(!helpers.isEmpty)
+
+        for helper in helpers {
+            let member = String(helper.name.dropFirst("\(MultiTool.elicitGlobalName).".count))
+            let declarations = page.split(separator: "\n").filter {
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("function \(member)(")
+            }
+            #expect(declarations.count == 1, "the declarations of \(helper.name) were: \(declarations)")
+            #expect(!page.contains(helper.usage))
+        }
+    }
+
+    /// The return cap of `runCode` has no room for the whole block of
+    /// `elicit` next to the helper lines. Thus the page gives `elicit` one
+    /// declaration line too, and `docs("elicit")` keeps the whole block.
+    @Test("the globals page gives elicit one declaration line, and docs(\"elicit\") keeps the whole block")
+    func theGlobalsPageGivesOneLineToElicit() throws {
+        let page = MultiTool.sandboxGlobalsPage(asksUser: true)
+        let declarations = page.split(separator: "\n").filter {
+            $0.hasPrefix("declare function \(MultiTool.elicitGlobalName)(")
+        }
+        let block = try #require(MultiTool.sandboxGlobalsDocumentation(for: MultiTool.elicitGlobalName, asksUser: true))
+
+        #expect(declarations.count == 1, "the declarations of elicit were: \(declarations)")
+        #expect(!page.contains(MultiTool.elicitUsage))
+        #expect(block.contains(MultiTool.elicitUsage))
+    }
+
+    /// `docs("elicit.<m>")` gives the full block of the helper: its banner,
+    /// its JSDoc comment with the usage text, the return type and an example,
+    /// and its declaration in the `elicit` namespace.
+    @Test("docs(\"elicit.<m>\") gives the full block of each elicit helper")
+    func docsGivesTheFullBlockOfEachElicitHelper() async throws {
+        let helpers = MultiTool.elicitationGlobals.filter { $0.name != MultiTool.elicitGlobalName }
+        try #require(!helpers.isEmpty)
+
+        // One run for each block: the blocks together are longer than the
+        // return cap of `runCode`.
+        for helper in helpers {
+            let output = try await runSnippet("return docs(\(try jsStringLiteral(helper.name)));")
+
+            let block = try RunOutput.decoded(String.self, from: output)
+            #expect(block.hasPrefix("// \(helper.name)\n/**\n"), "the block was: \(block)")
+            #expect(block.contains(helper.usage))
+            #expect(block.contains(" * @returns Promise<\(ElicitationGlobal.answerTypeName)<"))
+            #expect(block.contains(" * @example "))
+            #expect(block.contains("declare namespace \(MultiTool.elicitGlobalName) {"))
+        }
+    }
+
+    /// In a headless session, no helper is installed or documented, and a call
+    /// to one gets the same no-user hint as a call to `elicit()`.
+    @Test("a headless snippet that calls an elicit helper gets the no-user hint, and docs() does not declare the helper")
+    func userPresenceHeadlessElicitHelperFailsWithTheHint() async throws {
+        let helpers = documentedElicitHelperMembers()
+        try #require(!helpers.isEmpty)
+
+        for member in helpers {
+            let name = "\(MultiTool.elicitGlobalName).\(member)"
+            let call = try await runSnippet(
+                "return await \(name)(\"q\");", under: makeContext(userPresence: .headless))
+            let entry = try await runSnippet(
+                "return docs(\(try jsStringLiteral(name)));", under: makeContext(userPresence: .headless))
+
+            #expect(call.contains("Can't find variable: elicit"), "the output was: \(call)")
+            #expect(call.contains(noUserPresentHintText), "the output was: \(call)")
+            #expect(try RunOutput.decoded(String.self, from: entry).hasPrefix("Unknown tool \"\(name)\""))
+        }
+    }
+
+    /// The page reaches the snippet as a JSON string. The JSON escapes make
+    /// the text longer than the page, thus the test measures the page as the
+    /// renderer of `runCode` serializes it, not the page. The renderer cuts a
+    /// longer value at the cap, thus the test does not measure the output
+    /// of a run: that output never shows how far the page is over the cap.
+    @Test("the serialized docs(\"globals\") page stays under the return cap of runCode", arguments: [true, false])
+    func theGlobalsPageStaysUnderTheReturnCap(asksUser: Bool) {
+        let serialized = ResultRenderer.serialize(.string(MultiTool.sandboxGlobalsPage(asksUser: asksUser)))
+
+        #expect(
+            serialized.count < ResultRendererLimits.defaultReturnValueCharacterLimit,
+            "the serialized page has \(serialized.count) characters"
+        )
+    }
+
     // MARK: - notify() / progress()
 
     @Test("notify() and progress() reach the session's sink on the run's own correlation")
@@ -1152,4 +1366,192 @@ private func declaredFields(of name: String, in page: String) -> [String]? {
         .split(separator: ";")
         .compactMap { $0.split(separator: ":").first?.trimmingCharacters(in: .whitespaces) }
         .sorted()
+}
+
+// MARK: - The elicit helpers
+
+/// The one field of the form that each elicit helper sends. The name is
+/// written here, and not read from the source, so that the test holds the
+/// field that the owner accepted.
+private let elicitHelperAnswerField = "answer"
+
+/// The question that each helper call of this suite asks.
+private let elicitHelperMessage = "Proceed?"
+
+/// The question that a snippet asks after a bad call, so that the sink
+/// observes one request.
+private let elicitHelperFollowUpMessage = "Go on?"
+
+/// The JS string literal of ``elicitHelperMessage``. The message holds no
+/// character that needs an escape.
+private let elicitHelperMessageLiteral = "\"\(elicitHelperMessage)\""
+
+/// The two options of each `choose` and `chooseMany` call of this suite.
+private let elicitHelperOptions = ["us", "eu"]
+
+/// The JS array literal of ``elicitHelperOptions``.
+private let elicitHelperOptionsLiteral = jsArrayLiteral(of: elicitHelperOptions)
+
+/// A string that no helper call of ``elicitHelperCalls`` takes as an answer.
+private let elicitHelperInvalidAnswer = "not an option"
+
+/// One call to each helper, in the order that a snippet makes them. The
+/// `askText` call has a pattern that ``elicitHelperInvalidAnswer`` does not
+/// match.
+private let elicitHelperCalls = [
+    "elicit.confirm(\(elicitHelperMessageLiteral))",
+    "elicit.choose(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral))",
+    "elicit.chooseMany(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral))",
+    "elicit.askText(\(elicitHelperMessageLiteral), { pattern: \"[0-9]+\" })",
+    "elicit.askNumber(\(elicitHelperMessageLiteral))",
+]
+
+/// The answer to one helper call, as the snippet reports it.
+struct ElicitHelperAnswer: Decodable, Equatable {
+    /// The `action` of the answer.
+    let action: String
+
+    /// `JSON.stringify` of the `content` of the answer.
+    let content: String
+
+    /// The `reason` of the answer, or `nil` when it is `null`.
+    let reason: String?
+}
+
+/// One helper call, the answer that the sink gives to it, the form that it
+/// must send, and the content that the snippet must get.
+struct ElicitHelperRoundTrip: Sendable, CustomTestStringConvertible {
+    /// The JS expression of the call.
+    let call: String
+
+    /// The value of the `answer` field of the accept.
+    let answer: ElicitationValue
+
+    /// The form that the call must send.
+    let schema: ElicitationRequestedSchema
+
+    /// `JSON.stringify` of the `content` that the snippet must get.
+    let content: String
+
+    /// The call, as the name of the test case.
+    var testDescription: String { call }
+
+    /// Makes a round trip whose form has the one required field `answer`.
+    ///
+    /// - Parameters:
+    ///   - call: the JS expression of the call.
+    ///   - answer: the value of the `answer` field of the accept.
+    ///   - field: the schema of the `answer` field.
+    ///   - content: `JSON.stringify` of the expected `content`.
+    init(call: String, answer: ElicitationValue, field: ElicitationPrimitiveSchema, content: String) {
+        self.call = call
+        self.answer = answer
+        self.schema = ElicitationRequestedSchema(properties: [elicitHelperAnswerField: field], required: [elicitHelperAnswerField])
+        self.content = content
+    }
+}
+
+/// The round trip of each helper, with and without its optional argument.
+let elicitHelperRoundTrips: [ElicitHelperRoundTrip] = [
+    ElicitHelperRoundTrip(
+        call: "elicit.confirm(\(elicitHelperMessageLiteral))",
+        answer: .boolean(true), field: .boolean(ElicitationBooleanSchema()), content: "true"),
+    ElicitHelperRoundTrip(
+        call: "elicit.choose(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral))",
+        answer: .string("eu"), field: .singleSelect(ElicitationSingleSelectSchema(values: elicitHelperOptions)),
+        content: "\"eu\""),
+    ElicitHelperRoundTrip(
+        call: "elicit.chooseMany(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral))",
+        answer: .stringArray(["us"]), field: .multiSelect(ElicitationMultiSelectSchema(values: elicitHelperOptions)),
+        content: "[\"us\"]"),
+    ElicitHelperRoundTrip(
+        call: "elicit.chooseMany(\(elicitHelperMessageLiteral), \(elicitHelperOptionsLiteral), { min: 1, max: 2 })",
+        answer: .stringArray(["us", "eu"]),
+        field: .multiSelect(ElicitationMultiSelectSchema(values: elicitHelperOptions, minItems: 1, maxItems: 2)),
+        content: "[\"us\",\"eu\"]"),
+    ElicitHelperRoundTrip(
+        call: "elicit.askText(\(elicitHelperMessageLiteral))",
+        answer: .string("Ada"), field: .string(ElicitationStringSchema()), content: "\"Ada\""),
+    ElicitHelperRoundTrip(
+        call: "elicit.askText(\(elicitHelperMessageLiteral), { format: \"email\", pattern: \"[a-z]+@example[.]com\" })",
+        answer: .string("ada@example.com"),
+        field: .string(ElicitationStringSchema(format: .email, pattern: "[a-z]+@example[.]com")),
+        content: "\"ada@example.com\""),
+    ElicitHelperRoundTrip(
+        call: "elicit.askNumber(\(elicitHelperMessageLiteral))",
+        answer: .number(0.5), field: .number(ElicitationNumberSchema(type: .number)), content: "0.5"),
+    ElicitHelperRoundTrip(
+        call: "elicit.askNumber(\(elicitHelperMessageLiteral), { min: 1, max: 10, integer: true })",
+        answer: .number(3), field: .number(ElicitationNumberSchema(type: .integer, minimum: 1, maximum: 10)),
+        content: "3"),
+]
+
+/// One helper call with bad arguments.
+struct ElicitHelperArgumentError: Sendable, CustomTestStringConvertible {
+    /// The name of the helper, for example `elicit.choose`.
+    let helper: String
+
+    /// The JS expression of the bad call.
+    let call: String
+
+    /// The call, as the name of the test case.
+    var testDescription: String { call }
+}
+
+/// The bad calls: a wrong type or a missing value, a value that the form
+/// cannot hold, and an option name that the helper does not know.
+let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
+    ElicitHelperArgumentError(helper: "elicit.confirm", call: "elicit.confirm()"),
+    ElicitHelperArgumentError(helper: "elicit.confirm", call: "elicit.confirm(42)"),
+    ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\")"),
+    ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", \"us\")"),
+    ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", [])"),
+    ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", [\"us\", 2])"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { min: 2, max: 1 })"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { min: 1.5 })"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { max: -1 })"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { most: 1 })"),
+    ElicitHelperArgumentError(helper: "elicit.askText", call: "elicit.askText(\"Name?\", { format: \"phone\" })"),
+    ElicitHelperArgumentError(helper: "elicit.askText", call: "elicit.askText(\"Name?\", { pattern: \"(\" })"),
+    ElicitHelperArgumentError(helper: "elicit.askText", call: "elicit.askText(\"Name?\", \"email\")"),
+    ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: \"1\" })"),
+    ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: 5, max: 1 })"),
+    ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { integer: \"yes\" })"),
+]
+
+/// Runs each call of ``elicitHelperCalls`` in turn under a stub run whose
+/// scripted sink gives `response` to each one, and decodes what the snippet
+/// got.
+///
+/// - Parameter response: the answer the sink gives to each call.
+/// - Returns: the answer to each call, in call order.
+/// - Throws: when the run fails, or when its output does not decode.
+private func elicitHelperAnswers(answering response: ElicitationResponse) async throws -> [ElicitHelperAnswer] {
+    try await withStubRun { stub in
+        let context = stub.context
+        return try await withScriptedElicitationSink(run: stub, answering: response) { _ in
+            let output = try await runSnippet(
+                """
+                const calls = [\(elicitHelperCalls.map { "() => \($0)" }.joined(separator: ", "))];
+                const answers = [];
+                for (const call of calls) {
+                    const answer = await call();
+                    answers.push({ action: answer.action, content: JSON.stringify(answer.content), reason: answer.reason });
+                }
+                return answers;
+                """,
+                under: context
+            )
+            return try RunOutput.decoded([ElicitHelperAnswer].self, from: output)
+        }
+    }
+}
+
+/// The member name of each helper that the interactive globals page
+/// declares in the `elicit` namespace, in page order.
+///
+/// - Returns: the member names, for example `confirm`.
+private func documentedElicitHelperMembers() -> [String] {
+    let prefix = "\(MultiTool.elicitGlobalName)."
+    return documentedGlobalNames().filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
 }

@@ -13,7 +13,10 @@ import FoundationModelsExtras
 //   never a capability's bulk output.
 // - `elicit()` — a question for the user in the middle of a snippet, suspending
 //   the snippet through `ToolContext.elicit` exactly as a wrapped tool's own
-//   elicitation is.
+//   elicitation is. Its helpers `elicit.confirm()`, `elicit.choose()`,
+//   `elicit.chooseMany()`, `elicit.askText()` and `elicit.askNumber()` each
+//   ask one typed question the same way (see
+//   `MultiTool+ElicitationHelpers.swift`).
 // - `notify()`, `progress()` — enqueue-and-continue notices (see
 //   `SandboxNoticeOutbox`).
 //
