@@ -16,4 +16,21 @@ import Testing
 
         #expect(!ranInATask)
     }
+
+    /// A started body also runs with no current task, and the caller gets
+    /// no result. The body gives its one fact to a stream, and the test
+    /// waits for that event, not for a time. A stream that ends with no
+    /// fact gives `nil`, and the check fails.
+    @Test func theStartedBodyRunsWithNoCurrentTask() async {
+        let (facts, factsContinuation) = AsyncStream.makeStream(of: Bool.self)
+
+        DedicatedThread.start {
+            factsContinuation.yield(withUnsafeCurrentTask { $0 != nil })
+            factsContinuation.finish()
+        }
+
+        var iterator = facts.makeAsyncIterator()
+        let ranInATask = await iterator.next()
+        #expect(ranInATask == false)
+    }
 }

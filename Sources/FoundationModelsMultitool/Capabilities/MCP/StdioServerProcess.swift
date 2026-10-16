@@ -33,9 +33,10 @@
 // raw `posix_spawn` — `POSIX_SPAWN_SETPGROUP` sets the group as part of the
 // spawn — and owns the reap itself: every teardown path below calls both
 // `killpg` and `waitpid`, never just one. `waitpid` blocks the thread that
-// calls it, thus each async path reaps on a thread of its own
-// (`DedicatedThread`), and never on a thread of the Swift cooperative pool.
-// Only `deinit`, which cannot `await`, reaps on the thread that runs it.
+// calls it, thus each path reaps on a thread of its own (`DedicatedThread`),
+// and never on a thread of the Swift cooperative pool. Each async path awaits
+// that thread. `deinit`, which cannot `await`, starts that thread and returns
+// at once.
 //
 // **Four teardown triggers, one idempotent funnel.** Each one reaches
 // `ProcessState.take(where:)` — through `terminateCurrent()`, or through
@@ -221,6 +222,9 @@ public struct StdioServerProcess: Sendable {
     ///   - name: The human-readable server name.
     ///   - registry: The registry every spawned pid is registered into and
     ///     deregistered from.
+    ///   - didReap: Called after each teardown path reaped and deregistered
+    ///     a pid, with that pid. A test waits for this event, and not for a
+    ///     time. A no-op by default.
     /// - Throws: ``StdioServerProcessError/commandNotAbsolute(_:)`` when
     ///   `command` is not an absolute path.
     init(
@@ -228,7 +232,8 @@ public struct StdioServerProcess: Sendable {
         args: [String] = [],
         env: [EnvVariable] = [],
         name: String,
-        registry: ProcessRegistry
+        registry: ProcessRegistry,
+        didReap: @escaping @Sendable (pid_t) -> Void = { _ in }
     ) throws {
         guard command.hasPrefix("/") else {
             throw StdioServerProcessError.commandNotAbsolute(command)
@@ -237,7 +242,7 @@ public struct StdioServerProcess: Sendable {
         self.args = args
         self.env = env
         self.name = name
-        self.state = ProcessState(registry: registry)
+        self.state = ProcessState(registry: registry, didReap: didReap)
     }
 
     /// The pid of whichever subprocess ``respawn()`` most recently spawned and
@@ -550,12 +555,20 @@ private final class ProcessState: Sendable {
     /// from.
     private let registry: ProcessRegistry
 
+    /// Called after each teardown path reaped and deregistered a pid, with
+    /// that pid.
+    private let didReap: @Sendable (pid_t) -> Void
+
     /// Creates process-state bookkeeping backed by `registry`.
     ///
-    /// - Parameter registry: The registry every spawned pid is registered
-    ///   into and deregistered from.
-    init(registry: ProcessRegistry) {
+    /// - Parameters:
+    ///   - registry: The registry every spawned pid is registered into and
+    ///     deregistered from.
+    ///   - didReap: Called after each teardown path reaped and deregistered
+    ///     a pid, with that pid.
+    init(registry: ProcessRegistry, didReap: @escaping @Sendable (pid_t) -> Void) {
         self.registry = registry
+        self.didReap = didReap
     }
 
     /// The live pid, or `nil` when nothing is fronted.
@@ -650,14 +663,32 @@ private final class ProcessState: Sendable {
     /// `terminateIfCurrent(pid:)` share.
     ///
     /// `waitpid` blocks the thread that calls it until the kernel ends the
-    /// child. Thus the kill and the reap run on a thread of their own
+    /// child. Thus the teardown runs on a thread of its own
     /// (``DedicatedThread``), and the caller suspends and holds no thread of
     /// the Swift cooperative pool.
     ///
     /// - Parameter pid: The pid to group-kill, reap, and deregister.
     private func killReapAndDeregister(_ pid: pid_t) async {
-        await DedicatedThread.run { Self.killAndReap(pid) }
-        registry.deregister(pid)
+        await DedicatedThread.run(teardown(of: pid))
+    }
+
+    /// The teardown of `pid` that each path gives to a thread of its own:
+    /// group-kill and reap `pid`, deregister it, and then call `didReap`.
+    ///
+    /// The closure captures the registry and the observer, and not `self`.
+    /// Thus `deinit` can give it to a thread that runs after this state is
+    /// gone.
+    ///
+    /// - Parameter pid: The pid to group-kill, reap, and deregister.
+    /// - Returns: The teardown. It blocks the thread that runs it.
+    private func teardown(of pid: pid_t) -> @Sendable () -> Void {
+        let registry = registry
+        let didReap = didReap
+        return {
+            Self.killAndReap(pid)
+            registry.deregister(pid)
+            didReap(pid)
+        }
     }
 
     /// Group-kills `pid` with `SIGKILL`, and waits until the kernel ends it
@@ -675,14 +706,14 @@ private final class ProcessState: Sendable {
     /// other trigger, so it is safe even after an explicit `shutdown()`
     /// already ran.
     ///
-    /// `deinit` cannot `await`. Thus it is the one path that reaps on the
-    /// thread that runs it. A caller tells the end of the teardown from the
-    /// return of the last release of this state, so the reap must end
-    /// before `deinit` returns.
+    /// `deinit` cannot `await`. Thus it starts the teardown on a thread of
+    /// its own (``DedicatedThread/start(_:)``) and returns at once. The last
+    /// release, which can run on a thread of the Swift cooperative pool, does
+    /// not wait for the child. The reap ends after `deinit` returned. A caller
+    /// that must see the end of the reap waits for the `didReap` event.
     deinit {
         guard let taken = take(where: { _ in true }) else { return }
-        Self.killAndReap(taken)
-        registry.deregister(taken)
+        DedicatedThread.start(teardown(of: taken))
     }
 }
 

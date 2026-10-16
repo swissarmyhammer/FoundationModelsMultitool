@@ -188,12 +188,18 @@ struct StdioServerProcessTests {
     /// registered into `sharedRegistry`: a child that lives until a kill
     /// ends it.
     ///
-    /// - Parameter name: The server name of the process.
+    /// - Parameters:
+    ///   - name: The server name of the process.
+    ///   - didReap: Called after each teardown reaped and deregistered a
+    ///     pid. A no-op by default.
     /// - Returns: The process, not yet spawned.
     /// - Throws: What `StdioServerProcess.init` throws.
-    private func makeHeldChild(named name: String) throws -> StdioServerProcess {
+    private func makeHeldChild(
+        named name: String, didReap: @escaping @Sendable (pid_t) -> Void = { _ in }
+    ) throws -> StdioServerProcess {
         try StdioServerProcess(
-            command: Self.holdCommand, args: holdArguments, name: name, registry: Self.sharedRegistry)
+            command: Self.holdCommand, args: holdArguments, name: name, registry: Self.sharedRegistry,
+            didReap: didReap)
     }
 
     /// Whether `pid` names no live process and no zombie — see
@@ -754,24 +760,46 @@ struct StdioServerProcessTests {
     /// vended, the spawned process must still be group-killed and reaped,
     /// with no explicit call from anyone: ARC runs the `deinit` of the shared
     /// process state.
+    ///
+    /// `deinit` cannot `await`. Thus it gives the kill and the reap to a
+    /// thread of its own, and the last release does not wait for the child.
+    /// The test waits for the reap event of the process, not for a time. The
+    /// event also tells that the reap ran with no current task, thus not on
+    /// the task that released the last reference.
     @Test func releasingEveryReferenceReapsTheProcessViaOwnerTeardown() async throws {
-        var stdio: StdioServerProcess? = try makeHeldChild(named: "owner-teardown-test")
+        let (reaps, reapsContinuation) = AsyncStream.makeStream(of: OwnerTeardownReap.self)
+        var stdio: StdioServerProcess? = try makeHeldChild(named: "owner-teardown-test") { pid in
+            reapsContinuation.yield(
+                OwnerTeardownReap(pid: pid, ranInATask: withUnsafeCurrentTask { $0 != nil }))
+        }
 
         // The value is unwrapped, spawned and read inside this helper, and the
         // vended transport is discarded there — nothing is bound in this
         // scope. Once it returns, `stdio` (nilled below) is the only remaining
         // strong reference to the shared state.
-        guard let pid = try await Self.respawnAndReadPid(stdio) else {
-            Issue.record("expected respawn() to record a pid")
-            return
-        }
+        let pid = try #require(try await Self.respawnAndReadPid(stdio))
         #expect(Self.isAlive(pid))
 
         stdio = nil
 
+        var iterator = reaps.makeAsyncIterator()
+        let reap = try #require(await iterator.next())
+        #expect(reap.pid == pid)
+        #expect(!reap.ranInATask)
         #expect(Self.isGone(pid))
         #expect(!Self.sharedRegistry.registeredPids.contains(pid))
         Self.confirmNoLeaks()
+    }
+
+    /// One reap event of the owner-teardown test: the pid that the teardown
+    /// reaped and deregistered, and whether the event ran with a current
+    /// task.
+    private struct OwnerTeardownReap: Sendable {
+        /// The pid that the teardown reaped and deregistered.
+        let pid: pid_t
+
+        /// Whether the event ran with a current task.
+        let ranInATask: Bool
     }
 
     /// Spawns `stdio`, discards the vended transport, and returns the pid it

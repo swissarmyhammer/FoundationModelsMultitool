@@ -5,7 +5,8 @@
 // makes it until the kernel answers. The cooperative pool has few threads.
 // Each thread that such a call holds is lost to every other task until the
 // call ends. Thus async code gives each blocking call to this type, and awaits
-// the result.
+// the result. Code that cannot await, such as a `deinit`, gives the call to
+// this type, and returns at once.
 
 import Foundation
 
@@ -20,10 +21,22 @@ enum DedicatedThread {
     /// - Returns: The value `body` returns.
     static func run<Value: Sendable>(_ body: @escaping @Sendable () -> Value) async -> Value {
         await withCheckedContinuation { (continuation: CheckedContinuation<Value, Never>) in
-            let thread = Thread {
+            start {
                 continuation.resume(returning: body())
             }
-            thread.start()
         }
+    }
+
+    /// Starts `body` on a new thread, and returns at once. `body` runs with
+    /// no current task.
+    ///
+    /// For a caller that cannot `await`, such as a `deinit`. The caller gets
+    /// no result. A caller that must see the end of `body` gives `body` an
+    /// event to send.
+    ///
+    /// - Parameter body: The blocking call.
+    static func start(_ body: @escaping @Sendable () -> Void) {
+        let thread = Thread(block: body)
+        thread.start()
     }
 }

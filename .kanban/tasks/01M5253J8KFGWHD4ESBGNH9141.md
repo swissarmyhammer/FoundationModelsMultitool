@@ -16,6 +16,14 @@ comments:
   id: 01m52685d623g53mw871yytggs
   text: 'Task 20 (commit 1) done. The elicit global now comes from one table in MultiTool+ElicitationHelpers.swift. The page text and the short form did not change. Proof: the filtered run (SandboxGlobalsTests and the two HardeningTests injected-globals tests) had 41 tests pass before the change and 41 tests pass after it. The new doc-coverage test installedGlobalsMatchTheDocumentedGlobals cannot fail on the old code, because it covers a pure refactor. Full run: "Test run with 2411 tests in 211 suites passed". The build gives no compiler warnings. One SwiftPM build-graph warning ("missing creator for mutated node ... mlx-swift_Cmlx.bundle") was already in the build before this change.'
   timestamp: 2026-10-16T11:06:12.262712+00:00
+- actor: claude-code
+  id: 01m52c362mk128k1g8h0fxv9gf
+  text: |-
+    ### commit 1 (task 20) — changed
+    - evidence: local commit 4ec4bbd (amended from 73ddb9b, message only). Full run before the amend: 2411 tests green. Not pushed.
+    - message: the deleted test docsGlobalsDeclaresEveryAmbientGlobal is replaced by the run-time check installedGlobalsMatchTheDocumentedGlobals (owner accepted).
+    - next: commit 2 (task 21, helpers as the elicit namespace), then commit 3 (task 22, text short form). Report to the owner before the push.
+  timestamp: 2026-10-16T12:48:20.564334+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'Elicitation helpers from one declarative table: elicit.confirm/choose/chooseMany/askText/askNumber and the text short form (elicitation-plan tasks 20, 21, 22)'
