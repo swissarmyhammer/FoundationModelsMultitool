@@ -2,8 +2,10 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsRouter
+import Logging
 import MCP
 import MCPTestServer
+import Synchronization
 import Testing
 import ULID
 
@@ -106,6 +108,52 @@ struct MCPElicitationTests {
 
     /// The completion token of the context of the relay case.
     private static let relayCompletionToken = "relay-run"
+
+    /// The name of the tool that holds its call until the test releases it:
+    /// the first of two calls in flight.
+    private static let heldToolName = "holdOpen"
+
+    /// The name of the form-mode eliciting tool that echoes the progress
+    /// token of its call in the `_meta` of its `elicitation/create`.
+    private static let tokenEchoToolName = "elicitEchoWithToken"
+
+    /// The name of the form-mode eliciting tool that sends a progress token
+    /// that names no call in flight.
+    private static let unknownTokenToolName = "elicitEchoWithUnknownToken"
+
+    /// The progress token that ``unknownTokenToolName`` sends. No call has
+    /// it.
+    private static let unknownProgressToken = "no-call-in-flight"
+
+    /// The tool name and the op of each run of the cases of two calls in
+    /// flight.
+    private static let answeringTool = "answering-probe"
+
+    /// The completion token of the run that holds the first call.
+    private static let holdingRunToken = "holding-run"
+
+    /// The completion token of the run that makes the second call.
+    private static let askingRunToken = "asking-run"
+
+    /// The answer that the sink of the holding run gives to each question.
+    private static let holdingRunAnswer = "answer of the holding run"
+
+    /// The answer that the sink of the asking run gives to each question.
+    private static let askingRunAnswer = "answer of the asking run"
+
+    /// How many questions the run that answers gets.
+    private static let oneQuestion = 1
+
+    /// The reason of the cancel when the question cannot be linked to one
+    /// call. The test spells it out, and does not read the constant of the
+    /// product, so the test compiles on the code before the change.
+    private static let notLinkedReason =
+        "the question cannot be linked to one tool call: 2 calls in flight from different runs"
+
+    /// The message of the record of that cancel, spelled out for the same
+    /// reason.
+    private static let notLinkedLogMessage =
+        "mcp elicitation cancelled: the question cannot be linked to one tool call"
 
     /// The `runCode` snippet that awaits the eliciting verb with no arguments.
     private static let elicitEchoSnippet =
@@ -527,6 +575,276 @@ struct MCPElicitationTests {
             #expect(Self.answer(in: result) == Self.scriptedAnswer)
             #expect(await probe.requests.count == Self.noHandlerCalls)
         }
+        withExtendedLifetime(scripted) {}
+    }
+
+    // MARK: - Two calls in flight: helpers
+
+    /// A sink that answers each question of its run at once, on the run
+    /// plane of the run, and records each question it got.
+    ///
+    /// The answer comes from the sink, thus a question that reaches the run
+    /// ends with no step of the test. A question that does not reach the run
+    /// ends some other way, for example with a cancel. Thus the test only
+    /// awaits the call, and no wait of the test can stay open.
+    private actor AnsweringEventSink: OperationEventSink {
+        /// The run plane the sink answers on.
+        private let runPlane: RunPlane
+
+        /// The answer each question gets.
+        private let response: ElicitationResponse
+
+        /// Each question this sink got, in arrival order.
+        private(set) var questions: [ElicitationRequest] = []
+
+        /// Makes a sink that answers each question on `runPlane` with
+        /// `response`.
+        ///
+        /// - Parameters:
+        ///   - runPlane: The run plane of the run of the sink.
+        ///   - response: The answer each question gets.
+        init(answeringOn runPlane: RunPlane, with response: ElicitationResponse) {
+            self.runPlane = runPlane
+            self.response = response
+        }
+
+        /// Records the question that `event` carries, and answers it. An
+        /// event that carries no question is ignored.
+        ///
+        /// - Parameter event: The posted event.
+        func post(event: OperationEvent) async {
+            guard let question = event.elicitation else { return }
+            questions.append(question)
+            _ = await runPlane.respond(elicitationId: question.elicitationId, response)
+        }
+    }
+
+    /// One run of a case of two calls in flight: the context the test binds
+    /// around a call, and the sink that answers the questions of the run.
+    private struct AnsweringRun {
+        /// The context of the run.
+        let context: ToolContext
+
+        /// The sink of the run.
+        let sink: AnsweringEventSink
+
+        /// Makes a run of the session `sessionID` on `runPlane`, with the
+        /// completion token `completionToken`. Its sink accepts each question
+        /// with `answer` under the answer field of the loopback tools.
+        ///
+        /// - Parameters:
+        ///   - sessionID: The session of the run.
+        ///   - runPlane: The run plane of the session.
+        ///   - completionToken: The completion token of the run.
+        ///   - answer: The answer the sink gives.
+        init(session sessionID: ULID, runPlane: RunPlane, completionToken: String, answer: String) {
+            sink = AnsweringEventSink(
+                answeringOn: runPlane,
+                with: .accept(content: [ScriptedServer.elicitEchoAnswerField: .string(answer)]))
+            context = ToolContext(
+                sessionID: sessionID, runPlane: runPlane, sink: sink, tool: answeringTool, op: answeringTool,
+                completionToken: completionToken, isCancelled: { false })
+        }
+    }
+
+    /// The two runs of a case of two calls in flight: one session and one run
+    /// plane, two completion tokens, and two answers. The two runs share the
+    /// session, thus a check that tells them apart cannot use the session.
+    ///
+    /// - Returns: The run that holds the first call, and the run that asks.
+    private static func twoRunsOfOneSession() -> (holding: AnsweringRun, asking: AnsweringRun) {
+        let sessionID = ULID()
+        let runPlane = RunPlane(userPresence: .interactive)
+        return (
+            AnsweringRun(
+                session: sessionID, runPlane: runPlane, completionToken: holdingRunToken, answer: holdingRunAnswer),
+            AnsweringRun(
+                session: sessionID, runPlane: runPlane, completionToken: askingRunToken, answer: askingRunAnswer)
+        )
+    }
+
+    /// The log messages that a ``RecordingLogHandler`` got, in order.
+    private final class RecordedLogMessages: Sendable {
+        /// The messages.
+        private let storage = Mutex<[String]>([])
+
+        /// Each message, in order.
+        var messages: [String] {
+            storage.withLock { $0 }
+        }
+
+        /// Adds `message`.
+        ///
+        /// - Parameter message: The message of one record.
+        func append(_ message: String) {
+            storage.withLock { $0.append(message) }
+        }
+
+        /// A logger that records each message here.
+        var logger: Logger {
+            Logger(label: "mcp-elicitation-test.recorded") { _ in RecordingLogHandler(recorded: self) }
+        }
+    }
+
+    /// A `LogHandler` that records the message of each record, at each level.
+    private struct RecordingLogHandler: LogHandler {
+        /// Where the messages go.
+        let recorded: RecordedLogMessages
+
+        /// The metadata of the handler. The handler does not read it.
+        var metadata: Logger.Metadata = [:]
+
+        /// The lowest level the handler gets: each level.
+        var logLevel: Logger.Level = .trace
+
+        /// Reads or writes one value of ``metadata``.
+        ///
+        /// - Parameter key: The key of the value.
+        subscript(metadataKey key: String) -> Logger.Metadata.Value? {
+            get { metadata[key] }
+            set { metadata[key] = newValue }
+        }
+
+        /// Records the message of `event`.
+        ///
+        /// - Parameter event: The record.
+        func log(event: LogEvent) {
+            recorded.append(event.message.description)
+        }
+    }
+
+    /// A fresh scripted server that serves the held tool, the loopback tools,
+    /// the tool that echoes its progress token, and the tool that sends a
+    /// token of no call, beside a server named ``serverName`` connected
+    /// against it over `kind`.
+    ///
+    /// - Parameters:
+    ///   - kind: The transport to connect over.
+    ///   - logger: The logger of the connected server.
+    /// - Returns: The scripted server, which the test keeps alive, the
+    ///   connected server, and the held tool.
+    /// - Throws: What the connect throws.
+    private static func connectedForTwoCalls(
+        over kind: MCPTransportKind, logger: Logger = MCPServer.defaultLogger
+    ) async throws -> (scripted: ScriptedServer, server: MCPServer, held: HeldScriptedTool) {
+        let scripted = ScriptedServer()
+        let held = HeldScriptedTool(named: heldToolName)
+        await scripted.addTool(held.scriptedTool)
+        await scripted.addLoopbackTools()
+        await scripted.addElicitingTool(
+            named: tokenEchoToolName, message: ScriptedServer.elicitEchoMessage,
+            requestedSchema: ScriptedServer.elicitEchoRequestedSchema,
+            elicitationMeta: { ScriptedServer.progressTokenEcho(of: $0) })
+        await scripted.addElicitingTool(
+            named: unknownTokenToolName, message: ScriptedServer.elicitEchoMessage,
+            requestedSchema: ScriptedServer.elicitEchoRequestedSchema,
+            elicitationMeta: { _ in Metadata(progressToken: .string(unknownProgressToken)) })
+        let server = try await MCPTestSupport.connectedMCPServer(
+            to: scripted, over: kind, name: serverName, logger: logger)
+        return (scripted, server, held)
+    }
+
+    /// Calls `tool` on `server` under `asking`, while a call of `held` under
+    /// `holding` is in flight, and returns the result of `tool`.
+    ///
+    /// The order is fixed: the held call starts, and the test waits until it
+    /// arrived at the server. Thus the held call is in flight before the
+    /// second call starts. When the second call ends, the test releases the
+    /// held call and awaits it, also when the second call throws.
+    ///
+    /// - Parameters:
+    ///   - tool: The name of the tool of the second call.
+    ///   - asking: The context of the second call.
+    ///   - held: The held tool of the first call.
+    ///   - holding: The context of the first call.
+    ///   - server: The connected server.
+    /// - Returns: The result of the second call.
+    /// - Throws: What the second call throws, or what the held call throws.
+    private static func call(
+        _ tool: String, under asking: ToolContext,
+        whileHolding held: HeldScriptedTool, under holding: ToolContext, on server: MCPServer
+    ) async throws -> CallTool.Result {
+        let holdingCall = startCall(server, tool: held.name, under: holding)
+        try await held.waitForArrival()
+        let asked = await startCall(server, tool: tool, under: asking).result
+        await held.release()
+        _ = try await holdingCall.value
+        return try asked.get()
+    }
+
+    // MARK: - Two calls in flight
+
+    @Test(
+        "a question that echoes the progress token of its call reaches the run of that call, not the other run",
+        arguments: transports)
+    func theProgressTokenLinksTheQuestionToItsCall(kind: MCPTransportKind) async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
+        defer { Task { await server.disconnect() } }
+        let (holding, asking) = Self.twoRunsOfOneSession()
+
+        let result = try await Self.call(
+            Self.tokenEchoToolName, under: asking.context, whileHolding: held, under: holding.context, on: server)
+
+        #expect(Self.answer(in: result) == Self.askingRunAnswer, "the call returned: \(Self.rendered(result))")
+        #expect(await asking.sink.questions.count == Self.oneQuestion)
+        #expect(await holding.sink.questions.isEmpty)
+        withExtendedLifetime(scripted) {}
+    }
+
+    @Test(
+        "with two calls in flight from one run and no progress token, the question reaches that run",
+        arguments: transports)
+    func oneRunInFlightGetsTheQuestion(kind: MCPTransportKind) async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
+        defer { Task { await server.disconnect() } }
+        let (holding, _) = Self.twoRunsOfOneSession()
+
+        let result = try await Self.call(
+            ScriptedServer.elicitEchoToolName, under: holding.context, whileHolding: held, under: holding.context,
+            on: server)
+
+        #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
+        #expect(await holding.sink.questions.count == Self.oneQuestion)
+        withExtendedLifetime(scripted) {}
+    }
+
+    @Test(
+        "with two calls in flight from two runs, no progress token and no handler, the question gets cancel with the reason",
+        arguments: transports)
+    func twoRunsWithNoLinkCancelWithTheReason(kind: MCPTransportKind) async throws {
+        let recorded = RecordedLogMessages()
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind, logger: recorded.logger)
+        defer { Task { await server.disconnect() } }
+        let (holding, asking) = Self.twoRunsOfOneSession()
+
+        let result = try await Self.call(
+            ScriptedServer.elicitEchoToolName, under: asking.context, whileHolding: held, under: holding.context,
+            on: server)
+
+        #expect(Self.rendered(result).contains(Self.cancelText))
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .cancel)
+        #expect(Self.reason(of: received) == .string(Self.notLinkedReason))
+        #expect(recorded.messages.contains(Self.notLinkedLogMessage))
+        #expect(await holding.sink.questions.isEmpty)
+        #expect(await asking.sink.questions.isEmpty)
+        withExtendedLifetime(scripted) {}
+    }
+
+    @Test(
+        "a progress token that names no call in flight falls to the one run in flight",
+        arguments: transports)
+    func anUnknownProgressTokenFallsToTheOneRun(kind: MCPTransportKind) async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
+        defer { Task { await server.disconnect() } }
+        let (holding, _) = Self.twoRunsOfOneSession()
+
+        let result = try await Self.call(
+            Self.unknownTokenToolName, under: holding.context, whileHolding: held, under: holding.context,
+            on: server)
+
+        #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
+        #expect(await holding.sink.questions.count == Self.oneQuestion)
         withExtendedLifetime(scripted) {}
     }
 

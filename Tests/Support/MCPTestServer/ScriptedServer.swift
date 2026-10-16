@@ -633,23 +633,39 @@ public actor ScriptedServer {
     ///   - name: The tool name.
     ///   - message: The message shown to the user in the prompt.
     ///   - requestedSchema: The schema of the elicited response.
+    ///   - elicitationMeta: Makes the `_meta` of the `elicitation/create`
+    ///     from the parameters of the `tools/call`. The default sends no
+    ///     `_meta`. ``progressTokenEcho(of:)`` echoes the progress token of
+    ///     the call, as a server that links its question to its call does.
     public func addElicitingTool(
         named name: String,
         message: String,
-        requestedSchema: Elicitation.RequestSchema
+        requestedSchema: Elicitation.RequestSchema,
+        elicitationMeta: @escaping @Sendable (CallTool.Parameters) -> Metadata? = { _ in nil }
     ) {
         addScriptedTool(
             name: name,
             description: "Elicits user input mid-call and echoes it back.",
             inputSchema: JSONSchemaBuilder.emptySchema
-        ) { [weak self] _ in
+        ) { [weak self] params in
             try await Self.withResolvedSelf(self) { instance in
                 let result = try await instance.server.requestElicitation(
-                    message: message, requestedSchema: requestedSchema)
+                    message: message, requestedSchema: requestedSchema, _meta: elicitationMeta(params))
                 await instance.recordElicitationResult(result)
                 return Self.buildElicitationResult(from: result)
             }
         }
+    }
+
+    /// The `_meta` of an `elicitation/create` that echoes the
+    /// `progressToken` of the `tools/call` that asks: the one standard key by
+    /// which a client can link the question to its call.
+    ///
+    /// - Parameter parameters: The parameters of the `tools/call`.
+    /// - Returns: A `_meta` with the progress token of the call, or `nil`
+    ///   when the call sent no progress token.
+    public static func progressTokenEcho(of parameters: CallTool.Parameters) -> Metadata? {
+        parameters._meta?.progressToken.map { Metadata(progressToken: $0) }
     }
 
     /// Appends `result` to ``receivedElicitationResults``.
@@ -680,7 +696,7 @@ public actor ScriptedServer {
     /// Registers a tool that sends a URL-mode `elicitation/create` mid-call
     /// — `URLParameters { message, mode: .url, url, elicitationId }` — then
     /// reflects the result in its own `tools/call` result: the URL-mode
-    /// mirror of ``addElicitingTool(named:message:requestedSchema:)``.
+    /// mirror of ``addElicitingTool(named:message:requestedSchema:elicitationMeta:)``.
     ///
     /// - Parameters:
     ///   - name: The tool name.

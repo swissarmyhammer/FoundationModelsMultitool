@@ -465,6 +465,18 @@ enum MultitoolTelemetry {
         /// `cancel` with the no-user-present reason. Level: `debug`.
         case mcpElicitationCancelledNoUserPresent = "mcp elicitation cancelled: no user is present"
 
+        /// An elicitation came while two or more calls from different runs
+        /// were in flight, and its `_meta` named none of them by its progress
+        /// token. The host has no handler, and the answer is `cancel` with
+        /// the reason. The record holds the count of calls in flight. Level:
+        /// `warning`.
+        case mcpElicitationNotLinked = "mcp elicitation cancelled: the question cannot be linked to one tool call"
+
+        /// An elicitation came with no call of a run to answer it, and the
+        /// host has no handler. The answer is `cancel` with the reason. The
+        /// record holds the count of calls in flight. Level: `warning`.
+        case mcpElicitationNoAnswerer = "mcp elicitation cancelled: no run and no handler can answer"
+
         /// A form-mode elicitation was declined because its schema is outside
         /// the restricted subset. Level: `warning`.
         case mcpElicitationSchemaDeclined = "mcp form elicitation declined: the schema is not supported"

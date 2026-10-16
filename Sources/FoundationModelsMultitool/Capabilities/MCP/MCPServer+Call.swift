@@ -478,11 +478,13 @@ extension MCPServer {
     }
 
     /// The request id a progress token names — the inverse of the token
-    /// `dispatch(name:arguments:requestID:meta:context:client:)` sends.
+    /// `dispatch(name:arguments:requestID:meta:context:client:)` sends. A
+    /// progress notification and the `_meta` of an `elicitation/create`
+    /// both find their call by it (see `MCPServer+Elicitation.swift`).
     ///
-    /// - Parameter token: The token of the notification.
+    /// - Parameter token: The token of the notification or the request.
     /// - Returns: The id.
-    private static func requestID(of token: ProgressToken) -> ID {
+    static func requestID(of token: ProgressToken) -> ID {
         switch token {
         case .string(let text):
             return .string(text)

@@ -14,13 +14,16 @@
 // is a plain `Tool` that must work on a bare `LanguageModelSession` too:
 //
 // 1. The `ToolContext` the calling run captured — `MCPServer.call(name:arguments:)`
-//    records it in the in-flight table, and the request is attributed to the
-//    sole call in flight, never a guess among several. `context.elicit(_:)`
-//    suspends the run on the run plane of the session. The answer is not held.
+//    records it in the in-flight table. The request goes to the call that
+//    its `_meta.progressToken` names, else to the one run that has all the
+//    calls in flight; never to a guess among several runs (see
+//    `callingContext(linkedBy:)`). `context.elicit(_:)` suspends the run on
+//    the run plane of the session. The answer is not held.
 // 2. Else the host's `elicitationHandler` — the bare-session path. Apple's
 //    tool call holds the turn while the user answers: the ordinary cost of a
 //    plain tool on a plain session.
-// 3. Else `cancel` to the server. Never a throw into the transport.
+// 3. Else `cancel` to the server, with the reason in `_meta`, and a log
+//    record. Never a throw into the transport.
 //
 // A bound context wins when present, so a Router host never sets the handler.
 //
@@ -120,7 +123,7 @@ extension MCPServer {
             }
             let request = ElicitationRequest(
                 message: form.message, elicitationId: ULID(), requestedSchema: requestedSchema)
-            return Self.wireResult(of: await resolve(request, urlElicitationId: nil))
+            return Self.wireResult(of: await resolve(request, urlElicitationId: nil, linkedBy: form._meta))
         case .url(let url):
             guard let link = URL(string: url.url) else {
                 // The url is content of the server, thus the record holds the
@@ -131,23 +134,29 @@ extension MCPServer {
                 return Self.wireResult(of: .decline)
             }
             let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link)
-            return Self.wireResult(of: await resolve(request, urlElicitationId: url.elicitationId))
+            return Self.wireResult(
+                of: await resolve(request, urlElicitationId: url.elicitationId, linkedBy: url._meta))
         }
     }
 
     // MARK: - The resolution order
 
     /// Resolves `request` through the first answerer that stands: the
-    /// calling run's context, else the host's handler, else `cancel`.
+    /// calling run's context, else the host's handler, else `cancel` with
+    /// the reason.
     ///
     /// - Parameters:
     ///   - request: The decoded request.
     ///   - urlElicitationId: The wire `elicitationId` of a URL-mode request,
     ///     which a held accept under the handler is keyed by; `nil` in form
     ///     mode.
+    ///   - meta: The `_meta` of the request, which can name the call of the
+    ///     question by its progress token.
     /// - Returns: The answer.
-    private func resolve(_ request: ElicitationRequest, urlElicitationId: String?) async -> ElicitationResponse {
-        if let context = callingContext() {
+    private func resolve(
+        _ request: ElicitationRequest, urlElicitationId: String?, linkedBy meta: Metadata?
+    ) async -> ElicitationResponse {
+        if let context = callingContext(linkedBy: meta) {
             guard let urlElicitationId,
                 openContextElicitation(urlElicitationId, request: request, context: context)
             else {
@@ -157,7 +166,7 @@ extension MCPServer {
             return await elicit(request, through: context)
         }
         guard let elicitationHandler else {
-            return .cancel
+            return cancelWithNoAnswerer()
         }
         let response = await elicitationHandler(request)
         if let urlElicitationId, response.action == .accept {
@@ -166,17 +175,87 @@ extension MCPServer {
         return response
     }
 
-    /// The context of the one call in flight, when exactly one is and it was
-    /// made under a context — the attribution rule of the source: a request
-    /// is attributed to the sole call in flight, never to a guess among
-    /// several, and a bare call carries no context to attribute to.
+    /// The context of the call that a server elicitation belongs to, or
+    /// `nil` when no context can answer it. The rules, in order:
+    ///
+    /// 1. When `meta` has the standard `progressToken` key and the token
+    ///    names a call in flight that was made under a context, the context
+    ///    of that call.
+    /// 2. Else, when all calls in flight were made under the context of one
+    ///    run, that context. Thus one call in flight gives its context. A
+    ///    token that names no call in flight comes to this rule too.
+    /// 3. Else `nil`: the host's handler, or a cancel, answers.
+    ///
+    /// Two contexts are of one run when their `completionToken` is the same.
+    /// The token is the correlation id of the run, and each run gets a new
+    /// one. The session id, the tool name and the op do not tell two runs
+    /// apart, because two runs can share them. Each inner `tools.*` call of a
+    /// `runCode` snippet is a run with its own token, thus two inner calls of
+    /// one snippet come to rule 1 or rule 3, not rule 2.
+    ///
+    /// A server is linked to one of two calls from different runs only when
+    /// it echoes the `progressToken` of the call in the `_meta` of
+    /// `elicitation/create`. MCP gives no standard link otherwise: stdio has
+    /// no wire link from a request to a request, and the swift-sdk does not
+    /// use the link of the POST stream of streamable HTTP, because its server
+    /// sends requests on the GET stream and its client merges the streams.
+    ///
+    /// - Parameter meta: The `_meta` of the `elicitation/create`, or `nil`.
+    /// - Returns: The context, or `nil`.
+    private func callingContext(linkedBy meta: Metadata?) -> ToolContext? {
+        if let token = meta?.progressToken, let context = inFlightCalls[Self.requestID(of: token)]?.context {
+            return context
+        }
+        return contextOfTheOneRunInFlight()
+    }
+
+    /// The context of the one run that made each call in flight, or `nil`
+    /// when no call is in flight, when a call has no context, or when two
+    /// calls are of different runs. Two contexts are of one run when their
+    /// `completionToken` is the same — see ``callingContext(linkedBy:)``.
     ///
     /// - Returns: The context, or `nil`.
-    private func callingContext() -> ToolContext? {
-        guard inFlightCalls.count == 1, let entry = inFlightCalls.values.first else {
+    private func contextOfTheOneRunInFlight() -> ToolContext? {
+        let contexts = inFlightCalls.values.map(\.context)
+        guard let first = contexts.first, let context = first,
+            contexts.allSatisfy({ $0?.completionToken == context.completionToken })
+        else {
             return nil
         }
-        return entry.context
+        return context
+    }
+
+    /// The cancel of a question that no context and no handler can answer,
+    /// with the reason, after a log record.
+    ///
+    /// When two or more calls are in flight and one of them has a context,
+    /// the question cannot be linked to one of them: the calls are from
+    /// different runs, and the `_meta` named none. Else no call of a run is
+    /// in flight, and the host has no handler.
+    ///
+    /// - Returns: The cancel.
+    private func cancelWithNoAnswerer() -> ElicitationResponse {
+        let callCount = inFlightCalls.count
+        let metadata: Logger.Metadata = [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(callCount)"]
+        guard callCount > 1, inFlightCalls.values.contains(where: { $0.context != nil }) else {
+            record(.mcpElicitationNoAnswerer, level: .warning, metadata: metadata)
+            return .cancel(reason: Self.noAnswererReason)
+        }
+        record(.mcpElicitationNotLinked, level: .warning, metadata: metadata)
+        return .cancel(reason: Self.notLinkedReason(callCount: callCount))
+    }
+
+    /// The reason of the cancel of a question that no run and no handler can
+    /// answer.
+    static let noAnswererReason = "no run and no host handler can answer the question"
+
+    /// The reason of the cancel of a question that cannot be linked to one
+    /// of the calls in flight.
+    ///
+    /// - Parameter callCount: The count of calls in flight.
+    /// - Returns: The reason.
+    static func notLinkedReason(callCount: Int) -> String {
+        "the question cannot be linked to one tool call: \(callCount) calls in flight from different runs"
     }
 
     /// Adds the URL-mode question `request` of `context` to

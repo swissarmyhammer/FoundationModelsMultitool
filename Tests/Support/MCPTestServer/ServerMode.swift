@@ -23,7 +23,7 @@ public enum ServerMode: String, Sendable, CaseIterable {
     case fileSystem
 
     /// Registers only an elicit-on-command tool, through
-    /// ``ScriptedServer/addElicitingTool(named:message:requestedSchema:)``,
+    /// ``ScriptedServer/addElicitingTool(named:message:requestedSchema:elicitationMeta:)``,
     /// under ``elicitOnCommandToolName``.
     case eliciting
 

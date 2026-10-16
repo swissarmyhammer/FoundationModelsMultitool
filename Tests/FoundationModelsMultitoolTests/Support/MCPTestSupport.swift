@@ -240,6 +240,9 @@ enum MCPTestSupport {
     ///   - userPresence: Whether a person is present to answer an
     ///     elicitation. Defaults to `.interactive`; a suite of a headless
     ///     session passes `.headless`.
+    ///   - logger: The logger of the `MCPServer`. Defaults to
+    ///     `MCPServer.defaultLogger`; a suite that reads the records of the
+    ///     server passes a recording one.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
@@ -253,12 +256,13 @@ enum MCPTestSupport {
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         elicitationHandler: MCPServer.ElicitationHandler? = nil,
-        userPresence: UserPresence = .interactive
+        userPresence: UserPresence = .interactive,
+        logger: Logger = MCPServer.defaultLogger
     ) async throws -> MCPServer {
         let server = makeServer(
             name: name, clock: clock, connectAttemptClock: connectAttemptClock,
             callTimeoutClock: callTimeoutClock, callTimeout: callTimeout, renderBudget: renderBudget,
-            elicitationHandler: elicitationHandler, userPresence: userPresence)
+            elicitationHandler: elicitationHandler, userPresence: userPresence, logger: logger)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await closingOnFailure(transport) {
             try await server.connect(via: transport)
@@ -313,7 +317,7 @@ enum MCPTestSupport {
     /// the verb starts from.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``
     ///   requires.
     ///
     /// - Parameters:
@@ -356,7 +360,7 @@ enum MCPTestSupport {
     /// parameterized case runs over both transports.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``
     ///   requires.
     ///
     /// - Parameters:
