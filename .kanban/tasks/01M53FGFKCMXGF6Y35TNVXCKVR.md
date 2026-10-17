@@ -149,10 +149,26 @@ comments:
     - evidence: e1f3f0b test: share one count-wait helper and one tool-call helper in test support
     - next: review
   timestamp: 2026-10-17T04:56:46.383733+00:00
+- actor: claude-code
+  id: 01m543pyhkax09nbxsp4b51bmp
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 162265d). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 3 files reviewed. The 2 `.kanban/` files were not reviewed because `.reviewignore` excludes them. All 3 items in "Review Findings (2026-10-16 23:42)" are checked.
+    - next: The task is in done. The remaining T1 work in other test files is on the 7 group cards and on the exception list ^vg01093.
+  timestamp: 2026-10-17T05:00:19.891801+00:00
+- actor: claude-code
+  id: 01m543qp927wws7azb1fpzjjzq
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 files (3 of 3 findings fixed; callTool in two tests; one count-wait helper waitForCount; CountWaiters is a final class)
+    - test: green — swift test, exit 0, 2448 passed, 0 failed, 0 skipped
+    - commit: 162265d (the commit comment names e1f3f0b, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T05:00:44.194996+00:00
 depends_on:
 - 01M53FGDHZJ8BFKNZGKK4K5V9R
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9380
 title: 'Test rule T1: each wait in a test also ends on the failure event, and fixtures close when the body throws'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), new test rule T1.
