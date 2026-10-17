@@ -48,10 +48,34 @@ comments:
     - note: the build log has one tool line, "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It comes from the build tool, not from package source.
     - next: review.
   timestamp: 2026-10-17T10:39:02.501951+00:00
+- actor: claude-code
+  id: 01m54q3wrtqmvkeezt1q7gnxc5
+  text: |-
+    ### commit — changed
+    - evidence: f109329 test: close test temp folders also when the test body throws
+    - next: review
+  timestamp: 2026-10-17T10:39:27.002764+00:00
+- actor: claude-code
+  id: 01m54qxxwd1hpr0ndcpzhfw4v4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit f109329). The engine examined 64 files and made 63 attempts. 0 failed. 0 findings. 0 confirmed. 0 refuted. 6 .kanban files are not in scope because of .reviewignore. The task has no earlier Review Findings section.
+    - next: The task moved to done. Task ^nvxckvr group work can continue with the task that this task blocks.
+  timestamp: 2026-10-17T10:53:40.109854+00:00
+- actor: claude-code
+  id: 01m54qz8h6p3jf5ejw2ek19xpk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 64 files (suite trait ownsTemporaryDirectories over TestScratch; 176 cases; the trait line in 60 suites)
+    - test: green — swift test, exit 0, 2452 passed, 0 failed, 0 skipped, 0 no-owner issues
+    - commit: f109329
+    - review: clean — 0 findings
+    - note: the implement step started 4 more sub agents for the trait lines at the same time; the rule is one agent at a time. The test step and the review checked the result.
+  timestamp: 2026-10-17T10:54:23.782302+00:00
 depends_on:
 - 01M53W3412PXE4RG6PPSF7H4GS
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9c80
 title: 'T1 group 6: temp folders and other test fixture leaks'
 ---
 Split from ^nvxckvr (test rule T1). The list (temp folders, files and other fixtures that are removed only on the success path) is in the comments of ^nvxckvr.
