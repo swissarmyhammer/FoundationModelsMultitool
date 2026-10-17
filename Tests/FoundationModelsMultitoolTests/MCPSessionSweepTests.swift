@@ -174,18 +174,39 @@ struct MCPSessionSweepTests {
         }
     }
 
-    /// Waits until the held call of `ground` is on the wire.
+    /// Waits until the held call of `ground` is on the wire, or until `ended`
+    /// returned.
     ///
     /// The wait is an event, not a poll: it waits until the held tool on the
-    /// server gets the call. `WireRecordingTransport.send(_:)` records the
-    /// request before it sends it, thus a call that reached the server is in
-    /// the ledger. The expectation after the wait checks that fact.
+    /// server gets the call — see ``EventRace/firstOf(_:or:)``. It also ends
+    /// when `ended` returned, thus a call that ended before it reached the
+    /// server does not make the test hang: the test then fails at once.
+    ///
+    /// - Parameters:
+    ///   - ground: The ground whose wire to read.
+    ///   - ended: The wait for the event that shows that the call cannot
+    ///     reach the server any more, for example the end of the run that
+    ///     makes the call. A cancel must end it.
+    /// - Throws: When the call did not reach the server, or when the task is
+    ///   cancelled first.
+    private static func waitForTheCall(
+        on ground: SweepGround, orUntil ended: @escaping @Sendable () async -> Void
+    ) async throws {
+        let held = ground.held
+        try await EventRace.firstOf({ try? await held.waitForArrival() }, or: ended)
+        try await expectTheCallOnTheWire(of: ground)
+    }
+
+    /// Fails the test at once unless the held call of `ground` reached the
+    /// server, and records a failure unless the call is on the wire.
+    ///
+    /// `WireRecordingTransport.send(_:)` records the request before it sends
+    /// it, thus a call that reached the server is in the ledger.
     ///
     /// - Parameter ground: The ground whose wire to read.
-    /// - Throws: `CancellationError` when the task is cancelled before the
-    ///   call reaches the server.
-    private static func waitForTheCall(on ground: SweepGround) async throws {
-        try await ground.held.waitForArrival()
+    /// - Throws: When the call did not reach the server.
+    private static func expectTheCallOnTheWire(of ground: SweepGround) async throws {
+        try #require(ground.held.hasArrived, "the call ended before it reached the server")
         let ledger = await ground.wire.ledger
         #expect(ledger.contains(callEntry), "the call is not on the wire: \(ledger)")
     }
@@ -243,7 +264,14 @@ struct MCPSessionSweepTests {
                     let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
                     #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
                     let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-                    try await Self.waitForTheCall(on: ground)
+                    // A run whose call fails before it reaches the server ends
+                    // with a terminal event, and that event ends the wait.
+                    let runToken = envelope.completionToken
+                    try await Self.waitForTheCall(on: ground) {
+                        _ = await recordedOperationEvents(
+                            of: run, ofKind: .completed, correlatedTo: [runToken],
+                            awaiting: Self.terminalEventsPerRun)
+                    }
 
                     // `RoutedSession.close()` runs the sweep — it cancels every background
                     // run, rejects every pending elicitation, and journals the terminal
@@ -300,8 +328,11 @@ struct MCPSessionSweepTests {
                         SessionMount.synchronous(
                             MCPTool(entry: entry, server: ground.server), on: context)
                             as? any FoundationModels.Tool<GeneratedContent, String>)
-                    let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
-                    try await Self.waitForTheCall(on: ground)
+                    let held = ground.held
+                    let answer = try await EventRace.start(
+                        { try await mounted.call(arguments: GeneratedContent(properties: [:])) },
+                        awaiting: { try? await held.waitForArrival() })
+                    try await Self.expectTheCallOnTheWire(of: ground)
                     #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
                     answer.cancel()

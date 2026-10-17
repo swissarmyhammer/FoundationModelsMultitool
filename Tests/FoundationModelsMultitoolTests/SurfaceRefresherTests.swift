@@ -306,24 +306,6 @@ struct SurfaceRefresherTests {
         }
     }
 
-    /// Waits until `server` counted one more `tools/list_changed`
-    /// notification than `generationBefore`, and its re-list for that
-    /// notification ended.
-    ///
-    /// The server starts its coalescing task, or keeps the one that runs, in
-    /// the same actor step that counts the notification. That task re-lists
-    /// until no notification arrived during a round trip, and only then
-    /// ends. Thus the end of that task is the end of the re-list.
-    ///
-    /// - Parameters:
-    ///   - server: The server that re-lists.
-    ///   - generationBefore: The notification count before the change.
-    private static func waitForRelist(of server: MCPServer, after generationBefore: Int) async {
-        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + oneNotification)
-        let relist = await server.coalescingTask
-        await relist?.value
-    }
-
     /// Publishes `tool` on `scripted` and tells the client the list changed.
     ///
     /// - Parameters:
@@ -528,7 +510,7 @@ struct SurfaceRefresherTests {
             #expect(!ground.refresher.isWatching)
             let generationBefore = await ground.server.toolListChangedGeneration
             try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            await Self.waitForRelist(of: ground.server, after: generationBefore)
+            await MCPTestSupport.waitForRelist(of: ground.server, reaching: generationBefore + Self.oneNotification)
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
 
             // Only the watch task stages, and `stop()` ended that task before
@@ -549,7 +531,7 @@ struct SurfaceRefresherTests {
             // of its own, so nothing watches the stream.
             let generationBefore = await ground.server.toolListChangedGeneration
             try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            await Self.waitForRelist(of: ground.server, after: generationBefore)
+            await MCPTestSupport.waitForRelist(of: ground.server, reaching: generationBefore + Self.oneNotification)
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
             await ground.runCode.submissionWillBegin()
 

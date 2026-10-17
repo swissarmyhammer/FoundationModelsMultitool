@@ -284,16 +284,17 @@ struct MCPServerCallTests {
         try await MCPTestSupport.withConnection(of: server) {
             try await ensuring({ await held.release() }) {
                 try await withOuterRunContext { context in
-                    let callTask = Task {
-                        try await Self.call(server, tool: Self.heldToolName, under: context)
-                    }
-                    try await held.waitForArrival()
+                    let callTask = try await EventRace.start(
+                        { try await Self.call(server, tool: Self.heldToolName, under: context) },
+                        awaiting: { try? await held.waitForArrival() })
+                    try #require(held.hasArrived, "the call ended before it arrived at the server")
                     callTask.cancel()
 
                     await #expect(throws: CancellationError.self) {
                         _ = try await callTask.value
                     }
-                    let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
+                    let recorded = await MCPTestSupport.notifications(
+                        recordedBy: scripted, afterDisconnectOf: server, count: Self.oneNotification)
                     #expect(recorded.first?.method == CancelledNotification.name)
                 }
             }
@@ -422,12 +423,10 @@ struct MCPServerCallTests {
             serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
         try await MCPTestSupport.withConnection(of: server) {
             try await ensuring({ await held.release() }) {
-                let callEnded = TestGate()
-                let call = Task {
-                    defer { callEnded.open() }
-                    return try await server.call(name: Self.heldToolName, arguments: nil)
-                }
-                try await held.waitForArrival()
+                let call = EventRace.watch { try await server.call(name: Self.heldToolName, arguments: nil) }
+                let callEnded = call.ended
+                try await EventRace.firstOf({ try? await held.waitForArrival() }, or: { await call.waitForEnd() })
+                try #require(held.hasArrived, "the call ended before it arrived at the server")
 
                 let first = try await withThrowingTaskGroup(of: BareCallFirstEvent.self) { group in
                     group.addTask {
@@ -447,7 +446,7 @@ struct MCPServerCallTests {
                 #expect(clock.recordedSleeps == [Self.bareCallTimeout])
                 #expect(!callEnded.isOpen)
                 clock.open()
-                let result = try await call.value
+                let result = try await call.task.value
                 #expect(result.isError == true)
             }
         }
@@ -485,8 +484,14 @@ struct MCPServerCallTests {
     ///   timer, and the mount then cancels the call and returns at once.
     /// - The notification: the request arrived, thus the call put it in
     ///   flight and installed its cancel handler before it sent it. The
-    ///   cancel of the mount runs that handler, and the handler sends
+    ///   cancel of the mount runs that handler, and the handler starts the
+    ///   notice: it ends the entry of the call, and then sends
     ///   `notifications/cancelled` to the server.
+    ///
+    /// The arrival and the sleeper waits also end when the call ends. The
+    /// test then fails at once, and does not hang. The test waits for the
+    /// end of each notice before it reads the table of calls in flight, and
+    /// the wait for the notification also ends when the transport closed.
     @Test("a call under a context to a server that makes no progress ends at the inner-call bound")
     func aCallUnderAContextEndsAtTheInnerCallBound() async throws {
         let arrival = TestGate()
@@ -496,20 +501,20 @@ struct MCPServerCallTests {
             try await withOuterRunContext(runClock: clock) { context in
                 let binding = RunBinding(context: context, innerMount: Self.shortInnerCallMount)
                 let sleepersBefore = clock.sleeperCount
-                let invokeEnded = TestGate()
 
-                let invoke = Task {
-                    defer { invokeEnded.open() }
-                    return await MCPCallProbe.thrownError {
+                let invoke = EventRace.watch {
+                    await MCPCallProbe.thrownError {
                         _ = try await binding.invoke(
                             Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
                     }
                 }
-                try await arrival.wait()
-                await clock.waitForSleepers(atLeast: sleepersBefore + Self.innerCallBoundSleepers)
-                #expect(!invokeEnded.isOpen)
+                try await EventRace.firstOf({ try? await arrival.wait() }, or: { await invoke.waitForEnd() })
+                try #require(arrival.isOpen, "the call ended before it reached the server")
+                await clock.waitForSleepers(
+                    atLeast: sleepersBefore + Self.innerCallBoundSleepers, orUntil: { await invoke.waitForEnd() })
+                #expect(!invoke.ended.isOpen)
                 clock.advance(by: .seconds(Self.innerCallBoundSeconds))
-                let thrown = await invoke.value
+                let thrown = try await invoke.task.value
 
                 // The hanging tool never answers, thus a call that ended at all was
                 // ended by a bound, and the error names the bound that fired: the
@@ -523,9 +528,13 @@ struct MCPServerCallTests {
                     thrown as? ToolMountError
                         == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
                     "thrown was: \(String(describing: thrown))")
-                let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
-                #expect(recorded.first?.method == CancelledNotification.name)
+                // The cancel of the mount started the notice before the call
+                // returned. When the notice ended, the call left the table.
+                await server.cancellationNotices.drain()
                 #expect(await server.inFlightCalls.isEmpty)
+                let recorded = await MCPTestSupport.notifications(
+                    recordedBy: scripted, afterDisconnectOf: server, count: Self.oneNotification)
+                #expect(recorded.first?.method == CancelledNotification.name)
             }
         }
     }

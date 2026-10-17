@@ -183,17 +183,19 @@ struct RegisteredJournalOpTests {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
         try await withOuterRunContext { context in
-            let run = Task {
-                try await Self.run(
-                    """
-                    return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-                    command: "\(Self.heldCommand)" });
-                    """,
-                    over: registry,
-                    under: context)
-            }
-
-            try await sandbox.waitUntilConsulted()
+            // The wait for the sandbox also ends when the run ends.
+            let run = try await EventRace.start(
+                {
+                    try await Self.run(
+                        """
+                        return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
+                        command: "\(Self.heldCommand)" });
+                        """,
+                        over: registry,
+                        under: context)
+                },
+                awaiting: { try? await sandbox.waitUntilConsulted() })
+            try #require(sandbox.isConsulted, "the run ended before it consulted the sandbox")
 
             #expect(await context.backgroundRuns().isEmpty)
             run.cancel()
@@ -261,16 +263,18 @@ struct RegisteredJournalOpTests {
             // The `ensuring` releases the held call on each path.
             return try await ensuring({ await held.release() }) {
                 try await withOuterRunContext { context in
-                    let run = Task {
-                        try await Self.run(
-                            "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
-                            over: registry,
-                            under: context)
-                    }
-
                     // The server records the call in flight before it sends the request,
                     // thus when the call arrives at the held tool, the record stands.
-                    try await held.waitForArrival()
+                    // The wait for the arrival also ends when the run ends.
+                    let run = try await EventRace.start(
+                        {
+                            try await Self.run(
+                                "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
+                                over: registry,
+                                under: context)
+                        },
+                        awaiting: { try? await held.waitForArrival() })
+                    try #require(held.hasArrived, "the run ended before the call arrived at the server")
                     let stampedOp = await server.inFlightCalls.values.first?.context?.op
                     await held.release()
                     try await run.value
@@ -354,6 +358,11 @@ private final class JournalOpProbeSandbox: CommandSandbox {
     /// The stamp of each run that consulted this sandbox, in call order.
     var observedOps: [String?] {
         observed.withLock { $0 }
+    }
+
+    /// Whether a run consulted this sandbox.
+    var isConsulted: Bool {
+        consulted.isOpen
     }
 
     /// Waits until a run consulted this sandbox. Returns at once when a run

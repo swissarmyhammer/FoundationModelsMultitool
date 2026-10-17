@@ -171,18 +171,23 @@ struct MCPLogRecordTests {
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             return try await MCPTestSupport.withConnection(of: server) {
-                let call = Task {
+                let call = EventRace.watch {
                     try await server.call(
                         name: Self.hangingToolName,
                         arguments: [Self.argumentName: .string(Self.argumentMarker)])
                 }
-                try await arrival.wait()
+                try await EventRace.firstOf({ try? await arrival.wait() }, or: { await call.waitForEnd() })
+                try #require(arrival.isOpen, "the call ended before it reached the server")
                 #expect(counter.count == Self.oneCallInFlight)
                 await respawning.disconnect()
-                // The server writes the drop record when it notices the drop.
-                await context.wait { !LogReadback.records(.mcpTransportDropped, in: $0).isEmpty }
+                // The server writes the drop record when it notices the drop, and
+                // then ends each call in flight. Thus the wait also ends when the
+                // call ends, and the check of the record then fails.
+                try await EventRace.firstOf(
+                    { await context.wait { !LogReadback.records(.mcpTransportDropped, in: $0).isEmpty } },
+                    or: { await call.waitForEnd() })
                 await #expect(throws: MCPServerError.self) {
-                    _ = try await call.value
+                    _ = try await call.task.value
                 }
                 return context.logRecords
             }

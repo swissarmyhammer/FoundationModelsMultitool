@@ -279,8 +279,11 @@ struct MCPTracePropagationTests {
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             try await MCPTestSupport.withConnection(of: server) {
-                let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-                try await handlerRan.wait()
+                // The wait for the handler also ends when the call ends.
+                let call = try await EventRace.start(
+                    { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) },
+                    awaiting: { try? await handlerRan.wait() })
+                try #require(handlerRan.isOpen, "the call ended before it reached the server")
                 await respawning.disconnect()
                 await #expect(throws: MCPServerError.self) {
                     _ = try await call.value
@@ -303,8 +306,11 @@ struct MCPTracePropagationTests {
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             try await MCPTestSupport.withConnection(of: server) {
-                let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-                try await handlerRan.wait()
+                // The wait for the handler also ends when the call ends.
+                let call = try await EventRace.start(
+                    { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) },
+                    awaiting: { try? await handlerRan.wait() })
+                try #require(handlerRan.isOpen, "the call ended before it reached the server")
                 try await server.reconnect()
                 // The reconnect tears the old client down. That client gives
                 // each pending request the "Client disconnected" error, and no

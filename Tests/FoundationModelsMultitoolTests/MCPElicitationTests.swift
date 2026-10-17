@@ -469,8 +469,8 @@ struct MCPElicitationTests {
     /// Starts `work`, and waits until the run of `run` records its
     /// elicitation event, or until `work` ends.
     ///
-    /// The wait is ``start(_:awaiting:cleaningUpOnThrow:)``: it ends when the
-    /// recorder of the run records the elicitation event, or when `work`
+    /// The wait is ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``: it ends
+    /// when the recorder of the run records the elicitation event, or when `work`
     /// ends with no question. When no elicitation event came, the test fails
     /// at once. The wait reads no clock and does not poll.
     ///
@@ -484,7 +484,7 @@ struct MCPElicitationTests {
         on run: BoundRun, _ work: @escaping @Sendable () async throws -> Success
     ) async throws -> (task: Task<Success, any Error>, event: OperationEvent) {
         let recorder = run.stub.recorder
-        let task = try await start(
+        let task = try await EventRace.start(
             work,
             awaiting: { _ = await recorder.waitUntil { events in events.contains { $0.kind == .elicitation } } })
         let event = try #require(
@@ -570,7 +570,7 @@ struct MCPElicitationTests {
 
     /// Starts `work`, which makes `server` hold one URL-mode flow, and waits
     /// until `server` holds that flow — see
-    /// ``start(_:awaiting:cleaningUpOnThrow:)``. When no flow is held, the
+    /// ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. When no flow is held, the
     /// test fails at once. When the wait throws, a held flow ends before the
     /// throw, thus `work` does not stay open.
     ///
@@ -583,7 +583,7 @@ struct MCPElicitationTests {
     private static func startHeldHostFlow<Success: Sendable>(
         on server: MCPServer, running work: @escaping @Sendable () async throws -> Success
     ) async throws -> Task<Success, any Error> {
-        let flow = try await start(
+        let flow = try await EventRace.start(
             work,
             awaiting: {
                 await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
@@ -634,7 +634,8 @@ struct MCPElicitationTests {
     /// `runPlane`, waits until the question reaches `sink`, and accepts it.
     /// Then the flow waits for its completion.
     ///
-    /// The wait for the question is ``start(_:awaiting:cleaningUpOnThrow:)``:
+    /// The wait for the question is
+    /// ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``:
     /// it ends when the question reached `sink`, or when the call ended with
     /// no question. When no question came, the test fails at once.
     ///
@@ -649,7 +650,7 @@ struct MCPElicitationTests {
         on server: MCPServer, runPlane: RunPlane, sink: RecordingEventSink
     ) async throws -> ContextURLFlow {
         let context = relayContext(on: runPlane, sink: sink)
-        let call = try await start(
+        let call = try await EventRace.start(
             { try await callTool(ScriptedServer.elicitURLToolName, on: server, under: context) },
             awaiting: { await sink.waitUntilEvent { $0.kind == .elicitation } })
         let request = try #require(
@@ -675,7 +676,8 @@ struct MCPElicitationTests {
     /// whose id is not in `earlier`. The call in flight of a context over
     /// `sink` must be the one run that a question can go to.
     ///
-    /// The wait for the question is ``start(_:awaiting:cleaningUpOnThrow:)``:
+    /// The wait for the question is
+    /// ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``:
     /// it ends when the new question reached `sink`, or when the answer ended
     /// with no question. When no new question came, the test fails at once.
     ///
@@ -691,68 +693,13 @@ struct MCPElicitationTests {
     ) async throws -> ContextURLQuestion {
         let isNew: @Sendable (ElicitationRequest) -> Bool = { !earlier.contains($0.elicitationId) }
         let generation = await server.connectGeneration
-        let answer = try await start(
+        let answer = try await EventRace.start(
             { await server.answerElicitation(parameters: urlElicitation, generation: generation) },
             awaiting: { await sink.waitUntilEvent { $0.elicitation.map(isNew) ?? false } })
         let request = try #require(
             await sink.events.compactMap(\.elicitation).first(where: isNew),
             "the answer ended before the question reached the sink")
         return ContextURLQuestion(answer: answer, request: request)
-    }
-
-    /// Starts `work`, and waits for its event — the one wait of each helper
-    /// of this suite that starts work and then waits until the work did its
-    /// step.
-    ///
-    /// The wait ends on the first of two events: `arrival` returned, or
-    /// `work` ended. Each of the two events can occur, thus the wait always
-    /// ends. Then this function cancels `arrival` and waits until it ended,
-    /// thus no wait stays open after it returns. When the gate wait throws,
-    /// `cleanUp` gets the task of `work` before the throw. This function
-    /// does not know if the event came: the caller checks it, and fails at
-    /// once when it did not come.
-    ///
-    /// - Parameters:
-    ///   - work: The work that makes the event occur.
-    ///   - arrival: The wait for the event. A cancel must end it.
-    ///   - cleanUp: Ends `work` when the gate wait throws. The default does
-    ///     nothing: the disconnect of the test then ends `work`.
-    /// - Returns: The task of `work`.
-    /// - Throws: When the task is cancelled before the first event.
-    private static func start<Success: Sendable>(
-        _ work: @escaping @Sendable () async throws -> Success,
-        awaiting arrival: @escaping @Sendable () async -> Void,
-        cleaningUpOnThrow cleanUp: (Task<Success, any Error>) async -> Void = { _ in }
-    ) async throws -> Task<Success, any Error> {
-        let firstEvent = TestGate()
-        let task = Task {
-            defer { firstEvent.open() }
-            return try await work()
-        }
-        let arrived = Task {
-            await arrival()
-            firstEvent.open()
-        }
-        do {
-            try await firstEvent.wait()
-        } catch {
-            await endWait(arrived)
-            await cleanUp(task)
-            throw error
-        }
-        await endWait(arrived)
-        return task
-    }
-
-    /// Cancels `wait`, and waits until it ended — the one cancel-then-await
-    /// teardown of a wait in this suite. A cancel ends each wait that
-    /// ``start(_:awaiting:cleaningUpOnThrow:)`` gets, and each wait that a
-    /// test gives to it as its work, thus this call always returns.
-    ///
-    /// - Parameter wait: The task of a wait that a cancel ends.
-    private static func endWait<Success: Sendable, Failure: Error>(_ wait: Task<Success, Failure>) async {
-        wait.cancel()
-        _ = await wait.result
     }
 
     // MARK: - Case 1: a bound context answers
@@ -1012,7 +959,7 @@ struct MCPElicitationTests {
     ///
     /// The order is fixed. The question reaches the handler, and the test
     /// waits for the first of two events: the handler was called, or the
-    /// answer ended — see ``start(_:awaiting:cleaningUpOnThrow:)``. When the
+    /// answer ended — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. When the
     /// handler was not called, the test fails at once. Then the connection
     /// ends. Then the test lets the handler return the accept, and waits for
     /// the first of two events: the server holds the flow, or the answer
@@ -1027,13 +974,13 @@ struct MCPElicitationTests {
         let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: handler.handler)
         defer { handler.call.release.open() }
         let generation = await server.connectGeneration
-        let answer = try await Self.start(
+        let answer = try await EventRace.start(
             { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
             awaiting: { try? await handler.call.arrival.wait() })
         try #require(handler.call.arrival.isOpen, "the answer ended before the question reached the handler")
 
         await Self.endConnection(of: server, with: end)
-        let lateAnswer = try await Self.start(
+        let lateAnswer = try await EventRace.start(
             {
                 handler.call.release.open()
                 return try await answer.value
@@ -1158,7 +1105,7 @@ struct MCPElicitationTests {
     /// reaches the run, and the run accepts it. Then the newer question
     /// starts, and the test waits for the first of two events: the sink
     /// holds the end post of the earlier question, or the newer answer ended
-    /// — see ``start(_:awaiting:cleaningUpOnThrow:)``. When the end post is
+    /// — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. When the end post is
     /// not held, the test fails at once. The held call then ends, and the
     /// connection ends. Then the test lets the end post go on, and waits for
     /// the first of two events: the newer question reached the sink, or the
@@ -1180,7 +1127,7 @@ struct MCPElicitationTests {
                 let earlier = try await Self.startContextURLQuestion(on: server, sink: sink.recorded, after: [])
                 let delivery = await runPlane.respond(elicitationId: earlier.request.elicitationId, Self.urlAccept)
                 try #require(delivery == .acceptedAwaitingCompletion)
-                let newer = try await Self.start(
+                let newer = try await EventRace.start(
                     { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
                     awaiting: { try? await sink.heldEnd.arrival.wait() })
                 try #require(sink.heldEnd.arrival.isOpen, "the newer answer ended before the end of the earlier question")
@@ -1190,7 +1137,7 @@ struct MCPElicitationTests {
             await Self.endConnection(of: server, with: end)
             let earlierId = earlier.request.elicitationId
             let isNewer: @Sendable (ElicitationRequest) -> Bool = { $0.elicitationId != earlierId }
-            let lateAnswer = try await Self.start(
+            let lateAnswer = try await EventRace.start(
                 {
                     sink.heldEnd.release.open()
                     return try await newer.value
@@ -1480,20 +1427,20 @@ struct MCPElicitationTests {
     /// The order is fixed. The wait starts on a live task, and the server
     /// holds no flow. The test waits for the first of two events: the server
     /// recorded the wait, or the wait ended — see
-    /// ``start(_:awaiting:cleaningUpOnThrow:)``. Each event can occur, thus
+    /// ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. Each event can occur, thus
     /// that wait always ends. Then the test cancels the wait and reads its
     /// result. When the gate wait throws, the test ends the wait before the
     /// throw.
     @Test("a cancel during a wait for the hold of a URL flow ends the wait with false")
     func aCancelDuringTheWaitEndsIt() async throws {
         let server = MCPTestSupport.makeServer(name: Self.serverName)
-        let wait = try await Self.start(
+        let wait = try await EventRace.start(
             { await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId) },
             awaiting: {
                 await server.waitUntilHostElicitationHeldWaitIsRecorded(
                     elicitationId: ScriptedServer.elicitURLElicitationId)
             },
-            cleaningUpOnThrow: Self.endWait)
+            cleaningUpOnThrow: EventRace.endWait)
         let waitersBeforeTheCancel = await server.hostElicitationHeldWaiters.count
 
         wait.cancel()
@@ -1822,7 +1769,7 @@ struct MCPElicitationTests {
     ///
     /// The order is fixed. The held call starts, and the test waits for the
     /// first of two events: the call arrived at the server, or the call
-    /// ended — see ``start(_:awaiting:cleaningUpOnThrow:)``. Each of the two
+    /// ended — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. Each of the two
     /// events can occur, thus the wait always ends. When the call did not
     /// arrive, the test fails at once. Then `body` runs. On each path, also
     /// when the wait or `body` throws, the test releases the held call and
@@ -1840,7 +1787,7 @@ struct MCPElicitationTests {
         _ held: HeldScriptedTool, under holding: ToolContext, on server: MCPServer,
         _ body: () async throws -> Result
     ) async throws -> Result {
-        let holdingCall = try await start(
+        let holdingCall = try await EventRace.start(
             { try await callTool(held.name, on: server, under: holding) },
             awaiting: { try? await held.waitForArrival() },
             cleaningUpOnThrow: { call in await releaseHeldCall(held, call) })
@@ -1884,7 +1831,7 @@ struct MCPElicitationTests {
     /// Then the second call starts, and the test waits for the first of two
     /// events: the second call ends, or `scripted` got the answer to the
     /// question of the second call — see
-    /// ``start(_:awaiting:cleaningUpOnThrow:)``. After the answer, the link
+    /// ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. After the answer, the link
     /// of the question is done, thus the held call is not necessary any more.
     /// Then the test releases the held call, on each path. Thus the release
     /// does not depend on the return of the second call. Last, the test
@@ -1906,7 +1853,7 @@ struct MCPElicitationTests {
         on server: MCPServer, servedBy scripted: ScriptedServer
     ) async throws -> CallTool.Result {
         let askedCall = try await whileHolding(held, under: holding, on: server) {
-            try await start(
+            try await EventRace.start(
                 { try await callTool(tool, on: server, under: asking) },
                 awaiting: { _ = await scripted.waitForElicitationResults(count: oneElicitationResult) })
         }
@@ -2016,7 +1963,7 @@ struct MCPElicitationTests {
             // snippet that does not reach its own release does not keep the
             // held call open, and a second release changes nothing.
             let snippet = try await ensuring({ await held.release() }) {
-                try await Self.start(
+                try await EventRace.start(
                     {
                         try await ToolContext.$current.withValue(context) {
                             try await multiTool.call(arguments: RunCodeArguments(code: Self.heldAndElicitingSnippet))

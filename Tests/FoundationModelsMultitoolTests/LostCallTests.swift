@@ -196,12 +196,15 @@ struct LostCallTests {
         try await server.connect(via: wire, backoffPolicy: .default)
         try await MCPTestSupport.withConnection(of: server) {
             try await withOuterRunContext { context in
-                let callTask = Task {
-                    try await ToolContext.$current.withValue(context) {
-                        try await server.call(name: Self.hangingToolName, arguments: nil)
-                    }
-                }
-                try await arrival.wait()
+                // The wait for the arrival also ends when the call ends.
+                let callTask = try await EventRace.start(
+                    {
+                        try await ToolContext.$current.withValue(context) {
+                            try await server.call(name: Self.hangingToolName, arguments: nil)
+                        }
+                    },
+                    awaiting: { try? await arrival.wait() })
+                try #require(arrival.isOpen, "the call ended before it reached the server")
                 #expect(counter.count == Self.oneInvocation)
                 await respawning.disconnect()
 

@@ -74,6 +74,10 @@ struct LiveCatalogTests {
     /// reconnect case fails.
     private static let oneFailingAttempt = 1
 
+    /// How many `tools/list_changed` notifications one stage of the dynamic
+    /// toolset scenario sends.
+    private static let oneStageNotification = 1
+
     // MARK: - Helpers
 
     /// Collects every `MCPToolCatalog` snapshot read from `catalogUpdates`,
@@ -126,7 +130,8 @@ struct LiveCatalogTests {
         }
     }
 
-    /// The recorder of one test and the task that feeds it.
+    /// The recorder of one test, the task that feeds it, and the server it
+    /// records.
     private struct Recording {
         /// The recorder every snapshot lands in.
         let recorder: CatalogSnapshotRecorder
@@ -134,13 +139,31 @@ struct LiveCatalogTests {
         /// The task iterating `catalogUpdates`; cancelled when the test ends.
         let task: Task<Void, Never>
 
+        /// The server whose snapshots the task records.
+        let server: MCPServer
+
         /// Waits until at least `count` snapshots were recorded. The wait
         /// ends on the event of the recorder, not on a deadline.
         ///
+        /// The stream of snapshots finishes only when the server goes away,
+        /// thus a wait for a snapshot that the server never emitted would
+        /// not end. The server counts each snapshot it emits in its
+        /// `catalogEpoch`, and the stream keeps each snapshot until the
+        /// task reads it. Thus the test first reads that count: when the
+        /// server emitted fewer than `count` snapshots, the test fails at
+        /// once and does not wait. Otherwise the task records each of them,
+        /// and the wait ends.
+        ///
         /// - Parameter count: The minimum number of snapshots to wait for.
-        /// - Returns: The snapshots at the moment `count` was reached.
+        /// - Returns: The snapshots at the moment `count` was reached, or the
+        ///   snapshots recorded now when the server emitted fewer.
         func snapshots(atLeast count: Int) async -> [MCPToolCatalog] {
-            await recorder.waitForSnapshots(atLeast: count)
+            let emitted = await server.catalogEpoch
+            if emitted < count {
+                Issue.record("the server emitted \(emitted) snapshots, fewer than \(count)")
+                return await recorder.snapshots
+            }
+            return await recorder.waitForSnapshots(atLeast: count)
         }
     }
 
@@ -157,7 +180,7 @@ struct LiveCatalogTests {
             }
             await recorder.finish()
         }
-        return Recording(recorder: recorder, task: task)
+        return Recording(recorder: recorder, task: task, server: server)
     }
 
     /// A `ScriptedServer` named ``serverName`` serving ``initialToolName``.
@@ -195,7 +218,9 @@ struct LiveCatalogTests {
     /// end before the last notification of the burst arrives, and a slow
     /// machine then splits one burst into two re-lists. No test checks the
     /// speed of the machine (card `^pfvdg5b`), thus the event that opens the
-    /// window is the count of the server, and not a time.
+    /// window is the count of the server, and not a time. Then it waits
+    /// until the re-list ended, thus the server emitted its snapshot before
+    /// this returns.
     ///
     /// - Parameters:
     ///   - scripted: The server that sends the burst.
@@ -211,6 +236,7 @@ struct LiveCatalogTests {
         // of the burst.
         await server.waitUntilToolListChangedGeneration(reaches: generationBefore + burstCount)
         windowClock.open()
+        await MCPTestSupport.waitForRelistEnd(of: server)
     }
 
     // MARK: - Coalescing
@@ -402,7 +428,9 @@ struct LiveCatalogTests {
             #expect(resolvedBeforeRemoval?.name == Self.initialToolName)
 
             await scripted.removeTool(named: Self.initialToolName)
+            let generationBefore = await server.toolListChangedGeneration
             try await scripted.emitToolListChangedBurst(count: Self.burstCount)
+            await MCPTestSupport.waitForRelist(of: server, reaching: generationBefore + Self.burstCount)
             _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
             let resolvedAfterRemoval = await server.tool(named: Self.initialToolName)
@@ -432,7 +460,11 @@ struct LiveCatalogTests {
 
             _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
             for stage in 1...ScriptedServer.dynamicToolsetStageCount {
+                // Each stage sends one notification, and the test waits until
+                // its re-list ended.
+                let generationBefore = await server.toolListChangedGeneration
                 #expect(await scripted.advanceDynamicToolsetScenario())
+                await MCPTestSupport.waitForRelist(of: server, reaching: generationBefore + Self.oneStageNotification)
                 _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)
             }
 

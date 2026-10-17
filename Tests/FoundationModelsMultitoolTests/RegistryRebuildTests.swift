@@ -70,6 +70,10 @@ struct RegistryRebuildTests {
     /// one mutation. One is enough; the re-list coalesces a burst anyway.
     private static let oneNotification = 1
 
+    /// How many `tools/list_changed` notifications two stages of the dynamic
+    /// scenario send: one for each stage.
+    private static let twoStageNotifications = 2
+
     /// How many entries the catalog holds after the echo tool is published a
     /// second time.
     private static let echoToolCountAfterDuplicate = 2
@@ -104,13 +108,38 @@ struct RegistryRebuildTests {
         return (scripted, server)
     }
 
-    /// The error ``waitUntilCatalog(of:satisfies:)`` throws when
-    /// `catalogUpdates` ends before a snapshot meets the condition.
+    /// The error ``waitUntilCatalog(of:after:notifications:satisfies:)``
+    /// throws when `catalogUpdates` ends before a snapshot meets the
+    /// condition.
     private struct CatalogUpdatesEnded: Error {}
 
-    /// Reads the `catalogUpdates` snapshots of `server` until one snapshot
-    /// meets `condition`. The wait ends on the snapshot event, not on a
-    /// timer.
+    /// The counts of one server at one point: the `tools/list_changed`
+    /// notifications it counted, and the snapshots it emitted.
+    private struct CatalogMark {
+        /// The count of `tools/list_changed` notifications.
+        let generation: Int
+
+        /// The count of emitted snapshots: the epoch of the last one.
+        let epoch: Int
+    }
+
+    /// The counts of `server` now, read before a change of its catalog.
+    ///
+    /// - Parameter server: The server to read.
+    /// - Returns: The counts.
+    private static func mark(_ server: MCPServer) async -> CatalogMark {
+        CatalogMark(generation: await server.toolListChangedGeneration, epoch: await server.catalogEpoch)
+    }
+
+    /// Waits until the re-list that `notifications` more notifications after
+    /// `mark` start ended, and then reads the `catalogUpdates` snapshots of
+    /// `server` until one snapshot meets `condition`.
+    ///
+    /// The stream finishes only when the server goes away, thus a read for
+    /// a snapshot that never comes would not end. The test thus first waits
+    /// for the end of the re-list, and fails at once unless the re-list
+    /// emitted a snapshot after `mark` whose catalog meets `condition`. Only
+    /// then it reads the stream, and that read ends on the snapshot.
     ///
     /// The stream holds every snapshot since the server was made, and no
     /// other consumer reads it in this suite (this suite starts no
@@ -119,29 +148,45 @@ struct RegistryRebuildTests {
     ///
     /// - Parameters:
     ///   - server: The server whose snapshots to read.
+    ///   - mark: The counts of `server` before the change.
+    ///   - notifications: How many notifications the change sent.
     ///   - condition: The condition one snapshot must meet.
-    /// - Throws: ``CatalogUpdatesEnded`` when the stream ends first.
+    /// - Throws: When the re-list emitted no such snapshot, or
+    ///   ``CatalogUpdatesEnded`` when the stream ends first.
     private static func waitUntilCatalog(
-        of server: MCPServer, satisfies condition: (MCPToolCatalog) -> Bool
+        of server: MCPServer, after mark: CatalogMark, notifications: Int = oneNotification,
+        satisfies condition: (MCPToolCatalog) -> Bool
     ) async throws {
+        await MCPTestSupport.waitForRelist(of: server, reaching: mark.generation + notifications)
+        let catalog = try await server.catalog
+        let epoch = await server.catalogEpoch
+        try #require(
+            epoch > mark.epoch && condition(catalog),
+            "the re-list emitted no snapshot that meets the condition: \(catalog)")
         for await snapshot in await server.catalogUpdates where condition(snapshot) {
             return
         }
         throw CatalogUpdatesEnded()
     }
 
-    /// Reads the `catalogUpdates` snapshots of `server` until one snapshot
-    /// does or does not hold a tool named `name`.
+    /// Waits until the re-list after `mark` ended, and then reads the
+    /// `catalogUpdates` snapshots of `server` until one snapshot does or
+    /// does not hold a tool named `name` — see
+    /// ``waitUntilCatalog(of:after:notifications:satisfies:)``.
     ///
     /// - Parameters:
     ///   - server: The server whose snapshots to read.
+    ///   - mark: The counts of `server` before the change.
+    ///   - notifications: How many notifications the change sent.
     ///   - name: The tool name to look for.
     ///   - present: Whether to wait for the tool to appear or to vanish.
-    /// - Throws: ``CatalogUpdatesEnded`` when the stream ends first.
+    /// - Throws: When the re-list emitted no such snapshot, or
+    ///   ``CatalogUpdatesEnded`` when the stream ends first.
     private static func waitUntilCatalog(
-        of server: MCPServer, holds name: String, present: Bool
+        of server: MCPServer, after mark: CatalogMark, notifications: Int = oneNotification,
+        holds name: String, present: Bool
     ) async throws {
-        try await waitUntilCatalog(of: server) { snapshot in
+        try await waitUntilCatalog(of: server, after: mark, notifications: notifications) { snapshot in
             snapshot.tools.contains { $0.name == name } == present
         }
     }
@@ -165,9 +210,10 @@ struct RegistryRebuildTests {
     private static func publish(
         _ tool: ScriptedTool, on scripted: ScriptedServer, seenBy server: MCPServer
     ) async throws {
+        let before = await mark(server)
         await scripted.addTool(tool)
         try await scripted.emitToolListChangedBurst(count: oneNotification)
-        try await waitUntilCatalog(of: server, holds: tool.definition.name, present: true)
+        try await waitUntilCatalog(of: server, after: before, holds: tool.definition.name, present: true)
     }
 
     // MARK: - Add and remove
@@ -182,9 +228,10 @@ struct RegistryRebuildTests {
             #expect(Self.paths(of: first) == [Self.counterPath])
 
             // The first stage adds the greeter.
+            let beforeAdd = await Self.mark(server)
             #expect(await scripted.advanceDynamicToolsetScenario())
             try await Self.waitUntilCatalog(
-                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
+                of: server, after: beforeAdd, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
             let rebuilt = try await source.rebuildRegistry()
 
             #expect(Self.paths(of: rebuilt) == [Self.counterPath, Self.greeterPath])
@@ -204,18 +251,21 @@ struct RegistryRebuildTests {
             let source = builder.registrySource
 
             // The first stage adds the greeter.
+            let beforeAdd = await Self.mark(server)
             #expect(await scripted.advanceDynamicToolsetScenario())
             try await Self.waitUntilCatalog(
-                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
+                of: server, after: beforeAdd, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
             let withGreeter = try await source.rebuildRegistry()
             #expect(withGreeter.tools[Self.greeterPath] != nil)
 
             // The second stage re-schemas the counter, and the third removes the
-            // greeter.
+            // greeter. Each stage sends one notification.
+            let beforeRemove = await Self.mark(server)
             #expect(await scripted.advanceDynamicToolsetScenario())
             #expect(await scripted.advanceDynamicToolsetScenario())
             try await Self.waitUntilCatalog(
-                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: false)
+                of: server, after: beforeRemove, notifications: Self.twoStageNotifications,
+                holds: ScriptedServer.dynamicToolsetVanishingToolName, present: false)
             let withoutGreeter = try await source.rebuildRegistry()
 
             #expect(Self.paths(of: withoutGreeter) == [Self.counterPath])
@@ -239,9 +289,10 @@ struct RegistryRebuildTests {
             // The scripted server appends without a name check, so a second echo
             // tool makes `tools/list` publish the echo verb two times — two tools
             // at one path, which is the `.duplicateName` collision of the build.
+            let before = await Self.mark(server)
             await scripted.addTool(ScriptedServer.echoTool())
             try await scripted.emitToolListChangedBurst(count: Self.oneNotification)
-            try await Self.waitUntilCatalog(of: server) { snapshot in
+            try await Self.waitUntilCatalog(of: server, after: before) { snapshot in
                 snapshot.tools.count == Self.echoToolCountAfterDuplicate
             }
 

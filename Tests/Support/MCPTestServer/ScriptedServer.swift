@@ -101,6 +101,11 @@ public actor ScriptedServer {
     /// reaches.
     private let elicitationResultWaiters = CountWaiters<CreateElicitation.Result>()
 
+    /// Whether the message loop of the wrapped server ended: the transport
+    /// closed, thus no notification and no elicitation result comes any
+    /// more. A count wait that starts after the end returns at once.
+    private var isMessageLoopEnded = false
+
     /// The capabilities the client declared in its `initialize` request, or
     /// `nil` before any client initialized — what a test reads to prove the
     /// wire carried a capability, and not only that the client held it.
@@ -164,10 +169,30 @@ public actor ScriptedServer {
     /// - Throws: What `MCP.Server.start(transport:)` throws.
     public func start(transport: any Transport) async throws {
         self.transport = transport
+        isMessageLoopEnded = false
         await registerHandlers()
         try await server.start(transport: transport) { [weak self] _, capabilities in
             await self?.recordClientCapabilities(capabilities)
         }
+        let server = self.server
+        Task { [weak self] in
+            await server.waitUntilCompleted()
+            await self?.messageLoopDidEnd()
+        }
+    }
+
+    /// Records that the message loop of the wrapped server ended, and ends
+    /// each wait of ``waitForRecordedNotifications(count:)`` and of
+    /// ``waitForElicitationResults(count:)``: no more message comes on the
+    /// transport.
+    ///
+    /// The wrapped server runs each notification handler inside its message
+    /// loop, before it reads the next message. Thus each notification that
+    /// came before the transport closed is recorded before this runs.
+    private func messageLoopDidEnd() {
+        isMessageLoopEnded = true
+        notificationWaiters.endAll(recorded: recordedNotifications)
+        elicitationResultWaiters.endAll(recorded: receivedElicitationResults)
     }
 
     /// Starts this server on the server end of a fresh
@@ -298,14 +323,21 @@ public actor ScriptedServer {
     /// scope can await it; it ends by itself once `mutation` returns, and it
     /// holds `self` weakly, so it never keeps a released server alive.
     ///
+    /// The caller gets the task. Its end is the second event of a wait for
+    /// the mutation: a task that ended applies no mutation any more, also
+    /// when it ended with no mutation because the server was gone.
+    ///
     /// - Parameters:
     ///   - trigger: The event the mutation waits for. The mutation runs when
     ///     it returns.
     ///   - mutation: The mutation to apply, given the live server.
+    /// - Returns: The task that waits for `trigger` and then applies
+    ///   `mutation`.
+    @discardableResult
     public func scheduleMutation(
         after trigger: @escaping @Sendable () async -> Void,
         _ mutation: @escaping @Sendable (ScriptedServer) async -> Void
-    ) {
+    ) -> Task<Void, Never> {
         Task { [weak self] in
             await trigger()
             guard let self else { return }
@@ -678,16 +710,20 @@ public actor ScriptedServer {
     /// Waits until the eliciting tools of this server received at least
     /// `count` elicitation results.
     ///
-    /// The record of a result sends the event that ends the wait. Thus no
-    /// time limits the wait: a result that never comes is a wait that ends
-    /// only when the task of the caller is cancelled.
+    /// The record of a result sends the event that ends the wait. No time
+    /// limits the wait. The wait also ends on the first of two other events:
+    /// the message loop of the wrapped server ended, because the transport
+    /// closed, or the task of the caller is cancelled. The caller then reads
+    /// the count, and its check fails when a result did not come.
     ///
     /// - Parameter count: The minimum number of received results to wait
     ///   for.
     /// - Returns: ``receivedElicitationResults`` at the moment `count` was
-    ///   reached, or at the moment the task of the caller was cancelled.
+    ///   reached, the message loop ended, or the task of the caller was
+    ///   cancelled.
     public func waitForElicitationResults(count: Int) async -> [CreateElicitation.Result] {
-        await waitForCount(count, of: receivedElicitationResults, in: elicitationResultWaiters) { server, id in
+        guard !isMessageLoopEnded else { return receivedElicitationResults }
+        return await waitForCount(count, of: receivedElicitationResults, in: elicitationResultWaiters) { server, id in
             await server.cancelElicitationResultWait(id: id)
         }
     }
@@ -818,16 +854,26 @@ public actor ScriptedServer {
 
     /// Waits until at least `count` notifications were recorded.
     ///
-    /// The recording sends the event that ends the wait. Thus no time limits
-    /// the wait: a notification that never comes is a wait that ends only
-    /// when the task of the caller is cancelled.
+    /// The recording sends the event that ends the wait. No time limits the
+    /// wait. The wait also ends on the first of two other events: the
+    /// message loop of the wrapped server ended, because the transport
+    /// closed, or the task of the caller is cancelled. The caller then reads
+    /// the count, and its check fails when a notification did not come.
+    ///
+    /// A test that must know that no more notification comes closes the
+    /// transport first, for example with `MCPServer.disconnect()`. That
+    /// disconnect sends each pending `notifications/cancelled` before it
+    /// closes the transport, and the loop records each of them before it
+    /// ends.
     ///
     /// - Parameter count: The minimum number of recorded notifications to
     ///   wait for.
     /// - Returns: ``recordedNotifications`` at the moment `count` was
-    ///   reached, or at the moment the task of the caller was cancelled.
+    ///   reached, the message loop ended, or the task of the caller was
+    ///   cancelled.
     public func waitForRecordedNotifications(count: Int) async -> [RecordedNotification] {
-        await waitForCount(count, of: recordedNotifications, in: notificationWaiters) { server, id in
+        guard !isMessageLoopEnded else { return recordedNotifications }
+        return await waitForCount(count, of: recordedNotifications, in: notificationWaiters) { server, id in
             await server.cancelNotificationWait(id: id)
         }
     }

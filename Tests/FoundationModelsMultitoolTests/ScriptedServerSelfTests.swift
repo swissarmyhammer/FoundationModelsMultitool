@@ -241,7 +241,7 @@ struct ScriptedServerSelfTests {
 
             try await scripted.emitToolListChangedBurst(count: Self.burstCount)
 
-            try await counter.allObserved.wait()
+            try await MCPTestSupport.waitFor({ try? await counter.allObserved.wait() }, orPingOf: client)
             #expect(await counter.count == Self.burstCount)
         }
     }
@@ -281,10 +281,12 @@ struct ScriptedServerSelfTests {
             // The scheduled mutation runs when the test opens `trigger`, and it
             // opens `applied` when it is done. No time sets when it runs. A
             // trigger wait that throws is a failure of the test, because the
-            // mutation then runs before the test opened `trigger`.
+            // mutation then runs before the test opened `trigger`. The test
+            // waits for the end of the task of the mutation: the task also
+            // ends when it applies no mutation, and the check then fails.
             let trigger = TestGate()
             let applied = TestGate()
-            await scripted.scheduleMutation(after: {
+            let mutation = await scripted.scheduleMutation(after: {
                 do {
                     try await trigger.wait()
                 } catch {
@@ -295,7 +297,8 @@ struct ScriptedServerSelfTests {
                 applied.open()
             }
             trigger.open()
-            try await applied.wait()
+            await mutation.value
+            try #require(applied.isOpen, "the scheduled task ended with no mutation")
             page = try await client.listTools()
             #expect(page.tools.map(\.name).contains("gamma"))
         }
@@ -366,13 +369,13 @@ struct ScriptedServerSelfTests {
         let client = MCPTestSupport.makeClient(name: Self.clientName)
         _ = try await client.connect(transport: clientTransport)
         try await MCPTestSupport.withConnection(of: client) {
-            let callTask = Task {
-                try await client.callTool(name: "drop")
-            }
-
             // Wait until the call reached the server and the tool dropped the
-            // transport.
-            try await signaling.dropped.wait()
+            // transport. The wait also ends when the call ends: a tool that
+            // answered and did not drop the transport fails the test at once.
+            let callTask = try await EventRace.start(
+                { try await client.callTool(name: "drop") },
+                awaiting: { try? await signaling.dropped.wait() })
+            try #require(signaling.dropped.isOpen, "the call ended and the tool did not drop the transport")
 
             // A disconnect resolves every request still pending with a
             // "Client disconnected" error. Had the drop not stopped the answer,
@@ -443,7 +446,7 @@ struct ScriptedServerSelfTests {
             #expect(result.isError != true)
             try await scripted.sendElicitationComplete(elicitationId: ScriptedServer.elicitURLElicitationId)
 
-            try await counter.allObserved.wait()
+            try await MCPTestSupport.waitFor({ try? await counter.allObserved.wait() }, orPingOf: client)
             #expect(await counter.count == 1)
         }
     }
@@ -462,7 +465,7 @@ struct ScriptedServerSelfTests {
 
             // The response of the tool proves only that the server sent the last
             // notification, not that the client's message loop processed it.
-            try await recorder.allArrived.wait()
+            try await MCPTestSupport.waitFor({ try? await recorder.allArrived.wait() }, orPingOf: client)
 
             let updates = await recorder.updates
             #expect(updates.count == Self.progressSteps)
@@ -485,10 +488,14 @@ struct ScriptedServerSelfTests {
             // The `ensuring` releases the held call on each path.
             try await ensuring({ await held.release() }) {
                 let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
-                try await held.waitForArrival()
+                // The wait for the arrival also ends when the request ends.
+                _ = try await EventRace.start(
+                    { try await context.value }, awaiting: { try? await held.waitForArrival() })
+                try #require(held.hasArrived, "the request ended before it arrived at the server")
                 try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
-                let recorded = await scripted.waitForRecordedNotifications(count: 1)
+                let recorded = await MCPTestSupport.notifications(
+                    recordedBy: scripted, afterDisconnectOf: client, count: 1)
                 #expect(recorded.count == 1)
                 #expect(recorded.first?.method == CancelledNotification.name)
                 #expect(recorded.first?.reason == Self.cancellationReason)
@@ -508,7 +515,7 @@ struct ScriptedServerSelfTests {
             let meta = Metadata(progressToken: .string("slow-build-token"))
             let result = try await client.callTool(name: ServerMode.slowBuildToolName, arguments: nil, meta: meta)
 
-            try await recorder.allArrived.wait()
+            try await MCPTestSupport.waitFor({ try? await recorder.allArrived.wait() }, orPingOf: client)
 
             let updates = await recorder.updates
             #expect(updates.count == Self.slowBuildSuccessSteps)

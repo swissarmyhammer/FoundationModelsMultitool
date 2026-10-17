@@ -470,7 +470,10 @@ struct StdioServerProcessTests {
                 // reap. When the test reaped, the teardown below (`disconnect()`,
                 // `shutdown()`) sent `killpg` and `waitpid` to a pid that the kernel
                 // could already give to an unrelated process.
-                kill(pid, SIGKILL)
+                // The wait below ends only on the exit of the child. Thus the
+                // test first makes sure that the signal went to the child;
+                // when it did not, the test fails here and does not wait.
+                try #require(kill(pid, SIGKILL) == 0)
                 await Self.waitUntilZombie(pid)
 
                 // The child is dead, thus the write of the request to its
@@ -542,7 +545,10 @@ struct StdioServerProcessTests {
                 // the teardown of `respawn()` reaps it. When the test reaped, that
                 // teardown sent `killpg` and `waitpid` to a pid that the kernel could
                 // already give to an unrelated process.
-                kill(firstPid, SIGKILL)
+                // The wait below ends only on the exit of the child. Thus the
+                // test first makes sure that the signal went to the child;
+                // when it did not, the test fails here and does not wait.
+                try #require(kill(firstPid, SIGKILL) == 0)
                 await Self.waitUntilZombie(firstPid)
 
                 try await server.reconnect()

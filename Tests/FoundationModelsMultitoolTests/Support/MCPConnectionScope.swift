@@ -11,8 +11,15 @@
 // The file also holds the shared checks of a specific `MCPError`, for
 // example the error that a client disconnect gives to each request that is
 // still pending: ``MCPTestSupport/expectClientDisconnected(_:)``.
+//
+// It also holds two waits that end on a second event (test rule T1). The
+// first reads the notifications that a scripted server recorded after a
+// disconnect: the end of the message loop of the server ends that wait.
+// The second waits for an event of a client, and a ping ends it when the
+// event does not come: ``MCPTestSupport/waitFor(_:orPingOf:)``.
 
 import MCP
+import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -51,6 +58,62 @@ extension MCPTestSupport {
         of connection: Connection, _ body: () async throws -> Result
     ) async throws -> Result {
         try await ensuring({ await connection.disconnect() }, after: body)
+    }
+
+    /// Disconnects `connection`, and then waits until `scripted` recorded at
+    /// least `count` notifications — the wait of a test for a notification
+    /// that the client sends.
+    ///
+    /// The wait ends on the first of two events: `scripted` recorded `count`
+    /// notifications, or its message loop ended because the transport
+    /// closed. `MCPServer.disconnect()` sends each pending
+    /// `notifications/cancelled` of a cancelled calling task before it
+    /// closes the transport. A send of `MCP.Client` returns when the
+    /// notification is on the in-memory transport. The loop records each
+    /// notification that came before the close, and only then ends. Thus a
+    /// notification that the client sent is in the result, and a
+    /// notification that the client did not send ends the wait with a
+    /// shorter result: the check of the caller then fails, and the test does
+    /// not hang.
+    ///
+    /// The connection is closed after this call. A test that reads the
+    /// state of the connection reads it before this call.
+    ///
+    /// - Parameters:
+    ///   - scripted: The scripted server that records the notifications.
+    ///   - connection: The server or the client that sends them.
+    ///   - count: The minimum number of recorded notifications to wait for.
+    /// - Returns: The recorded notifications.
+    static func notifications<Connection: Disconnectable>(
+        recordedBy scripted: ScriptedServer, afterDisconnectOf connection: Connection, count: Int
+    ) async -> [RecordedNotification] {
+        await connection.disconnect()
+        return await scripted.waitForRecordedNotifications(count: count)
+    }
+
+    /// Waits for the first of two events: `expected` returned, or a ping of
+    /// `client` returned — the wait of a test for a notification that the
+    /// server sent to `client`.
+    ///
+    /// The caller calls this after the send of the notification returned.
+    /// `MCP.Client` reads the messages of its transport in order, and it runs
+    /// each notification handler before it reads the next message. The
+    /// answer of the ping comes after each message that the server sent
+    /// before. Thus when the ping returned, the client handled each such
+    /// notification: a notification that did not come ends the wait, the
+    /// check of the caller then fails, and the test does not hang. The
+    /// server answers each ping while the connection is open.
+    ///
+    /// - Parameters:
+    ///   - expected: The wait for the handler of the notification. A cancel
+    ///     must end it.
+    ///   - client: The client that the server sent the notification to.
+    /// - Throws: `CancellationError` when the task is cancelled before the
+    ///   first event.
+    static func waitFor(
+        _ expected: @escaping @Sendable () async -> Void, orPingOf client: Client
+    ) async throws {
+        try await EventRace.firstOf(expected, or: { _ = try? await client.ping() })
     }
 
     /// The detail of the `MCPError.internalError` that `MCP.Client.disconnect()`
