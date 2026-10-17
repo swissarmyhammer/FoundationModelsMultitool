@@ -64,10 +64,27 @@ comments:
     - evidence: commit "feat(mcp)!: require userPresence on MCPServer" (local, not pushed). It has a BREAKING CHANGE footer. All changes and the .kanban files are in this one commit.
     - next: review
   timestamp: 2026-10-17T02:17:01.981843+00:00
+- actor: claude-code
+  id: 01m53tk6abmn4kvf9abm2hvcz3
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 8526877). 0 findings, 0 confirmed, 0 refuted. 7 attempts, 0 failed. 8 files reviewed. The ignore rule (.reviewignore) excluded 4 .kanban files. No validator matched README.md.
+    - next: The task is in done. No work remains for this task.
+  timestamp: 2026-10-17T02:20:59.595040+00:00
+- actor: claude-code
+  id: 01m53tm2197202vagkng4jvbmk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 9 files (userPresence required; call sites pass .interactive; test helpers keep a test-only default; README paragraph); IntegrationTests resolved to Extras main 1f586a7 and built, exit 0
+    - test: green — swift test, exit 0, 2437 passed (the implement step had one more run that stopped on a missing import before the fix)
+    - commit: 8526877
+    - review: clean — 0 findings
+    - next: push after the CI run of 93a9790 ends, then report the commits and CI to the owner.
+  timestamp: 2026-10-17T02:21:27.977977+00:00
 depends_on:
 - 01M53FG8K2C3T24RJWRNF9DKS3
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff8d80
 title: 'Group D (c): make the default userPresence of MCPServer safe, or make the value required'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), group D (c).
