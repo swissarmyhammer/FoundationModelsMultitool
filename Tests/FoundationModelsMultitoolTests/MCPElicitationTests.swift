@@ -2087,9 +2087,8 @@ struct MCPElicitationTests {
     func aHeadlessContextCancelsWithTheReason() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
         try await Self.withConnection(of: server) {
-            let result = try await ToolContext.$current.withValue(Self.headlessContext()) {
-                try await server.call(name: ScriptedServer.elicitEchoToolName, arguments: nil)
-            }
+            let result = try await Self.callTool(
+                ScriptedServer.elicitEchoToolName, on: server, under: Self.headlessContext())
 
             #expect(Self.rendered(result).contains(Self.cancelText))
             let received = await scripted.receivedElicitationResults.last
@@ -2165,9 +2164,7 @@ struct MCPElicitationTests {
         let (scripted, server) = try await Self.connectedForTheNestedSchema()
         try await Self.withConnection(of: server) {
             try await BoundRun.with { run in
-                let result = try await ToolContext.$current.withValue(run.context) {
-                    try await server.call(name: Self.nestedToolName, arguments: nil)
-                }
+                let result = try await Self.callTool(Self.nestedToolName, on: server, under: run.context)
 
                 #expect(Self.rendered(result).contains(Self.declineText))
                 #expect(await recordedOperationEvents(of: run.stub).isEmpty)

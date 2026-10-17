@@ -94,12 +94,12 @@ public actor ScriptedServer {
     /// Each wait of ``waitForRecordedNotifications(count:)`` that did not
     /// end. ``recordNotification(method:requestId:reason:)`` resumes each
     /// wait whose count it reaches.
-    private var notificationWaiters = CountWaiters<RecordedNotification>()
+    private let notificationWaiters = CountWaiters<RecordedNotification>()
 
     /// Each wait of ``waitForElicitationResults(count:)`` that did not end.
     /// ``recordElicitationResult(_:)`` resumes each wait whose count it
     /// reaches.
-    private var elicitationResultWaiters = CountWaiters<CreateElicitation.Result>()
+    private let elicitationResultWaiters = CountWaiters<CreateElicitation.Result>()
 
     /// The capabilities the client declared in its `initialize` request, or
     /// `nil` before any client initialized — what a test reads to prove the
@@ -678,17 +678,8 @@ public actor ScriptedServer {
     /// - Returns: ``receivedElicitationResults`` at the moment `count` was
     ///   reached, or at the moment the task of the caller was cancelled.
     public func waitForElicitationResults(count: Int) async -> [CreateElicitation.Result] {
-        if receivedElicitationResults.count >= count {
-            return receivedElicitationResults
-        }
-        let id = elicitationResultWaiters.makeID()
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<[CreateElicitation.Result], Never>) in
-                elicitationResultWaiters.store(
-                    id: id, count: count, recorded: receivedElicitationResults, continuation: continuation)
-            }
-        } onCancel: {
-            Task { await self.cancelElicitationResultWait(id: id) }
+        await waitForCount(count, of: receivedElicitationResults, in: elicitationResultWaiters) { server, id in
+            await server.cancelElicitationResultWait(id: id)
         }
     }
 
@@ -827,17 +818,8 @@ public actor ScriptedServer {
     /// - Returns: ``recordedNotifications`` at the moment `count` was
     ///   reached, or at the moment the task of the caller was cancelled.
     public func waitForRecordedNotifications(count: Int) async -> [RecordedNotification] {
-        if recordedNotifications.count >= count {
-            return recordedNotifications
-        }
-        let id = notificationWaiters.makeID()
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<[RecordedNotification], Never>) in
-                notificationWaiters.store(
-                    id: id, count: count, recorded: recordedNotifications, continuation: continuation)
-            }
-        } onCancel: {
-            Task { await self.cancelNotificationWait(id: id) }
+        await waitForCount(count, of: recordedNotifications, in: notificationWaiters) { server, id in
+            await server.cancelNotificationWait(id: id)
         }
     }
 
@@ -847,6 +829,45 @@ public actor ScriptedServer {
     /// - Parameter id: The id of the wait.
     private func cancelNotificationWait(id: Int) {
         notificationWaiters.cancel(id: id, recorded: recordedNotifications)
+    }
+
+    // MARK: - Count waits
+
+    /// Waits until one record of this server holds at least `count` items —
+    /// the one wait that ``waitForRecordedNotifications(count:)`` and
+    /// ``waitForElicitationResults(count:)`` share.
+    ///
+    /// The wait ends at once when the record already holds `count` items.
+    /// Otherwise it is stored in `waiters`, and the record of an item or a
+    /// cancel of the task of the caller ends it. No time limits the wait.
+    ///
+    /// - Parameters:
+    ///   - count: The minimum number of recorded items to wait for.
+    ///   - recorded: Reads the record now. The wait reads it again when it
+    ///     stores itself.
+    ///   - waiters: The open waits of that record.
+    ///   - cancel: Ends the wait with the given id on the given server — the
+    ///     per-record cancel wrapper, which is the isolation boundary of the
+    ///     cancel handler.
+    /// - Returns: The record at the moment `count` was reached, or at the
+    ///   moment the task of the caller was cancelled.
+    private func waitForCount<Item: Sendable>(
+        _ count: Int,
+        of recorded: @autoclosure () -> [Item],
+        in waiters: CountWaiters<Item>,
+        cancel: @escaping @Sendable (ScriptedServer, Int) async -> Void
+    ) async -> [Item] {
+        if recorded().count >= count {
+            return recorded()
+        }
+        let id = waiters.makeID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<[Item], Never>) in
+                waiters.store(id: id, count: count, recorded: recorded(), continuation: continuation)
+            }
+        } onCancel: {
+            Task { await cancel(self, id) }
+        }
     }
 }
 

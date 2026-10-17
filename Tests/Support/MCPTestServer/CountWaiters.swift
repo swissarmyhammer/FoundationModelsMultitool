@@ -9,9 +9,15 @@
 /// The open waits for a count of recorded items, and the cancels that came
 /// before their wait was stored.
 ///
-/// A value type that the `ScriptedServer` actor holds, so the actor isolation
-/// guards it.
-struct CountWaiters<Item: Sendable> {
+/// The `ScriptedServer` actor holds each instance and touches it only from
+/// its own isolation, so the actor isolation guards it.
+///
+/// A reference type on purpose: the one generic count wait of the actor
+/// takes the store of one record as an argument. Swift does not let a key
+/// path name an actor-isolated property, and an `inout` argument cannot stay
+/// open across the suspension of the wait. A reference is the one form that
+/// lets one helper reach each store.
+final class CountWaiters<Item: Sendable> {
     /// One wait that did not end.
     private struct Waiter {
         /// The count of recorded items that ends the wait.
@@ -34,7 +40,7 @@ struct CountWaiters<Item: Sendable> {
     /// Gives the id of a new wait.
     ///
     /// - Returns: The id.
-    mutating func makeID() -> Int {
+    func makeID() -> Int {
         defer { nextID += 1 }
         return nextID
     }
@@ -47,7 +53,7 @@ struct CountWaiters<Item: Sendable> {
     ///   - count: The count of recorded items that ends the wait.
     ///   - recorded: The items recorded now.
     ///   - continuation: The continuation that ends the wait.
-    mutating func store(
+    func store(
         id: Int, count: Int, recorded: [Item], continuation: CheckedContinuation<[Item], Never>
     ) {
         if cancelled.remove(id) != nil || recorded.count >= count {
@@ -60,7 +66,7 @@ struct CountWaiters<Item: Sendable> {
     /// Ends each wait whose count `recorded` reaches.
     ///
     /// - Parameter recorded: The items recorded now.
-    mutating func resume(reachedBy recorded: [Item]) {
+    func resume(reachedBy recorded: [Item]) {
         let reached = waiters.filter { $0.value.count <= recorded.count }
         for (id, waiter) in reached {
             waiters[id] = nil
@@ -74,7 +80,7 @@ struct CountWaiters<Item: Sendable> {
     /// - Parameters:
     ///   - id: The id of the wait.
     ///   - recorded: The items recorded now.
-    mutating func cancel(id: Int, recorded: [Item]) {
+    func cancel(id: Int, recorded: [Item]) {
         if let waiter = waiters.removeValue(forKey: id) {
             waiter.continuation.resume(returning: recorded)
         } else {

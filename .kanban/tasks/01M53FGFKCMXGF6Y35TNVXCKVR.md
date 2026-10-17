@@ -90,6 +90,65 @@ comments:
     - evidence: swift test, exit code 0, "Test run with 2448 tests in 211 suites passed". The only warning is a toolchain line: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle, not from our code.
     - next: review, commit.
   timestamp: 2026-10-17T04:41:24.457129+00:00
+- actor: claude-code
+  id: 01m542nc6e9wwgy346pwesdvyj
+  text: |-
+    ### commit — changed
+    - evidence: 1d7b978 test: end each test wait on the failure event and close fixtures on throw
+    - scope: also card ^hs26a96 (sweep test order). Stash "T1 nvxckvr" is kept.
+    - next: review
+  timestamp: 2026-10-17T04:41:59.758839+00:00
+- actor: claude-code
+  id: 01m54305ssgxfnx6bk9fnxk33m
+  text: |-
+    ### review — findings
+    - scope: review sha HEAD~1..HEAD (commit 1d7b978). The engine reviewed 7 files. It did not review 4 .kanban files (.reviewignore).
+    - counts: 3 findings, 3 confirmed, 8 refuted.
+    - evidence: Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:2090, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:2168, Tests/Support/MCPTestServer/ScriptedServer.swift:680
+    - All 3 findings are on lines that this commit added. Thus they are in the accepted scope.
+    - next: implement the 3 items in the "Review Findings (2026-10-16 23:42)" section. The task stays in review.
+  timestamp: 2026-10-17T04:47:53.657819+00:00
+- actor: claude-code
+  id: 01m5430zeh6hfwwgz7h60k4ppf
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 8 files (the T1 work from the stash, merged on the newer helpers; FirstEvent.swift deleted); then the test step fixed ShellSessionSweepTests (card ^hs26a96, compare a Set)
+    - test: green — swift test, exit 0, 2448 passed, 0 failed, 0 skipped (the run before the test fix was red: 1 failure in ShellSessionSweepTests)
+    - commit: 1d7b978
+    - review: findings — Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:2090, :2168; Tests/Support/MCPTestServer/ScriptedServer.swift:680
+    - note: the stash "T1 nvxckvr" is dropped; its files are in 1d7b978.
+  timestamp: 2026-10-17T04:48:19.921637+00:00
+- actor: claude-code
+  id: 01m543d8ttbenks8grvpsnfm3a
+  text: |-
+    Review findings (2026-10-16 23:42), implement pass:
+    - Finding 1 and 2: aHeadlessContextCancelsWithTheReason and aSchemaOutsideTheSubsetIsDeclined now call Self.callTool(_:on:under:). A search of the full file found no other inline ToolContext.$current.withValue with server.call and no arguments. The 3 withValue blocks that stay do not fit callTool: two wrap multiTool.call (run code), and one passes echo arguments.
+    - Finding 3: one actor-isolated generic helper ScriptedServer.waitForCount(_:of:in:cancel:) holds the count-wait scaffold. waitForRecordedNotifications(count:) and waitForElicitationResults(count:) are now one call each. The per-type record and cancel wrappers stay.
+    - What did not work: the key-path form that the finding gives as an example does not compile. Swift 6.4 gives "cannot form key path to actor-isolated property". An inout argument also cannot stay open across the suspension of the wait. Thus CountWaiters is now a final class (the actor holds each store as a let and touches it only from its own isolation), and the helper takes the store and an autoclosure that reads the record. The doc comment of CountWaiters tells why it is a reference type.
+    - No other copy of the scaffold is in ScriptedServer.swift or CountWaiters.swift.
+  timestamp: 2026-10-17T04:55:02.746095+00:00
+- actor: claude-code
+  id: 01m543dbc794zffjt04k9rtnq0
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift, Tests/Support/MCPTestServer/ScriptedServer.swift, Tests/Support/MCPTestServer/CountWaiters.swift. Findings checked 3/3. swift test, one full run: exit code 0, "Test run with 2448 tests in 211 suites passed". The only warning is the toolchain line "missing creator for mutated node" for mlx-swift_Cmlx.bundle.
+    - next: review. The task stays in doing.
+  timestamp: 2026-10-17T04:55:05.351032+00:00
+- actor: claude-code
+  id: 01m543fr35cabbekm834krgbk5
+  text: |-
+    ### test - green
+    - evidence: `swift test` ran one time. Exit code 0. Swift Testing summary: "Test run with 2448 tests in 211 suites passed after 4.067 seconds." Zero failures. Zero skipped tests.
+    - note: The build log has one tool message: "warning: missing creator for mutated node ... mlx-swift_Cmlx.bundle/Contents/MacOS". The build system makes it for a dependency bundle. No project source file causes it.
+    - next: review.
+  timestamp: 2026-10-17T04:56:23.909038+00:00
+- actor: claude-code
+  id: 01m543ge1fa3vs9egm160xx0ah
+  text: |-
+    ### commit — changed
+    - evidence: e1f3f0b test: share one count-wait helper and one tool-call helper in test support
+    - next: review
+  timestamp: 2026-10-17T04:56:46.383733+00:00
 depends_on:
 - 01M53FGDHZJ8BFKNZGKK4K5V9R
 position_column: doing
@@ -108,3 +167,14 @@ Known cases:
 Search the whole test target for the same cause. One Task.sleep is left in the test target; remove it.
 
 No .timeLimit, sleep, poll or retry. Do not delete a test. One full run. #elicitation-fixes
+
+## Review Findings (2026-10-16 23:42)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:2090` `reuse/reuse` — The new code binds ToolContext.$current and calls server.call inline. The file already has callTool(_:on:under:) for this exact shape. The call uses no arguments, so callTool fits. The duplicate is a second copy of the same wrap. Replace the inline withValue and server.call with: let result = try await Self.callTool(ScriptedServer.elicitEchoToolName, on: server, under: Self.headlessContext()).
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:2168` `reuse/reuse` — The new code binds ToolContext.$current and calls server.call inline with no arguments. This is the callTool shape, and callTool already exists in this file. Replace the inline block with: let result = try await Self.callTool(Self.nestedToolName, on: server, under: run.context).
+- [x] `Tests/Support/MCPTestServer/ScriptedServer.swift:680` `reuse/reuse` — The new `waitForElicitationResults(count:)` repeats the body of `waitForRecordedNotifications(count:)` (line 829). Both run the same sequence: an early return when the count is met, `makeID()`, `withTaskCancellationHandler`, `withCheckedContinuation` that calls `store(...)`, and an `onCancel` that spawns a `Task` calling a cancel method. The change adds this second copy instead of parameterizing the first, so the cancellation and continuation scaffold now exists twice in the actor and must be fixed in two places. Move the scaffold into one generic actor-isolated helper, for example `private func awaitCount<T: Sendable>(_ count: Int, recorded: @autoclosure () -> [T], waiters: ReferenceWritableKeyPath<ScriptedServer, CountWaiters<T>>) async -> [T]`, or give `CountWaiters` an async `wait(count:recorded:)` method that takes an `onCancel` closure. Both public waits then become one-line calls that differ only in the type and the store they pass. Keep the per-type `record` and `cancel` wrappers, since they set the isolation boundary.
