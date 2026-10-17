@@ -95,8 +95,8 @@ actor RecordingEventSink: OperationEventSink {
     /// The id that the next wait of ``waitUntilEvent(where:)`` gets.
     private var nextEventWaiterID = 0
 
-    /// Each wait of ``waitUntilElicitationCompleted()`` that did not end yet.
-    private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Each wait of ``waitUntilElicitationSettled()`` that did not end yet.
+    private var settleWaiters: [CheckedContinuation<Void, Never>] = []
 
     func post(event: OperationEvent) async {
         events.append(event)
@@ -111,12 +111,18 @@ actor RecordingEventSink: OperationEventSink {
 
     func post(elicitationEnded elicitationId: ULID, response: ElicitationResponse) async {
         endedElicitations.append(EndedElicitation(elicitationId: elicitationId, response: response))
+        resumeSettleWaiters()
     }
 
     func post(elicitationCompleted elicitationId: ULID) async {
         completedElicitationIds.append(elicitationId)
-        let waiters = completionWaiters
-        completionWaiters = []
+        resumeSettleWaiters()
+    }
+
+    /// Ends each wait of ``waitUntilElicitationSettled()``.
+    private func resumeSettleWaiters() {
+        let waiters = settleWaiters
+        settleWaiters = []
         for waiter in waiters {
             waiter.resume()
         }
@@ -152,13 +158,18 @@ actor RecordingEventSink: OperationEventSink {
         eventWaiters.removeValue(forKey: waiterID)?.continuation.resume()
     }
 
-    /// Waits until this sink recorded one completed URL flow. Returns at once
-    /// when it recorded one before. The wait is an event: no clock and no
-    /// poll.
-    func waitUntilElicitationCompleted() async {
-        guard completedElicitationIds.isEmpty else { return }
+    /// Waits until this sink recorded one URL flow that completed or ended.
+    /// Returns at once when it recorded one before. The wait is an event: no
+    /// clock and no poll.
+    ///
+    /// The wait ends on the first of two events: a completion, or an end with
+    /// a decline or a cancel. A flow that does not complete ends some other
+    /// way, thus a test that waits here for a completion fails, and does not
+    /// wait for ever, when the flow ends with no completion.
+    func waitUntilElicitationSettled() async {
+        guard completedElicitationIds.isEmpty, endedElicitations.isEmpty else { return }
         await withCheckedContinuation { continuation in
-            completionWaiters.append(continuation)
+            settleWaiters.append(continuation)
         }
     }
 

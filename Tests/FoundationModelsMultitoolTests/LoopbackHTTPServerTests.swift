@@ -111,15 +111,15 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted)
-        defer { Task { await connection.close() } }
+        try await ensuring({ await connection.close() }) {
+            let page = try await connection.client.listTools()
+            #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
 
-        let page = try await connection.client.listTools()
-        #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
-
-        let result = try await connection.client.callTool(
-            name: ScriptedServer.echoToolName,
-            arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
-        #expect(result.content == [.text(text: Self.echoText, annotations: nil, _meta: nil)])
+            let result = try await connection.client.callTool(
+                name: ScriptedServer.echoToolName,
+                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+            #expect(result.content == [.text(text: Self.echoText, annotations: nil, _meta: nil)])
+        }
     }
 
     // MARK: - elicitation/create over the loopback
@@ -129,24 +129,24 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted, advertising: Self.elicitingCapabilities)
-        defer { Task { await connection.close() } }
-
-        await connection.client.withElicitationHandler { params in
-            guard case .form(let formParams) = params else {
-                return CreateElicitation.Result(action: .decline)
+        try await ensuring({ await connection.close() }) {
+            await connection.client.withElicitationHandler { params in
+                guard case .form(let formParams) = params else {
+                    return CreateElicitation.Result(action: .decline)
+                }
+                #expect(formParams.message == ScriptedServer.elicitEchoMessage)
+                return CreateElicitation.Result(
+                    action: .accept, content: [ScriptedServer.elicitEchoAnswerField: .string(Self.scriptedAnswer)])
             }
-            #expect(formParams.message == ScriptedServer.elicitEchoMessage)
-            return CreateElicitation.Result(
-                action: .accept, content: [ScriptedServer.elicitEchoAnswerField: .string(Self.scriptedAnswer)])
-        }
 
-        let context = try await connection.client.send(
-            CallTool.request(.init(name: ScriptedServer.elicitEchoToolName)))
-        let result = try await context.value
-        #expect(result.isError != true)
-        #expect(
-            result.structuredContent?.objectValue?[ScriptedServer.elicitEchoAnswerField]?.stringValue
-                == Self.scriptedAnswer)
+            let context = try await connection.client.send(
+                CallTool.request(.init(name: ScriptedServer.elicitEchoToolName)))
+            let result = try await context.value
+            #expect(result.isError != true)
+            #expect(
+                result.structuredContent?.objectValue?[ScriptedServer.elicitEchoAnswerField]?.stringValue
+                    == Self.scriptedAnswer)
+        }
     }
 
     // MARK: - tools/list_changed over the SSE stream
@@ -156,16 +156,16 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted)
-        defer { Task { await connection.close() } }
+        try await ensuring({ await connection.close() }) {
+            let counter = NotificationCounter()
+            await connection.client.onNotification(ToolListChangedNotification.self) { _ in
+                await counter.increment()
+            }
+            try await scripted.emitToolListChanged()
 
-        let counter = NotificationCounter()
-        await connection.client.onNotification(ToolListChangedNotification.self) { _ in
-            await counter.increment()
+            try await counter.firstObserved.wait()
+            #expect(await counter.count == 1)
         }
-        try await scripted.emitToolListChanged()
-
-        try await counter.firstObserved.wait()
-        #expect(await counter.count == 1)
     }
 
     // MARK: - one case over both transports
@@ -176,9 +176,9 @@ struct LoopbackHTTPServerTests {
         await scripted.addLoopbackTools()
         let client = try await MCPTestSupport.connectedServer(
             to: scripted, over: kind, clientName: Self.clientName)
-        defer { Task { await client.disconnect() } }
-
-        let page = try await client.listTools()
-        #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
+        try await ensuring({ await client.disconnect() }) {
+            let page = try await client.listTools()
+            #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
+        }
     }
 }

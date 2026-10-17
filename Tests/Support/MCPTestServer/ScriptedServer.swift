@@ -72,16 +72,6 @@ public actor ScriptedServer {
         return try await body(weakSelf)
     }
 
-    /// One wait of ``waitForRecordedNotifications(count:)`` that did not end.
-    private struct NotificationWaiter {
-        /// The count of recorded notifications that ends the wait.
-        let count: Int
-
-        /// The continuation that ends the wait with the recorded
-        /// notifications.
-        let continuation: CheckedContinuation<[RecordedNotification], Never>
-    }
-
     /// The wrapped swift-sdk server that speaks the MCP protocol.
     private let server: MCP.Server
 
@@ -102,16 +92,14 @@ public actor ScriptedServer {
     public private(set) var recordedNotifications: [RecordedNotification] = []
 
     /// Each wait of ``waitForRecordedNotifications(count:)`` that did not
-    /// end, by id. ``recordNotification(method:requestId:reason:)`` resumes
-    /// each wait whose count it reaches.
-    private var notificationWaiters: [Int: NotificationWaiter] = [:]
+    /// end. ``recordNotification(method:requestId:reason:)`` resumes each
+    /// wait whose count it reaches.
+    private var notificationWaiters = CountWaiters<RecordedNotification>()
 
-    /// The id of each wait for recorded notifications whose task was
-    /// cancelled before the wait was stored.
-    private var cancelledNotificationWaits: Set<Int> = []
-
-    /// The id that the next wait for recorded notifications gets.
-    private var nextNotificationWaitID = 0
+    /// Each wait of ``waitForElicitationResults(count:)`` that did not end.
+    /// ``recordElicitationResult(_:)`` resumes each wait whose count it
+    /// reaches.
+    private var elicitationResultWaiters = CountWaiters<CreateElicitation.Result>()
 
     /// The capabilities the client declared in its `initialize` request, or
     /// `nil` before any client initialized — what a test reads to prove the
@@ -121,7 +109,8 @@ public actor ScriptedServer {
     /// Each `elicitation/create` result that an eliciting tool of this server
     /// received, in receipt order. The tool appends the result before it
     /// returns, thus a test reads it after the call returned and needs no
-    /// wait.
+    /// wait. A test that must know that the result arrived while the call is
+    /// in flight waits with ``waitForElicitationResults(count:)``.
     public private(set) var receivedElicitationResults: [CreateElicitation.Result] = []
 
     /// How many stages of the dynamic toolset scenario ran — the index of the
@@ -668,11 +657,47 @@ public actor ScriptedServer {
         parameters._meta?.progressToken.map { Metadata(progressToken: $0) }
     }
 
-    /// Appends `result` to ``receivedElicitationResults``.
+    /// Appends `result` to ``receivedElicitationResults``, and ends each wait
+    /// of ``waitForElicitationResults(count:)`` whose count it reaches.
     ///
     /// - Parameter result: The result that an eliciting tool received.
     private func recordElicitationResult(_ result: CreateElicitation.Result) {
         receivedElicitationResults.append(result)
+        elicitationResultWaiters.resume(reachedBy: receivedElicitationResults)
+    }
+
+    /// Waits until the eliciting tools of this server received at least
+    /// `count` elicitation results.
+    ///
+    /// The record of a result sends the event that ends the wait. Thus no
+    /// time limits the wait: a result that never comes is a wait that ends
+    /// only when the task of the caller is cancelled.
+    ///
+    /// - Parameter count: The minimum number of received results to wait
+    ///   for.
+    /// - Returns: ``receivedElicitationResults`` at the moment `count` was
+    ///   reached, or at the moment the task of the caller was cancelled.
+    public func waitForElicitationResults(count: Int) async -> [CreateElicitation.Result] {
+        if receivedElicitationResults.count >= count {
+            return receivedElicitationResults
+        }
+        let id = elicitationResultWaiters.makeID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<[CreateElicitation.Result], Never>) in
+                elicitationResultWaiters.store(
+                    id: id, count: count, recorded: receivedElicitationResults, continuation: continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelElicitationResultWait(id: id) }
+        }
+    }
+
+    /// Ends one wait for elicitation results whose task was cancelled, or
+    /// marks the wait so that it ends when it is stored.
+    ///
+    /// - Parameter id: The id of the wait.
+    private func cancelElicitationResultWait(id: Int) {
+        elicitationResultWaiters.cancel(id: id, recorded: receivedElicitationResults)
     }
 
     /// Builds the `tools/call` result an eliciting tool returns once its
@@ -788,11 +813,7 @@ public actor ScriptedServer {
     private func recordNotification(method: String, requestId: ID?, reason: String?) {
         recordedNotifications.append(
             RecordedNotification(method: method, requestId: requestId, reason: reason))
-        let reached = notificationWaiters.filter { $0.value.count <= recordedNotifications.count }
-        for (id, waiter) in reached {
-            notificationWaiters[id] = nil
-            waiter.continuation.resume(returning: recordedNotifications)
-        }
+        notificationWaiters.resume(reachedBy: recordedNotifications)
     }
 
     /// Waits until at least `count` notifications were recorded.
@@ -809,32 +830,15 @@ public actor ScriptedServer {
         if recordedNotifications.count >= count {
             return recordedNotifications
         }
-        let id = nextNotificationWaitID
-        nextNotificationWaitID += 1
+        let id = notificationWaiters.makeID()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<[RecordedNotification], Never>) in
-                storeNotificationWaiter(id: id, count: count, continuation: continuation)
+                notificationWaiters.store(
+                    id: id, count: count, recorded: recordedNotifications, continuation: continuation)
             }
         } onCancel: {
             Task { await self.cancelNotificationWait(id: id) }
         }
-    }
-
-    /// Stores one wait for recorded notifications, or ends it at once when
-    /// its count is already reached or its task was already cancelled.
-    ///
-    /// - Parameters:
-    ///   - id: The id of the wait.
-    ///   - count: The count of recorded notifications that ends the wait.
-    ///   - continuation: The continuation that ends the wait.
-    private func storeNotificationWaiter(
-        id: Int, count: Int, continuation: CheckedContinuation<[RecordedNotification], Never>
-    ) {
-        if cancelledNotificationWaits.remove(id) != nil || recordedNotifications.count >= count {
-            continuation.resume(returning: recordedNotifications)
-            return
-        }
-        notificationWaiters[id] = NotificationWaiter(count: count, continuation: continuation)
     }
 
     /// Ends one wait for recorded notifications whose task was cancelled, or
@@ -842,11 +846,7 @@ public actor ScriptedServer {
     ///
     /// - Parameter id: The id of the wait.
     private func cancelNotificationWait(id: Int) {
-        if let waiter = notificationWaiters.removeValue(forKey: id) {
-            waiter.continuation.resume(returning: recordedNotifications)
-        } else {
-            cancelledNotificationWaits.insert(id)
-        }
+        notificationWaiters.cancel(id: id, recorded: recordedNotifications)
     }
 }
 

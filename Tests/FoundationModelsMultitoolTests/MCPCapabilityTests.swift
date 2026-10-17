@@ -144,12 +144,13 @@ struct MCPCapabilityTests {
     @Test("the capability owns the server name as its noun and holds one verb for each catalog entry")
     func theCapabilityOwnsTheServerNameAndHoldsOneVerbPerTool() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
+        try await ensuring({ await server.disconnect() }) {
+            let capability = try await MCPCapability(server: server)
 
-        let capability = try await MCPCapability(server: server)
-
-        #expect(capability.noun == Self.serverName)
-        #expect(capability.tools.map { $0.name } == ScriptedServer.loopbackToolNames)
-        #expect(capability.tools.allSatisfy { $0 is MCPTool })
+            #expect(capability.noun == Self.serverName)
+            #expect(capability.tools.map { $0.name } == ScriptedServer.loopbackToolNames)
+            #expect(capability.tools.allSatisfy { $0 is MCPTool })
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -160,14 +161,14 @@ struct MCPCapabilityTests {
     @Test("withMCP renders tools.<serverName>.<toolName> for each server tool, and no tools.mcp group", arguments: transports)
     func withMCPRendersOneGroupPerServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        defer { Task { await server.disconnect() } }
+        try await ensuring({ await server.disconnect() }) {
+            let registry = try await Self.makeRegistry(over: server)
 
-        let registry = try await Self.makeRegistry(over: server)
-
-        let paths = registry.surface.entries.map(\.path)
-        #expect(paths == Self.loopbackPaths)
-        #expect(registry.surface.entries.allSatisfy { $0.group == Self.serverName })
-        #expect(!paths.contains { $0.hasPrefix(Self.transportGroupPrefix) })
+            let paths = registry.surface.entries.map(\.path)
+            #expect(paths == Self.loopbackPaths)
+            #expect(registry.surface.entries.allSatisfy { $0.group == Self.serverName })
+            #expect(!paths.contains { $0.hasPrefix(Self.transportGroupPrefix) })
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -176,14 +177,15 @@ struct MCPCapabilityTests {
     @Test("a snippet that awaits tools.<serverName>.echo reaches the loopback server and returns the rendered result", arguments: transports)
     func anEchoSnippetReachesTheServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        defer { Task { await server.disconnect() } }
-        let registry = try await Self.makeRegistry(over: server)
+        try await ensuring({ await server.disconnect() }) {
+            let registry = try await Self.makeRegistry(over: server)
 
-        let result = try await Self.stringResult(
-            of: "return await tools.\(Self.echoPath)({ \(ScriptedServer.echoTextArgument): \"\(Self.echoText)\" });",
-            over: registry)
+            let result = try await Self.stringResult(
+                of: "return await tools.\(Self.echoPath)({ \(ScriptedServer.echoTextArgument): \"\(Self.echoText)\" });",
+                over: registry)
 
-        #expect(result == Self.echoText)
+            #expect(result == Self.echoText)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -199,29 +201,30 @@ struct MCPCapabilityTests {
     @Test("searchTools finds each server verb with a sample snippet that runs", arguments: transports)
     func searchToolsFindsEachServerVerbWithARunnableExample(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        defer { Task { await server.disconnect() } }
-        let registry = try await Self.makeRegistry(over: server)
-        let surface = registry.surface
-        let searchTools = Self.makeSearchTools(over: surface)
+        try await ensuring({ await server.disconnect() }) {
+            let registry = try await Self.makeRegistry(over: server)
+            let surface = registry.surface
+            let searchTools = Self.makeSearchTools(over: surface)
 
-        let feedback = try await searchTools.call(
-            arguments: SearchToolsArguments(task: Self.loopbackTask))
+            let feedback = try await searchTools.call(
+                arguments: SearchToolsArguments(task: Self.loopbackTask))
 
-        for path in Self.loopbackPaths {
-            let entry = try #require(surface.entries.first { $0.path == path })
-            #expect(feedback.contains(entry.block), "feedback was: \(feedback)")
-            #expect(feedback.contains("Example: \(entry.qualifiedExample)"))
-            #expect(entry.qualifiedExample.hasPrefix("await tools.\(path)("))
-            let dryRunFailure = await TypedMockDryRun.apiUsageFailure(
-                in: entry.qualifiedExample,
-                against: [entry],
-                using: JSCInterpreter())
-            #expect(dryRunFailure == nil, "the example of \(path) failed its dry run: \(dryRunFailure ?? "")")
+            for path in Self.loopbackPaths {
+                let entry = try #require(surface.entries.first { $0.path == path })
+                #expect(feedback.contains(entry.block), "feedback was: \(feedback)")
+                #expect(feedback.contains("Example: \(entry.qualifiedExample)"))
+                #expect(entry.qualifiedExample.hasPrefix("await tools.\(path)("))
+                let dryRunFailure = await TypedMockDryRun.apiUsageFailure(
+                    in: entry.qualifiedExample,
+                    against: [entry],
+                    using: JSCInterpreter())
+                #expect(dryRunFailure == nil, "the example of \(path) failed its dry run: \(dryRunFailure ?? "")")
+            }
+
+            let echo = try #require(surface.entries.first { $0.path == Self.echoPath })
+            let echoed = try await Self.stringResult(of: "return \(echo.qualifiedExample);", over: registry)
+            #expect(echoed == ScriptedServer.echoTextArgument)
         }
-
-        let echo = try #require(surface.entries.first { $0.path == Self.echoPath })
-        let echoed = try await Self.stringResult(of: "return \(echo.qualifiedExample);", over: registry)
-        #expect(echoed == ScriptedServer.echoTextArgument)
         withExtendedLifetime(scripted) {}
     }
 
@@ -235,16 +238,18 @@ struct MCPCapabilityTests {
     func aServerNamedFilesBesideTheFilesCapabilityThrowsAtBuild() async throws {
         let (scripted, server) = try await MCPTestSupport.connectedLoopbackMCPServer(
             over: .inMemory, name: Self.filesNoun)
-        let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let builder = try await MultiTool.Builder()
-            .withFiles(root: root)
-            .withMCP(servers: [server])
+        try await ensuring({ await server.disconnect() }) {
+            let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+            let builder = try await MultiTool.Builder()
+                .withFiles(root: root)
+                .withMCP(servers: [server])
 
-        #expect {
-            try builder.buildRegistry()
-        } throws: { error in
-            guard let builderError = error as? MultiToolBuilderError else { return false }
-            return builderError.kind == .duplicateNoun && builderError.name == Self.filesNoun
+            #expect {
+                try builder.buildRegistry()
+            } throws: { error in
+                guard let builderError = error as? MultiToolBuilderError else { return false }
+                return builderError.kind == .duplicateNoun && builderError.name == Self.filesNoun
+            }
         }
         withExtendedLifetime(scripted) {}
     }

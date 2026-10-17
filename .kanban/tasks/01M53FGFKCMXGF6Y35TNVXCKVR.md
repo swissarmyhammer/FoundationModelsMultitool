@@ -60,6 +60,36 @@ comments:
     - The rest (about 450 cases, list in the comments of this card) is split into 7 cards by group, in this order: 1) the 14 shared helpers; 2) MCP fixtures (servers never disconnected); 3) MCP waits; 4) shell and process waits; 5) JSC and runCode waits; 6) temp folders and other fixture leaks; 7) IntegrationTests. One more card holds the exception list.
     - Exception rule: first look for a second event that already exists (the call ends, the transport closes, the child process exits, the stream finishes). A wait for a notification can nearly always also end on the close of its transport or the end of its call. A test-only hook in a test helper is permitted. Put a wait on the list only when no such event exists without a production change. Do not change production code only to add a test hook; bring such a case to the owner.
   timestamp: 2026-10-17T02:46:38.189513+00:00
+- actor: claude-code
+  id: 01m542fwskbnfte7a2h6cam4n6
+  text: |-
+    Stash "T1 nvxckvr" applied on main 84e91ba (2026-10-17). The stash is still in the stash list.
+    Conflict in MCPElicitationTests.swift (7 hunks), resolved hunk by hunk:
+    - One helper for one job: HEAD start(_:awaiting:cleaningUpOnThrow:) and endWait are kept. FirstEvent.start and FirstEvent.end are removed, and the new file Tests/FoundationModelsMultitoolTests/Support/FirstEvent.swift is deleted (only MCPElicitationTests used it).
+    - (a) startEliciting(on:_:) (from the stash) now calls start(_:awaiting:): the wait for the elicitation event also ends when the work ends, and #require fails at once when no event came. startElicitingCall, startHeldHostFlow, startContextURLFlow and aCancelDuringTheWaitEndsIt use the HEAD form of start.
+    - (b) call(_:under:whileHolding:under:on:servedBy:) now uses the HEAD helper whileHolding(_:under:on:_:) (the arrival wait also ends when the held call ends; the held call is released on each path). In it, start(_:awaiting:) waits for the first of: the second call ends, or the scripted server got the elicitation result. The snippet case of two inner calls uses start(_:awaiting:) in ensuring.
+    - startCall(_:tool:under:) (removed by the stash) is replaced by callTool(_:on:under:) in the HEAD code too (whileHolding, aNotHTTPURLIsDeclinedBeforeTheRun).
+    - (c) Each test of the stash that connects a server uses withConnection. Each new HEAD test already uses withConnection. New: reconnectedForTwoCalls() disconnects the server when the second connect throws.
+    - CountWaiters.swift and the ScriptedServer.swift changes build with HEAD.
+    Checks: no FirstEvent, no startCall, no conflict marker, no `defer { Task` in Tests/ or IntegrationTests/Tests. swift build --build-tests: complete, no warning from the test files.
+    swift test, one full run: exit 1. "Test run with 2448 tests in 211 suites failed after 4.681 seconds with 1 issue." The one issue is in ShellSessionSweepTests.eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent (a file that this card does not change): the order of the two swept terminals in the journal was the reverse of the tracked order. Suites MCPElicitationTests, MCPCapabilityTests, LoopbackHTTPServer and ScriptedServerSelf passed. New card ^hs26a96 holds that failure; I did not change that test, because the cause (a test that is wrong, or a race in the product) is not known.
+    IntegrationTests: no file changed, thus no build there.
+  timestamp: 2026-10-17T04:39:00.147045+00:00
+- actor: claude-code
+  id: 01m542g2sdzwd5kwq0bhq3bky8
+  text: |-
+    ### implement — changed
+    - evidence: MCPElicitationTests.swift (conflict resolved by hunk, HEAD helpers kept, FirstEvent removed), FirstEvent.swift deleted; LoopbackHTTPServerTests.swift, MCPCapabilityTests.swift, RunBindingFixtures.swift, ScriptedServer.swift, CountWaiters.swift as in the stash. swift test: exit 1, 2448 tests in 211 suites, 1 issue in ShellSessionSweepTests (not changed by this card, new card ^hs26a96).
+    - next: test step (the full run is red on ^hs26a96), then review. The task stays in doing.
+  timestamp: 2026-10-17T04:39:06.285403+00:00
+- actor: claude-code
+  id: 01m542m9q9fdgb98et6wxm31h7
+  text: |-
+    ### test - green
+    - cause of the red run: ShellSessionSweepTests.eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent compared the journal order with the tracked order. The product does not promise a journal order (see ^hs26a96). The test is fixed to compare a Set; the suite doc is corrected.
+    - evidence: swift test, exit code 0, "Test run with 2448 tests in 211 suites passed". The only warning is a toolchain line: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle, not from our code.
+    - next: review, commit.
+  timestamp: 2026-10-17T04:41:24.457129+00:00
 depends_on:
 - 01M53FGDHZJ8BFKNZGKK4K5V9R
 position_column: doing

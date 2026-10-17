@@ -20,10 +20,14 @@ import Testing
 /// 2. `RunPlane.sweep()` walks the background runs in the order they
 ///    were tracked, awaits each canceler, and answers exactly one terminal
 ///    event for each run.
-/// 3. `RoutedSessionActor.close()` journals that whole list before it returns.
+/// 3. `RoutedSessionActor.close()` journals one terminal event for each run
+///    before it returns. A run that settles by itself while the sweep waits on
+///    the canceler of an earlier run reaches the journal at its own settle,
+///    thus the order of the events in the journal is NOT the order of the
+///    sweep, and no test here reads that order.
 ///
 /// The tests drive step 2, which is the step that turns a session teardown into
-/// a dead process group. Step 3 journals whatever step 2 hands it, thus a sweep
+/// a dead process group. Step 3 journals each terminal event, thus a sweep
 /// that answers one terminal event for each background run and leaves the run
 /// plane empty is a durable record with no hole and no orphan.
 ///
@@ -342,11 +346,19 @@ struct ShellSessionSweepTests {
     /// eventplan.md: *"Each outcome goes into the journal before the session
     /// closes. There are no orphans and no holes in the durable record."*
     ///
-    /// `RoutedSessionActor.close()` journals exactly the list the sweep answers
-    /// with, and nothing else. So one terminal event for each background run,
-    /// each one under that run's own completion token, is that record with no
-    /// hole; and a run plane the sweep left empty is that record with no
-    /// orphan, because no run is left for a later observer to find.
+    /// `RoutedSessionActor.close()` journals one terminal event for each
+    /// background run, and a second write for one run is refused. So one
+    /// terminal event for each background run, each one under that run's own
+    /// completion token, is that record with no hole; and a run plane the
+    /// sweep left empty is that record with no orphan, because no run is left
+    /// for a later observer to find.
+    ///
+    /// The test compares the completion tokens as a SET and never as a list.
+    /// `RunPlane.sweep()` returns its events in the order the runs were
+    /// tracked, but a run that settles by itself while the sweep waits on the
+    /// canceler of the other run reaches the journal at that settle, before the
+    /// events of the sweep. Thus the journal order of the two events is not
+    /// fixed, and no contract promises it.
     @Test("each of two background shell runs gets its own terminal event, and none stays on the plane")
     func eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent() async throws {
         try await withBackgroundSession(runCount: Self.twoBackgroundRuns) { session in
@@ -363,7 +375,7 @@ struct ShellSessionSweepTests {
                 awaiting: Self.twoBackgroundRuns)
 
             #expect(terminals.count == Self.twoBackgroundRuns)
-            #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
+            #expect(Set(terminals.map(\.correlationID)) == Set(session.runs.map(\.completionToken)))
             #expect(terminals.allSatisfy { $0.kind == .completed })
             #expect(terminals.allSatisfy { $0.outcome == .stopped })
             #expect(await session.context.backgroundRuns().isEmpty)
