@@ -2,7 +2,7 @@
 // of the wait, with the detail that the wait waits for.
 //
 // It stands in a file of its own because each store of the waits of
-// `MCPServer` is one instance of it, and
+// `MCPServer` and of `ShellState` is one instance of it, and
 // `TestHookWait.suspend(on:in:detail:cancelValue:resolvedValue:didRecord:)`
 // records and ends each wait through it. Thus the steps that give a wait its
 // id, record it, and end it by its id have one implementation.

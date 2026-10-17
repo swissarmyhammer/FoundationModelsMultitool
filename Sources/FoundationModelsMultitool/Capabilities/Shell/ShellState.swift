@@ -195,57 +195,33 @@ actor ShellState {
     /// answer.
     private var pidWaiters: [String: [CheckedContinuation<ProcessGroupKill?, Never>]] = [:]
 
-    /// One wait of ``waitForStoredLines(commandID:atLeast:)``: the count of
-    /// stored lines it waits for, and the continuation that ends it.
-    private struct LineCountWaiter {
-        /// The id of the wait. A cancel of the task of the wait finds the
-        /// wait with this id.
-        let id: Int
+    /// What one wait of ``waitForStoredLines(commandID:atLeast:)`` waits for:
+    /// the command, and the count of its stored lines that ends the wait.
+    private struct StoredLinesTarget: Sendable {
+        /// The completion token of the command whose lines the wait counts.
+        let commandID: String
 
         /// The count of stored lines that ends the wait.
         let count: Int
-
-        /// Resumes the wait.
-        let continuation: CheckedContinuation<Void, Never>
     }
 
     /// Each wait of ``waitForStoredLines(commandID:atLeast:)`` that did not
-    /// end, keyed by completion token.
+    /// end, with the command and the count of lines that it waits for.
     ///
     /// `appendLines(commandID:stdout:stderr:)` ends each wait whose count the
     /// stored lines reach, after the write to the log. `completeCommand` ends
     /// each wait of the command, thus a command that ends with fewer lines
     /// never leaves a wait suspended. A cancel of the task of a wait ends
     /// that wait.
-    private var lineCountWaiters: [String: [LineCountWaiter]] = [:]
+    private var lineCountWaiters = TestHookWaiters<Void, StoredLinesTarget>()
 
-    /// The id that the next wait of ``waitForStoredLines(commandID:atLeast:)``
-    /// gets.
-    private var nextLineCountWaiterID = 0
-
-    /// One wait of ``waitForCommand(holding:)``: the text the command line
-    /// must hold, and the continuation that ends the wait.
-    private struct CommandStartWaiter {
-        /// The id of the wait. A cancel of the task of the wait finds the
-        /// wait with this id.
-        let id: Int
-
-        /// The text that the command line of the started command holds.
-        let text: String
-
-        /// Resumes the wait with the completion token of the command, or with
-        /// `nil` when the task of the wait was cancelled.
-        let continuation: CheckedContinuation<String?, Never>
-    }
-
-    /// Each wait of ``waitForCommand(holding:)`` that did not end.
+    /// Each wait of ``waitForCommand(holding:)`` that did not end, with the
+    /// text that the command line must hold.
     ///
     /// `startCommand(_:commandID:)` ends each wait whose text the new command
-    /// line holds. A cancel of the task of a wait ends that wait with `nil`.
-    private var commandStartWaiters: [CommandStartWaiter] = []
-
-    /// The id that the next wait of ``waitForCommand(holding:)`` gets.
-    private var nextCommandStartWaiterID = 0
+    /// line holds, with the completion token of that command. A cancel of the
+    /// task of a wait ends that wait with `nil`.
+    private var commandStartWaiters = TestHookWaiters<String?, String>()
 
     /// Resumes every continuation `pidWaiters` holds for `commandID` with
     /// `result`, and forgets them.
@@ -375,27 +351,14 @@ actor ShellState {
         if let found = commands.first(where: { $0.command.contains(text) }) {
             return found.id
         }
-        let id = nextCommandStartWaiterID
-        nextCommandStartWaiterID += 1
         // A command that started already gives its token above, also to a
         // cancelled task. Thus the wait below has nothing to resolve at once.
         return await TestHookWait.suspend(
             on: self,
+            in: { state, access in access(&state.commandStartWaiters) },
+            detail: text,
             cancelValue: nil,
-            resolvedValue: { nil },
-            record: { continuation in
-                commandStartWaiters.append(CommandStartWaiter(id: id, text: text, continuation: continuation))
-            },
-            end: { state, _ in state.endCommandStartWait(id: id) })
-    }
-
-    /// Ends the wait of ``waitForCommand(holding:)`` with `id` with `nil`.
-    /// Does nothing when that wait already ended.
-    ///
-    /// - Parameter id: The id of the wait.
-    private func endCommandStartWait(id: Int) {
-        guard let index = commandStartWaiters.firstIndex(where: { $0.id == id }) else { return }
-        commandStartWaiters.remove(at: index).continuation.resume(returning: nil)
+            resolvedValue: { nil })
     }
 
     /// Ends each wait of ``waitForCommand(holding:)`` whose text `command`
@@ -405,16 +368,7 @@ actor ShellState {
     ///   - command: The command line of the command that started.
     ///   - commandID: The completion token of that command.
     private func resolveCommandStartWaiters(command: String, commandID: String) {
-        guard !commandStartWaiters.isEmpty else { return }
-        var stillWaiting: [CommandStartWaiter] = []
-        for waiter in commandStartWaiters {
-            if command.contains(waiter.text) {
-                waiter.continuation.resume(returning: commandID)
-            } else {
-                stillWaiting.append(waiter)
-            }
-        }
-        commandStartWaiters = stillWaiting
+        commandStartWaiters.resume(where: { command.contains($0) }, with: commandID)
     }
 
     /// Registers the right to kill the process group of a command that runs,
@@ -567,37 +521,17 @@ actor ShellState {
     ///   - commandID: The completion token of the run.
     ///   - count: The count of stored lines that ends the wait.
     func waitForStoredLines(commandID: String, atLeast count: Int) async {
-        let id = nextLineCountWaiterID
-        nextLineCountWaiterID += 1
         await TestHookWait.suspend(
             on: self,
+            in: { state, access in access(&state.lineCountWaiters) },
+            detail: StoredLinesTarget(commandID: commandID, count: count),
             cancelValue: (),
             resolvedValue: {
                 guard let found = record(commandID: commandID),
                     found.lineCount >= count || found.status != .running
                 else { return nil }
                 return ()
-            },
-            record: { continuation in
-                lineCountWaiters[commandID, default: []].append(
-                    LineCountWaiter(id: id, count: count, continuation: continuation))
-            },
-            end: { state, _ in state.endLineCountWait(commandID: commandID, id: id) })
-    }
-
-    /// Ends the wait of ``waitForStoredLines(commandID:atLeast:)`` with `id`.
-    /// Does nothing when that wait already ended.
-    ///
-    /// - Parameters:
-    ///   - commandID: The completion token the wait waits for.
-    ///   - id: The id of the wait.
-    private func endLineCountWait(commandID: String, id: Int) {
-        guard var waiters = lineCountWaiters[commandID],
-            let index = waiters.firstIndex(where: { $0.id == id })
-        else { return }
-        let waiter = waiters.remove(at: index)
-        lineCountWaiters[commandID] = waiters.isEmpty ? nil : waiters
-        waiter.continuation.resume()
+            })
     }
 
     /// Ends each wait of ``waitForStoredLines(commandID:atLeast:)`` for
@@ -608,19 +542,11 @@ actor ShellState {
     ///   - commandID: The completion token of the run.
     ///   - commandEnded: Whether the command ended. Then each wait ends.
     private func resolveLineCountWaiters(commandID: String, commandEnded: Bool) {
-        guard let waiters = lineCountWaiters.removeValue(forKey: commandID) else { return }
+        guard !lineCountWaiters.isEmpty else { return }
         let stored = record(commandID: commandID)?.lineCount ?? 0
-        var stillWaiting: [LineCountWaiter] = []
-        for waiter in waiters {
-            if commandEnded || stored >= waiter.count {
-                waiter.continuation.resume()
-            } else {
-                stillWaiting.append(waiter)
-            }
-        }
-        if !stillWaiting.isEmpty {
-            lineCountWaiters[commandID] = stillWaiting
-        }
+        lineCountWaiters.resume(
+            where: { $0.commandID == commandID && (commandEnded || stored >= $0.count) },
+            with: ())
     }
 
     /// Marks a command finished with the status and the exit code it gives, and
