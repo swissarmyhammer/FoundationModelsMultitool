@@ -592,25 +592,54 @@ struct MCPElicitationTests {
         await wait.value
     }
 
+    /// Runs `body`, and then disconnects `server`, also when `body` throws.
+    ///
+    /// The test awaits the disconnect on each path, thus the connection is
+    /// closed before the test ends. A `.http` connection holds a process-wide
+    /// registry entry of `LoopbackHTTPServer` until it closes, thus a
+    /// connection that stays open after its test is a fixture that leaks into
+    /// the next test.
+    ///
+    /// - Parameters:
+    ///   - server: The connected server to disconnect.
+    ///   - body: The work of the test on `server`.
+    /// - Returns: What `body` returned.
+    /// - Throws: What `body` threw, after the disconnect.
+    private static func withConnection<Result>(
+        of server: MCPServer, _ body: () async throws -> Result
+    ) async throws -> Result {
+        do {
+            let result = try await body()
+            await server.disconnect()
+            return result
+        } catch {
+            await server.disconnect()
+            throw error
+        }
+    }
+
     // MARK: - Case 1: a bound context answers
 
     @Test("the answer the test delivers through the session reaches elicitEcho", arguments: transports)
     func theSessionAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        defer { Task { await server.disconnect() } }
-        try await BoundRun.with { run in
-            let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-            let event = try await Self.elicitationEvent(on: run)
-            let request = try #require(event.elicitation)
-            #expect(request.mode == .form)
-            #expect(request.message == ScriptedServer.elicitEchoMessage)
-            #expect(request.requestedSchema?.properties.keys.contains(ScriptedServer.elicitEchoAnswerField) == true)
-            #expect(event.correlationID == run.context.completionToken)
-            await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
-            let result = try await call.value
+        try await Self.withConnection(of: server) {
+            try await BoundRun.with { run in
+                let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
+                let event = try await Self.elicitationEvent(on: run)
+                let request = try #require(event.elicitation)
+                #expect(request.mode == .form)
+                #expect(request.message == ScriptedServer.elicitEchoMessage)
+                #expect(
+                    request.requestedSchema?.properties.keys.contains(ScriptedServer.elicitEchoAnswerField) == true)
+                #expect(event.correlationID == run.context.completionToken)
+                await run.session.respond(
+                    elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
+                let result = try await call.value
 
-            #expect(Self.answer(in: result) == Self.scriptedAnswer)
-            #expect(Self.rendered(result).contains(Self.acceptText))
+                #expect(Self.answer(in: result) == Self.scriptedAnswer)
+                #expect(Self.rendered(result).contains(Self.acceptText))
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -618,21 +647,22 @@ struct MCPElicitationTests {
     @Test("a URL-mode accept keeps the call open until the session completes the flow", arguments: transports)
     func aURLAcceptHoldsTheCallUntilTheSessionCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        defer { Task { await server.disconnect() } }
-        try await BoundRun.with { run in
-            let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
-            let request = try await Self.elicitationRequest(on: run)
-            #expect(request.mode == .url)
-            #expect(request.message == ScriptedServer.elicitURLMessage)
-            #expect(request.url?.absoluteString == ScriptedServer.elicitURLLink)
-            let delivery = await run.session.respond(
-                elicitationId: request.elicitationId.description, response: Self.urlAccept)
-            #expect(delivery == .acceptedAwaitingCompletion)
-            #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
-            await run.session.complete(elicitationId: request.elicitationId.description)
-            let result = try await call.value
+        try await Self.withConnection(of: server) {
+            try await BoundRun.with { run in
+                let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
+                let request = try await Self.elicitationRequest(on: run)
+                #expect(request.mode == .url)
+                #expect(request.message == ScriptedServer.elicitURLMessage)
+                #expect(request.url?.absoluteString == ScriptedServer.elicitURLLink)
+                let delivery = await run.session.respond(
+                    elicitationId: request.elicitationId.description, response: Self.urlAccept)
+                #expect(delivery == .acceptedAwaitingCompletion)
+                #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
+                await run.session.complete(elicitationId: request.elicitationId.description)
+                let result = try await call.value
 
-            #expect(Self.rendered(result).contains(Self.acceptText))
+                #expect(Self.rendered(result).contains(Self.acceptText))
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -650,46 +680,49 @@ struct MCPElicitationTests {
     @Test("a wire completion of a URL flow under a context completes the flow on the run plane, one time")
     func aWireCompletionUnderAContextCompletesTheFlow() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        defer { Task { await server.disconnect() } }
-        let runPlane = RunPlane(userPresence: .interactive)
-        let sink = RecordingEventSink()
-        let call = Self.startCall(
-            server, tool: ScriptedServer.elicitURLToolName, under: Self.relayContext(on: runPlane, sink: sink))
-        await sink.waitUntilEvent { $0.kind == .elicitation }
-        let events = await sink.events
-        let request = try #require(events.first(where: { $0.kind == .elicitation })?.elicitation)
-        let delivery = await runPlane.respond(elicitationId: request.elicitationId, Self.urlAccept)
-        #expect(delivery == .acceptedAwaitingCompletion)
+        try await Self.withConnection(of: server) {
+            let runPlane = RunPlane(userPresence: .interactive)
+            let sink = RecordingEventSink()
+            let call = Self.startCall(
+                server, tool: ScriptedServer.elicitURLToolName, under: Self.relayContext(on: runPlane, sink: sink))
+            await sink.waitUntilEvent { $0.kind == .elicitation }
+            let events = await sink.events
+            let request = try #require(events.first(where: { $0.kind == .elicitation })?.elicitation)
+            let delivery = await runPlane.respond(elicitationId: request.elicitationId, Self.urlAccept)
+            #expect(delivery == .acceptedAwaitingCompletion)
 
-        try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
-        _ = await call.result
-        let lateCompletion = await runPlane.complete(elicitationId: request.elicitationId)
-        await sink.waitUntilElicitationCompleted()
+            try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
+            _ = await call.result
+            let lateCompletion = await runPlane.complete(elicitationId: request.elicitationId)
+            await sink.waitUntilElicitationCompleted()
 
-        #expect(lateCompletion == .noPendingElicitation)
-        #expect(await sink.completedElicitationIds == [request.elicitationId])
+            #expect(lateCompletion == .noPendingElicitation)
+            #expect(await sink.completedElicitationIds == [request.elicitationId])
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("a runCode snippet suspends on the elicitation and returns the session answer over the HTTP loopback")
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
-        defer { Task { await server.disconnect() } }
-        let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
-        let multiTool = MultiTool(registry: registry)
-        try await BoundRun.with { run in
-            let snippet = Task {
-                try await ToolContext.$current.withValue(run.context) {
-                    try await multiTool.call(arguments: RunCodeArguments(code: Self.elicitEchoSnippet))
+        try await Self.withConnection(of: server) {
+            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            let multiTool = MultiTool(registry: registry)
+            try await BoundRun.with { run in
+                let snippet = Task {
+                    try await ToolContext.$current.withValue(run.context) {
+                        try await multiTool.call(arguments: RunCodeArguments(code: Self.elicitEchoSnippet))
+                    }
                 }
-            }
-            let request = try await Self.elicitationRequest(on: run)
-            await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
-            let output = try await snippet.value
+                let request = try await Self.elicitationRequest(on: run)
+                await run.session.respond(
+                    elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
+                let output = try await snippet.value
 
-            let returned = try JSONDecoder().decode(String.self, from: Data(output.utf8))
-            #expect(returned.contains(Self.scriptedAnswer), "the snippet returned: \(returned)")
-            #expect(returned.contains(Self.acceptText))
+                let returned = try JSONDecoder().decode(String.self, from: Data(output.utf8))
+                #expect(returned.contains(Self.scriptedAnswer), "the snippet returned: \(returned)")
+                #expect(returned.contains(Self.acceptText))
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -702,14 +735,15 @@ struct MCPElicitationTests {
     @Test("a question of an MCP server reaches the sink with the name of the server as its source")
     func aServerQuestionHasTheServerNameAsItsSource() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        defer { Task { await server.disconnect() } }
-        let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
-        try await withStubRun { stub in
-            try await withScriptedElicitationSink(run: stub, answering: Self.scriptedAccept) { sink in
-                _ = try await runSnippet(Self.elicitEchoSnippet, over: registry, under: stub.context)
-                let request = try #require(await sink.observedRequest)
+        try await Self.withConnection(of: server) {
+            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            try await withStubRun { stub in
+                try await withScriptedElicitationSink(run: stub, answering: Self.scriptedAccept) { sink in
+                    _ = try await runSnippet(Self.elicitEchoSnippet, over: registry, under: stub.context)
+                    let request = try #require(await sink.observedRequest)
 
-                #expect(request.source == Self.serverName)
+                    #expect(request.source == Self.serverName)
+                }
             }
         }
         withExtendedLifetime(scripted) {}
@@ -842,27 +876,28 @@ struct MCPElicitationTests {
         arguments: ConnectionEnd.allCases)
     func theEndOfAConnectionEndsTheContextURLFlow(end: ConnectionEnd) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        defer { Task { await server.disconnect() } }
-        let runPlane = RunPlane(userPresence: .interactive)
-        let sink = RecordingEventSink()
-        let flow = try await Self.startContextURLFlow(on: server, runPlane: runPlane, sink: sink)
+        try await Self.withConnection(of: server) {
+            let runPlane = RunPlane(userPresence: .interactive)
+            let sink = RecordingEventSink()
+            let flow = try await Self.startContextURLFlow(on: server, runPlane: runPlane, sink: sink)
 
-        await Self.endConnection(of: server, with: end)
+            await Self.endConnection(of: server, with: end)
 
-        let endedAfterTheEnd = await sink.endedElicitations
-        let entriesAfterTheEnd = await server.pendingContextElicitations.count
-        // A question that is still open ends here, thus no wait stays.
-        let lateCompletion = await runPlane.complete(elicitationId: flow.request.elicitationId)
-        await server.disconnect()
-        _ = await flow.call.result
-        #expect(
-            endedAfterTheEnd == [
-                RecordingEventSink.EndedElicitation(
-                    elicitationId: flow.request.elicitationId,
-                    response: .cancel(reason: Self.connectionEndedReason))
-            ])
-        #expect(entriesAfterTheEnd == 0)
-        #expect(lateCompletion == .noPendingElicitation)
+            let endedAfterTheEnd = await sink.endedElicitations
+            let entriesAfterTheEnd = await server.pendingContextElicitations.count
+            // A question that is still open ends here, thus no wait stays.
+            let lateCompletion = await runPlane.complete(elicitationId: flow.request.elicitationId)
+            await server.disconnect()
+            _ = await flow.call.result
+            #expect(
+                endedAfterTheEnd == [
+                    RecordingEventSink.EndedElicitation(
+                        elicitationId: flow.request.elicitationId,
+                        response: .cancel(reason: Self.connectionEndedReason))
+                ])
+            #expect(entriesAfterTheEnd == 0)
+            #expect(lateCompletion == .noPendingElicitation)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1211,15 +1246,16 @@ struct MCPElicitationTests {
         arguments: transports)
     func theProgressTokenLinksTheQuestionToItsCall(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        defer { Task { await server.disconnect() } }
-        let (holding, asking) = Self.twoRunsOfOneSession()
+        try await Self.withConnection(of: server) {
+            let (holding, asking) = Self.twoRunsOfOneSession()
 
-        let result = try await Self.call(
-            Self.tokenEchoToolName, under: asking.context, whileHolding: held, under: holding.context, on: server)
+            let result = try await Self.call(
+                Self.tokenEchoToolName, under: asking.context, whileHolding: held, under: holding.context, on: server)
 
-        #expect(Self.answer(in: result) == Self.askingRunAnswer, "the call returned: \(Self.rendered(result))")
-        #expect(await asking.sink.questions.count == Self.oneQuestion)
-        #expect(await holding.sink.questions.isEmpty)
+            #expect(Self.answer(in: result) == Self.askingRunAnswer, "the call returned: \(Self.rendered(result))")
+            #expect(await asking.sink.questions.count == Self.oneQuestion)
+            #expect(await holding.sink.questions.isEmpty)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1228,15 +1264,16 @@ struct MCPElicitationTests {
         arguments: transports)
     func oneRunInFlightGetsTheQuestion(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        defer { Task { await server.disconnect() } }
-        let (holding, _) = Self.twoRunsOfOneSession()
+        try await Self.withConnection(of: server) {
+            let (holding, _) = Self.twoRunsOfOneSession()
 
-        let result = try await Self.call(
-            ScriptedServer.elicitEchoToolName, under: holding.context, whileHolding: held, under: holding.context,
-            on: server)
+            let result = try await Self.call(
+                ScriptedServer.elicitEchoToolName, under: holding.context, whileHolding: held, under: holding.context,
+                on: server)
 
-        #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
-        #expect(await holding.sink.questions.count == Self.oneQuestion)
+            #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
+            #expect(await holding.sink.questions.count == Self.oneQuestion)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1246,20 +1283,21 @@ struct MCPElicitationTests {
     func twoRunsWithNoLinkCancelWithTheReason(kind: MCPTransportKind) async throws {
         let recorded = RecordedLogMessages()
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind, logger: recorded.logger)
-        defer { Task { await server.disconnect() } }
-        let (holding, asking) = Self.twoRunsOfOneSession()
+        try await Self.withConnection(of: server) {
+            let (holding, asking) = Self.twoRunsOfOneSession()
 
-        let result = try await Self.call(
-            ScriptedServer.elicitEchoToolName, under: asking.context, whileHolding: held, under: holding.context,
-            on: server)
+            let result = try await Self.call(
+                ScriptedServer.elicitEchoToolName, under: asking.context, whileHolding: held, under: holding.context,
+                on: server)
 
-        #expect(Self.rendered(result).contains(Self.cancelText))
-        let received = await scripted.receivedElicitationResults.last
-        #expect(received?.action == .cancel)
-        #expect(Self.reason(of: received) == .string(Self.notLinkedReason))
-        #expect(recorded.messages.contains(Self.notLinkedLogMessage))
-        #expect(await holding.sink.questions.isEmpty)
-        #expect(await asking.sink.questions.isEmpty)
+            #expect(Self.rendered(result).contains(Self.cancelText))
+            let received = await scripted.receivedElicitationResults.last
+            #expect(received?.action == .cancel)
+            #expect(Self.reason(of: received) == .string(Self.notLinkedReason))
+            #expect(recorded.messages.contains(Self.notLinkedLogMessage))
+            #expect(await holding.sink.questions.isEmpty)
+            #expect(await asking.sink.questions.isEmpty)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1268,15 +1306,16 @@ struct MCPElicitationTests {
         arguments: transports)
     func anUnknownProgressTokenFallsToTheOneRun(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        defer { Task { await server.disconnect() } }
-        let (holding, _) = Self.twoRunsOfOneSession()
+        try await Self.withConnection(of: server) {
+            let (holding, _) = Self.twoRunsOfOneSession()
 
-        let result = try await Self.call(
-            Self.unknownTokenToolName, under: holding.context, whileHolding: held, under: holding.context,
-            on: server)
+            let result = try await Self.call(
+                Self.unknownTokenToolName, under: holding.context, whileHolding: held, under: holding.context,
+                on: server)
 
-        #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
-        #expect(await holding.sink.questions.count == Self.oneQuestion)
+            #expect(Self.answer(in: result) == Self.holdingRunAnswer, "the call returned: \(Self.rendered(result))")
+            #expect(await holding.sink.questions.count == Self.oneQuestion)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1290,25 +1329,26 @@ struct MCPElicitationTests {
         arguments: transports)
     func twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        defer { Task { await server.disconnect() } }
-        let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
-        let multiTool = MultiTool(registry: registry)
-        let (snippetRun, _) = Self.twoRunsOfOneSession()
+        try await Self.withConnection(of: server) {
+            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            let multiTool = MultiTool(registry: registry)
+            let (snippetRun, _) = Self.twoRunsOfOneSession()
 
-        let snippet = Task {
-            try await ToolContext.$current.withValue(snippetRun.context) {
-                try await multiTool.call(arguments: RunCodeArguments(code: Self.heldAndElicitingSnippet))
+            let snippet = Task {
+                try await ToolContext.$current.withValue(snippetRun.context) {
+                    try await multiTool.call(arguments: RunCodeArguments(code: Self.heldAndElicitingSnippet))
+                }
             }
-        }
-        let output = await snippet.result
-        // A snippet that failed before its own release leaves the held call
-        // open. The release ends it, and a second release changes nothing.
-        await held.release()
+            let output = await snippet.result
+            // A snippet that failed before its own release leaves the held call
+            // open. The release ends it, and a second release changes nothing.
+            await held.release()
 
-        let returned = try JSONDecoder().decode(String.self, from: Data(output.get().utf8))
-        #expect(returned.contains(Self.holdingRunAnswer), "the snippet returned: \(returned)")
-        #expect(returned.contains(Self.acceptText), "the snippet returned: \(returned)")
-        #expect(await snippetRun.sink.questions.count == Self.oneQuestion)
+            let returned = try JSONDecoder().decode(String.self, from: Data(output.get().utf8))
+            #expect(returned.contains(Self.holdingRunAnswer), "the snippet returned: \(returned)")
+            #expect(returned.contains(Self.acceptText), "the snippet returned: \(returned)")
+            #expect(await snippetRun.sink.questions.count == Self.oneQuestion)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1436,13 +1476,13 @@ struct MCPElicitationTests {
     @Test("a requestedSchema outside the restricted subset reaches the server as decline with the reason")
     func aSchemaOutsideTheSubsetDeclinesWithTheReason() async throws {
         let (scripted, server) = try await Self.connectedForTheNestedSchema()
-        defer { Task { await server.disconnect() } }
+        try await Self.withConnection(of: server) {
+            _ = try await server.call(name: Self.nestedToolName, arguments: nil)
 
-        _ = try await server.call(name: Self.nestedToolName, arguments: nil)
-
-        let received = await scripted.receivedElicitationResults.last
-        #expect(received?.action == .decline)
-        #expect(Self.reason(of: received) == .string(Self.schemaOutsideTheSubsetReason))
+            let received = await scripted.receivedElicitationResults.last
+            #expect(received?.action == .decline)
+            #expect(Self.reason(of: received) == .string(Self.schemaOutsideTheSubsetReason))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -1455,13 +1495,13 @@ struct MCPElicitationTests {
             named: Self.invalidURLToolName, message: ScriptedServer.elicitURLMessage, url: Self.invalidURL,
             elicitationId: ScriptedServer.elicitURLElicitationId)
         let server = try await MCPTestSupport.connectedMCPServer(to: scripted, over: .inMemory, name: Self.serverName)
-        defer { Task { await server.disconnect() } }
+        try await Self.withConnection(of: server) {
+            _ = try await server.call(name: Self.invalidURLToolName, arguments: nil)
 
-        _ = try await server.call(name: Self.invalidURLToolName, arguments: nil)
-
-        let received = await scripted.receivedElicitationResults.last
-        #expect(received?.action == .decline)
-        #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+            let received = await scripted.receivedElicitationResults.last
+            #expect(received?.action == .decline)
+            #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+        }
         withExtendedLifetime(scripted) {}
     }
 

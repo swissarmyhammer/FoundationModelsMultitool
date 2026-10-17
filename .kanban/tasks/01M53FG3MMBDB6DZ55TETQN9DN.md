@@ -41,6 +41,55 @@ comments:
     - evidence: 4960684 fix(mcp): send _meta.reason on each decline or cancel that Multitool makes
     - next: review
   timestamp: 2026-10-17T01:13:47.180001+00:00
+- actor: claude-code
+  id: 01m53pxyehrgsn7seph6vam610
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit a28cda7). 1 finding (1 confirmed, 2 refuted). Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1458 swift/concurrency.
+    - next: Do the item in the section "Review Findings (2026-10-16 20:14)". Remove the same cause from all of the file. Then do the review again. The task stays in review.
+  timestamp: 2026-10-17T01:16:57.681143+00:00
+- actor: claude-code
+  id: 01m53pys17vjy8em92xv0v0d03
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 2 files (4 reasons: hostGoneReason, schemaOutsideTheSubsetReason, invalidURLReason, runFailedReason)
+    - test: green — swift test, exit 0, 2436 passed, 0 failed, 0 skipped
+    - commit: a28cda7 (the commit comment names 4960684, the sha before the amend)
+    - review: findings — Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1458
+  timestamp: 2026-10-17T01:17:24.903674+00:00
+- actor: claude-code
+  id: 01m53q3226zvdanr7nxzbd6qyn
+  text: |-
+    Research (implement step, finding at MCPElicitationTests.swift:1458).
+    - MCPElicitationTests.swift has 13 fire-and-forget teardowns `defer { Task { await server.disconnect() } }`: theSessionAnswerReachesTheTool, aURLAcceptHoldsTheCallUntilTheSessionCompletes, aWireCompletionUnderAContextCompletesTheFlow, aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer, aServerQuestionHasTheServerNameAsItsSource, theEndOfAConnectionEndsTheContextURLFlow, the 5 tests of two calls in flight, aSchemaOutsideTheSubsetDeclinesWithTheReason, anInvalidURLDeclinesWithTheReason. No other teardown Task is in the file (the other `Task {` items are work that the test awaits).
+    - No shared helper in the test support awaits an `MCPServer` disconnect on the two paths. `MCPTestSupport.closingOnFailure` closes a transport only on a throw. Thus the fix adds one private helper `withConnection(of:_:)` in this file: it runs the body, then awaits `server.disconnect()`, also when the body throws, and then rethrows.
+    - Other files with the same pattern (for example MCPCapabilityTests.swift) are the work of ^nvxckvr. This card does not change them.
+  timestamp: 2026-10-17T01:19:45.222954+00:00
+- actor: claude-code
+  id: 01m53q8kx69dz4ce67ex1pft43
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift. 13 teardowns changed: each `defer { Task { await server.disconnect() } }` is gone. A new private helper `withConnection(of:_:)` runs the body, then awaits `server.disconnect()`, also when the body throws, and then rethrows (rule T1). The 13 tests use it: theSessionAnswerReachesTheTool, aURLAcceptHoldsTheCallUntilTheSessionCompletes, aWireCompletionUnderAContextCompletesTheFlow, aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer, aServerQuestionHasTheServerNameAsItsSource, theEndOfAConnectionEndsTheContextURLFlow, theProgressTokenLinksTheQuestionToItsCall, oneRunInFlightGetsTheQuestion, twoRunsWithNoLinkCancelWithTheReason, anUnknownProgressTokenFallsToTheOneRun, twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun, aSchemaOutsideTheSubsetDeclinesWithTheReason, anInvalidURLDeclinesWithTheReason. The checks of each test did not change. `withExtendedLifetime(scripted)` stays after the helper, thus the scripted server lives until the disconnect ends. In theEndOfAConnectionEndsTheContextURLFlow, the disconnect in the body stays, because it is part of the fixed order.
+    - findings checked: 1/1 (the item in "Review Findings (2026-10-16 20:14)" is `- [x]`).
+    - test: `swift test` one time, exit 0, "Test run with 2436 tests in 211 suites passed after 4.803 seconds". The only warning is the build-system line "missing creator for mutated node" of the mlx-swift_Cmlx.bundle, which was there before this change.
+    - Not changed: tests in this file that connect a server and have no teardown (for example theHandlerAnswersABareCall). They have no fire-and-forget Task, thus they are not in the scope of the finding. The same pattern in other files is the work of ^nvxckvr.
+    - next: review
+  timestamp: 2026-10-17T01:22:47.334177+00:00
+- actor: claude-code
+  id: 01m53q9ztxhr4r2dqbw4ke3g8y
+  text: |-
+    ### test - green
+    - evidence: swift test ran one time after the fix of the finding on withConnection(of:_:). Exit code 0. Swift Testing summary: Test run with 2436 tests in 211 suites passed after 2.854 seconds.
+    - no test failed. No test was skipped. No compiler warning came from package code. One tool line appeared: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle build product. It is from the build tool, not from our code.
+    - next: review
+  timestamp: 2026-10-17T01:23:32.317578+00:00
+- actor: claude-code
+  id: 01m53qajg0eft4fg56eqvgjypz
+  text: |-
+    ### commit — changed
+    - evidence: commit subject "test(mcp): end each elicitation test with an awaited disconnect"; sha is in the reply of this step
+    - next: review
+  timestamp: 2026-10-17T01:23:51.424121+00:00
 depends_on:
 - 01M53FFTWPSZVY0DTYKZJDTDFJ
 position_column: doing
@@ -57,4 +106,14 @@ Each decline or cancel that Multitool makes itself must carry `_meta.reason` on 
 
 Search the file for other declines or cancels that Multitool makes, and give each one a reason.
 
-Each fix starts with a fixed-order test that fails before the fix (RED), then passes (GREEN). No time limit, sleep, poll or retry. One full run. #elicitation-fixes
+Each fix starts with a fixed-order test that fails before the fix (RED), then passes (GREEN). No time limit, sleep, poll or retry. One full run.
+
+## Review Findings (2026-10-16 20:14)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1458` `swift/concurrency` — The defer starts an unstructured Task that calls server.disconnect(). The disconnect is not awaited, so the test can finish while the connection is still open. Await server.disconnect() in the test body after the assertions, instead of a fire-and-forget Task in defer.
+#elicitation-fixes
