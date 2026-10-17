@@ -3,7 +3,6 @@
 // A behavioral port of
 // `../FoundationModelsMCP/Tests/FoundationModelsMCPTests/Support/HangingTransport.swift`.
 
-import struct Foundation.Data
 import Logging
 import MCP
 import TestConcurrency
@@ -22,7 +21,10 @@ import TestConcurrency
 /// The hang keeps its continuation in a ``WaitList`` until a cancel ends it.
 /// Thus the runtime never finds a released continuation that was not
 /// resumed, and writes no `SWIFT TASK CONTINUATION MISUSE` line.
-actor HangingTransport: Transport {
+///
+/// ``NeverConnectingTransport`` supplies the disconnect, send and receive
+/// stubs.
+actor HangingTransport: NeverConnectingTransport {
     /// The logger of this double — a no-op; it never connects.
     nonisolated let logger = Logger(
         label: "mcp.transport.hanging",
@@ -53,23 +55,5 @@ actor HangingTransport: Transport {
         let noEvent = WaitList<Void>()
         await noEvent.wait(for: ())
         throw CancellationError()
-    }
-
-    /// This double has nothing to disconnect.
-    func disconnect() async {}
-
-    /// Always throws: this double never reaches a connected state.
-    ///
-    /// - Parameter data: Ignored.
-    /// - Throws: `MCPError.internalError`, always.
-    func send(_ data: Data) async throws {
-        throw MCPError.internalError("HangingTransport never connects")
-    }
-
-    /// Returns an empty receive stream; this double never produces data.
-    ///
-    /// - Returns: A stream that yields nothing.
-    func receive() -> AsyncThrowingStream<Data, Swift.Error> {
-        AsyncThrowingStream { _ in }
     }
 }

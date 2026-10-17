@@ -7,7 +7,6 @@
 // This double does not end on a cancel. It only records the cancel, thus a
 // test can wait for the cancel as an event and fail at once.
 
-import struct Foundation.Data
 import Logging
 import MCP
 
@@ -19,7 +18,10 @@ import MCP
 /// events: the connect started (``connectArrival``), the task of the connect
 /// was cancelled (``connectCancel``), and the connect ended
 /// (``connectEnd``).
-actor HeldConnectTransport: Transport {
+///
+/// ``NeverConnectingTransport`` supplies the disconnect, send and receive
+/// stubs.
+actor HeldConnectTransport: NeverConnectingTransport {
     /// The logger of this double — a no-op; it never connects.
     nonisolated let logger = Logger(
         label: "mcp.transport.held-connect",
@@ -74,23 +76,5 @@ actor HeldConnectTransport: Transport {
         release()
         guard connectArrival.isOpen else { return }
         try? await connectEnd.wait()
-    }
-
-    /// This double has nothing to disconnect.
-    func disconnect() async {}
-
-    /// Always throws: this double never reaches a connected state.
-    ///
-    /// - Parameter data: Ignored.
-    /// - Throws: `MCPError.internalError`, always.
-    func send(_ data: Data) async throws {
-        throw MCPError.internalError("HeldConnectTransport never connects")
-    }
-
-    /// Returns an empty receive stream; this double never produces data.
-    ///
-    /// - Returns: A stream that yields nothing.
-    func receive() -> AsyncThrowingStream<Data, Swift.Error> {
-        AsyncThrowingStream { _ in }
     }
 }

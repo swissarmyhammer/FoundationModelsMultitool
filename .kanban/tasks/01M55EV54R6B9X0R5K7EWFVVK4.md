@@ -39,6 +39,50 @@ comments:
     - evidence: f26d697 test: check that a losing MCP connect attempt is not awaited
     - next: review. The test cannot catch the case "await the loser with no cancel"; no form of the test can fail there without a hang.
   timestamp: 2026-10-17T17:51:03.058296+00:00
+- actor: claude-code
+  id: 01m55g0ahebxxzpw1c424rjfjf
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 92225d6). 1 finding: Tests/FoundationModelsMultitoolTests/Support/HeldConnectTransport.swift:86 (reuse/reuse). The engine confirmed 1 and refuted 1. The .kanban files are not reviewed because of an ignore rule.
+    - next: Put the never-connects send and the empty receive in one shared stub helper. HeldConnectTransport and HangingTransport must both use it. Keep the connect behavior of each double separate. Then run the review again.
+  timestamp: 2026-10-17T17:54:24.430590+00:00
+- actor: claude-code
+  id: 01m55g0vxvz2jfqcphbram6svt
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 2 test files (aLosingConnectAttemptIsNotAwaited; HeldConnectTransport; startAttemptHeld)
+    - test: green — swift test, exit 0, 2459 passed, 0 failed, 0 skipped, 0 continuation misuse lines; Sources diff empty
+    - commit: 92225d6 (the commit comment names f26d697, the sha before the amend)
+    - review: findings — Tests/FoundationModelsMultitoolTests/Support/HeldConnectTransport.swift:86
+  timestamp: 2026-10-17T17:54:42.235763+00:00
+- actor: claude-code
+  id: 01m55g7g9cn35pbjy3znpk5q0p
+  text: 'Finding fixed. New file Tests/FoundationModelsMultitoolTests/Support/NeverConnectingTransport.swift: the protocol NeverConnectingTransport (Actor, Transport) and an extension of it. The extension supplies disconnect() (empty), send(_:) (throws MCPError.internalError("\(Self.self) never connects")) and receive() (an empty stream). The message names the conforming type, thus each double keeps its old text and no label parameter is necessary. The pattern is the same as WrappingTransport. HangingTransport and HeldConnectTransport now conform to NeverConnectingTransport, and their own stubs and the import of Foundation.Data are removed. Each double keeps its own connect(). Search: no other test transport in Support has a never-connects send or an empty receive (the wrapping doubles delegate or return a finished stream). Nothing reads the error text. Production code did not change.'
+  timestamp: 2026-10-17T17:58:19.692202+00:00
+- actor: claude-code
+  id: 01m55g7k3bdawebkyxe9chd1a4
+  text: |-
+    ### implement — changed
+    - evidence: 3 files. Tests/FoundationModelsMultitoolTests/Support/NeverConnectingTransport.swift (new, the shared stub), Support/HangingTransport.swift, Support/HeldConnectTransport.swift. No other double had the stub. Findings checked 1/1. swift test one time: exit code 0, "Test run with 2459 tests in 214 suites passed after 4.884 seconds", XCTest "Executed 0 tests, with 0 failures", 0 lines of SWIFT TASK CONTINUATION MISUSE. The one warning is the known mlx-swift_Cmlx.bundle build line.
+    - next: review
+  timestamp: 2026-10-17T17:58:22.571809+00:00
+- actor: claude-code
+  id: 01m55gacx4tp3z3w5xcvrbpr3a
+  text: |-
+    ### test - green
+    - evidence: swift test ran one time. Exit code 0. Swift Testing: "Test run with 2459 tests in 214 suites passed after 5.387 seconds." The count of SWIFT TASK CONTINUATION MISUSE lines is 0.
+    - note: One build tool message appeared: "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It comes from the dependency bundle, not from project code. No compiler warning came from project code.
+    - no code was changed in this step. No test was changed, deleted or skipped.
+    - next: review
+  timestamp: 2026-10-17T17:59:54.532807+00:00
+- actor: claude-code
+  id: 01m55gb3bspg8ybmy4st3bxmg4
+  text: |-
+    ### commit — changed
+    - evidence: 461253a test: share one never-connecting transport stub set
+    - staged: NeverConnectingTransport.swift (new), HangingTransport.swift, HeldConnectTransport.swift, and the .kanban task files
+    - next: review
+  timestamp: 2026-10-17T18:00:17.529573+00:00
 position_column: doing
 position_ordinal: '80'
 title: Test that a losing MCP connect attempt is not awaited, in a form that cannot hang
@@ -51,3 +95,12 @@ Add the test "a losing connect attempt is not awaited":
 - A future change that awaits the loser must make the test fail at once, not hang. Find the event that makes this possible (for example the loser records a cancel, or the wait for connect also ends on an event of the loser). If no form exists in which a loser that is awaited with no cancel gives a failure and not a hang, say so exactly and give the closest form.
 
 Rule T1. No .timeLimit, sleep, poll or retry. A mutation check: one time, make connect await the loser, show the test fails and does not hang, and revert. One full run. #elicitation-fixes #t1
+
+## Review Findings (2026-10-17 12:51)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/Support/HeldConnectTransport.swift:86` `reuse/reuse` — HeldConnectTransport.send reimplements the send of HangingTransport: both throw an internalError saying the double never connects. The same stub now lives in two doubles, so a later change to the stub must be made twice. Move the never-connects send and the empty receive into a shared test double, or have HeldConnectTransport and HangingTransport both use one stub helper. If the labels must differ, parameterize the label on one helper. Keep the connect behaviour separate, since the held connect does not match HangingTransport's cancel-ending connect.
