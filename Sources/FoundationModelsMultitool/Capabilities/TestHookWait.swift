@@ -60,22 +60,53 @@ enum TestHookWait {
             Task { await end(owner, cancelValue) }
         }
     }
-}
 
-extension Dictionary {
-    /// Takes each recorded wait out of this store, and resumes it with
-    /// `value` — the step that ends each wait of one store at once.
+    /// Suspends until one wait of the store `store` of `owner` ends, and
+    /// gives the value that ended it — the steps of
+    /// ``suspend(on:cancelValue:resolvedValue:record:end:)`` for a wait that
+    /// a ``TestHookWaiters`` store holds.
     ///
-    /// The store is empty before the first resume, thus a resume that runs
-    /// code of the owner finds no wait to end a second time.
+    /// The wait gets a wait id from the store. The record step records the
+    /// continuation under that id with `detail`, and then calls `didRecord`.
+    /// The cancel step ends the wait of that id in the store.
     ///
-    /// - Parameter value: The value each wait returns.
-    mutating func resumeAll<WaitValue: Sendable>(returning value: WaitValue)
-    where Value == CheckedContinuation<WaitValue, Never> {
-        let waiters = values
-        removeAll()
-        for waiter in waiters {
-            waiter.resume(returning: value)
-        }
+    /// Swift 6 cannot form a key path to an actor-isolated property, thus the
+    /// store goes in as a closure that gives in-out access to it on `owner`.
+    ///
+    /// - Parameters:
+    ///   - owner: The actor that holds the store of the hook.
+    ///   - store: Calls its second argument with in-out access to the store
+    ///     of the hook on the given owner.
+    ///   - detail: The detail that the wait waits for.
+    ///   - cancelValue: The value the wait gives when a cancel ends it.
+    ///   - resolvedValue: Gives the value of a wait that has nothing to wait
+    ///     for, or `nil` when the wait must suspend.
+    ///   - didRecord: Runs on `owner` after the record of the wait.
+    /// - Returns: The value that ended the wait.
+    static func suspend<Owner: Actor, WaitValue: Sendable, Detail: Sendable>(
+        on owner: isolated Owner,
+        in store: @escaping TestHookWaiterStore<Owner, WaitValue, Detail>,
+        detail: Detail,
+        cancelValue: WaitValue,
+        resolvedValue: () -> WaitValue?,
+        didRecord: () -> Void = {}
+    ) async -> WaitValue {
+        var newWaiterID = 0
+        store(owner) { newWaiterID = $0.makeWaiterID() }
+        let waiterID = newWaiterID
+        return await suspend(
+            on: owner,
+            cancelValue: cancelValue,
+            resolvedValue: resolvedValue,
+            record: { continuation in
+                store(owner) { $0.record(continuation, as: waiterID, detail: detail) }
+                didRecord()
+            },
+            end: { owner, value in store(owner) { $0.end(waiterID, with: value) } })
     }
 }
+
+/// The in-out access to one ``TestHookWaiters`` store of `Owner`: calls its
+/// second argument with the store of the given owner.
+typealias TestHookWaiterStore<Owner: Actor, WaitValue: Sendable, Detail: Sendable> =
+    @Sendable (isolated Owner, (inout TestHookWaiters<WaitValue, Detail>) -> Void) -> Void

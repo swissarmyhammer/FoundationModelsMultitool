@@ -96,30 +96,18 @@ extension MCPServer {
     /// - Throws: ``ConnectionHookWaitError/connectionEnded`` when a transport
     ///   drop or a `disconnect()` came before the count.
     func waitUntilToolListChangedGeneration(reaches generation: Int) async throws {
-        guard toolListChangedGeneration < generation else { return }
-        guard !isTransportDropped, state != .disconnected else { throw ConnectionHookWaitError.connectionEnded }
-        let waiterID = nextTestHookWaiterID
-        nextTestHookWaiterID += 1
-        let end = await TestHookWait.suspend(
-            on: self,
-            cancelValue: ConnectionHookWaitEnd.cancelled,
-            resolvedValue: { nil },
-            record: { continuation in
-                toolListChangedGenerationWaiters[waiterID] = (generation, continuation)
-                resumeConnectionHookWaitRecordedWaiters()
-            },
-            end: { server, value in
-                server.toolListChangedGenerationWaiters.removeValue(forKey: waiterID)?.continuation.resume(
-                    returning: value)
-            })
-        try end.throwIfConnectionEnded()
+        try await suspendConnectionHookWait(
+            unless: toolListChangedGeneration >= generation,
+            throwingIf: isTransportDropped || state == .disconnected,
+            in: { server, access in access(&server.toolListChangedGenerationWaiters) },
+            detail: generation)
     }
 
     /// Resumes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
     /// whose count ``toolListChangedGeneration`` reached.
     private func resumeToolListChangedGenerationWaiters() {
         let current = toolListChangedGeneration
-        endToolListChangedGenerationWaits(with: .event) { $0 <= current }
+        toolListChangedGenerationWaiters.resume(where: { $0 <= current }, with: .event)
     }
 
     /// Ends each wait of ``waitUntilToolListChangedGeneration(reaches:)``
@@ -127,26 +115,7 @@ extension MCPServer {
     /// transport drop and of a `disconnect()`: no more notification comes on
     /// that connection.
     func endToolListChangedGenerationWaits() {
-        endToolListChangedGenerationWaits(with: .connectionEnded) { _ in true }
-    }
-
-    /// Takes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
-    /// whose count `isEnded` accepts out of its store, and resumes it with
-    /// `end`.
-    ///
-    /// - Parameters:
-    ///   - end: The value each ended wait returns.
-    ///   - isEnded: Whether the wait for the given count ends now.
-    private func endToolListChangedGenerationWaits(
-        with end: ConnectionHookWaitEnd, where isEnded: (Int) -> Bool
-    ) {
-        let ended = toolListChangedGenerationWaiters.filter { isEnded($0.value.generation) }
-        for waiterID in ended.keys {
-            toolListChangedGenerationWaiters[waiterID] = nil
-        }
-        for waiter in ended.values {
-            waiter.continuation.resume(returning: end)
-        }
+        toolListChangedGenerationWaiters.resumeAll(with: .connectionEnded)
     }
 
     /// Clears the watcher state ``handleToolListChangedNotification()`` set,

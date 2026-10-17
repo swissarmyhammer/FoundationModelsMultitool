@@ -372,7 +372,7 @@ extension MCPServer {
             metadata: [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(inFlightCalls.count)"])
         recordEventOnInFlightCalls(.mcpTransportDropped)
         failInFlightCalls(underlying: Self.transportDroppedDescription)
-        transportDropWaiters.resumeAll(returning: .event)
+        transportDropWaiters.resumeAll(with: .event)
         endToolListChangedGenerationWaits()
     }
 
@@ -392,22 +392,11 @@ extension MCPServer {
     /// - Throws: ``ConnectionHookWaitError/connectionEnded`` when a
     ///   `disconnect()` or a new connect came before the drop.
     func waitUntilTransportDropped() async throws {
-        guard !isTransportDropped else { return }
-        guard state != .disconnected else { throw ConnectionHookWaitError.connectionEnded }
-        let waiterID = nextTestHookWaiterID
-        nextTestHookWaiterID += 1
-        let end = await TestHookWait.suspend(
-            on: self,
-            cancelValue: ConnectionHookWaitEnd.cancelled,
-            resolvedValue: { nil },
-            record: { continuation in
-                transportDropWaiters[waiterID] = continuation
-                resumeConnectionHookWaitRecordedWaiters()
-            },
-            end: { server, value in
-                server.transportDropWaiters.removeValue(forKey: waiterID)?.resume(returning: value)
-            })
-        try end.throwIfConnectionEnded()
+        try await suspendConnectionHookWait(
+            unless: isTransportDropped,
+            throwingIf: state == .disconnected,
+            in: { server, access in access(&server.transportDropWaiters) },
+            detail: ())
     }
 
     /// The error a call ends with, given what the client threw.

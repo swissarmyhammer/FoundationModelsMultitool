@@ -551,7 +551,7 @@ extension MCPServer {
         }
         return await withCheckedContinuation { continuation in
             pendingHostElicitations[elicitationId] = continuation
-            hostElicitationHeldWaiters.resume(of: elicitationId, with: true)
+            hostElicitationHeldWaiters.resume(where: { $0 == elicitationId }, with: true)
         }
     }
 
@@ -571,16 +571,15 @@ extension MCPServer {
     ///   cancel ended the wait first.
     @discardableResult
     func waitUntilHostElicitationHeld(elicitationId: String) async -> Bool {
-        let waiterID = hostElicitationHeldWaiters.makeWaiterID()
-        return await TestHookWait.suspend(
+        await TestHookWait.suspend(
             on: self,
+            in: { server, access in access(&server.hostElicitationHeldWaiters) },
+            detail: elicitationId,
             cancelValue: false,
             resolvedValue: { pendingHostElicitations[elicitationId] != nil ? true : nil },
-            record: { continuation in
-                hostElicitationHeldWaiters.record(continuation, as: waiterID, for: elicitationId)
-                hostElicitationHeldWaitRecordedWaiters.resume(of: elicitationId, with: ())
-            },
-            end: { server, value in server.hostElicitationHeldWaiters.end(waiterID, with: value) })
+            didRecord: {
+                hostElicitationHeldWaitRecordedWaiters.resume(where: { $0 == elicitationId }, with: ())
+            })
     }
 
     /// Waits until ``hostElicitationHeldWaiters`` records a wait of
@@ -594,15 +593,12 @@ extension MCPServer {
     /// - Parameter elicitationId: The wire id of the flow that the recorded
     ///   wait waits for.
     func waitUntilHostElicitationHeldWaitIsRecorded(elicitationId: String) async {
-        let waiterID = hostElicitationHeldWaitRecordedWaiters.makeWaiterID()
         await TestHookWait.suspend(
             on: self,
+            in: { server, access in access(&server.hostElicitationHeldWaitRecordedWaiters) },
+            detail: elicitationId,
             cancelValue: (),
-            resolvedValue: { hostElicitationHeldWaiters.contains(elicitationId: elicitationId) ? () : nil },
-            record: { continuation in
-                hostElicitationHeldWaitRecordedWaiters.record(continuation, as: waiterID, for: elicitationId)
-            },
-            end: { server, value in server.hostElicitationHeldWaitRecordedWaiters.end(waiterID, with: value) })
+            resolvedValue: { hostElicitationHeldWaiters.contains(where: { $0 == elicitationId }) ? () : nil })
     }
 
     /// Ends the URL-mode flow named `elicitationId`. The host calls this when

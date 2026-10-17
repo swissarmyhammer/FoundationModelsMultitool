@@ -162,10 +162,7 @@ public actor MCPServer {
     /// wait — resumed when a caller starts to wait for the close of an open
     /// attempt, or when the task of the wait is cancelled. A test hook: no
     /// product code waits here.
-    var transportCloseAwaitedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-
-    /// The id the next wait of ``transportCloseAwaitedWaiters`` gets.
-    var nextTransportCloseAwaitedWaiterID = 0
+    var transportCloseAwaitedWaiters = TestHookWaiters<Void, Void>()
 
     /// The name of this connection: the client name sent at `initialize`, and
     /// the ``identity`` once the first connect succeeds.
@@ -272,10 +269,7 @@ public actor MCPServer {
     /// Every ``waitUntilReady()`` caller suspended on a state that is still
     /// `.connecting`, by the id of its wait — resumed by the next state
     /// change, and ended by a cancel of the task of the wait.
-    private var readinessWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-
-    /// The id that the next wait of ``readinessWaiters`` gets.
-    private var nextReadinessWaiterID = 0
+    private var readinessWaiters = TestHookWaiters<Void, Void>()
 
     /// The tools the most recent successful discovery round trip returned —
     /// the paginated `tools/list` of a connect, or the coalesced re-list a
@@ -337,8 +331,7 @@ public actor MCPServer {
     /// `handleToolListChangedNotification()`, ended by a transport drop or a
     /// `disconnect()`, and ended by a cancel of the task of the wait. A test
     /// hook: no product code waits here.
-    var toolListChangedGenerationWaiters:
-        [Int: (generation: Int, continuation: CheckedContinuation<ConnectionHookWaitEnd, Never>)] = [:]
+    var toolListChangedGenerationWaiters = TestHookWaiters<ConnectionHookWaitEnd, Int>()
 
     /// Whether a `coalesceAndRelist()` watcher is running, so a burst of
     /// notifications starts one watcher and not one per notification.
@@ -384,7 +377,7 @@ public actor MCPServer {
     /// `handleTransportDrop(generation:)`, ended by a `disconnect()` or a new
     /// connect, and ended by a cancel of the task of the wait. A test hook:
     /// no product code waits here.
-    var transportDropWaiters: [Int: CheckedContinuation<ConnectionHookWaitEnd, Never>] = [:]
+    var transportDropWaiters = TestHookWaiters<ConnectionHookWaitEnd, Void>()
 
     /// Each caller of `waitUntilConnectionHookWaitIsRecorded()` that waits
     /// until a wait of `waitUntilTransportDropped()` or of
@@ -392,13 +385,7 @@ public actor MCPServer {
     /// of its wait — resumed by each of those hooks when it records its wait,
     /// and ended by a cancel of the task of the wait. A test hook: no product
     /// code waits here.
-    var connectionHookWaitRecordedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-
-    /// The id that the next wait of `waitUntilTransportDropped()`, of
-    /// `waitUntilToolListChangedGeneration(reaches:)` or of
-    /// `waitUntilConnectionHookWaitIsRecorded()` gets. A test hook: no
-    /// product code reads it.
-    var nextTestHookWaiterID = 0
+    var connectionHookWaitRecordedWaiters = TestHookWaiters<Void, Void>()
 
     /// Every URL-mode elicitation the host's ``elicitationHandler`` accepted
     /// and this actor still holds open, keyed by the wire `elicitationId` —
@@ -424,7 +411,7 @@ public actor MCPServer {
     /// id of its wait — resumed with `true` by `awaitHostCompletion(of:generation:)`,
     /// or with `false` when the task of the wait is cancelled. A test hook:
     /// no product code waits here.
-    var hostElicitationHeldWaiters = ElicitationWaiters<Bool>()
+    var hostElicitationHeldWaiters = TestHookWaiters<Bool, String>()
 
     /// Each caller of `waitUntilHostElicitationHeldWaitIsRecorded(elicitationId:)`
     /// that waits until ``hostElicitationHeldWaiters`` records a wait for that
@@ -432,7 +419,7 @@ public actor MCPServer {
     /// `waitUntilHostElicitationHeld(elicitationId:)` when it records its
     /// wait, or when the task of the wait is cancelled. A test hook: no
     /// product code waits here.
-    var hostElicitationHeldWaitRecordedWaiters = ElicitationWaiters<Void>()
+    var hostElicitationHeldWaitRecordedWaiters = TestHookWaiters<Void, String>()
 
     /// Creates a server that makes a new `MCP.Client` named `name` for each
     /// connect attempt.
@@ -598,14 +585,12 @@ public actor MCPServer {
     /// Suspends until the next state change, or until a cancel of the
     /// calling task — one step of ``waitUntilReady()``.
     private func suspendUntilStateChange() async {
-        let waiterID = nextReadinessWaiterID
-        nextReadinessWaiterID += 1
         await TestHookWait.suspend(
             on: self,
+            in: { server, access in access(&server.readinessWaiters) },
+            detail: (),
             cancelValue: (),
-            resolvedValue: { nil },
-            record: { continuation in readinessWaiters[waiterID] = continuation },
-            end: { server, _ in server.readinessWaiters.removeValue(forKey: waiterID)?.resume() })
+            resolvedValue: { nil })
     }
 
     /// The one funnel every state change goes through: sets ``state`` and
@@ -615,7 +600,7 @@ public actor MCPServer {
     /// - Parameter newState: The state to move to.
     func transition(to newState: MCPServerState) {
         state = newState
-        readinessWaiters.resumeAll(returning: ())
+        readinessWaiters.resumeAll(with: ())
     }
 
     /// Records ``identity`` on the first successful connect, and leaves it

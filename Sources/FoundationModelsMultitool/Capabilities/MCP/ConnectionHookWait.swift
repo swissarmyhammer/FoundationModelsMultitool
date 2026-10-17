@@ -47,14 +47,50 @@ extension MCPServer {
     ///
     /// Internal, for `@testable import`: no product code waits here.
     func waitUntilConnectionHookWaitIsRecorded() async {
-        let waiterID = nextTestHookWaiterID
-        nextTestHookWaiterID += 1
         await TestHookWait.suspend(
             on: self,
+            in: { server, access in access(&server.connectionHookWaitRecordedWaiters) },
+            detail: (),
             cancelValue: (),
-            resolvedValue: { hasRecordedConnectionHookWait ? () : nil },
-            record: { continuation in connectionHookWaitRecordedWaiters[waiterID] = continuation },
-            end: { server, _ in server.connectionHookWaitRecordedWaiters.removeValue(forKey: waiterID)?.resume() })
+            resolvedValue: { hasRecordedConnectionHookWait ? () : nil })
+    }
+
+    /// Suspends one wait of a connection test hook until its event comes, and
+    /// throws when the connection ends first — the steps that
+    /// ``waitUntilTransportDropped()`` and
+    /// ``waitUntilToolListChangedGeneration(reaches:)`` share.
+    ///
+    /// The steps, in order:
+    ///
+    /// 1. When `eventCame` is `true`, the wait returns at once.
+    /// 2. Else, when `connectionEnded` is `true`, the wait throws at once.
+    /// 3. Else the wait records itself in `store` with `detail`, and resumes
+    ///    each wait of ``waitUntilConnectionHookWaitIsRecorded()``. A cancel
+    ///    of the calling task ends the wait with no throw.
+    ///
+    /// - Parameters:
+    ///   - eventCame: Whether the event of the wait came before the call.
+    ///   - connectionEnded: Whether the connection ended before the call.
+    ///   - store: The in-out access to the store of the hook.
+    ///   - detail: The detail that the wait waits for.
+    /// - Throws: ``ConnectionHookWaitError/connectionEnded`` when the
+    ///   connection ended before the event came.
+    func suspendConnectionHookWait<Detail: Sendable>(
+        unless eventCame: Bool,
+        throwingIf connectionEnded: Bool,
+        in store: @escaping TestHookWaiterStore<MCPServer, ConnectionHookWaitEnd, Detail>,
+        detail: Detail
+    ) async throws {
+        guard !eventCame else { return }
+        guard !connectionEnded else { throw ConnectionHookWaitError.connectionEnded }
+        let end = await TestHookWait.suspend(
+            on: self,
+            in: store,
+            detail: detail,
+            cancelValue: ConnectionHookWaitEnd.cancelled,
+            resolvedValue: { nil },
+            didRecord: { resumeConnectionHookWaitRecordedWaiters() })
+        try end.throwIfConnectionEnded()
     }
 
     /// Whether a wait of ``waitUntilTransportDropped()`` or of
@@ -64,9 +100,10 @@ extension MCPServer {
     }
 
     /// Resumes each wait of ``waitUntilConnectionHookWaitIsRecorded()`` — the
-    /// step each connection hook runs when it records its wait.
-    func resumeConnectionHookWaitRecordedWaiters() {
-        connectionHookWaitRecordedWaiters.resumeAll(returning: ())
+    /// step of ``suspendConnectionHookWait(unless:throwingIf:in:detail:)``
+    /// when it records its wait.
+    private func resumeConnectionHookWaitRecordedWaiters() {
+        connectionHookWaitRecordedWaiters.resumeAll(with: ())
     }
 
     /// Ends each wait of ``waitUntilTransportDropped()`` and of
@@ -75,7 +112,7 @@ extension MCPServer {
     /// `disconnect()`: no drop and no notification of that connection comes
     /// any more.
     func endConnectionHookWaits() {
-        transportDropWaiters.resumeAll(returning: .connectionEnded)
+        transportDropWaiters.resumeAll(with: .connectionEnded)
         endToolListChangedGenerationWaits()
     }
 }

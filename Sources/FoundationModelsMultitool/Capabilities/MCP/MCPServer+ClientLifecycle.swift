@@ -242,7 +242,7 @@ extension MCPServer {
     /// the connection that it replaces can no longer come. Returns after the
     /// end of the URL flows when there is no current client.
     func retireCurrentClient() async {
-        transportDropWaiters.resumeAll(returning: .connectionEnded)
+        transportDropWaiters.resumeAll(with: .connectionEnded)
         endHeldHostElicitations()
         await endOldContextElicitations()
         guard let retired = currentClient else { return }
@@ -276,11 +276,7 @@ extension MCPServer {
         guard openTransports[transportID] != nil else { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             openTransports[transportID]?.closeWaiters.append(continuation)
-            let awaited = transportCloseAwaitedWaiters
-            transportCloseAwaitedWaiters = [:]
-            for waiter in awaited.values {
-                waiter.resume()
-            }
+            transportCloseAwaitedWaiters.resumeAll(with: ())
         }
     }
 
@@ -320,21 +316,11 @@ extension MCPServer {
     ///
     /// Internal, for `@testable import`: no product code waits here.
     func waitUntilTransportCloseIsAwaited() async {
-        let waiterID = nextTransportCloseAwaitedWaiterID
-        nextTransportCloseAwaitedWaiterID += 1
         await TestHookWait.suspend(
             on: self,
+            in: { server, access in access(&server.transportCloseAwaitedWaiters) },
+            detail: (),
             cancelValue: (),
-            resolvedValue: { openTransports.values.contains(where: { !$0.closeWaiters.isEmpty }) ? () : nil },
-            record: { continuation in transportCloseAwaitedWaiters[waiterID] = continuation },
-            end: { server, _ in server.endTransportCloseAwaitedWait(waiterID) })
-    }
-
-    /// Ends the wait `waiterID` of ``waitUntilTransportCloseIsAwaited()`` —
-    /// the cancel of that wait. A no-op when the wait ended before.
-    ///
-    /// - Parameter waiterID: The id of the wait.
-    private func endTransportCloseAwaitedWait(_ waiterID: Int) {
-        transportCloseAwaitedWaiters.removeValue(forKey: waiterID)?.resume()
+            resolvedValue: { openTransports.values.contains(where: { !$0.closeWaiters.isEmpty }) ? () : nil })
     }
 }
