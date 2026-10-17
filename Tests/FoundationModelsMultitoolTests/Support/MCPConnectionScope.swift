@@ -7,8 +7,13 @@
 // that connects a server gives its body to
 // ``MCPTestSupport/withConnection(of:_:)``, which awaits the disconnect on
 // each path.
+//
+// The file also holds the shared checks of a specific `MCPError`, for
+// example the error that a client disconnect gives to each request that is
+// still pending: ``MCPTestSupport/expectClientDisconnected(_:)``.
 
 import MCP
+import Testing
 
 @testable import FoundationModelsMultitool
 
@@ -46,5 +51,58 @@ extension MCPTestSupport {
         of connection: Connection, _ body: () async throws -> Result
     ) async throws -> Result {
         try await ensuring({ await connection.disconnect() }, after: body)
+    }
+
+    /// The detail of the `MCPError.internalError` that `MCP.Client.disconnect()`
+    /// gives to each request that is still pending.
+    static let clientDisconnectedDetail = "Client disconnected"
+
+    /// Records a failure unless `body` throws an `MCPError` that `matches`
+    /// accepts. A result, or another error, fails the test.
+    ///
+    /// `MCPError` is not `Equatable`: its `transportError` case holds an
+    /// `Error`. Thus the caller gives a match of the case in place of a
+    /// value to compare.
+    ///
+    /// - Parameters:
+    ///   - expected: The name of the error, for the message of a failure.
+    ///   - body: The work that must throw the error.
+    ///   - matches: Whether the thrown `MCPError` is the expected one.
+    static func expectMCPError(
+        named expected: String, from body: () async throws -> Void,
+        matching matches: (MCPError) -> Bool
+    ) async {
+        let thrown = await MCPCallProbe.thrownError(from: body)
+        guard let error = thrown as? MCPError else {
+            Issue.record("expected \(expected), got \(String(describing: thrown))")
+            return
+        }
+        #expect(matches(error), "expected \(expected), got \(error)")
+    }
+
+    /// Records a failure unless `body` throws the `MCPError.internalError`
+    /// that `MCP.Client.disconnect()` gives to each request that is still
+    /// pending.
+    ///
+    /// - Parameter body: The wait for the request that a disconnect ended.
+    static func expectClientDisconnected(_ body: () async throws -> Void) async {
+        await expectMCPError(
+            named: "the \"\(clientDisconnectedDetail)\" MCPError.internalError", from: body
+        ) { error in
+            guard case .internalError(let detail) = error else { return false }
+            return detail == clientDisconnectedDetail
+        }
+    }
+
+    /// Records a failure unless `body` throws `MCPError.connectionClosed`:
+    /// the error that a failing attempt of `FlakyConnectTransport` throws
+    /// by default.
+    ///
+    /// - Parameter body: The connect that must fail.
+    static func expectConnectionClosed(_ body: () async throws -> Void) async {
+        await expectMCPError(named: "MCPError.connectionClosed", from: body) { error in
+            guard case .connectionClosed = error else { return false }
+            return true
+        }
     }
 }

@@ -1,3 +1,4 @@
+import FoundationModels
 import MCP
 import MCPTestServer
 import Testing
@@ -108,7 +109,7 @@ struct MCPServerDiscoveryTests {
             wrapping: clientTransport, failingConnectAttempts: Self.oneFailingAttempt)
         let server = MCPTestSupport.makeServer(name: Self.serverName)
 
-        await #expect(throws: (any Error).self) {
+        await MCPTestSupport.expectConnectionClosed {
             try await server.connect(via: flaky)
         }
 
@@ -144,7 +145,9 @@ struct MCPServerDiscoveryTests {
         // The handshake succeeds before the discovery fails. Thus the test
         // disconnects the server on each path.
         try await MCPTestSupport.withConnection(of: server) {
-            await #expect(throws: (any Error).self) {
+            // The dangling `$ref` makes the conversion of the schema throw:
+            // `GenerationSchema` rejects a reference with no definition.
+            await #expect(throws: GenerationSchema.SchemaError.self) {
                 try await server.connect(via: transport)
             }
 

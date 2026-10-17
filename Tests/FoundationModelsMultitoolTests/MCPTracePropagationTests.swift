@@ -306,7 +306,10 @@ struct MCPTracePropagationTests {
                 let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
                 try await handlerRan.wait()
                 try await server.reconnect()
-                await #expect(throws: (any Error).self) {
+                // The reconnect tears the old client down. That client gives
+                // each pending request the "Client disconnected" error, and no
+                // transport drop changes it into `lost`.
+                await MCPTestSupport.expectClientDisconnected {
                     _ = try await call.value
                 }
 

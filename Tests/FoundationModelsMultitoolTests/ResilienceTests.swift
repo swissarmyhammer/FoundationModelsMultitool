@@ -314,6 +314,26 @@ struct ResilienceTests {
         }
     }
 
+    /// Records a failure unless `body` throws `backoffExhausted` that names
+    /// ``serverName`` and carries `attempts`.
+    ///
+    /// - Parameters:
+    ///   - attempts: The attempt count the error must carry.
+    ///   - body: The work that must throw the error.
+    private func expectBackoffExhausted(
+        after attempts: Int, from body: () async throws -> Void
+    ) async {
+        do {
+            try await body()
+            Issue.record("expected MCPServerError.backoffExhausted, and nothing was thrown")
+        } catch let MCPServerError.backoffExhausted(serverName, attemptCount, _) {
+            #expect(serverName == Self.serverName)
+            #expect(attemptCount == attempts)
+        } catch {
+            Issue.record("expected MCPServerError.backoffExhausted, got \(error)")
+        }
+    }
+
     // MARK: - Backoff schedule
 
     @Test func connectSucceedsOnThirdAttemptWithExpectedSchedule() async throws {
@@ -352,14 +372,8 @@ struct ResilienceTests {
 
         let server = makeServer(clock: clock)
 
-        do {
+        await expectBackoffExhausted(after: Self.exhaustionMaxAttempts) {
             try await server.connect(via: flaky, backoffPolicy: policy)
-            Issue.record("expected connect(via:backoffPolicy:) to throw")
-        } catch let MCPServerError.backoffExhausted(serverName, attempts, _) {
-            #expect(serverName == Self.serverName)
-            #expect(attempts == Self.exhaustionMaxAttempts)
-        } catch {
-            Issue.record("expected MCPServerError.backoffExhausted, got \(error)")
         }
 
         guard case .faulted = await server.state else {
@@ -410,21 +424,25 @@ struct ResilienceTests {
         let (logger, discarded) = makeStaleConnectDiscardLogger()
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock, logger: logger)
 
-        // The gate stays closed past connectTimeout, so this attempt times
-        // out and backoff is exhausted while the orphaned attempt is still
-        // blocked in the background.
-        try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
-            try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
+        // The `ensuring` opens the gate on each path. Thus no attempt stays
+        // parked at the gate when the body throws.
+        try await ensuring({ await gated.release() }) {
+            // The gate stays closed past connectTimeout, so this attempt times
+            // out and backoff is exhausted while the orphaned attempt is still
+            // blocked in the background.
+            try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
+                try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
+            }
+
+            // Now let the orphaned attempt succeed, and wait until the server
+            // discarded its late result.
+            await gated.release()
+            try await discarded.wait()
+
+            // The late success was discarded: no identity, and not ready.
+            #expect(await server.identity == nil)
+            #expect(await server.state != .ready)
         }
-
-        // Now let the orphaned attempt succeed, and wait until the server
-        // discarded its late result.
-        await gated.release()
-        try await discarded.wait()
-
-        // The late success was discarded: no identity, and not ready.
-        #expect(await server.identity == nil)
-        #expect(await server.state != .ready)
         withExtendedLifetime(scripted) {}
     }
 
@@ -442,18 +460,21 @@ struct ResilienceTests {
         let (logger, discarded) = makeStaleConnectDiscardLogger()
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock, logger: logger)
 
-        try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
-            try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
+        // The `ensuring` opens the gate on each path.
+        try await ensuring({ await gated.release() }) {
+            try await connectUntilOrphaned(server, attemptClock: attemptClock, inFlight: gated.connectArrival) {
+                try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
+            }
+
+            // Now let the orphaned attempt fail its handshake, and wait until the
+            // server discarded the late failure.
+            await gated.release()
+            try await discarded.wait()
+
+            // The late failure was discarded too: the state stays where the
+            // reported exhaustion left it, and is not overwritten with `.faulted`.
+            #expect(await server.state == .connecting)
         }
-
-        // Now let the orphaned attempt fail its handshake, and wait until the
-        // server discarded the late failure.
-        await gated.release()
-        try await discarded.wait()
-
-        // The late failure was discarded too: the state stays where the
-        // reported exhaustion left it, and is not overwritten with `.faulted`.
-        #expect(await server.state == .connecting)
         withExtendedLifetime(scripted) {}
     }
 
@@ -471,22 +492,25 @@ struct ResilienceTests {
         let attemptClock = GatedClock()
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
 
-        try await connectUntilOrphaned(
-            server, attemptClock: attemptClock, inFlight: gatedFactory.makeArrival
-        ) {
-            try await server.connect(
-                via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
+        // The `ensuring` opens the factory gate on each path.
+        try await ensuring({ await gatedFactory.release() }) {
+            try await connectUntilOrphaned(
+                server, attemptClock: attemptClock, inFlight: gatedFactory.makeArrival
+            ) {
+                try await server.connect(
+                    via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
+            }
+
+            // The dispose is the event the abandoned attempt ends with: wait for
+            // it, and never for a fixed time.
+            await gatedFactory.release()
+            try await spy.disposeArrival.wait()
+
+            // Never connected, and disposed — the resource leak is closed.
+            #expect(await spy.connectWasCalled == false)
+            #expect(await server.identity == nil)
+            #expect(await server.state != .ready)
         }
-
-        // The dispose is the event the abandoned attempt ends with: wait for
-        // it, and never for a fixed time.
-        await gatedFactory.release()
-        try await spy.disposeArrival.wait()
-
-        // Never connected, and disposed — the resource leak is closed.
-        #expect(await spy.connectWasCalled == false)
-        #expect(await server.identity == nil)
-        #expect(await server.state != .ready)
         withExtendedLifetime(scripted) {}
     }
 
@@ -522,25 +546,28 @@ struct ResilienceTests {
         let server = makeServer(connectAttemptClock: attemptClock, logger: logger)
 
         try await MCPTestSupport.withConnection(of: server) {
-            // 1. The straggler holds its connect.
-            try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
+            // The inner `ensuring` opens the gate also when the body throws.
+            try await ensuring({ await gated.release() }) {
+                // 1. The straggler holds its connect.
+                try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
 
-            // 2. The retry becomes ready while the straggler still holds its connect.
-            try await server.connect(via: freshTransport, backoffPolicy: Self.oneRetryAttempt)
-            #expect(await server.state == .ready)
-            #expect(await gated.isOpen == false)
+                // 2. The retry becomes ready while the straggler still holds its connect.
+                try await server.connect(via: freshTransport, backoffPolicy: Self.oneRetryAttempt)
+                #expect(await server.state == .ready)
+                #expect(await gated.isOpen == false)
 
-            // 3. The straggler ends: its result is discarded, and its transport closes.
-            await gated.release()
-            try await discarded.wait()
-            try await gated.closeArrival.wait()
+                // 3. The straggler ends: its result is discarded, and its transport closes.
+                await gated.release()
+                try await discarded.wait()
+                try await gated.closeArrival.wait()
 
-            // 4. The connection of the retry still answers.
-            let result = try await server.call(name: Self.retryOnlyToolName)
-            #expect(result.isError != true)
-            #expect(result.content == [.text(text: Self.retryOnlyToolText, annotations: nil, _meta: nil)])
-            #expect(await server.state == .ready)
-            #expect(await gated.isOpen == false)
+                // 4. The connection of the retry still answers.
+                let result = try await server.call(name: Self.retryOnlyToolName)
+                #expect(result.isError != true)
+                #expect(result.content == [.text(text: Self.retryOnlyToolText, annotations: nil, _meta: nil)])
+                #expect(await server.state == .ready)
+                #expect(await gated.isOpen == false)
+            }
         }
         withExtendedLifetime((straggler, fresh)) {}
     }
@@ -593,7 +620,9 @@ struct ResilienceTests {
     ///
     /// A teardown that waits for the straggler makes step 3 fail as a check:
     /// the test then opens the gate itself, so that the straggler ends and
-    /// the test ends.
+    /// the test ends. A body that throws also opens the gate, after the
+    /// body: thus no attempt stays parked at the gate. On the path that
+    /// passes, the gate opens only after each check.
     @Test
     func disconnectEndsAStragglerWhoseConnectNeverReturns() async throws {
         let (straggler, stragglerTransport) = try await makeScriptedPair(name: "straggler-server")
@@ -601,23 +630,25 @@ struct ResilienceTests {
         let attemptClock = GatedClock()
         let server = makeServer(connectAttemptClock: attemptClock)
 
-        // 1. The straggler holds its connect, and the gate never opens.
-        try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
+        try await ensuring({ await gated.release() }) {
+            // 1. The straggler holds its connect, and the gate never opens.
+            try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
 
-        // 2. The teardown starts.
-        let (teardown, returnedFirst) = try await startTeardown(of: server)
+            // 2. The teardown starts.
+            let (teardown, returnedFirst) = try await startTeardown(of: server)
 
-        // 3. The teardown ended the straggler.
-        #expect(returnedFirst, "the teardown waits for a straggler whose connect never returns")
-        if !returnedFirst {
-            await gated.release()
+            // 3. The teardown ended the straggler.
+            #expect(returnedFirst, "the teardown waits for a straggler whose connect never returns")
+            if !returnedFirst {
+                await gated.release()
+            }
+            await teardown.value
+            try await gated.closeArrival.wait()
+            try await gated.connectEnd.wait()
+            #expect(await gated.connectEndedByClose)
+            #expect(await gated.isOpen == false)
+            #expect(await server.state == .disconnected)
         }
-        await teardown.value
-        try await gated.closeArrival.wait()
-        try await gated.connectEnd.wait()
-        #expect(await gated.connectEndedByClose)
-        #expect(await gated.isOpen == false)
-        #expect(await server.state == .disconnected)
         withExtendedLifetime(straggler) {}
     }
 
@@ -643,25 +674,31 @@ struct ResilienceTests {
         let attemptClock = GatedClock()
         let server = makeServer(connectAttemptClock: attemptClock)
 
-        // 1. The attempt holds its factory.
-        let connecting = Task {
-            try await server.connect(
-                via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
+        // The `ensuring` opens the factory gate on each path.
+        try await ensuring({ await gatedFactory.release() }) {
+            // 1. The attempt holds its factory.
+            let connecting = Task {
+                try await server.connect(
+                    via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
+            }
+            try await gatedFactory.makeArrival.wait()
+
+            // 2. The teardown starts, and waits for the attempt.
+            let (teardown, returnedFirst) = try await startTeardown(of: server)
+            #expect(!returnedFirst, "the teardown returned while the factory of an attempt was held")
+
+            // 3. The factory returns; the teardown returns after the release.
+            await gatedFactory.release()
+            await teardown.value
+            #expect(await spy.disposeWasCalled, "the transport of the factory was not released before the teardown returned")
+            #expect(await spy.connectWasCalled == false)
+            #expect(await server.state == .disconnected)
+
+            // The teardown made the attempt stale. A stale attempt releases
+            // its transport and returns with no error, thus an error of the
+            // connect fails the test.
+            try await connecting.value
         }
-        try await gatedFactory.makeArrival.wait()
-
-        // 2. The teardown starts, and waits for the attempt.
-        let (teardown, returnedFirst) = try await startTeardown(of: server)
-        #expect(!returnedFirst, "the teardown returned while the factory of an attempt was held")
-
-        // 3. The factory returns; the teardown returns after the release.
-        await gatedFactory.release()
-        await teardown.value
-        #expect(await spy.disposeWasCalled, "the transport of the factory was not released before the teardown returned")
-        #expect(await spy.connectWasCalled == false)
-        #expect(await server.state == .disconnected)
-
-        _ = try? await connecting.value
         withExtendedLifetime(scripted) {}
     }
 
@@ -681,11 +718,16 @@ struct ResilienceTests {
         let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
 
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
+        let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
         let server = makeServer()
-        // The inner `ensuring` opens the disconnect gate also when the body
-        // throws. Thus no disconnect stays parked at the gate after the test.
+        // The inner `ensuring` opens the disconnect gate and the connect gate
+        // also when the body throws. Thus no disconnect and no connect stays
+        // parked at a gate after the test.
         try await MCPTestSupport.withConnection(of: server) {
-            try await ensuring({ await gatedDisconnect.release() }) {
+            try await ensuring({
+                await gatedDisconnect.release()
+                await gatedConnect.release()
+            }) {
                 try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
                 #expect(await server.state == .ready)
 
@@ -694,7 +736,6 @@ struct ResilienceTests {
                 let firstDisconnect = Task { await server.disconnect() }
                 try await gatedDisconnect.disconnectArrival.wait()
 
-                let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
                 let spy = DisposableSpyTransport(wrapping: gatedConnect)
                 let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
 
@@ -792,7 +833,7 @@ struct ResilienceTests {
             #expect(await server.state == .ready)
 
             await respawning.disconnect()
-            let reconnect = Task { try? await server.reconnect() }
+            let reconnect = Task { try await server.reconnect() }
             // The hung second attempt is in flight, and armed its timeout.
             try await hangArrival.wait()
             try await attemptClock.waitForRecordedSleeps(atLeast: Self.secondAttempt)
@@ -803,7 +844,12 @@ struct ResilienceTests {
             #expect(await server.state == .ready)
 
             attemptClock.open()
-            _ = await reconnect.value
+            // The reconnect has one attempt, and the timeout ended it. Thus
+            // the reconnect throws `backoffExhausted`. Each other error, and no
+            // error, fails the test.
+            await expectBackoffExhausted(after: Self.singleAttempt) {
+                try await reconnect.value
+            }
             #expect(await server.state == .ready)
             #expect(attemptClock.recordedSleeps == [Self.hungReconnectConnectTimeout, Self.hungReconnectConnectTimeout])
         }

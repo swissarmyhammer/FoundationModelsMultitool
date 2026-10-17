@@ -290,13 +290,13 @@ struct StdioServerProcessTests {
         let stdio = try StdioServerProcess(
             command: Self.absentCommand, name: "spawn-failure-test", registry: Self.sharedRegistry)
 
-        let before = Self.openFileDescriptorCount()
+        let before = try Self.openFileDescriptorCount()
         for _ in 0..<Self.failedSpawnCount {
             await #expect(throws: StdioServerProcess.StdioServerProcessError.self) {
                 _ = try await stdio.respawn()
             }
         }
-        let growth = Self.openFileDescriptorCount() - before
+        let growth = try Self.openFileDescriptorCount() - before
 
         #expect(
             growth < Self.pipeFdsPerSpawn * Self.failedSpawnCount,
@@ -473,11 +473,20 @@ struct StdioServerProcessTests {
                 kill(pid, SIGKILL)
                 await Self.waitUntilZombie(pid)
 
-                await #expect(throws: (any Error).self) {
-                    _ = try await client.callTool(
-                        name: ScriptedServer.echoToolName,
-                        arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
-                }
+                // The child is dead, thus the write of the request to its
+                // stdin pipe fails, and the transport throws
+                // `MCPError.transportError`.
+                await MCPTestSupport.expectMCPError(
+                    named: "MCPError.transportError",
+                    from: {
+                        _ = try await client.callTool(
+                            name: ScriptedServer.echoToolName,
+                            arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
+                    },
+                    matching: { error in
+                        guard case .transportError = error else { return false }
+                        return true
+                    })
 
                 await client.disconnect()
                 await stdio.shutdown()
@@ -924,10 +933,12 @@ struct StdioServerProcessTests {
 
     /// The number of file descriptors open in this process, through a
     /// `/dev/fd` listing — Darwin exposes exactly one entry per open
-    /// descriptor. `-1` when the listing fails.
+    /// descriptor.
     ///
     /// - Returns: The count.
-    private static func openFileDescriptorCount() -> Int {
-        (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd"))?.count ?? -1
+    /// - Throws: What the listing of `/dev/fd` throws. A listing that fails
+    ///   fails the test, and it never counts as a count.
+    private static func openFileDescriptorCount() throws -> Int {
+        try FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count
     }
 }

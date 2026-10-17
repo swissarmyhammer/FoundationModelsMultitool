@@ -258,21 +258,24 @@ struct RegisteredJournalOpTests {
             let registry = try await MultiTool.Builder()
                 .withMCP(servers: [server])
                 .buildRegistry()
-            return try await withOuterRunContext { context in
-                let run = Task {
-                    try await Self.run(
-                        "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
-                        over: registry,
-                        under: context)
-                }
+            // The `ensuring` releases the held call on each path.
+            return try await ensuring({ await held.release() }) {
+                try await withOuterRunContext { context in
+                    let run = Task {
+                        try await Self.run(
+                            "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
+                            over: registry,
+                            under: context)
+                    }
 
-                // The server records the call in flight before it sends the request,
-                // thus when the call arrives at the held tool, the record stands.
-                try await held.waitForArrival()
-                let stampedOp = await server.inFlightCalls.values.first?.context?.op
-                await held.release()
-                try await run.value
-                return stampedOp
+                    // The server records the call in flight before it sends the request,
+                    // thus when the call arrives at the held tool, the record stands.
+                    try await held.waitForArrival()
+                    let stampedOp = await server.inFlightCalls.values.first?.context?.op
+                    await held.release()
+                    try await run.value
+                    return stampedOp
+                }
             }
         }
 

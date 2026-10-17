@@ -279,10 +279,18 @@ struct ScriptedServerSelfTests {
             #expect(page.tools.first?.description == "updated description")
 
             // The scheduled mutation runs when the test opens `trigger`, and it
-            // opens `applied` when it is done. No time sets when it runs.
+            // opens `applied` when it is done. No time sets when it runs. A
+            // trigger wait that throws is a failure of the test, because the
+            // mutation then runs before the test opened `trigger`.
             let trigger = TestGate()
             let applied = TestGate()
-            await scripted.scheduleMutation(after: { try? await trigger.wait() }) { server in
+            await scripted.scheduleMutation(after: {
+                do {
+                    try await trigger.wait()
+                } catch {
+                    Issue.record("the wait for the trigger threw \(error)")
+                }
+            }) { server in
                 await server.addTool(ScriptedServer.echoTool(named: "gamma"))
                 applied.open()
             }
@@ -371,7 +379,7 @@ struct ScriptedServerSelfTests {
             // `callTask` would already hold a result and this would fail.
             await client.disconnect()
 
-            await #expect(throws: (any Error).self) {
+            await MCPTestSupport.expectClientDisconnected {
                 _ = try await callTask.value
             }
         }
@@ -474,15 +482,17 @@ struct ScriptedServerSelfTests {
         await scripted.addTool(held.scriptedTool)
         let client = try await connect(to: scripted)
         try await MCPTestSupport.withConnection(of: client) {
-            let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
-            try await held.waitForArrival()
-            try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
+            // The `ensuring` releases the held call on each path.
+            try await ensuring({ await held.release() }) {
+                let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
+                try await held.waitForArrival()
+                try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
-            let recorded = await scripted.waitForRecordedNotifications(count: 1)
-            #expect(recorded.count == 1)
-            #expect(recorded.first?.method == CancelledNotification.name)
-            #expect(recorded.first?.reason == Self.cancellationReason)
-            await held.release()
+                let recorded = await scripted.waitForRecordedNotifications(count: 1)
+                #expect(recorded.count == 1)
+                #expect(recorded.first?.method == CancelledNotification.name)
+                #expect(recorded.first?.reason == Self.cancellationReason)
+            }
         }
     }
 

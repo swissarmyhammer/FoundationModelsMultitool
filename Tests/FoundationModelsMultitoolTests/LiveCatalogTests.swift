@@ -372,7 +372,7 @@ struct LiveCatalogTests {
 
             let flaky = FlakyConnectTransport(
                 wrapping: transport, failingConnectAttempts: Self.oneFailingAttempt)
-            await #expect(throws: (any Error).self) {
+            await MCPTestSupport.expectConnectionClosed {
                 try await server.connect(via: flaky)
             }
 
