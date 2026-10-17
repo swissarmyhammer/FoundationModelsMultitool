@@ -461,6 +461,13 @@ enum MultitoolTelemetry {
         /// one. Level: `warning`.
         case mcpElicitationWireIdInUse = "mcp url elicitation wire id already in use"
 
+        /// A URL-mode elicitation that the host's handler accepted came with
+        /// a wire id of a flow that the server still holds. The earlier flow
+        /// ends with `cancel` and the reason, because its completion can no
+        /// longer be told apart from the completion of the newer flow. Level:
+        /// `warning`.
+        case mcpElicitationHeldFlowReplaced = "mcp url elicitation held flow replaced by a newer flow"
+
         /// An elicitation came in a headless session, and the answer is
         /// `cancel` with the no-user-present reason. Level: `debug`.
         case mcpElicitationCancelledNoUserPresent = "mcp elicitation cancelled: no user is present"

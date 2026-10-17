@@ -111,7 +111,10 @@ the host:
   itself puts its reason in `_meta.reason` of the result.
 - **A held URL flow.** A URL flow waits for its completion on its own
   connection. A disconnect or a reconnect ends each such flow with `cancel`
-  and a reason, thus no run and no handler waits for ever.
+  and a reason, thus no run and no handler waits for ever. A newer URL flow
+  of the host's handler under the same elicitation id ends the earlier flow
+  with `cancel` and a reason. The earlier flow never sends `accept`, because
+  its completion did not come.
 
 ## The web capability
 

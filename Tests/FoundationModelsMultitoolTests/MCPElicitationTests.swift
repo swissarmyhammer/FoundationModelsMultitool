@@ -160,6 +160,10 @@ struct MCPElicitationTests {
     /// product, so the test compiles on the code before the change.
     private static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
 
+    /// The reason of the cancel that ends a held URL flow when a newer URL
+    /// flow uses the same wire id, spelled out for the same reason.
+    private static let replacedByNewerFlowReason = "a newer URL flow used the same elicitation id"
+
     /// The reason of the decline of a `requestedSchema` outside the
     /// restricted subset. The test spells it out, and does not read the
     /// constant of the product, so the test compiles on the code before the
@@ -857,6 +861,54 @@ struct MCPElicitationTests {
         let result = try await answer.value
         #expect(result.action == .cancel)
         #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
+    }
+
+    /// A second URL flow of the handler under a wire id that this actor still
+    /// holds ends the earlier flow. The completion of the earlier flow never
+    /// came, thus the earlier flow sends cancel with a reason to the server,
+    /// and not accept. Before the fix, the earlier flow sent accept: the run
+    /// read a user accept that the user never gave.
+    ///
+    /// The order is fixed. The server holds the first flow. The test starts
+    /// the second flow, and waits for the first of two events: the first
+    /// flow ended, or the second flow ended. Each of the two events can
+    /// occur, thus the wait always ends. The first flow ends only in the
+    /// step of the actor that holds the second flow, thus after the wait one
+    /// flow is held. The test completes that flow, and then reads the two
+    /// answers. When the gate wait throws, the test ends each held flow
+    /// before the throw.
+    @Test("with no context bound, a second URL flow under a held wire id ends the earlier flow with cancel and a reason")
+    func aSecondFlowUnderAHeldWireIdCancelsTheEarlierFlow() async throws {
+        let probe = HandlerProbe(responding: Self.urlAccept)
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: probe.handler)
+        let first = try await Self.startHeldHostFlow(on: server)
+        let firstEvent = TestGate()
+        let second = Task {
+            defer { firstEvent.open() }
+            return await server.answerElicitation(parameters: Self.urlElicitation)
+        }
+        let firstEnded = Task {
+            _ = await first.result
+            firstEvent.open()
+        }
+        do {
+            try await firstEvent.wait()
+        } catch {
+            await server.disconnect()
+            await firstEnded.value
+            _ = await second.value
+            throw error
+        }
+
+        await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+
+        let firstResult = try await first.value
+        let secondResult = await second.value
+        await firstEnded.value
+        #expect(firstResult.action == .cancel)
+        #expect(Self.reason(of: firstResult) == .string(Self.replacedByNewerFlowReason))
+        #expect(secondResult.action == .accept)
+        #expect(await server.pendingHostElicitationIds.isEmpty)
     }
 
     /// An accepted URL flow of a bound context waits for a completion that

@@ -266,7 +266,9 @@ it makes itself: for example a headless session, a question with no answerer
 or with no link to one call, a form schema outside the supported subset, or a
 URL that is not valid. A URL flow that waits for its completion ends with
 `cancel` and a reason when the connection disconnects or reconnects, because
-its completion cannot come.
+its completion cannot come. A newer URL flow of the host's handler under the
+same elicitation id ends the earlier flow the same way, with `cancel` and a
+reason, and never with `accept`.
 
 ### Injected globals
 

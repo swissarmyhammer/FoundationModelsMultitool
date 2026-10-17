@@ -48,7 +48,11 @@
 // each new connect end the held accepts of the handler, and the open
 // questions of a context of an older connect generation: each such flow
 // answers `cancel`, with `connectionEndedReason` under the `reason` key of
-// `_meta`, because its completion can no longer arrive.
+// `_meta`, because its completion can no longer arrive. A newer URL flow of
+// the handler under a wire id that this actor still holds ends the earlier
+// flow the same way, with `replacedByNewerFlowReason`: a later completion of
+// that id ends the newer flow. Thus a held flow never sends `accept` when its
+// completion did not come.
 //
 // **The relay of the completion.** The swift-sdk client runs a request
 // handler inline in its message loop, so the loop reads no wire message while
@@ -369,11 +373,20 @@ extension MCPServer {
     /// ``endHeldHostElicitations()`` and ``endOldContextElicitations()``.
     static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
 
+    /// The reason of the cancel that ends a held URL flow of the handler when
+    /// a newer URL flow uses the same wire id — see
+    /// ``awaitHostCompletion(of:)``.
+    static let replacedByNewerFlowReason = "a newer URL flow used the same elicitation id"
+
     /// Holds a URL-mode accept the handler gave until ``complete(elicitationId:)``
     /// names `elicitationId` — the third message of the flow, on the host's
-    /// side — or until the connection of the flow ends. A second flow opened
-    /// under an id that is still held resumes the earlier one, so no accept
-    /// waits forever.
+    /// side — or until the connection of the flow ends.
+    ///
+    /// A second flow opened under an id that is still held ends the earlier
+    /// one with a cancel that gives ``replacedByNewerFlowReason``, and writes
+    /// a record. The completion of the earlier flow did not come, and a later
+    /// completion of that id ends the newer flow. Thus the earlier flow does
+    /// not wait forever, and it never sends an accept with no completion.
     ///
     /// - Parameter elicitationId: The wire id of the flow.
     /// - Returns: `nil` when the flow completed, thus the accept goes to the
@@ -382,7 +395,10 @@ extension MCPServer {
     private func awaitHostCompletion(of elicitationId: String) async -> ElicitationResponse? {
         await withCheckedContinuation { continuation in
             if let earlier = pendingHostElicitations.removeValue(forKey: elicitationId) {
-                earlier.resume(returning: nil)
+                record(
+                    .mcpElicitationHeldFlowReplaced, level: .warning,
+                    metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(elicitationId)"])
+                earlier.resume(returning: .cancel(reason: Self.replacedByNewerFlowReason))
             }
             pendingHostElicitations[elicitationId] = continuation
             hostElicitationHeldWaiters.resume(of: elicitationId, with: true)

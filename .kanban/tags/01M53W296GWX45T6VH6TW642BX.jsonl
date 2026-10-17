@@ -1,0 +1,1 @@
+{"id":"01M53W296HKH4ZZRYB9F432PJR","timestamp":"2026-10-17T02:46:42.641380Z","op":"create","item_id":"01M53W296GWX45T6VH6TW642BX","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: '5319e7'\n+tag_name: t1\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: '5319e7'\n-tag_name: t1\n","transaction_id":null}
