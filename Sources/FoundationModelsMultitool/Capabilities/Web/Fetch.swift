@@ -206,7 +206,8 @@ extension Fetch {
     /// URL schemes are not case-sensitive, thus `HTTPS://` is also correct.
     ///
     /// This is the one URL rule of the web capability. The member is
-    /// `internal`, not `private`, because the integration tests also use it
+    /// `internal`, not `private`, because the `url` of an `elicit()` request
+    /// object uses the same rule, and the integration tests also use it
     /// (through `@testable import`) to check the URL of a fetched page.
     ///
     /// - Parameter text: The value of `url`.

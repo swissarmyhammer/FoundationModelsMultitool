@@ -804,14 +804,49 @@ struct SandboxGlobalsTests {
     func elicitHelperArgumentErrorSendsNoRequest(argumentError: ElicitHelperArgumentError) async throws {
         let usage = try #require(MultiTool.elicitationGlobals.first { $0.name == argumentError.helper }?.usage)
         #expect(usage.hasPrefix("\(argumentError.helper)("))
+
+        let message = try await elicitationArgumentErrorMessage(of: argumentError.call)
+
+        #expect(message.hasPrefix("\(argumentError.helper): "), "the message was: \(message)")
+        #expect(message.contains(usage), "the message was: \(message)")
+    }
+
+    /// A `url` of `elicit({ message, url })` that is not an absolute http or
+    /// https URL, or that is not a string, throws at the call, before a
+    /// request goes to the user. The order is the same as in
+    /// ``elicitHelperArgumentErrorSendsNoRequest(argumentError:)``: the bad
+    /// call throws, then the snippet asks one valid question, and the sink
+    /// answers it.
+    @Test("elicit({ message, url }) with a bad url throws its reason and usage text, and sends no request", arguments: elicitURLArgumentErrors)
+    func elicitURLArgumentErrorSendsNoRequest(argumentError: ElicitURLArgumentError) async throws {
+        let message = try await elicitationArgumentErrorMessage(of: argumentError.call)
+
+        #expect(message.hasPrefix("\(MultiTool.elicitGlobalName): "), "the message was: \(message)")
+        #expect(message.contains(argumentError.reasonFragment), "the message was: \(message)")
+        #expect(message.contains(MultiTool.elicitUsage), "the message was: \(message)")
+    }
+
+    /// Runs one bad call to an elicitation global, then one valid question,
+    /// and gives the error message of the bad call.
+    ///
+    /// The order is fixed: the bad call throws, then the snippet asks the
+    /// valid question, and the sink answers it. The function records an issue
+    /// when the sink observed a request other than the valid question. Thus
+    /// a bad call that sent a request makes the test fail.
+    ///
+    /// - Parameter call: the JS expression of the bad call.
+    /// - Returns: the error message of the bad call, or `"no-throw"` when the
+    ///   call did not throw.
+    /// - Throws: when the run fails, or when its output does not decode.
+    private func elicitationArgumentErrorMessage(of call: String) async throws -> String {
         try await withStubRun { stub in
             let context = stub.context
-            try await withScriptedElicitationSink(run: stub, answering: .decline) { sink in
+            return try await withScriptedElicitationSink(run: stub, answering: .decline) { sink in
                 let output = try await runSnippet(
                     """
                     let message = "no-throw";
                     try {
-                        await \(argumentError.call);
+                        await \(call);
                     } catch (error) {
                         message = String(error.message);
                     }
@@ -821,11 +856,9 @@ struct SandboxGlobalsTests {
                     under: context
                 )
 
-                let message = try RunOutput.decoded(String.self, from: output)
-                #expect(message.hasPrefix("\(argumentError.helper): "), "the message was: \(message)")
-                #expect(message.contains(usage), "the message was: \(message)")
                 #expect(await sink.deliveries(count: 1) == [.delivered])
                 #expect(await sink.requests.map(\.message) == [elicitHelperFollowUpMessage])
+                return try RunOutput.decoded(String.self, from: output)
             }
         }
     }
@@ -1591,6 +1624,33 @@ let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: \"1\" })"),
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: 5, max: 1 })"),
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { integer: \"yes\" })"),
+]
+
+/// One `elicit({ message, url })` call with a bad `url`.
+struct ElicitURLArgumentError: Sendable, CustomTestStringConvertible {
+    /// The JS expression of the bad call.
+    let call: String
+
+    /// A part of the reason that the error message must hold.
+    let reasonFragment: String
+
+    /// The call, as the name of the test case.
+    var testDescription: String { call }
+}
+
+/// The part of the reason of a `url` text that is not an absolute http or
+/// https URL.
+private let elicitURLNotHTTPFragment = "is not an absolute http or https URL"
+
+/// The bad `url` values: a relative text, a scheme other than http or https,
+/// an http URL with no host, and a value that is not a string.
+let elicitURLArgumentErrors: [ElicitURLArgumentError] = [
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: \"foo\" })", reasonFragment: elicitURLNotHTTPFragment),
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: \"/auth\" })", reasonFragment: elicitURLNotHTTPFragment),
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: \"javascript:x\" })", reasonFragment: elicitURLNotHTTPFragment),
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: \"ftp://example.com/auth\" })", reasonFragment: elicitURLNotHTTPFragment),
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: \"https:///auth\" })", reasonFragment: elicitURLNotHTTPFragment),
+    ElicitURLArgumentError(call: "elicit({ message: \"Sign in\", url: 5 })", reasonFragment: "url must be a string"),
 ]
 
 /// Runs each call of ``elicitHelperCalls`` in turn under a stub run whose

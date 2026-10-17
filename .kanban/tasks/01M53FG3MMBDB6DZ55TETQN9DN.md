@@ -90,10 +90,26 @@ comments:
     - evidence: commit subject "test(mcp): end each elicitation test with an awaited disconnect"; sha is in the reply of this step
     - next: review
   timestamp: 2026-10-17T01:23:51.424121+00:00
+- actor: claude-code
+  id: 01m53qhxntp0ncsjrjsqtj5b6w
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit b7ce9eb). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. The engine reviewed 1 file. The ignore rule (.kanban/) excluded 2 files. The prior item in "Review Findings (2026-10-16 20:14)" is checked.
+    - next: The task moved to done. No more work is necessary.
+  timestamp: 2026-10-17T01:27:52.250420+00:00
+- actor: claude-code
+  id: 01m53qj89hyyvfa0xzrkgp4vqd
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (1 of 1 finding fixed; 13 teardowns use the awaited helper withConnection(of:_:))
+    - test: green — swift test, exit 0, 2436 passed, 0 failed, 0 skipped
+    - commit: b7ce9eb
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T01:28:03.121581+00:00
 depends_on:
 - 01M53FFTWPSZVY0DTYKZJDTDFJ
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff8980
 title: 'Rule R4, group B: each decline or cancel that Multitool makes carries _meta.reason on the MCP wire'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), rule R4, group B.

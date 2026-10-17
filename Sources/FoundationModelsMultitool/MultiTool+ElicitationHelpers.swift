@@ -422,7 +422,8 @@ extension MultiTool {
     /// - Throws: ``ElicitationArgumentError/malformed`` when the argument is
     ///   neither a question string nor an object with a `message`;
     ///   ``ElicitationArgumentError/undecodable(reason:)`` when its `url` is
-    ///   not a URL or its `requestedSchema` is outside the subset.
+    ///   not a string or not an absolute `http` or `https` URL, or its
+    ///   `requestedSchema` is outside the subset.
     private static func makeElicitQuestion(
         from argument: InterpreterValue?
     ) throws(ElicitationArgumentError) -> ElicitationQuestion {
@@ -446,10 +447,7 @@ extension MultiTool {
         guard case .object(let fields)? = argument, case .string(let message)? = fields["message"] else {
             throw .malformed
         }
-        if case .string(let urlText)? = fields["url"] {
-            guard let url = URL(string: urlText) else {
-                throw .undecodable(reason: "\"\(urlText)\" is not a URL")
-            }
+        if let url = try decodeElicitURL(fields["url"]) {
             return ElicitationRequest(message: message, elicitationId: elicitationId, url: url)
         }
         return ElicitationRequest(
@@ -457,6 +455,33 @@ extension MultiTool {
             elicitationId: elicitationId,
             requestedSchema: try decodeRequestedSchema(fields["requestedSchema"])
         )
+    }
+
+    /// The reason of a `url` that is not a string.
+    private static let elicitURLNotAStringReason = "the url must be a string"
+
+    /// Decodes the `url` field of an `elicit()` request object.
+    ///
+    /// The URL rule is ``Fetch/httpURL(_:)``: an absolute `http` or `https`
+    /// URL with a host. Thus a relative text, such as `"foo"`, and another
+    /// scheme, such as `"javascript:x"`, give an argument error before a
+    /// request goes to the user.
+    ///
+    /// - Parameter value: the `url` field, or `nil`/`null` for a form request.
+    /// - Returns: the URL, or `nil` when the request has no `url`.
+    /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
+    ///   value is not a string, or not an absolute `http` or `https` URL.
+    private static func decodeElicitURL(_ value: InterpreterValue?) throws(ElicitationArgumentError) -> URL? {
+        guard let value, value != .null else {
+            return nil
+        }
+        guard case .string(let urlText) = value else {
+            throw .undecodable(reason: elicitURLNotAStringReason)
+        }
+        guard let url = Fetch.httpURL(urlText) else {
+            throw .undecodable(reason: "\"\(urlText)\" is not an absolute http or https URL")
+        }
+        return url
     }
 
     /// Decodes a form request's `requestedSchema` through the `Codable`
