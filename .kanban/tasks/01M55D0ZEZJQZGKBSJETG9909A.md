@@ -28,8 +28,24 @@ comments:
     - evidence: local commit "refactor(shell): move the ShellState test-hook waits to the shared store". The sha is in the git log. Tests before commit: swift test, exit 0, 2458 passed, 0 failed, 0 skipped.
     - next: review
   timestamp: 2026-10-17T17:25:12.763152+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m55egzvrfjphc0zdm4b6t5as
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit ab42c91). 0 findings, 0 confirmed, 0 refuted. 7 pairs attempted, 0 failed. The engine reviewed 2 files: ShellState.swift and TestHookWaiters.swift. The .reviewignore rule excluded the 4 .kanban files. The task has no prior findings sections.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-17T17:28:33.400452+00:00
+- actor: claude-code
+  id: 01m55ehkv66dwmsm917np3ttqx
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 source files (both ShellState waits on the shared TestHookWaiters store and TestHookWait.suspend overload; old counters, end functions and waiter structs removed)
+    - test: green — swift test, exit 0, 2458 passed, 0 failed, 0 skipped, 0 continuation misuse lines
+    - commit: ab42c91
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T17:28:53.862212+00:00
+position_column: done
+position_ordinal: ffffffa380
 title: Move the two ShellState test-hook waits to the shared TestHookWaiters store
 ---
 Found during the review-finding work of ^cepemvm.
