@@ -110,6 +110,56 @@ comments:
     - evidence: d3a4441 fix(mcp): let a URL flow of one kind replace a URL flow of the other kind
     - next: review. The stash "T1 nvxckvr" was not touched. No push.
   timestamp: 2026-10-17T03:56:45.359105+00:00
+- actor: claude-code
+  id: 01m540baq352byqzf9rxpbk7na
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 67800fa). 3 findings, 3 confirmed, 2 refuted. Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1310, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1650. All 3 items of "Review Findings (2026-10-16 22:38)" are checked.
+    - next: Fix the 3 open items in "Review Findings (2026-10-16 22:57)". The task stays in review.
+  timestamp: 2026-10-17T04:01:33.411134+00:00
+- actor: claude-code
+  id: 01m540c0by1hzpzhdyy76bzja4
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 4 files (3 of 3 findings fixed; replaceEarlierURLFlows across both kinds; shared test wait start(_:awaiting:cleaningUpOnThrow:))
+    - test: green — swift test, exit 0, 2446 passed, 0 failed, 0 skipped
+    - commit: 67800fa (the commit comment names d3a4441, the sha before the amend)
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390; Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1310, :1650
+  timestamp: 2026-10-17T04:01:55.582477+00:00
+- actor: claude-code
+  id: 01m540n31p2j7tg2w56pths7ey
+  text: |-
+    ### implementation of the 3 findings of "Review Findings (2026-10-16 22:57)"
+    - Finding 1 (MCPServer+Elicitation.swift): new private helper `endHeldHostElicitations(where:reason:)`, the one end step of a held flow. `endHeldHostElicitations()` gives all wire ids with `connectionEndedReason`. `replaceEarlierURLFlows(under:)` gives the one wire id with `replacedByNewerFlowReason`. The context end had the same cause, thus a new private helper `endContextElicitations(where:reason:)` (a predicate on the wire id and the connect generation) is the one end step of an open question. `endOldContextElicitations()` gives each older generation with `connectionEndedReason`, and `replaceEarlierURLFlows(under:)` gives the one wire id with `replacedByNewerFlowReason`. Each helper takes the selected entries out of the map before the first end, the same order as before.
+    - Finding 2 (MCPElicitationTests.swift): `endWait` is now generic over the success type and the failure type: `endWait<Success: Sendable, Failure: Error>(_ wait: Task<Success, Failure>) async`. The failure type is generic as well, because the wait of `aCancelDuringTheWaitEndsIt` is a `Task<Bool, any Error>` (the task that `start(_:awaiting:cleaningUpOnThrow:)` gives), not a `Task<Bool, Never>`. The test passes `Self.endWait` as its clean-up.
+    - Finding 3 (MCPElicitationTests.swift): new helper `releaseHeldCall(_:_:)` releases the held tool and awaits the call, and gives the result of the call. `whileHolding` uses it as the clean-up closure, in the catch block, and on the success path (with `.get()`, thus a throw of the held call still goes to the caller). The same release-then-await copy in `call(_:under:whileHolding:under:on:)` uses it too.
+    - Not changed: in `aCancelDuringTheWaitEndsIt`, `wait.cancel()` and then `try await wait.value` is the step under test (the test reads the value `false`), not a teardown. The `held.release()` in `twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun` awaits no call task after it (the snippet result was read before), thus it is not the same step.
+    - Test behavior and checks did not change. No test was added or deleted. Not a TDD cycle: these are refactors with no new behavior, thus the existing tests are the check.
+  timestamp: 2026-10-17T04:06:53.238316+00:00
+- actor: claude-code
+  id: 01m540n8zewgfz0b42dscanpbp
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift. Findings checked 3/3 of "Review Findings (2026-10-16 22:57)". Full run `swift test` one time: exit code 0 (from swift test itself), "Test run with 2446 tests in 211 suites passed", XCTest "Executed 0 tests, with 0 failures". One build-system line only, from the mlx-swift dependency bundle ("missing creator for mutated node"), not from project source.
+    - next: review. The task stays in doing. The stash "T1 nvxckvr" was not touched.
+  timestamp: 2026-10-17T04:06:59.310251+00:00
+- actor: claude-code
+  id: 01m540q6kc70rctdc757nf3dpz
+  text: |-
+    ### test - green
+    - evidence: `swift test` ran one time. Exit code of `swift test` itself: 0. Swift Testing summary line: "Test run with 2446 tests in 211 suites passed after 3.970 seconds." XCTest part: Executed 0 tests, 0 failures.
+    - scope: full suite, after the fix of the second set of 3 review findings. No test was changed in this step. No source file was changed in this step.
+    - skipped tests: none. Failures: none.
+    - warnings: one SwiftPM build-system message, "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path. It comes from the build graph of a dependency bundle, not from project source. No compiler warning in project source.
+    - next: review.
+  timestamp: 2026-10-17T04:08:02.412712+00:00
+- actor: claude-code
+  id: 01m540r6yw444dsvg6j46gvj0f
+  text: |-
+    ### commit — changed
+    - evidence: aebbc2a refactor(mcp): end held flows and open questions in one step each
+    - next: review. Working tree is clean. The stash "T1 nvxckvr" is untouched.
+  timestamp: 2026-10-17T04:08:35.548992+00:00
 position_column: doing
 position_ordinal: '8280'
 title: A second context URL question under a wire id in use has no entry, thus no wire completion and no connection end can end it
@@ -137,3 +187,14 @@ Start with a fixed-order test that fails on the current code: two URL questions 
 - [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:66` `completeness/invariant-propagation` — The new comment says a newer URL flow under a wire id that a held handler flow or an open context question still uses ends the earlier flow. The code does not do this across kinds. openContextElicitation (line 361) checks only pendingContextElicitations, and awaitHostCompletion (line 461) checks only pendingHostElicitations. So a context question whose wire id is held by a handler flow replaces nothing. Then complete(elicitationId:) (line 586) ends the handler flow first, and the context question never gets its completion. Its run stays suspended until the connection ends. Either check the other map in openContextElicitation and awaitHostCompletion, and end the earlier flow of either kind with replacedByNewerFlowReason, or narrow the comment to same-kind replacement. If the cross-kind case is needed, add a test that opens a held handler flow and then a context question under the same wire id.
 - [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:364` `reuse/reuse` — `openContextElicitation` repeats the replace-and-record-then-cancel sequence that `awaitHostCompletion(of:)` already implements for held handler flows: the newer entry replaces the earlier one, a `.mcpElicitationWireIdInUse` warning is recorded with the wire id, and the earlier flow is cancelled with `replacedByNewerFlowReason`. Two copies of the rule can drift apart, and the doc comment says the two paths follow "the same rule". Extract the shared replacement step (record the wire id in use, then cancel the replaced flow with `replacedByNewerFlowReason`) into one helper that both `awaitHostCompletion(of:)` and `openContextElicitation` call, parameterized by the way each path cancels the earlier flow.
 - [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:638` `reuse/reuse` — `startContextURLQuestion` rebuilds the wait mechanism of the existing held-flow helper: a `TestGate` opened by a `Task` that waits for a sink event, the `endWait` cancel, and `#require` on the sink's events. The new helper only differs in the predicate (a question not in `earlier`) and in returning the answer task. Writing a parallel copy means two copies of the wait logic can diverge. Parameterize the existing helper with the predicate for the question (`isNew`) and the answer task, or extract the shared wait (gate, `asked` task, `endWait`, `#require`) into one function that both helpers call.
+
+## Review Findings (2026-10-16 22:57)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390` `reuse/reuse` — replaceEarlierURLFlows re-implements the held-flow end step of endHeldHostElicitations(): it takes the continuation out of pendingHostElicitations and resumes it with cancel(replacedByNewerFlowReason). endHeldHostElicitations already does this for every held flow, with connectionEndedReason. The near-match was not extended, so two copies of the held-flow end can drift apart. Generalize the held-flow end into one helper that takes a predicate on the wire id and the reason, for example `endHeldHostElicitations(where:reason:)`. endHeldHostElicitations then passes all keys with connectionEndedReason, and replaceEarlierURLFlows passes the one wire id with replacedByNewerFlowReason.
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1310` `reuse/reuse` — The cleanUp closure of aCancelDuringTheWaitEndsIt repeats the cancel-then-await step that endWait(_:) already performs (cancel, then await value). endWait only accepts Task<Void, Never>, and this wait is a Task<Bool, Never>, so the test copies the logic instead of extending endWait. Two copies of the same wait-teardown step can drift apart. Make endWait generic over the result type (for example `private static func endWait<Success: Sendable>(_ wait: Task<Success, Never>) async`), then pass `endWait` as the cleanup, or call it from the closure, so the teardown lives in one place.
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:1650` `reuse/reuse` — The cleanUp closure given to start in whileHolding repeats the teardown of the same held call that the catch block of whileHolding already performs: it releases the held tool, then awaits the call's result. The two copies can drift apart, and the same release-then-await step is written out twice in one function. Extract one helper, for example `releaseHeldCall(_ held: HeldScriptedTool, _ call: Task<some Any, any Error>) async`, that releases the tool and awaits the call. Pass it as the cleanUp closure and call it from the catch block, so the teardown is written once.

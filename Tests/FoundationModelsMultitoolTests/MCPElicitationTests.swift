@@ -660,14 +660,15 @@ struct MCPElicitationTests {
         return task
     }
 
-    /// Cancels `wait`, and waits until it ended. A cancel ends each wait
-    /// that ``start(_:awaiting:cleaningUpOnThrow:)`` gets, thus this call
-    /// always returns.
+    /// Cancels `wait`, and waits until it ended — the one cancel-then-await
+    /// teardown of a wait in this suite. A cancel ends each wait that
+    /// ``start(_:awaiting:cleaningUpOnThrow:)`` gets, and each wait that a
+    /// test gives to it as its work, thus this call always returns.
     ///
     /// - Parameter wait: The task of a wait that a cancel ends.
-    private static func endWait(_ wait: Task<Void, Never>) async {
+    private static func endWait<Success: Sendable, Failure: Error>(_ wait: Task<Success, Failure>) async {
         wait.cancel()
-        await wait.value
+        _ = await wait.result
     }
 
     /// Runs `body`, and then disconnects `server`, also when `body` throws.
@@ -1306,10 +1307,7 @@ struct MCPElicitationTests {
                 await server.waitUntilHostElicitationHeldWaitIsRecorded(
                     elicitationId: ScriptedServer.elicitURLElicitationId)
             },
-            cleaningUpOnThrow: { wait in
-                wait.cancel()
-                _ = await wait.result
-            })
+            cleaningUpOnThrow: Self.endWait)
         let waitersBeforeTheCancel = await server.hostElicitationHeldWaiters.count
 
         wait.cancel()
@@ -1647,21 +1645,33 @@ struct MCPElicitationTests {
         let holdingCall = try await start(
             { try await startCall(server, tool: held.name, under: holding).value },
             awaiting: { try? await held.waitForArrival() },
-            cleaningUpOnThrow: { call in
-                await held.release()
-                _ = await call.result
-            })
+            cleaningUpOnThrow: { call in await releaseHeldCall(held, call) })
         do {
             try #require(held.hasArrived, "the held call ended before it arrived at the server")
             let result = try await body()
-            await held.release()
-            _ = try await holdingCall.value
+            _ = try await releaseHeldCall(held, holdingCall).get()
             return result
         } catch {
-            await held.release()
-            _ = await holdingCall.result
+            await releaseHeldCall(held, holdingCall)
             throw error
         }
+    }
+
+    /// Releases `held`, and waits until `call` ended — the one
+    /// release-then-await teardown of a held call in this suite. A second
+    /// release of `held` changes nothing, thus a caller can call this again
+    /// when the first call of it threw.
+    ///
+    /// - Parameters:
+    ///   - held: The held tool.
+    ///   - call: The task of the call of `held`.
+    /// - Returns: The result of `call`.
+    @discardableResult
+    private static func releaseHeldCall<Success: Sendable>(
+        _ held: HeldScriptedTool, _ call: Task<Success, any Error>
+    ) async -> Result<Success, any Error> {
+        await held.release()
+        return await call.result
     }
 
     /// Calls `tool` on `server` under `asking`, while a call of `held` under
@@ -1687,8 +1697,7 @@ struct MCPElicitationTests {
         let holdingCall = startCall(server, tool: held.name, under: holding)
         try await held.waitForArrival()
         let asked = await startCall(server, tool: tool, under: asking).result
-        await held.release()
-        _ = try await holdingCall.value
+        _ = try await releaseHeldCall(held, holdingCall).get()
         return try asked.get()
     }
 

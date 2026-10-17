@@ -368,12 +368,12 @@ extension MCPServer {
     /// is: a held flow of the handler, or an open question of a context.
     /// For each one, this function writes a record with the wire id, and then
     /// ends the flow with a cancel that gives ``replacedByNewerFlowReason``,
-    /// in the way of its kind: a held flow through its continuation, as
-    /// ``endHeldHostElicitations()`` ends it, and an open question through
-    /// `ToolContext.endElicitation(_:with:)`, as
-    /// ``endOldContextElicitations()`` ends it. The completion of the earlier
-    /// flow did not come, and a later completion of that id ends the newer
-    /// flow. Thus no earlier flow stays open with nothing to end it.
+    /// through the same end steps that the end of a connection uses:
+    /// ``endHeldHostElicitations(where:reason:)`` for a held flow, and
+    /// ``endContextElicitations(where:reason:)`` for an open question. The
+    /// completion of the earlier flow did not come, and a later completion of
+    /// that id ends the newer flow. Thus no earlier flow stays open with
+    /// nothing to end it.
     ///
     /// The end of an open question suspends, and a further flow under the
     /// same id can come during that end. Thus the step repeats until no flow
@@ -386,11 +386,9 @@ extension MCPServer {
             record(
                 .mcpElicitationWireIdInUse, level: .warning,
                 metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(wireId)"])
-            let replaced = ElicitationResponse.cancel(reason: Self.replacedByNewerFlowReason)
-            pendingHostElicitations.removeValue(forKey: wireId)?.resume(returning: replaced)
-            if let open = pendingContextElicitations.removeValue(forKey: wireId) {
-                _ = await open.context.endElicitation(open.id, with: replaced)
-            }
+            endHeldHostElicitations(where: { $0 == wireId }, reason: Self.replacedByNewerFlowReason)
+            await endContextElicitations(
+                where: { openWireId, _ in openWireId == wireId }, reason: Self.replacedByNewerFlowReason)
         }
     }
 
@@ -632,10 +630,27 @@ extension MCPServer {
     /// each calls this first. Thus no handler waits for ever, and the
     /// teardown of the old client, which waits for its handlers, can end.
     func endHeldHostElicitations() {
-        let held = pendingHostElicitations
-        pendingHostElicitations = [:]
-        for continuation in held.values {
-            continuation.resume(returning: .cancel(reason: Self.connectionEndedReason))
+        endHeldHostElicitations(where: { _ in true }, reason: Self.connectionEndedReason)
+    }
+
+    /// Ends each held URL-mode flow of the handler whose wire id `isEnded`
+    /// selects, with a cancel that gives `reason` — the one end step of a
+    /// held flow. ``endHeldHostElicitations()`` selects each flow, and
+    /// ``replaceEarlierURLFlows(under:)`` selects the flow of one wire id.
+    ///
+    /// The selected flows leave ``pendingHostElicitations`` before the first
+    /// resume. Thus no completion can reach a flow that this call ends.
+    ///
+    /// - Parameters:
+    ///   - isEnded: Gives `true` for the wire id of each flow to end.
+    ///   - reason: The reason of the cancel.
+    private func endHeldHostElicitations(where isEnded: (_ wireId: String) -> Bool, reason: String) {
+        let ended = pendingHostElicitations.filter { isEnded($0.key) }
+        for wireId in ended.keys {
+            pendingHostElicitations.removeValue(forKey: wireId)
+        }
+        for continuation in ended.values {
+            continuation.resume(returning: .cancel(reason: reason))
         }
     }
 
@@ -655,10 +670,34 @@ extension MCPServer {
     /// completion can reach them during the ends.
     func endOldContextElicitations() async {
         let generation = connectGeneration
-        let old = pendingContextElicitations.filter { $0.value.generation < generation }
-        pendingContextElicitations = pendingContextElicitations.filter { $0.value.generation >= generation }
-        for open in old.values {
-            await open.context.endElicitation(open.id, with: .cancel(reason: Self.connectionEndedReason))
+        await endContextElicitations(
+            where: { _, entryGeneration in entryGeneration < generation }, reason: Self.connectionEndedReason)
+    }
+
+    /// Ends each open URL-mode question of a bound context whose wire id and
+    /// connect generation `isEnded` selects, with a cancel that gives
+    /// `reason` — the one end step of an open question.
+    /// ``endOldContextElicitations()`` selects each question of an older
+    /// generation, and ``replaceEarlierURLFlows(under:)`` selects the question
+    /// of one wire id.
+    ///
+    /// The end goes through `ToolContext.endElicitation(_:with:)`. The
+    /// selected entries leave ``pendingContextElicitations`` before the first
+    /// end, thus no completion can reach them during the ends.
+    ///
+    /// - Parameters:
+    ///   - isEnded: Gives `true` for the wire id and the connect generation
+    ///     of each question to end.
+    ///   - reason: The reason of the cancel.
+    private func endContextElicitations(
+        where isEnded: (_ wireId: String, _ generation: Int) -> Bool, reason: String
+    ) async {
+        let ended = pendingContextElicitations.filter { isEnded($0.key, $0.value.generation) }
+        for wireId in ended.keys {
+            pendingContextElicitations.removeValue(forKey: wireId)
+        }
+        for open in ended.values {
+            await open.context.endElicitation(open.id, with: .cancel(reason: reason))
         }
     }
 
