@@ -43,6 +43,13 @@ comments:
     - No code changed in this step. No test was changed.
     - next: review.
   timestamp: 2026-10-17T09:10:25.566469+00:00
+- actor: claude-code
+  id: 01m54j26xs5e7rt84axvx0bzp6
+  text: |-
+    ### commit — changed
+    - evidence: b761bc9 test: end shell and child-process test waits on a second event
+    - next: review
+  timestamp: 2026-10-17T09:11:08.985223+00:00
 depends_on:
 - 01M53W2YHNPEH570WMMC1V08M3
 - 01M54D3FB8Q7J3PE3ZMBXXJDZ6
