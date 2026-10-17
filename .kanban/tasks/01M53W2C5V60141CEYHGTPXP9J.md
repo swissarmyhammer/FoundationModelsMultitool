@@ -81,6 +81,33 @@ comments:
     - evidence: 2c6d91f test: close temp folders and MCP servers on both paths in integration tests
     - next: review
   timestamp: 2026-10-17T15:40:12.458241+00:00
+- actor: claude-code
+  id: 01m558nf2y5qk181yzdbjkenq6
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 76324c7). The engine found 2 findings: 2 confirmed, 0 refuted. MCPBareSessionTests.swift:41 and MCPElicitationBareSessionTests.swift:45 (duplication/duplication). The two MCP bare-session tests have the same block. This commit wrote both copies.
+    - next: Extract one shared helper for the disconnect, tool lookup, MCPTool build and scenario call. Call it from the two suites. Then run the review again. The task stays in review.
+  timestamp: 2026-10-17T15:46:08.606365+00:00
+- actor: claude-code
+  id: 01m558pje97185ekps6j6pa47p
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 21 files (13 IntegrationTests cases; TemporaryDirectoryScope copy; DisconnectScope and LargeCatalogSurface.withMounted; getLinesReadsLiveRun message names both commands)
+    - test: green — root swift test exit 0, 2452 passed; IntegrationTests swift build --build-tests exit 0 (before and after the message change)
+    - commit: 76324c7 (the commit comment names 2c6d91f, the sha before the amend)
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/MCPBareSessionTests.swift:41; MCPElicitationBareSessionTests.swift:45
+  timestamp: 2026-10-17T15:46:44.809172+00:00
+- actor: claude-code
+  id: 01m558tfex596p26zxwz2bf8c2
+  text: 'Review findings applied (2 of 2). New helper runMCPVerbScenario(server:toolName:scenarioName:prompt:marker:) in IntegrationTests Support/MCPVerbScenario.swift. It holds the DisconnectScope.disconnecting call, the require check for the tool lookup, the MCPTool build, and the runBareSessionScenario call. MCPBareSessionTests and MCPElicitationBareSessionTests now call it and pass only the tool name, the scenario name, the prompt and the marker. The ScriptedServer and MCPServer setup and withExtendedLifetime stay at each call site. The disconnect on both paths (rule T1) and the checks are the same. Note: the dump validators file for swift was 754,245 characters, thus it was too large to read whole in one pass.'
+  timestamp: 2026-10-17T15:48:52.829739+00:00
+- actor: claude-code
+  id: 01m558thhkb4ppj802fmkq3xy2
+  text: |-
+    ### implement — changed
+    - evidence: 3 files. New: IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/MCPVerbScenario.swift. Changed: MCPBareSessionTests.swift, MCPElicitationBareSessionTests.swift. Findings checked 2/2. cd IntegrationTests and swift build --build-tests: exit 0, "Build complete!" (only the toolchain warning "missing creator for mutated node" for mlx-swift_Cmlx.bundle). The integration tests were not run (CI runs them). The root suite did not change and was not run.
+    - next: test, then review. The task stays in doing.
+  timestamp: 2026-10-17T15:48:54.963171+00:00
 depends_on:
 - 01M53W36NJG9FFA2XVH7W0EBQ7
 position_column: doing
@@ -93,4 +120,15 @@ Rule T1: each wait in a test must also end on the failure event, or the test mus
 
 Do: fix each case with an existing second event (the call ends, the transport closes, the child process exits, the stream finishes), or a before the wait, and awaited teardown on both paths. A test-only hook in a test helper is permitted. Do not change production code only to add a test hook: bring such a case to the owner. A wait with no existing second event goes on the exception-list card, with file:line and the reason.
 
-Build IntegrationTests with `swift build --build-tests` one time; do not run the integration tests locally (they need real dependencies); CI runs them. No .timeLimit, sleep, poll or retry. Do not delete a test. #elicitation-fixes #t1
+Build IntegrationTests with `swift build --build-tests` one time; do not run the integration tests locally (they need real dependencies); CI runs them. No .timeLimit, sleep, poll or retry. Do not delete a test.
+
+## Review Findings (2026-10-17 10:40)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 19 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/MCPBareSessionTests.swift:41` `duplication/duplication` — The block that disconnects the server, looks up the echo tool, builds an MCPTool, and runs the bare-session scenario is copied in MCPElicitationBareSessionTests.swift. Both copies must change together. The change wrote both copies, so this is a changed-set duplicate. Extract one helper, for example runMCPVerbScenario(server:toolName:scenarioName:prompt:marker:), that holds the DisconnectScope, the tool lookup, the MCPTool build, and the scenario call. Call it from both suites and pass only the values that differ: the tool name, the scenario name, the prompt, and the marker. Keep the server and ScriptedServer setup at each call site.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/MCPElicitationBareSessionTests.swift:45` `duplication/duplication` — The block that disconnects the server, looks up the eliciting tool, builds an MCPTool, and runs the bare-session scenario is a near-verbatim copy of the echo test in MCPBareSessionTests.swift. The two copies differ only by names and values, so they can drift apart. Replace this block with a call to one shared helper, such as runMCPVerbScenario(server:toolName:scenarioName:prompt:marker:), which both MCP bare-session suites call. Pass ScriptedServer.elicitEchoToolName, mcpElicitationBareSessionScenarioName, mcpElicitationBareSessionPrompt, and mcpElicitationBareSessionMarker as arguments.
+#elicitation-fixes #t1
