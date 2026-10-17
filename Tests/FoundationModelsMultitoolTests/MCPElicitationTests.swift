@@ -606,6 +606,62 @@ struct MCPElicitationTests {
         return ContextURLFlow(call: call, request: request)
     }
 
+    /// One URL question that `MCPServer.answerElicitation(parameters:generation:)`
+    /// sent to the run of a bound context.
+    private struct ContextURLQuestion {
+        /// The task of the answer that the server gives on the wire.
+        let answer: Task<CreateElicitation.Result, Never>
+
+        /// The question, with the `ToolContext` id that the server chose.
+        let request: ElicitationRequest
+    }
+
+    /// Delivers ``urlElicitation`` to `server` with the current connect
+    /// generation, and waits until a new question reaches `sink`: a question
+    /// whose id is not in `earlier`. The call in flight of a context over
+    /// `sink` must be the one run that a question can go to.
+    ///
+    /// The wait ends on the first of two events: the new question reached
+    /// `sink`, or the answer ended with no question. Each of the two events
+    /// can occur, thus the wait always ends. Then this function cancels the
+    /// wait for the question and waits until that wait ended, thus no wait
+    /// stays open after it returns. When no new question came, the test
+    /// fails at once.
+    ///
+    /// - Parameters:
+    ///   - server: The connected server.
+    ///   - sink: The sink of the context of the call in flight.
+    ///   - earlier: The id of each question that reached `sink` before.
+    /// - Returns: The question.
+    /// - Throws: When the answer ended before the question came, or when the
+    ///   task is cancelled first.
+    private static func startContextURLQuestion(
+        on server: MCPServer, sink: RecordingEventSink, after earlier: [ULID]
+    ) async throws -> ContextURLQuestion {
+        let isNew: @Sendable (ElicitationRequest) -> Bool = { !earlier.contains($0.elicitationId) }
+        let generation = await server.connectGeneration
+        let firstEvent = TestGate()
+        let answer = Task {
+            defer { firstEvent.open() }
+            return await server.answerElicitation(parameters: urlElicitation, generation: generation)
+        }
+        let asked = Task {
+            await sink.waitUntilEvent { $0.elicitation.map(isNew) ?? false }
+            firstEvent.open()
+        }
+        do {
+            try await firstEvent.wait()
+        } catch {
+            await endWait(asked)
+            throw error
+        }
+        await endWait(asked)
+        let request = try #require(
+            await sink.events.compactMap(\.elicitation).first(where: isNew),
+            "the answer ended before the question reached the sink")
+        return ContextURLQuestion(answer: answer, request: request)
+    }
+
     /// Cancels `wait`, and waits until it ended. A cancel ends a wait for
     /// the hold of a URL flow, thus this call always returns.
     ///
@@ -969,6 +1025,66 @@ struct MCPElicitationTests {
                 ])
             #expect(entriesAfterTheEnd == 0)
             #expect(lateCompletion == .noPendingElicitation)
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// A second URL question of a bound context under a wire id that an open
+    /// question of a context already uses gets the entry of that id. The
+    /// earlier question ends at once with a cancel and a reason, the same
+    /// rule as the held flows of the handler. Thus a wire completion of the
+    /// id ends the newer question, and a disconnect can end it too, because
+    /// its entry is in the map. Before the fix, the newer question got no
+    /// entry: the wire completion went to the earlier question, and nothing
+    /// but the run could end the newer question.
+    ///
+    /// The order is fixed. A call under the context is in flight, thus its
+    /// run is the one run that a question can go to. The earlier question
+    /// reaches the run, and the run accepts it. Then the newer question
+    /// reaches the run, and the run accepts it. The test reads the entry and
+    /// the ended questions, and relays a wire completion of the id. Then the
+    /// test completes on the run plane each question that is still open,
+    /// thus no answer stays open, and then it reads the two answers.
+    @Test("a second URL question of a context under a wire id in use ends the earlier question, and gets the entry")
+    func aSecondContextQuestionUnderAWireIdInUseReplacesTheEarlierQuestion() async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: .inMemory)
+        try await Self.withConnection(of: server) {
+            let runPlane = RunPlane(userPresence: .interactive)
+            let sink = RecordingEventSink()
+            let context = Self.relayContext(on: runPlane, sink: sink)
+            try await Self.whileHolding(held, under: context, on: server) {
+                let generation = await server.connectGeneration
+                let earlier = try await Self.startContextURLQuestion(on: server, sink: sink, after: [])
+                let earlierDelivery = await runPlane.respond(elicitationId: earlier.request.elicitationId, Self.urlAccept)
+                let newer = try await Self.startContextURLQuestion(
+                    on: server, sink: sink, after: [earlier.request.elicitationId])
+                let newerDelivery = await runPlane.respond(elicitationId: newer.request.elicitationId, Self.urlAccept)
+                let entry = await server.pendingContextElicitations[ScriptedServer.elicitURLElicitationId]
+                let endedAfterTheNewer = await sink.endedElicitations
+
+                await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId, generation: generation)
+
+                // A question that is still open ends here, thus no answer stays open.
+                let lateNewerCompletion = await runPlane.complete(elicitationId: newer.request.elicitationId)
+                _ = await runPlane.complete(elicitationId: earlier.request.elicitationId)
+                let earlierResult = await earlier.answer.value
+                let newerResult = await newer.answer.value
+                #expect(earlierDelivery == .acceptedAwaitingCompletion)
+                #expect(newerDelivery == .acceptedAwaitingCompletion)
+                #expect(entry?.id == newer.request.elicitationId)
+                #expect(entry?.generation == generation)
+                #expect(
+                    endedAfterTheNewer == [
+                        RecordingEventSink.EndedElicitation(
+                            elicitationId: earlier.request.elicitationId,
+                            response: .cancel(reason: Self.replacedByNewerFlowReason))
+                    ])
+                #expect(lateNewerCompletion == .noPendingElicitation)
+                #expect(earlierResult.action == .cancel)
+                #expect(Self.reason(of: earlierResult) == .string(Self.replacedByNewerFlowReason))
+                #expect(newerResult.action == .accept)
+                #expect(await server.pendingContextElicitations.isEmpty)
+            }
         }
         withExtendedLifetime(scripted) {}
     }

@@ -62,11 +62,12 @@
 // each new connect end the held accepts of the handler, and the open
 // questions of a context of an older connect generation: each such flow
 // answers `cancel`, with `connectionEndedReason` under the `reason` key of
-// `_meta`, because its completion can no longer arrive. A newer URL flow of
-// the handler under a wire id that this actor still holds ends the earlier
-// flow the same way, with `replacedByNewerFlowReason`: a later completion of
-// that id ends the newer flow. Thus a held flow never sends `accept` when its
-// completion did not come.
+// `_meta`, because its completion can no longer arrive. A newer URL flow
+// under a wire id that a held flow of the handler, or an open question of a
+// context, still uses ends the earlier flow the same way, with
+// `replacedByNewerFlowReason`: a later completion of that id ends the newer
+// flow. Thus a held flow never sends `accept` when its completion did not
+// come, and each open question of a context has the entry of its wire id.
 //
 // **The relay of the completion.** The swift-sdk client runs a request
 // handler inline in its message loop, so the loop reads no wire message while
@@ -219,14 +220,13 @@ extension MCPServer {
         _ request: ElicitationRequest, urlElicitationId: String?, linkedBy meta: Metadata?, generation: Int
     ) async -> ElicitationResponse {
         if let context = callingContext(linkedBy: meta) {
-            guard let urlElicitationId,
-                openContextElicitation(urlElicitationId, request: request, context: context, generation: generation)
-            else {
+            guard let urlElicitationId else {
                 return await elicit(request, through: context)
             }
+            await openContextElicitation(urlElicitationId, request: request, context: context, generation: generation)
             // The end of an old connection can take the entry out first, and
-            // a newer question can then use the same wire id. Thus only the
-            // entry of this question leaves the map here.
+            // a newer question can then use the same wire id and replace the
+            // entry. Thus only the entry of this question leaves the map here.
             defer {
                 if pendingContextElicitations[urlElicitationId]?.id == request.elicitationId {
                     pendingContextElicitations.removeValue(forKey: urlElicitationId)
@@ -336,8 +336,16 @@ extension MCPServer {
     /// `context.elicit(_:)` posts the question. Thus a completion that the
     /// relay reads at any time after the post finds the entry.
     ///
-    /// When an open question already uses `wireId`, this function does not
-    /// change that entry, and writes a record.
+    /// When an open question already uses `wireId`, the newer question wins,
+    /// the same rule as ``awaitHostCompletion(of:)``: its entry replaces the
+    /// entry of the earlier question, and this function writes a record. Then
+    /// the earlier question ends with a cancel that gives
+    /// ``replacedByNewerFlowReason``, through
+    /// `ToolContext.endElicitation(_:with:)`, as
+    /// ``endOldContextElicitations()`` ends a question. The completion of the
+    /// earlier question did not come, and a later completion of that id ends
+    /// the newer question. Thus each open question has an entry, which a
+    /// completion and the end of its connection can end.
     ///
     /// - Parameters:
     ///   - wireId: The wire `elicitationId` of the request.
@@ -347,19 +355,17 @@ extension MCPServer {
     ///   - generation: The ``connectGeneration`` of the attempt whose client
     ///     got the request. The entry records it, thus only a completion
     ///     that the transport of that attempt relays reaches the question.
-    /// - Returns: `true` when this call added the entry, thus the caller
-    ///   removes it when the question ends.
     private func openContextElicitation(
         _ wireId: String, request: ElicitationRequest, context: ToolContext, generation: Int
-    ) -> Bool {
-        guard pendingContextElicitations[wireId] == nil else {
-            record(
-                .mcpElicitationWireIdInUse, level: .warning,
-                metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(wireId)"])
-            return false
-        }
-        pendingContextElicitations[wireId] = (context, request.elicitationId, generation)
-        return true
+    ) async {
+        let replaced = pendingContextElicitations.updateValue(
+            (context, request.elicitationId, generation), forKey: wireId)
+        guard let replaced else { return }
+        record(
+            .mcpElicitationWireIdInUse, level: .warning,
+            metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(wireId)"])
+        _ = await replaced.context.endElicitation(
+            replaced.id, with: .cancel(reason: Self.replacedByNewerFlowReason))
     }
 
     /// Suspends the calling run on `request` through `context` — case 1.
@@ -430,9 +436,10 @@ extension MCPServer {
     /// ``endHeldHostElicitations()`` and ``endOldContextElicitations()``.
     static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
 
-    /// The reason of the cancel that ends a held URL flow of the handler when
-    /// a newer URL flow uses the same wire id — see
-    /// ``awaitHostCompletion(of:)``.
+    /// The reason of the cancel that ends a held URL flow of the handler, or
+    /// an open URL flow of a context, when a newer URL flow uses the same
+    /// wire id — see ``awaitHostCompletion(of:)`` and
+    /// ``openContextElicitation(_:request:context:generation:)``.
     static let replacedByNewerFlowReason = "a newer URL flow used the same elicitation id"
 
     /// Holds a URL-mode accept the handler gave until ``complete(elicitationId:)``

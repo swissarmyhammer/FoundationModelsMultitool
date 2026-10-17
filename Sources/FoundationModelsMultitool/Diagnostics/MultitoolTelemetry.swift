@@ -456,9 +456,10 @@ enum MultitoolTelemetry {
         case mcpElicitationCompletionRelayed = "mcp elicitation completion relayed to the run"
 
         /// A URL-mode elicitation came under a bound `ToolContext` with a
-        /// wire id that an open elicitation already uses. The open entry
-        /// stays, and a completion of that wire id reaches only the open
-        /// one. Level: `warning`.
+        /// wire id that an open elicitation already uses. The newer
+        /// elicitation gets the entry of that wire id, and the earlier one
+        /// ends with a cancel. Thus a completion of that wire id reaches the
+        /// newer one. Level: `warning`.
         case mcpElicitationWireIdInUse = "mcp url elicitation wire id already in use"
 
         /// A URL-mode elicitation that the host's handler accepted came with
