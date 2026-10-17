@@ -94,11 +94,34 @@ comments:
     - note: The build log has 1 tool warning: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path. It comes from the build system and the mlx-swift dependency. It is not from project source code.
     - next: review
   timestamp: 2026-10-17T09:26:02.980800+00:00
+- actor: claude-code
+  id: 01m54jy5sjqygz2ra9xb2d65gb
+  text: |-
+    ### commit — changed
+    - evidence: 4e88487 test: use the require macro in place of guard-and-return in test bodies
+    - next: review
+  timestamp: 2026-10-17T09:26:25.330272+00:00
+- actor: claude-code
+  id: 01m54k4r8vbg1k17p09fxqpcxp
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 4e88487). The engine reviewed 4 files. It found 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). It did not review the 2 .kanban files because of an ignore rule. The 1 prior finding (ShellRunnerTests.swift:727, swift/optionals) is checked. The commit replaces the guard-and-return in test bodies with the require macro.
+    - next: The task moved to done. No more work is necessary.
+  timestamp: 2026-10-17T09:30:00.859945+00:00
+- actor: claude-code
+  id: 01m54k5a668ydn9ncxpnb763tb
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 4 files (1 of 1 finding fixed; 7 guard-and-return statements in test bodies replaced by the require macro; new fixture InterpreterValueAccess)
+    - test: green — swift test, exit 0, 2450 passed, 0 failed, 0 skipped
+    - commit: 4e88487
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T09:30:19.206178+00:00
 depends_on:
 - 01M53W2YHNPEH570WMMC1V08M3
 - 01M54D3FB8Q7J3PE3ZMBXXJDZ6
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9a80
 title: 'T1 group 4: shell and child-process test waits with no second event'
 ---
 Split from ^nvxckvr (test rule T1). The list (the shell and process waits in the unit tests) is in the comments of ^nvxckvr.
