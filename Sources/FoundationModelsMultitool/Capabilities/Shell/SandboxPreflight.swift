@@ -135,14 +135,18 @@ final class CanaryGate: Sendable {
     /// other alone.
     private let canaryRun = Mutex<Task<Void, any Error>?>(nil)
 
-    /// One wait of ``waitForWaitingCallers(atLeast:)``: the count of waiting
-    /// callers it waits for, and the continuation that ends it.
+    /// One wait of ``waitForWaitingCallers(atLeast:)``: its id, the count of
+    /// waiting callers it waits for, and the continuation that ends it.
     private struct WaitingCallersWatch {
+        /// The id that a cancel of the wait finds the wait by.
+        let id: Int
+
         /// The count of waiting callers that ends the wait.
         let count: Int
 
-        /// Resumes the wait.
-        let continuation: CheckedContinuation<Void, Never>
+        /// Resumes the wait: `true` when the count is reached, `false` when a
+        /// cancel ended the wait.
+        let continuation: CheckedContinuation<Bool, Never>
     }
 
     /// The callers that read the gate and wait on its run now, and each wait
@@ -154,16 +158,55 @@ final class CanaryGate: Sendable {
         /// Each wait of ``waitForWaitingCallers(atLeast:)`` that did not end.
         var watches: [WaitingCallersWatch] = []
 
+        /// The id that the next wait gets.
+        var nextWatchID = 0
+
         /// Records one more waiting caller, and takes each wait that the new
         /// count satisfies.
         ///
         /// - Returns: The continuations to resume outside the lock.
-        mutating func arrive() -> [CheckedContinuation<Void, Never>] {
+        mutating func arrive() -> [CheckedContinuation<Bool, Never>] {
             count += 1
             let reached = count
             let satisfied = watches.filter { $0.count <= reached }
             watches.removeAll { $0.count <= reached }
             return satisfied.map(\.continuation)
+        }
+
+        /// Gives the id of a new wait.
+        ///
+        /// - Returns: An id that no other wait of this gate has.
+        mutating func makeWatchID() -> Int {
+            defer { nextWatchID += 1 }
+            return nextWatchID
+        }
+
+        /// Records `watch`, unless its wait has nothing to wait for.
+        ///
+        /// The caller reads the cancel of its task under the same lock as
+        /// ``takeWatch(id:)``. Thus a cancel that comes before the record is
+        /// seen here, and a cancel that comes after the record finds the wait.
+        ///
+        /// - Parameters:
+        ///   - watch: The wait to record.
+        ///   - isCancelled: Whether the task of the wait is cancelled.
+        /// - Returns: The value to resume the wait with at once, or `nil` when
+        ///   the wait is recorded.
+        mutating func record(_ watch: WaitingCallersWatch, isCancelled: Bool) -> Bool? {
+            if count >= watch.count { return true }
+            if isCancelled { return false }
+            watches.append(watch)
+            return nil
+        }
+
+        /// Takes the wait with `id` out of the record.
+        ///
+        /// - Parameter id: The id of the wait.
+        /// - Returns: The continuation of the wait, or `nil` when the wait
+        ///   ended before or is not recorded yet.
+        mutating func takeWatch(id: Int) -> CheckedContinuation<Bool, Never>? {
+            guard let index = watches.firstIndex(where: { $0.id == id }) else { return nil }
+            return watches.remove(at: index).continuation
         }
     }
 
@@ -178,17 +221,26 @@ final class CanaryGate: Sendable {
     /// must hold the canary until each caller is inside ``passOnce(_:)``, past
     /// its read of the gate. Without this event the test cannot know that.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call. Thus a test can race this wait against a second
+    /// event, and no continuation stays open when the test stops the wait.
+    ///
     /// - Parameter count: The count of waiting callers that ends the wait.
-    func waitForWaitingCallers(atLeast count: Int) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let reached = waitingCallers.withLock { state -> Bool in
-                if state.count >= count { return true }
-                state.watches.append(WaitingCallersWatch(count: count, continuation: continuation))
-                return false
+    /// - Returns: `true` when the count is reached, `false` when a cancel
+    ///   ended the wait first.
+    func waitForWaitingCallers(atLeast count: Int) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        let id = waitingCallers.withLock { $0.makeWatchID() }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                let watch = WaitingCallersWatch(id: id, count: count, continuation: continuation)
+                let resolved = waitingCallers.withLock { $0.record(watch, isCancelled: Task.isCancelled) }
+                if let resolved {
+                    continuation.resume(returning: resolved)
+                }
             }
-            if reached {
-                continuation.resume()
-            }
+        } onCancel: {
+            waitingCallers.withLock { $0.takeWatch(id: id) }?.resume(returning: false)
         }
     }
 
@@ -210,7 +262,7 @@ final class CanaryGate: Sendable {
             return started
         }
         for continuation in waitingCallers.withLock({ $0.arrive() }) {
-            continuation.resume()
+            continuation.resume(returning: true)
         }
         defer { waitingCallers.withLock { $0.count -= 1 } }
         do {

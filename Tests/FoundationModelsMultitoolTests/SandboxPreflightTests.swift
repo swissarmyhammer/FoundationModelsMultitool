@@ -19,7 +19,8 @@ import Testing
 /// a flag. That a canary that failed does not latch, thus a configuration that
 /// becomes healthy is picked up. And that the live spawn reports the exit code
 /// and the standard error of the wrapper, a wrapper that a signal killed
-/// included.
+/// included. One more test pins that a cancel ends the wait of the internal
+/// test hook of the gate, thus the overlap test can race that wait.
 @Suite("Sandbox canary preflight")
 struct SandboxPreflightTests {
 
@@ -49,6 +50,10 @@ struct SandboxPreflightTests {
     /// before the second one starts, thus a gate that cannot hold concurrent
     /// callers together would pass by luck.
     private static let overlappingCallerCount = 16
+
+    /// The count of waiting callers that the cancel test waits for: one
+    /// caller is enough to end the wait when the cancel does not end it.
+    private static let oneWaitingCaller = 1
 
     /// The wrapper that the two passing live-spawn tests run: it ends at once,
     /// with exit code 0 and no standard error.
@@ -133,22 +138,70 @@ struct SandboxPreflightTests {
         // read of the gate: the internal hook of the gate counts the waiting
         // callers, and the test opens the canary only when the count reaches
         // each caller. Thus each caller overlaps the canary run.
+        //
+        // The wait for the count also ends when a caller ended. No caller can
+        // end before the release while it waits on the held run, thus a caller
+        // that ended shows that the count cannot reach each caller any more.
+        // The end of the whole group is not that event: the other callers stay
+        // held until the release. The release comes on each path out of the
+        // race, thus no caller stays held when the test fails.
         let release = TestGate()
         let counter = CanaryCounter(heldBy: release)
         let gate = CanaryGate()
+        let callersWaiting = TestGate()
+        let callerEnded = TestGate()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<Self.overlappingCallerCount {
                 group.addTask {
+                    defer { callerEnded.open() }
                     try await gate.passOnce(counter.run)
                 }
             }
-            await gate.waitForWaitingCallers(atLeast: Self.overlappingCallerCount)
-            release.open()
+            do {
+                defer { release.open() }
+                try await EventRace.firstOf(
+                    {
+                        if await gate.waitForWaitingCallers(atLeast: Self.overlappingCallerCount) {
+                            callersWaiting.open()
+                        }
+                    },
+                    or: { try? await callerEnded.wait() })
+            }
+            try #require(callersWaiting.isOpen, "a caller ended before each caller waited on the canary")
             try await group.waitForAll()
         }
 
         #expect(counter.count == 1)
+    }
+
+    /// A cancel ends a wait for waiting callers, thus a test that races the
+    /// wait against a second event leaves no continuation open.
+    ///
+    /// The order is fixed. The wait starts on a task that is cancelled
+    /// already, thus the cancel comes before each caller. Then one caller
+    /// waits on the gate, so the wait also ends when the cancel does not end
+    /// it. The test reads which event ended the wait, and then lets the
+    /// caller go on.
+    @Test("a cancel ends a wait for waiting callers before a caller waits")
+    func aCancelEndsTheWaitForWaitingCallers() async throws {
+        let release = TestGate()
+        let counter = CanaryCounter(heldBy: release)
+        let gate = CanaryGate()
+
+        let endedOnTheCount = try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.cancelAll()
+            group.addTask {
+                await gate.waitForWaitingCallers(atLeast: Self.oneWaitingCaller)
+            }
+            let caller = Task { try await gate.passOnce(counter.run) }
+            let ended = try await group.next()
+            release.open()
+            try await caller.value
+            return ended
+        }
+
+        #expect(endedOnTheCount == false)
     }
 
     @Test("a canary that failed does not latch, thus a healthy call runs it again")

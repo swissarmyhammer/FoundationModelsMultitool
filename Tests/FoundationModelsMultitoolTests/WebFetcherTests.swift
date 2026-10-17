@@ -234,19 +234,26 @@ struct WebFetcherTests {
     /// end the load. The test waits for the request at the stub, then
     /// cancels, then reads the result. It reads no real time (card
     /// `^tm4x2hp`: no test checks the speed of the machine).
+    ///
+    /// The wait for the request also ends when the load ended, and the test
+    /// then fails at once — see
+    /// ``EventRace/watch(_:awaiting:requiring:orFail:sourceLocation:)``.
     @Test("a cancel of the calling task ends a load whose server never answers, and stops the request")
     func cancelEndsHangingLoad() async throws {
         let stub = WebStub(routes: [Self.pageURL: .hang])
         let fetcher = stub.makeFetcher()
         let request = try WebStub.request(to: Self.pageURL)
-        let loading = Task { await fetcher.load(request) }
         // The event of the stub: the request arrived.
-        try await stub.waitForRequest()
-        loading.cancel()
-        let result = await loading.value
+        let loading = try await EventRace.watch(
+            { await fetcher.load(request) }, awaiting: { try? await stub.waitForRequest() },
+            requiring: { !stub.requests.isEmpty }, orFail: "the load ended before its request reached the stub")
+        loading.task.cancel()
+        let result = try await loading.task.value
         let failure = #expect(throws: WebFetchFailure.self) { try result.get() }
         #expect(failure?.correctiveMessage.hasPrefix("The request to \(Self.pageURL) failed: ") == true)
-        // The event of the stub: the session stopped the load.
+        // The event of the stub: the session stopped the load. No second
+        // event exists: the load already ended, and a hang route never
+        // completes, thus a missed stop sends no other event.
         try await stub.waitForStop()
         #expect(stub.stoppedURLs == [Self.pageURL])
     }
