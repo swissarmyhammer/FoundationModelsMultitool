@@ -52,10 +52,26 @@ comments:
     - evidence: f3922f5 fix(mcp): drain the cancel notice of a bare-call timeout on disconnect
     - next: review
   timestamp: 2026-10-17T08:40:05.663640+00:00
+- actor: claude-code
+  id: 01m54gf022qbyge3bfsk7mfssf
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 206beac). 0 findings, 0 confirmed, 0 refuted. 7 files reviewed. 6 files in .kanban/ are not reviewed because of the ignore rule.
+    - next: The task is in done. No work remains on this card.
+  timestamp: 2026-10-17T08:43:10.786995+00:00
+- actor: claude-code
+  id: 01m54gfqhertnh87p85x6qpjav
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (the bare-call cancel notice is tracked in CancellationNotices and drained by disconnect(); the notice is no longer sent from a cancelled task)
+    - test: green — swift test, exit 0, 2450 passed, 0 failed, 0 skipped
+    - commit: 206beac (the commit comment names f3922f5, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T08:43:34.830664+00:00
 depends_on:
 - 01M53W2YHNPEH570WMMC1V08M3
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9980
 title: MCPServer.disconnect() does not drain the notifications/cancelled that a bare-call timeout sends
 ---
 Found on ^c1v08m3 (T1 group 3).
