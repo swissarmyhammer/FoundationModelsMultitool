@@ -28,10 +28,26 @@ comments:
     - evidence: 919c737 docs: correct the elicitation text in README and SECURITY
     - next: review
   timestamp: 2026-10-17T01:59:31.436842+00:00
+- actor: claude-code
+  id: 01m53sg3e06sgs3w5qzz5m80rh
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 3340b18). 0 findings, 0 confirmed, 0 refuted. The engine reviewed 0 files: no validator matches README.md or docs/SECURITY.md, and .reviewignore excludes the 6 .kanban files.
+    - next: The task is in done. Card ^33rygav adds the userPresence text of MCPServer.
+  timestamp: 2026-10-17T02:01:49.760869+00:00
+- actor: claude-code
+  id: 01m53sgmyak7mer8c0npjp6q2z
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (README.md, docs/SECURITY.md)
+    - test: green — the full run of the implement step on this tree: swift test, exit 0, 2437 passed (docs only, no second run)
+    - commit: 3340b18 (the commit comment names 919c737, the sha before the amend)
+    - review: clean — 0 findings; no validator matches README.md or docs/SECURITY.md, thus the engine examined 0 files
+  timestamp: 2026-10-17T02:02:07.690037+00:00
 depends_on:
 - 01M53FG8K2C3T24RJWRNF9DKS3
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff8c80
 title: 'Group D (d): correct the elicitation text in README and docs/SECURITY.md'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), group D (d).

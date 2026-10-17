@@ -436,7 +436,11 @@ public actor MCPServer {
     ///     elicitation that arrives under no `ToolContext` — see
     ///     ``elicitationHandler``. Defaults to `nil`, which answers `cancel`.
     ///   - userPresence: Whether a person is present to answer an
-    ///     elicitation — see ``userPresence``. Defaults to `.interactive`.
+    ///     elicitation — see ``userPresence``. Required, with no default: a
+    ///     headless host that forgot the value would declare the elicitation
+    ///     capability, and a server would then send questions that no person
+    ///     can answer. A host gives `.headless` when no person is present and
+    ///     `.interactive` when a person can answer.
     ///   - logger: The logger every retry, reconnect and discarded attempt is
     ///     reported to. Defaults to ``defaultLogger``.
     public init(
@@ -446,7 +450,7 @@ public actor MCPServer {
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         elicitationHandler: ElicitationHandler? = nil,
-        userPresence: UserPresence = .interactive,
+        userPresence: UserPresence,
         logger: Logger = MCPServer.defaultLogger
     ) {
         self.init(

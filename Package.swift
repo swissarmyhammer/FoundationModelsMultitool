@@ -579,11 +579,15 @@ let package = Package(
         // another package only, so a mount both of them read must stand in a
         // product, and this is the product both of them already link. The edge
         // makes no cycle: the library target names no target of this package.
+        // That file also imports the Extras product, because its default
+        // server maker names `UserPresence.interactive` in a default argument
+        // value, and `MCPServer` has no default for that argument.
         .target(
             name: testServerTargetName,
             dependencies: [
                 .target(name: packageName),
                 .target(name: testConcurrencyTargetName),
+                .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + mcpProducts,
             path: "\(testSupportPath)\(testServerTargetName)"
         ),

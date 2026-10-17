@@ -16,6 +16,7 @@
 // and it already holds the verbs.
 
 import Foundation
+import FoundationModelsExtras
 import FoundationModelsMultitool
 
 /// A registry over the large catalog surface, beside the scripted servers
@@ -51,9 +52,10 @@ public struct LargeCatalogSurface: Sendable {
 ///     builds the surface of a server that gives none.
 ///   - makeServer: builds the `MCPServer` of each domain, not yet connected,
 ///     from the server name of the domain. The default is the public
-///     initializer, whose connect attempts are timed on the real clock. A
-///     unit test passes a maker whose connect-attempt clock it holds, so no
-///     connect of the mount can time out on a busy machine.
+///     initializer with `.interactive` presence, because a person can
+///     answer in this surface. Its connect attempts are timed on the real
+///     clock. A unit test passes a maker whose connect-attempt clock it
+///     holds, so no connect of the mount can time out on a busy machine.
 /// - Returns: the registry and the servers behind it.
 /// - Throws: what the connect, the capability mounts or `buildRegistry()`
 ///   throws.
@@ -62,7 +64,7 @@ public func makeLargeCatalogSurface(
     shellStoreDirectoryName: String,
     domains: [LargeCatalogDomain] = LargeCatalogDomain.allCases,
     describing: Bool = true,
-    makeServer: (_ name: String) -> MCPServer = { name in MCPServer(name: name) }
+    makeServer: (_ name: String) -> MCPServer = { name in MCPServer(name: name, userPresence: .interactive) }
 ) async throws -> LargeCatalogSurface {
     var scriptedServers: [ScriptedServer] = []
     var connectedServers: [MCPServer] = []

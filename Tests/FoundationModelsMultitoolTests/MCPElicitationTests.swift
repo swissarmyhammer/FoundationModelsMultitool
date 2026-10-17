@@ -310,7 +310,8 @@ struct MCPElicitationTests {
     ///   - kind: The transport to connect over.
     ///   - elicitationHandler: The host's answerer, or `nil`.
     ///   - userPresence: Whether a person is present to answer an
-    ///     elicitation. Defaults to `.interactive`.
+    ///     elicitation. Defaults to `.interactive`, a test-only default: the
+    ///     public initializer of `MCPServer` has none.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.

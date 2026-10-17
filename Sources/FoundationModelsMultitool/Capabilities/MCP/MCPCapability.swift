@@ -78,7 +78,7 @@ import MCP
 /// transport.
 ///
 /// ```swift
-/// let github = MCPServer(name: "github")
+/// let github = MCPServer(name: "github", userPresence: .interactive)
 /// try await github.connect(via: transport)
 ///
 /// let registry = try await MultiTool.Builder()

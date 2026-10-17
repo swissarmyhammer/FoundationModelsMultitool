@@ -33,7 +33,7 @@ struct MCPBareSessionTests {
     func echoVerbAnswersOnABareSession() async throws {
         let scripted = ScriptedServer()
         await scripted.addEchoTool()
-        let server = MCPServer(name: mcpBareSessionServerName)
+        let server = MCPServer(name: mcpBareSessionServerName, userPresence: .interactive)
         try await server.connect(via: scripted.startOnInMemoryPair())
         let entry = try #require(await server.tool(named: ScriptedServer.echoToolName))
         let tool = MCPTool(entry: entry, server: server)

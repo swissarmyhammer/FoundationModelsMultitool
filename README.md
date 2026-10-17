@@ -253,9 +253,12 @@ An attached MCP server can ask the user a question with
 2. Else the `elicitationHandler` of the host, on a bare session.
 3. Else `cancel`.
 
-In a headless session (`userPresence` is `.headless`), the client does not
-declare the elicitation capability, and each question ends at once with
-`cancel` and a reason.
+`userPresence` is a required argument of `MCPServer`, with no default. Each
+host must tell if a person can answer. With `.interactive`, the client
+declares the elicitation capability with `form` and `url`, and questions go to
+the answerers above. With `.headless`, the client does not declare the
+elicitation capability, and each question ends at once with `cancel` and a
+reason.
 
 A decline or a cancel that has a reason sends it in `_meta.reason` of the
 result. `MCPServer` also gives a reason for each decline and each cancel that

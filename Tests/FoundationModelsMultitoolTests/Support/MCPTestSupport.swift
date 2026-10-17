@@ -148,7 +148,12 @@ enum MCPTestSupport {
     /// Builds an `MCPServer` named `name` for a test, not yet connected.
     ///
     /// Each setting has the default of the public initializer, except
-    /// `clock` and `connectAttemptClock`. The default of `clock` is a
+    /// `clock`, `connectAttemptClock`, `callTimeoutClock` and `userPresence`.
+    /// The public initializer has no default for `userPresence`, so that a
+    /// host must choose. This test helper gives `.interactive` as a
+    /// test-only default, because most suites test a session where a
+    /// person can answer. A suite of a headless session passes `.headless`.
+    /// The default of `clock` is a
     /// `ManualClock`. Thus each delay between retries and each coalesce
     /// window ends at once, and no real time passes. The default of
     /// `connectAttemptClock` is a `GatedClock` that no test opens. Thus no
@@ -180,7 +185,8 @@ enum MCPTestSupport {
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
     ///   - userPresence: Whether a person is present to answer an
-    ///     elicitation. Defaults to `.interactive`.
+    ///     elicitation. Defaults to `.interactive`, a test-only default: the
+    ///     public initializer of `MCPServer` has none.
     ///   - logger: The logger of the server. Defaults to
     ///     `MCPServer.defaultLogger`.
     /// - Returns: The server, not yet connected.
@@ -238,7 +244,8 @@ enum MCPTestSupport {
     ///     arrives under no `ToolContext`. Defaults to `nil`; a suite of the
     ///     bare-session path passes one.
     ///   - userPresence: Whether a person is present to answer an
-    ///     elicitation. Defaults to `.interactive`; a suite of a headless
+    ///     elicitation. Defaults to `.interactive`, a test-only default: the
+    ///     public initializer of `MCPServer` has none. A suite of a headless
     ///     session passes `.headless`.
     ///   - logger: The logger of the `MCPServer`. Defaults to
     ///     `MCPServer.defaultLogger`; a suite that reads the records of the
@@ -373,7 +380,8 @@ enum MCPTestSupport {
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
     ///   - userPresence: Whether a person is present to answer an
-    ///     elicitation. Defaults to `.interactive`.
+    ///     elicitation. Defaults to `.interactive`, a test-only default: the
+    ///     public initializer of `MCPServer` has none.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.

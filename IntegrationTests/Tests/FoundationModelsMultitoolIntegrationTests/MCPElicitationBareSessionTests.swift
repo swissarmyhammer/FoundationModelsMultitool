@@ -36,7 +36,8 @@ struct MCPElicitationBareSessionTests {
         await scripted.addLoopbackTools()
         let server = MCPServer(
             name: mcpElicitationBareSessionServerName,
-            elicitationHandler: { _ in mcpElicitationBareSessionAnswer })
+            elicitationHandler: { _ in mcpElicitationBareSessionAnswer },
+            userPresence: .interactive)
         try await server.connect(via: scripted.startOnInMemoryPair())
         let entry = try #require(await server.tool(named: ScriptedServer.elicitEchoToolName))
         let tool = MCPTool(entry: entry, server: server)
