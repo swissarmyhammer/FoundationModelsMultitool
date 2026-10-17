@@ -128,13 +128,14 @@ enum MCPTestSupport {
     /// of `LoopbackHTTPServer` until its `stop()`. A connect that throws and
     /// leaves the transport connected parks every later `.http` connect of the
     /// process for ever, which reports as a hang of the whole run and not as
-    /// the one failure that caused it.
+    /// the one failure that caused it. A suite that connects through a
+    /// transport double of its own also closes that double this way.
     ///
     /// - Parameters:
     ///   - transport: The transport to disconnect when the connect throws.
     ///   - connect: The connect to run.
     /// - Throws: What `connect` throws.
-    private static func closingOnFailure(
+    static func closingOnFailure(
         _ transport: any Transport, _ connect: () async throws -> Void
     ) async throws {
         do {

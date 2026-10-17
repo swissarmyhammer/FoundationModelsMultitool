@@ -11,9 +11,15 @@
 // a `disconnect()` that ran first found the call already failed as lost, and
 // the notice never reached the wire.
 //
+// The timer of a bare call that times out ends its call the same way: it
+// settles the call, and then sends the notice. The settlement cancels the
+// timer task itself, and the caller can call `disconnect()` at once. Thus the
+// timer starts its notice in this ledger too, before the settlement.
+//
 // This ledger holds each such task from its start to its end. `disconnect()`
 // drains the ledger before it tears the client down, thus every notice a
-// cancellation started is on the wire before the transport closes. A plain
+// cancellation or a bare-call timeout started is on the wire before the
+// transport closes. A plain
 // `final class` over a `Mutex`, and never an actor, because the handler that
 // records into it cannot `await`.
 

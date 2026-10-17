@@ -146,10 +146,34 @@ comments:
     - no file was changed in this step.
     - next: review.
   timestamp: 2026-10-17T08:23:47.957694+00:00
+- actor: claude-code
+  id: 01m54fc6mrmv61q5mswmy33eav
+  text: |-
+    ### commit — changed
+    - evidence: f991bcf test: share one helper for the alpha publish and relist wait
+    - next: review the commit
+  timestamp: 2026-10-17T08:24:10.648793+00:00
+- actor: claude-code
+  id: 01m54ffffj7vs7qeta3qqd797p
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit f991bcf). 0 findings, 0 confirmed, 0 refuted. 7 validator runs attempted, 0 failed. 1 file reviewed. 2 .kanban files not reviewed (ignore rule).
+    - prior findings: all items in "Review Findings (2026-10-17 02:45)" and "Review Findings (2026-10-17 03:11)" are checked.
+    - next: the task is in done. No more work on this task.
+  timestamp: 2026-10-17T08:25:58.002029+00:00
+- actor: claude-code
+  id: 01m54fg6yg8x150x46dvmwcacm
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file (3 of 3 findings fixed; publishAlphaAndWaitForRelist)
+    - test: green — swift test, exit 0, 2449 passed, 0 failed, 0 skipped
+    - commit: f991bcf
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T08:26:22.032553+00:00
 depends_on:
 - 01M53W2TYXASHFQ2PZV6MHKP5E
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9880
 title: 'T1 group 3: MCP test waits with no second event'
 ---
 Split from ^nvxckvr (test rule T1). The list (the waits in the MCP test files other than MCPElicitationTests) is in the comments of ^nvxckvr.

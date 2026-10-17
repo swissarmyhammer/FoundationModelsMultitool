@@ -451,6 +451,15 @@ extension MCPServer {
     /// The timer sleeps on ``callTimeoutClock``, the clock the server got at
     /// init — the real clock for a host.
     ///
+    /// The end of the call runs in a task that ``cancellationNotices``
+    /// holds, the same as the notice of a cancelled calling `Task`. The
+    /// timer records that task before the call settles, thus a
+    /// `disconnect()` that the caller makes once the call returned waits
+    /// until the notice is on the wire. The settlement cancels the timer
+    /// itself, and a send from a cancelled task can fail (a transport over
+    /// `URLSession` stops it). The held task is not cancelled, thus the
+    /// notice goes out.
+    ///
     /// - Parameter requestID: The id of the bare request.
     private func startBareTimeout(for requestID: ID) {
         let timeout = callTimeout
@@ -458,13 +467,23 @@ extension MCPServer {
         let timer = Task {
             try? await clock.sleep(for: timeout)
             guard !Task.isCancelled else { return }
-            await self.endInFlightCall(requestID: requestID, reason: Self.bareCallTimedOutReason) {
-                entry in
-                self.recordTimeout(of: requestID, on: entry.span)
-                return .success(Self.toolErrorResult(toolName: entry.toolName, reason: self.timedOutReason))
+            cancellationNotices.track {
+                await self.endTimedOutBareCall(requestID: requestID)
             }
         }
         inFlightCalls[requestID]?.bareTimeout = timer
+    }
+
+    /// Ends the bare call of `requestID` with the in-band timeout result, and
+    /// sends `notifications/cancelled` for it — the notice the timer of
+    /// ``startBareTimeout(for:)`` starts.
+    ///
+    /// - Parameter requestID: The id of the bare request that timed out.
+    private func endTimedOutBareCall(requestID: ID) async {
+        await endInFlightCall(requestID: requestID, reason: Self.bareCallTimedOutReason) { entry in
+            recordTimeout(of: requestID, on: entry.span)
+            return .success(Self.toolErrorResult(toolName: entry.toolName, reason: timedOutReason))
+        }
     }
 
     // MARK: - Progress

@@ -67,9 +67,10 @@ extension MCPTestSupport {
     /// The wait ends on the first of two events: `scripted` recorded `count`
     /// notifications, or its message loop ended because the transport
     /// closed. `MCPServer.disconnect()` sends each pending
-    /// `notifications/cancelled` of a cancelled calling task before it
-    /// closes the transport. A send of `MCP.Client` returns when the
-    /// notification is on the in-memory transport. The loop records each
+    /// `notifications/cancelled` of a cancelled calling task or of a
+    /// timed-out bare call before it closes the transport. A send of
+    /// `MCP.Client` returns when the notification is on the in-memory
+    /// transport. The loop records each
     /// notification that came before the close, and only then ends. Thus a
     /// notification that the client sent is in the result, and a
     /// notification that the client did not send ends the wait with a

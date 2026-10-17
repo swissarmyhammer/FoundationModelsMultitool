@@ -361,7 +361,8 @@ public actor MCPServer {
     var timedOutRequestIDs: Set<ID> = []
 
     /// The tasks that carry a `notifications/cancelled` to the wire for a
-    /// call whose calling `Task` was cancelled — see `CancellationNotices.swift`.
+    /// call whose calling `Task` was cancelled, or for a bare call that
+    /// timed out — see `CancellationNotices.swift`.
     /// `disconnect()` drains it before it tears the client down, thus every
     /// advisory cancel is on the wire before the transport closes.
     let cancellationNotices = CancellationNotices()

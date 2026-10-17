@@ -143,6 +143,32 @@ struct MCPServerCallTests {
             serving: tools, name: serverName, callTimeoutClock: callTimeoutClock, callTimeout: callTimeout)
     }
 
+    /// A scripted server that serves `tool`, connected to a fresh `MCPServer`
+    /// named ``serverName`` through a ``CancellationHonoringTransport`` over
+    /// the in-memory pair. A bare call of the server is bounded by
+    /// ``bareCallTimeout`` on `callTimeoutClock`.
+    ///
+    /// - Parameters:
+    ///   - tool: The tool to register before the connect.
+    ///   - callTimeoutClock: The clock the timer of a bare call sleeps on.
+    /// - Returns: The scripted server, which the test keeps alive, and the
+    ///   connected server.
+    /// - Throws: What the start of the pair or the connect throws. A connect
+    ///   that throws closes the transport first.
+    private static func connectedHonoringCancellation(
+        serving tool: ScriptedTool, callTimeoutClock: any Clock<Duration>
+    ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
+        let scripted = ScriptedServer()
+        await scripted.addTool(tool)
+        let transport = CancellationHonoringTransport(wrapping: try await scripted.startOnInMemoryPair())
+        let server = MCPTestSupport.makeServer(
+            name: serverName, callTimeoutClock: callTimeoutClock, callTimeout: bareCallTimeout)
+        try await MCPTestSupport.closingOnFailure(transport) {
+            try await server.connect(via: transport)
+        }
+        return (scripted, server)
+    }
+
     /// The event that came first in the race of
     /// ``aBareCallTimesOutOnlyOnTheInjectedClock()``.
     private enum BareCallFirstEvent: Equatable {
@@ -418,6 +444,12 @@ struct MCPServerCallTests {
     /// releases it, thus only the `callTimeout` can end the call. The timer
     /// sleeps on a `ManualClock`, which ends the sleep at once and records
     /// the bound it was asked for.
+    ///
+    /// The wait for the notification ends on the first of two events: the
+    /// server recorded it, or its message loop ended. The disconnect before
+    /// the wait drains the notice of the timeout, and then closes the
+    /// transport, which ends the loop. Thus a lost notice fails the check,
+    /// and the test does not hang.
     @Test("a call with no ambient context is bounded by callTimeout and answers in band")
     func aBareCallIsBoundedByTheCallTimeout() async throws {
         let held = HeldScriptedTool(named: Self.heldToolName)
@@ -430,8 +462,7 @@ struct MCPServerCallTests {
 
                 #expect(result.isError == true)
                 #expect(clock.recordedSleeps == [Self.bareCallTimeout])
-                let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
-                #expect(recorded.first?.method == CancelledNotification.name)
+                await Self.expectOneCancelledNotification(recordedBy: scripted, afterDisconnectOf: server)
             }
         }
     }
@@ -481,6 +512,37 @@ struct MCPServerCallTests {
             }
         }
         withExtendedLifetime(scripted) {}
+    }
+
+    /// A bare call that timed out sends `notifications/cancelled`, and a
+    /// `disconnect()` that comes at once after the call returned must not
+    /// lose it: the end of the call must reach the server before the
+    /// transport closes.
+    ///
+    /// The test connects through a ``CancellationHonoringTransport``. Its
+    /// send fails from a cancelled task, as the send of
+    /// `HTTPClientTransport` does. Thus the notice must go out from a task
+    /// that is not cancelled, and `disconnect()` must wait for that task.
+    /// The timer sleeps on a `ManualClock`, which ends the sleep at once, and
+    /// the tool holds the call. Thus only the timer ends the call.
+    ///
+    /// The wait for the notification ends on the first of two events: the
+    /// server recorded it, or its message loop ended because the disconnect
+    /// closed the transport. A lost notice thus fails the check, and the
+    /// test does not hang.
+    @Test("a bare-call timeout followed at once by disconnect delivers notifications/cancelled to the server")
+    func aBareCallTimeoutThenDisconnectDeliversTheCancelNotice() async throws {
+        let held = HeldScriptedTool(named: Self.heldToolName)
+        let (scripted, server) = try await Self.connectedHonoringCancellation(
+            serving: held.scriptedTool, callTimeoutClock: ManualClock())
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await held.release() }) {
+                let result = try await server.call(name: Self.heldToolName, arguments: nil)
+
+                #expect(result.isError == true)
+                await Self.expectOneCancelledNotification(recordedBy: scripted, afterDisconnectOf: server)
+            }
+        }
     }
 
     /// The file header of `MCPServer+Call.swift`: "the engine's clock ... is
