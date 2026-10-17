@@ -56,6 +56,41 @@ comments:
     - evidence: one local commit "test: end JSC and runCode test waits on a second event". Tests only. Kanban files are in the same commit. Not pushed.
     - next: review
   timestamp: 2026-10-17T09:51:22.317454+00:00
+- actor: claude-code
+  id: 01m54mqjm02yv1ckhg1cagb7x6
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 80d4c51). 1 finding: Tests/FoundationModelsMultitoolTests/HardeningTests.swift:141 (duplication/duplication). The engine refuted 5 candidates. 14 files were reviewed. The 6 .kanban files were not reviewed (ignore rule).
+    - next: implement the open item in the "Review Findings (2026-10-17 04:51)" section. The task stays in review.
+  timestamp: 2026-10-17T09:57:46.240073+00:00
+- actor: claude-code
+  id: 01m54mr2p6mq92wtm3b2bhnqds
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 14 files (26 JSC and runCode waits; 5 waitForSleepers sites to the wrapper; 8 lines on ^vg01093; 4 guard-and-return replaced)
+    - test: green — swift test, exit 0, 2450 passed, 0 failed, 0 skipped
+    - commit: 80d4c51
+    - review: findings — Tests/FoundationModelsMultitoolTests/HardeningTests.swift:141
+  timestamp: 2026-10-17T09:58:02.694853+00:00
+- actor: claude-code
+  id: 01m54myphqcrgm1tdjsb487pjs
+  text: |-
+    ### implement — changed
+    - finding: Tests/FoundationModelsMultitoolTests/HardeningTests.swift:141 duplication/duplication. The EventRace.watch({ multiTool.call(...) }, untilOpen:, orFail:).task wrapper repeated the body of startReportingLoop.
+    - fix: new private helper HardeningTests.startRun(of:code:untilOpen:orFail:sourceLocation:) holds the only copy of the wrapper. startReportingLoop is now a one-line forwarder to startRun, with the loop snippet, the gate of the started tool and its failure text. Its two callers do not change. cancellationCancelsWhileAwaitingAPendingToolCall calls startRun with its own snippet, gate and failure text. Both helpers forward sourceLocation, thus an issue is recorded at the call site. The checks of each test stay the same, and rule T1 stays: each wait still ends when the run ends.
+    - scope check: in the other files of commit 80d4c51, no EventRace.watch wraps multiTool.call. JSCInterpreterTests wraps interpreter.run, which is a different call. Copies removed: 1 (the inline copy in the slow-call test). The copy in startReportingLoop is now the shared helper.
+    - evidence: 1 file changed: Tests/FoundationModelsMultitoolTests/HardeningTests.swift. No production change. Findings checked 1/1.
+    - test: swift test, one full run, exit code of swift test 0. "Test run with 2450 tests in 212 suites passed after 4.146 seconds." The only warning is the build-system line "missing creator for mutated node" for mlx-swift_Cmlx.bundle.
+    - next: test, then review. The task stays in doing.
+  timestamp: 2026-10-17T10:01:39.639917+00:00
+- actor: claude-code
+  id: 01m54n1bk97bnsstn5y4cr0erb
+  text: |-
+    ### test - green
+    - evidence: `swift test` ran one time, exit code 0. Swift Testing line: "Test run with 2450 tests in 212 suites passed after 4.383 seconds." No failed test. No skipped test. No issue recorded.
+    - note: the build printed one SwiftPM build-system message, "missing creator for mutated node" for the mlx-swift_Cmlx.bundle dependency. It is not a compiler warning in this package source.
+    - next: review step.
+  timestamp: 2026-10-17T10:03:06.729150+00:00
 depends_on:
 - 01M53W31F0R9FSZW7FV8Y8HTQX
 position_column: doing
@@ -69,3 +104,12 @@ Rule T1: each wait in a test must also end on the failure event, or the test mus
 Do: make each wait end on the first of two events: the expected event, or an existing end event (the run ends, the snippet promise settles, the call ends). A test-only hook in a test helper is permitted. Do not change production code only to add a test hook: bring such a case to the owner. A wait with no existing second event goes on the exception-list card, with file:line and the reason.
 
 Show for at least one case that the test now fails (not hangs) when the expected event does not come (a one-time mutation that you revert). No .timeLimit, sleep, poll or retry. Do not delete a test. One full run. #elicitation-fixes #t1
+
+## Review Findings (2026-10-17 04:51)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/HardeningTests.swift:141` `duplication/duplication` — This `EventRace.watch({ multiTool.call(...) }, untilOpen:, orFail:).task` wrapper repeats the body of `startReportingLoop` at lines 104-107. It differs only in the code string and the gate. Two copies of the same wait can drift apart. Generalize `startReportingLoop` to take the code string and the arrival gate as parameters, then call it here. Or move the shared wrapper into a helper that both tests call.

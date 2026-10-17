@@ -84,27 +84,52 @@ struct HardeningTests {
         return (makeMultiTool(registry: registry), started)
     }
 
-    /// Starts ``reportingInfiniteLoop`` on `multiTool`, and waits until the
-    /// snippet reported its start to `started`.
+    /// Starts a run of `code` on `multiTool`, and waits until `gate` opens.
     ///
     /// The wait also ends when the run ends — see
     /// ``EventRace/watch(_:untilOpen:orFail:sourceLocation:)``. Thus a run
-    /// that ends before its report does not make the test hang: the test
-    /// fails at once.
+    /// that ends before `gate` opens does not make the test hang: the test
+    /// fails at once with `failure`.
+    ///
+    /// - Parameters:
+    ///   - multiTool: The `runCode` tool that runs the snippet.
+    ///   - code: The snippet to run.
+    ///   - gate: The gate that the snippet opens at the event of the test.
+    ///   - failure: The issue to record when the run ends before `gate` opens.
+    ///   - sourceLocation: Where to record the issue.
+    /// - Returns: The task of the run.
+    /// - Throws: When the run ended before `gate` opened, or when the task is
+    ///   cancelled first.
+    private static func startRun(
+        of multiTool: MultiTool, code: String, untilOpen gate: TestGate, orFail failure: Comment,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws -> Task<String, any Error> {
+        try await EventRace.watch(
+            { try await multiTool.call(arguments: RunCodeArguments(code: code)) },
+            untilOpen: gate, orFail: failure, sourceLocation: sourceLocation
+        ).task
+    }
+
+    /// Starts ``reportingInfiniteLoop`` on `multiTool`, and waits until the
+    /// snippet reported its start to `started` — see
+    /// ``startRun(of:code:untilOpen:orFail:sourceLocation:)``.
     ///
     /// - Parameters:
     ///   - multiTool: The `runCode` tool that runs the loop.
     ///   - started: The tool whose call reports the start.
+    ///   - sourceLocation: Where to record the issue when the run ends
+    ///     before the report.
     /// - Returns: The task of the run. The loop spins in it.
     /// - Throws: When the run ended before the report, or when the task is
     ///   cancelled first.
     private static func startReportingLoop(
-        of multiTool: MultiTool, reportingTo started: WindowRecordingTool
+        of multiTool: MultiTool, reportingTo started: WindowRecordingTool,
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async throws -> Task<String, any Error> {
-        try await EventRace.watch(
-            { try await multiTool.call(arguments: RunCodeArguments(code: reportingInfiniteLoop)) },
-            untilOpen: started.hold.arrival, orFail: "the run ended before the snippet reported its start"
-        ).task
+        try await startRun(
+            of: multiTool, code: reportingInfiniteLoop, untilOpen: started.hold.arrival,
+            orFail: "the run ended before the snippet reported its start", sourceLocation: sourceLocation
+        )
     }
 
     @Test("cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError")
@@ -138,10 +163,10 @@ struct HardeningTests {
 
         // The event: the pending call started, so the snippet awaits it. The
         // wait also ends when the run ends, and the test then fails at once.
-        let task = try await EventRace.watch(
-            { try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();")) },
-            untilOpen: slowTool.hold.arrival, orFail: "the run ended before the pending call started"
-        ).task
+        let task = try await Self.startRun(
+            of: multiTool, code: "return await tools.slow();", untilOpen: slowTool.hold.arrival,
+            orFail: "the run ended before the pending call started"
+        )
         task.cancel()
 
         await Self.expectCancellationError { _ = try await task.value }
