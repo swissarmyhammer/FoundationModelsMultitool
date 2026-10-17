@@ -348,25 +348,48 @@ extension MCPServer {
     /// ``pendingHostElicitationIds``. Returns at once when the flow is
     /// already held.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call. Thus a test that cancels its wait when the flow
+    /// ended with no hold leaves no continuation open.
+    ///
     /// Internal, for `@testable import`: no product code waits here.
     ///
     /// - Parameter elicitationId: The wire id of the flow.
-    func waitUntilHostElicitationHeld(elicitationId: String) async {
-        guard pendingHostElicitations[elicitationId] == nil else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            hostElicitationHeldWaiters.append((elicitationId, continuation))
+    /// - Returns: `true` when this actor holds the flow. `false` when a
+    ///   cancel ended the wait first.
+    @discardableResult
+    func waitUntilHostElicitationHeld(elicitationId: String) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        guard pendingHostElicitations[elicitationId] == nil else { return true }
+        let waiterID = nextHostElicitationHeldWaiterID
+        nextHostElicitationHeldWaiterID += 1
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                hostElicitationHeldWaiters[waiterID] = (elicitationId, continuation)
+            }
+        } onCancel: {
+            Task { await self.endHostElicitationHeldWait(waiterID) }
         }
     }
 
+    /// Ends the wait `waiterID` of
+    /// ``waitUntilHostElicitationHeld(elicitationId:)`` with `false` — the
+    /// cancel of that wait. A no-op when the wait ended before.
+    ///
+    /// - Parameter waiterID: The id of the wait.
+    private func endHostElicitationHeldWait(_ waiterID: Int) {
+        hostElicitationHeldWaiters.removeValue(forKey: waiterID)?.continuation.resume(returning: false)
+    }
+
     /// Resumes each wait of ``waitUntilHostElicitationHeld(elicitationId:)``
-    /// for `elicitationId`.
+    /// for `elicitationId` with `true`.
     ///
     /// - Parameter elicitationId: The wire id of the flow that is now held.
     private func resumeHostElicitationHeldWaiters(of elicitationId: String) {
-        let held = hostElicitationHeldWaiters.filter { $0.elicitationId == elicitationId }
-        hostElicitationHeldWaiters.removeAll { $0.elicitationId == elicitationId }
-        for waiter in held {
-            waiter.continuation.resume()
+        let held = hostElicitationHeldWaiters.filter { $0.value.elicitationId == elicitationId }
+        for (waiterID, waiter) in held {
+            hostElicitationHeldWaiters.removeValue(forKey: waiterID)
+            waiter.continuation.resume(returning: true)
         }
     }
 

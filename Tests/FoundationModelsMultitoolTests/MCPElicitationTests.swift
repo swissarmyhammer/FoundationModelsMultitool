@@ -428,29 +428,62 @@ struct MCPElicitationTests {
     /// Starts one URL-mode question on `server`, and waits until `server`
     /// holds the accept of its handler.
     ///
-    /// The wait ends on the first of two events: `server` holds the flow, or
-    /// the answer ended with no hold. Each of the two events can occur, thus
-    /// the wait always ends. When no flow is held, the test fails at once.
-    ///
     /// - Parameter server: The server, whose handler accepts the question.
     /// - Returns: The task of the answer that `server` gives.
     /// - Throws: When the answer ended before `server` held the flow.
-    private static func startHeldHostFlow(on server: MCPServer) async throws -> Task<CreateElicitation.Result, Never> {
+    private static func startHeldHostFlow(on server: MCPServer) async throws -> Task<CreateElicitation.Result, any Error> {
+        try await startHeldHostFlow(on: server) { await server.answerElicitation(parameters: urlElicitation) }
+    }
+
+    /// Starts `work`, which makes `server` hold one URL-mode flow, and waits
+    /// until `server` holds that flow.
+    ///
+    /// The wait ends on the first of two events: `server` holds the flow, or
+    /// `work` ended with no hold. Each of the two events can occur, thus the
+    /// wait always ends. Then this function cancels the wait for the hold and
+    /// waits until that wait ended, thus no wait stays open after it returns.
+    /// When no flow is held, the test fails at once. When the wait throws, a
+    /// held flow ends before the throw, thus `work` does not stay open.
+    ///
+    /// - Parameters:
+    ///   - server: The server, whose handler accepts the question.
+    ///   - work: The work that makes `server` hold the flow.
+    /// - Returns: The task of `work`.
+    /// - Throws: When `work` ended before `server` held the flow, or when
+    ///   the task is cancelled first.
+    private static func startHeldHostFlow<Success: Sendable>(
+        on server: MCPServer, running work: @escaping @Sendable () async throws -> Success
+    ) async throws -> Task<Success, any Error> {
         let firstEvent = TestGate()
-        let answer = Task {
-            let result = await server.answerElicitation(parameters: urlElicitation)
-            firstEvent.open()
-            return result
+        let flow = Task {
+            defer { firstEvent.open() }
+            return try await work()
         }
-        Task {
+        let hold = Task {
             await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
             firstEvent.open()
         }
-        try await firstEvent.wait()
+        do {
+            try await firstEvent.wait()
+        } catch {
+            await endWait(hold)
+            await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+            throw error
+        }
+        await endWait(hold)
         try #require(
             await server.pendingHostElicitationIds == [ScriptedServer.elicitURLElicitationId],
-            "the answer ended before the server held the URL flow")
-        return answer
+            "the work ended before the server held the URL flow")
+        return flow
+    }
+
+    /// Cancels `wait`, and waits until it ended. A cancel ends a wait for
+    /// the hold of a URL flow, thus this call always returns.
+    ///
+    /// - Parameter wait: The task of a wait for the hold of a URL flow.
+    private static func endWait(_ wait: Task<Void, Never>) async {
+        wait.cancel()
+        await wait.value
     }
 
     // MARK: - Case 1: a bound context answers
@@ -600,9 +633,7 @@ struct MCPElicitationTests {
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
         let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
-        let call = Task { try await Self.bareCall(tool) }
-        await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
-        #expect(await server.pendingHostElicitationIds == [ScriptedServer.elicitURLElicitationId])
+        let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
         #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
         await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
         let output = try await call.value
@@ -625,8 +656,7 @@ struct MCPElicitationTests {
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
         let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
-        let call = Task { try await Self.bareCall(tool) }
-        await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+        let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
         try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
         _ = await call.result
         let heldAfterTheCall = await server.pendingHostElicitationIds
@@ -654,8 +684,11 @@ struct MCPElicitationTests {
 
         await server.disconnect()
 
-        try #require(await server.pendingHostElicitationIds.isEmpty, "the disconnect left the URL flow held")
-        let result = await answer.value
+        let heldAfterTheDisconnect = await server.pendingHostElicitationIds
+        // A flow that is still held ends here, thus no continuation stays.
+        await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+        try #require(heldAfterTheDisconnect.isEmpty, "the disconnect left the URL flow held")
+        let result = try await answer.value
         #expect(result.action == .cancel)
         #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
     }
@@ -676,10 +709,43 @@ struct MCPElicitationTests {
             try await server.connect(via: { throw RefusedTransport() })
         }
 
-        try #require(await server.pendingHostElicitationIds.isEmpty, "the new connect left the URL flow held")
-        let result = await answer.value
+        let heldAfterTheConnect = await server.pendingHostElicitationIds
+        // A flow that is still held ends here, thus no continuation stays.
+        await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+        try #require(heldAfterTheConnect.isEmpty, "the new connect left the URL flow held")
+        let result = try await answer.value
         #expect(result.action == .cancel)
         #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
+    }
+
+    /// A cancel ends a wait for the hold of a URL flow. Thus a helper that
+    /// cancels its wait when the flow ended with no hold leaves no
+    /// continuation open.
+    ///
+    /// The order is fixed. The wait starts on a task that is cancelled
+    /// already, thus the cancel comes before the hold. Then the server
+    /// holds a flow of the same id, so the wait also ends when the cancel
+    /// does not end it. The test reads which event ended the wait, and then
+    /// ends the flow.
+    @Test("a cancel ends a wait for the hold of a URL flow before the server holds the flow")
+    func aCancelEndsTheWaitForTheHold() async throws {
+        let probe = HandlerProbe(responding: Self.urlAccept)
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: probe.handler)
+
+        let endedOnTheHold = try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.cancelAll()
+            group.addTask {
+                await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+            }
+            let answer = try await Self.startHeldHostFlow(on: server)
+            let ended = try await group.next()
+            await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+            _ = try await answer.value
+            return ended
+        }
+
+        #expect(endedOnTheHold == false)
+        #expect(await server.hostElicitationHeldWaiters.isEmpty)
     }
 
     // MARK: - Case 3: nothing answers

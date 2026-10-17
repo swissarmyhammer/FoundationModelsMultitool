@@ -10,6 +10,15 @@ comments:
     - Do not use ToolContext.cancel(completionToken:): it cancels the whole run and gives the wrong reason.
     - Start this card only after the owner says that Extras is pushed. Then move Extras to that revision, write the RED test, then the fix.
   timestamp: 2026-10-16T23:41:56.964407+00:00
+- actor: claude-code
+  id: 01m53jdzzjkwecan5qrvrj8es4
+  text: |-
+    ### unblocked — Extras pushed (2026-10-16)
+    - Extras 2d1c476 (head 1f586a7) has public `ToolContext.endElicitation(_:with:) async -> Bool` (@discardableResult).
+    - Behavior: decline or cancel only (an accept returns false and changes nothing). It ends only an open question of the holding run of that context. It posts elicitationEnded, then the run gets the response with its reason. It returns true only when this call ended the question.
+    - Work on a local pin to 1f586a7 (or later main). Push only after the Extras CI for 2d1c476 is green.
+    - Use: on disconnect() and on each new connect, end each pendingContextElicitations entry of an older generation with .cancel(reason: connectionEndedReason). Start with a test that fails on the current code.
+  timestamp: 2026-10-16T23:58:20.658553+00:00
 position_column: todo
 position_ordinal: '8880'
 title: 'Group A (b): end the context URL flow of an old connect generation on a disconnect'

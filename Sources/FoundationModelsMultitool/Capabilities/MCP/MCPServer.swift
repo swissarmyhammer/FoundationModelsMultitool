@@ -392,10 +392,15 @@ public actor MCPServer {
     var pendingContextElicitations: [String: (context: ToolContext, id: ULID, generation: Int)] = [:]
 
     /// Each caller of `waitUntilHostElicitationHeld(elicitationId:)` that
-    /// waits until this actor holds the URL-mode flow of that wire id —
-    /// resumed by `awaitHostCompletion(of:)`. A test hook: no product code
-    /// waits here.
-    var hostElicitationHeldWaiters: [(elicitationId: String, continuation: CheckedContinuation<Void, Never>)] = []
+    /// waits until this actor holds the URL-mode flow of that wire id, by the
+    /// id of its wait — resumed by `awaitHostCompletion(of:)`, or when the
+    /// task of the wait is cancelled. A test hook: no product code waits
+    /// here.
+    var hostElicitationHeldWaiters: [Int: (elicitationId: String, continuation: CheckedContinuation<Bool, Never>)] =
+        [:]
+
+    /// The id the next wait of ``hostElicitationHeldWaiters`` gets.
+    var nextHostElicitationHeldWaiterID = 0
 
     /// Creates a server that makes a new `MCP.Client` named `name` for each
     /// connect attempt.
