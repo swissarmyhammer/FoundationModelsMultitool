@@ -181,13 +181,14 @@ struct TransportFactoryTests {
         // `connect()` calls, so the factory mediates every attempt and
         // resolves to the same configured double.
         try await server.connect(via: { flaky }, backoffPolicy: policy)
-
-        #expect(await server.state == .ready)
-        #expect(await flaky.connectAttempts == Self.failingConnectAttempts + 1)
-        #expect(
-            clock.recordedSleeps == [
-                Self.scheduleBaseDelay, Self.scheduleBaseDelay * Self.backoffDoublingFactor,
-            ])
+        try await MCPTestSupport.withConnection(of: server) {
+            #expect(await server.state == .ready)
+            #expect(await flaky.connectAttempts == Self.failingConnectAttempts + 1)
+            #expect(
+                clock.recordedSleeps == [
+                    Self.scheduleBaseDelay, Self.scheduleBaseDelay * Self.backoffDoublingFactor,
+                ])
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -202,14 +203,16 @@ struct TransportFactoryTests {
         let server = makeServer()
 
         try await server.connect(via: respawning)
-        #expect(await server.state == .ready)
-        #expect(counter.count == 1)
+        try await MCPTestSupport.withConnection(of: server) {
+            #expect(await server.state == .ready)
+            #expect(counter.count == 1)
 
-        await respawning.disconnect()
-        try await server.reconnect()
+            await respawning.disconnect()
+            try await server.reconnect()
 
-        #expect(await server.state == .ready)
-        #expect(counter.count == Self.connectPlusReconnect)
+            #expect(await server.state == .ready)
+            #expect(counter.count == Self.connectPlusReconnect)
+        }
     }
 
     /// A factory-taking connect stores the factory, so a `reconnect()` calls
@@ -226,12 +229,14 @@ struct TransportFactoryTests {
         let server = makeServer()
 
         try await server.connect(via: factory, backoffPolicy: .default)
-        #expect(await server.state == .ready)
+        try await MCPTestSupport.withConnection(of: server) {
+            #expect(await server.state == .ready)
 
-        try await server.reconnect()
+            try await server.reconnect()
 
-        #expect(await server.state == .ready)
-        #expect(counter.count == Self.connectPlusReconnect)
+            #expect(await server.state == .ready)
+            #expect(counter.count == Self.connectPlusReconnect)
+        }
     }
 
     @Test func reconnectBeforeAnyConnectThrowsNeverConnected() async {

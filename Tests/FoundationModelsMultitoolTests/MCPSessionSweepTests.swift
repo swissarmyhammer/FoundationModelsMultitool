@@ -144,23 +144,34 @@ struct MCPSessionSweepTests {
         }
     }
 
-    /// A scripted server that serves the held tool, connected to a fresh
-    /// `MCPServer` named ``serverName`` over a recording transport, and a
-    /// pool that records that server through `withMCP(servers:)`.
+    /// Makes a scripted server that serves the held tool, connected to a
+    /// fresh `MCPServer` named ``serverName`` over a recording transport,
+    /// and a pool that records that server through `withMCP(servers:)`. Then
+    /// it gives the ground to `body`.
     ///
-    /// - Returns: The ground, and the registry the builder rendered.
-    /// - Throws: What the connect or the build throws.
-    private static func makeGround() async throws -> (ground: SweepGround, registry: MultiTool.Registry) {
+    /// The server disconnects after `body`, also when the build or `body`
+    /// throws. A test that shuts the pool down already disconnected the
+    /// server, and the second disconnect does nothing.
+    ///
+    /// - Parameter body: The work of the test on the ground, and on the
+    ///   registry the builder rendered.
+    /// - Returns: What `body` returned.
+    /// - Throws: What the connect, the build or `body` throws.
+    private static func withGround<Result>(
+        _ body: (SweepGround, MultiTool.Registry) async throws -> Result
+    ) async throws -> Result {
         let scripted = ScriptedServer()
         let held = HeldScriptedTool(named: heldToolName)
         await scripted.addTool(held.scriptedTool)
         let (server, wire) = try await MCPTestSupport.connectedRecordingMCPServer(
             to: scripted, name: serverName)
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
-        let registry = try builder.buildRegistry()
-        let ground = SweepGround(
-            scripted: scripted, held: held, server: server, wire: wire, pool: builder.serverPool)
-        return (ground, registry)
+        return try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let registry = try builder.buildRegistry()
+            let ground = SweepGround(
+                scripted: scripted, held: held, server: server, wire: wire, pool: builder.serverPool)
+            return try await body(ground, registry)
+        }
     }
 
     /// Waits until the held call of `ground` is on the wire.
@@ -213,58 +224,59 @@ struct MCPSessionSweepTests {
     /// the transport.
     @Test("parked shape: the sweep sends the advisory cancel and records .cancelled before the transport closes")
     func parkedCallGetsTheAdvisoryCancelAndCancelledBeforeTheTransportCloses() async throws {
-        let (ground, registry) = try await Self.makeGround()
-        // The test closes the session itself, at the point its assertions
-        // need. The scope also closes the session when the test throws
-        // before that point. A second close does nothing.
-        try await withStubRun { run in
-            let context = run.context
-            // No inline wait, so the call answers with the pending envelope at
-            // once and the run parks. The stock `inlineSettleGrace` would hold
-            // the call for its whole length before the sweep can run.
-            let mounted = try #require(
-                SessionMount.synchronous(
-                    MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)),
-                    on: context)
-                    as? any FoundationModels.Tool<RunCodeArguments, String>)
-            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
-            #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
-            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-            try await Self.waitForTheCall(on: ground)
+        try await Self.withGround { ground, registry in
+            // The test closes the session itself, at the point its assertions
+            // need. The scope also closes the session when the test throws
+            // before that point. A second close does nothing.
+            try await withStubRun { run in
+                let context = run.context
+                // No inline wait, so the call answers with the pending envelope at
+                // once and the run parks. The stock `inlineSettleGrace` would hold
+                // the call for its whole length before the sweep can run.
+                let mounted = try #require(
+                    SessionMount.synchronous(
+                        MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)),
+                        on: context)
+                        as? any FoundationModels.Tool<RunCodeArguments, String>)
+                let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
+                #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
+                let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+                try await Self.waitForTheCall(on: ground)
 
-            // `RoutedSession.close()` runs the sweep — it cancels every background
-            // run, rejects every pending elicitation, and journals the terminal
-            // events before it returns. A consumer cannot call the sweep of the run
-            // plane of the session, so this is the public route to the same behaviour.
-            await run.session.close()
-            let terminals = await recordedOperationEvents(
-                of: run, ofKind: .completed,
-                correlatedTo: [envelope.completionToken],
-                awaiting: Self.terminalEventsPerRun)
-            await ground.wire.mark(as: Self.terminalMarker)
-            await ground.pool.shutdownAll()
+                // `RoutedSession.close()` runs the sweep — it cancels every background
+                // run, rejects every pending elicitation, and journals the terminal
+                // events before it returns. A consumer cannot call the sweep of the run
+                // plane of the session, so this is the public route to the same behaviour.
+                await run.session.close()
+                let terminals = await recordedOperationEvents(
+                    of: run, ofKind: .completed,
+                    correlatedTo: [envelope.completionToken],
+                    awaiting: Self.terminalEventsPerRun)
+                await ground.wire.mark(as: Self.terminalMarker)
+                await ground.pool.shutdownAll()
 
-            // Diagnostic: this passes here and fails on CI, and the failure is a
-            // count that is too HIGH rather than too low, so the message carries
-            // what actually landed.
-            #expect(
-                terminals.count == Self.terminalEventsPerRun,
-                """
-                terminals=\(terminals.count)             kinds=\(terminals.map(\.kind))             outcomes=\(terminals.map { String(describing: $0.outcome) })             correlations=\(terminals.map(\.correlationID))             envelope=\(envelope.completionToken)             outer=\(run.context.completionToken)
-                """
-            )
-            let terminal = try #require(terminals.first)
-            #expect(terminal.correlationID == envelope.completionToken)
-            #expect(terminal.kind == .completed)
-            #expect(terminal.outcome == .cancelled)
-            await Self.expectServerReceivedTheCancel(from: ground.scripted)
-            try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
-            try await Self.expectOrder(
-                of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
-            #expect(await context.backgroundRuns().isEmpty)
+                // Diagnostic: this passes here and fails on CI, and the failure is a
+                // count that is too HIGH rather than too low, so the message carries
+                // what actually landed.
+                #expect(
+                    terminals.count == Self.terminalEventsPerRun,
+                    """
+                    terminals=\(terminals.count)             kinds=\(terminals.map(\.kind))             outcomes=\(terminals.map { String(describing: $0.outcome) })             correlations=\(terminals.map(\.correlationID))             envelope=\(envelope.completionToken)             outer=\(run.context.completionToken)
+                    """
+                )
+                let terminal = try #require(terminals.first)
+                #expect(terminal.correlationID == envelope.completionToken)
+                #expect(terminal.kind == .completed)
+                #expect(terminal.outcome == .cancelled)
+                await Self.expectServerReceivedTheCancel(from: ground.scripted)
+                try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
+                try await Self.expectOrder(
+                    of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
+                #expect(await context.backgroundRuns().isEmpty)
+            }
+            await ground.held.release()
+            withExtendedLifetime(ground.scripted) {}
         }
-        await ground.held.release()
-        withExtendedLifetime(ground.scripted) {}
     }
 
     // MARK: - The native shape
@@ -276,29 +288,30 @@ struct MCPSessionSweepTests {
     /// pool closes the transport.
     @Test("native shape: the cancelled answer sends the advisory cancel before the transport closes")
     func nativeCallGetsTheAdvisoryCancelBeforeTheTransportCloses() async throws {
-        let (ground, _) = try await Self.makeGround()
-        try await withStubRun { run in
-            let context = run.context
-            let entry = try #require(await ground.server.tool(named: Self.heldToolName))
-            let mounted = try #require(
-                SessionMount.synchronous(
-                    MCPTool(entry: entry, server: ground.server), on: context)
-                    as? any FoundationModels.Tool<GeneratedContent, String>)
-            let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
-            try await Self.waitForTheCall(on: ground)
-            #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
+        try await Self.withGround { ground, _ in
+            try await withStubRun { run in
+                let context = run.context
+                let entry = try #require(await ground.server.tool(named: Self.heldToolName))
+                let mounted = try #require(
+                    SessionMount.synchronous(
+                        MCPTool(entry: entry, server: ground.server), on: context)
+                        as? any FoundationModels.Tool<GeneratedContent, String>)
+                let answer = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
+                try await Self.waitForTheCall(on: ground)
+                #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
-            answer.cancel()
-            await #expect(throws: CancellationError.self) {
-                _ = try await answer.value
+                answer.cancel()
+                await #expect(throws: CancellationError.self) {
+                    _ = try await answer.value
+                }
+                await ground.pool.shutdownAll()
+
+                await Self.expectServerReceivedTheCancel(from: ground.scripted)
+                try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
             }
-            await ground.pool.shutdownAll()
-
-            await Self.expectServerReceivedTheCancel(from: ground.scripted)
-            try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
+            await ground.held.release()
+            withExtendedLifetime(ground.scripted) {}
         }
-        await ground.held.release()
-        withExtendedLifetime(ground.scripted) {}
     }
 
     // MARK: - The pool
@@ -308,17 +321,18 @@ struct MCPSessionSweepTests {
     /// task attaches to; here a recording double stands in its place.
     @Test("shutdownAll stops the attachment before it disconnects the servers")
     func shutdownAllStopsTheAttachmentBeforeTheServers() async throws {
-        let (ground, _) = try await Self.makeGround()
-        let attachment = RecordingAttachment { await ground.wire.mark(as: Self.stopMarker) }
-        await ground.pool.attach(attachment: attachment)
+        try await Self.withGround { ground, _ in
+            let attachment = RecordingAttachment { await ground.wire.mark(as: Self.stopMarker) }
+            await ground.pool.attach(attachment: attachment)
 
-        await ground.pool.shutdownAll()
+            await ground.pool.shutdownAll()
 
-        #expect(await attachment.stopCount == Self.oneStop)
-        #expect(await ground.server.state == .disconnected)
-        try await Self.expectOrder(
-            of: .marker(Self.stopMarker), before: .disconnected, on: ground.wire)
-        withExtendedLifetime(ground.scripted) {}
+            #expect(await attachment.stopCount == Self.oneStop)
+            #expect(await ground.server.state == .disconnected)
+            try await Self.expectOrder(
+                of: .marker(Self.stopMarker), before: .disconnected, on: ground.wire)
+            withExtendedLifetime(ground.scripted) {}
+        }
     }
 
     /// A session with no MCP servers is unchanged: the pool of a builder that
@@ -346,18 +360,23 @@ struct MCPSessionSweepTests {
             name: Self.subprocessServerName)
         let server = MCPTestSupport.makeServer(name: Self.subprocessServerName)
         try await server.connect(via: stdio.respawn)
-        let pid = try #require(stdio.currentPid)
-        #expect(ProcessLiveness.isAlive(pid))
-        #expect(ProcessRegistry.global.registeredPids.contains(pid))
-        let pool = MCPServerPool()
-        await pool.add(server: server)
-        await pool.add(process: stdio)
+        // The disconnect of the server also ends the subprocess. Thus the
+        // scope ends the subprocess when the test throws before the
+        // `shutdownAll()` under test.
+        try await MCPTestSupport.withConnection(of: server) {
+            let pid = try #require(stdio.currentPid)
+            #expect(ProcessLiveness.isAlive(pid))
+            #expect(ProcessRegistry.global.registeredPids.contains(pid))
+            let pool = MCPServerPool()
+            await pool.add(server: server)
+            await pool.add(process: stdio)
 
-        await pool.shutdownAll()
+            await pool.shutdownAll()
 
-        #expect(await server.state == .disconnected)
-        #expect(ProcessLiveness.isGone(pid))
-        #expect(!ProcessRegistry.global.registeredPids.contains(pid))
-        #expect(await pool.isEmpty)
+            #expect(await server.state == .disconnected)
+            #expect(ProcessLiveness.isGone(pid))
+            #expect(!ProcessRegistry.global.registeredPids.contains(pid))
+            #expect(await pool.isEmpty)
+        }
     }
 }

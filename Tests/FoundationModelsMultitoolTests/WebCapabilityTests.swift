@@ -277,9 +277,11 @@ struct WebCapabilityTests {
     func anMCPServerNamedWebBesideWithWebThrows() async throws {
         let (scripted, server) = try await MCPTestSupport.connectedLoopbackMCPServer(
             over: .inMemory, name: Self.webNoun)
-        let builder = try await makeWebBuilder().withMCP(servers: [server])
+        try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await makeWebBuilder().withMCP(servers: [server])
 
-        Self.expectDuplicateWebNoun(builder)
+            Self.expectDuplicateWebNoun(builder)
+        }
         withExtendedLifetime(scripted) {}
     }
 

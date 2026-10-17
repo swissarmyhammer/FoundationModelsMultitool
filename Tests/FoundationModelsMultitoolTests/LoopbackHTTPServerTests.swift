@@ -176,7 +176,7 @@ struct LoopbackHTTPServerTests {
         await scripted.addLoopbackTools()
         let client = try await MCPTestSupport.connectedServer(
             to: scripted, over: kind, clientName: Self.clientName)
-        try await ensuring({ await client.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: client) {
             let page = try await client.listTools()
             #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
         }

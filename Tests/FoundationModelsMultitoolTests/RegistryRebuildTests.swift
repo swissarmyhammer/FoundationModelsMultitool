@@ -175,50 +175,54 @@ struct RegistryRebuildTests {
     @Test("rebuildRegistry() after the scenario adds a tool gives the new verb, and the first registry is unchanged")
     func rebuildAfterAnAddGivesTheNewVerbAndKeepsTheFirstRegistry() async throws {
         let (scripted, server) = try await Self.connectedDynamicServer()
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
-        let first = try builder.buildRegistry()
-        let source = builder.registrySource
-        #expect(Self.paths(of: first) == [Self.counterPath])
+        try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let first = try builder.buildRegistry()
+            let source = builder.registrySource
+            #expect(Self.paths(of: first) == [Self.counterPath])
 
-        // The first stage adds the greeter.
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        try await Self.waitUntilCatalog(
-            of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
-        let rebuilt = try await source.rebuildRegistry()
+            // The first stage adds the greeter.
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            try await Self.waitUntilCatalog(
+                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
+            let rebuilt = try await source.rebuildRegistry()
 
-        #expect(Self.paths(of: rebuilt) == [Self.counterPath, Self.greeterPath])
-        #expect(rebuilt.tools[Self.greeterPath] != nil)
-        // The first value is untouched: the rebuild rendered at the side.
-        #expect(Self.paths(of: first) == [Self.counterPath])
-        #expect(first.tools[Self.greeterPath] == nil)
+            #expect(Self.paths(of: rebuilt) == [Self.counterPath, Self.greeterPath])
+            #expect(rebuilt.tools[Self.greeterPath] != nil)
+            // The first value is untouched: the rebuild rendered at the side.
+            #expect(Self.paths(of: first) == [Self.counterPath])
+            #expect(first.tools[Self.greeterPath] == nil)
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("rebuildRegistry() after the scenario removes a tool gives a registry without it")
     func rebuildAfterARemoveDropsTheVerb() async throws {
         let (scripted, server) = try await Self.connectedDynamicServer()
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
-        let source = builder.registrySource
+        try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let source = builder.registrySource
 
-        // The first stage adds the greeter.
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        try await Self.waitUntilCatalog(
-            of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
-        let withGreeter = try await source.rebuildRegistry()
-        #expect(withGreeter.tools[Self.greeterPath] != nil)
+            // The first stage adds the greeter.
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            try await Self.waitUntilCatalog(
+                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
+            let withGreeter = try await source.rebuildRegistry()
+            #expect(withGreeter.tools[Self.greeterPath] != nil)
 
-        // The second stage re-schemas the counter, and the third removes the
-        // greeter.
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        try await Self.waitUntilCatalog(
-            of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: false)
-        let withoutGreeter = try await source.rebuildRegistry()
+            // The second stage re-schemas the counter, and the third removes the
+            // greeter.
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            try await Self.waitUntilCatalog(
+                of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: false)
+            let withoutGreeter = try await source.rebuildRegistry()
 
-        #expect(Self.paths(of: withoutGreeter) == [Self.counterPath])
-        #expect(withoutGreeter.tools[Self.greeterPath] == nil)
-        // The earlier value still holds the verb: nothing changed in place.
-        #expect(withGreeter.tools[Self.greeterPath] != nil)
+            #expect(Self.paths(of: withoutGreeter) == [Self.counterPath])
+            #expect(withoutGreeter.tools[Self.greeterPath] == nil)
+            // The earlier value still holds the verb: nothing changed in place.
+            #expect(withGreeter.tools[Self.greeterPath] != nil)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -227,45 +231,49 @@ struct RegistryRebuildTests {
     @Test("a rebuild whose server now publishes one verb two times throws MultiToolBuilderError, and the caller keeps the old registry")
     func rebuildThatCollidesThrowsAndKeepsTheOldRegistry() async throws {
         let (scripted, server) = try await Self.connectedEchoServer()
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
-        let first = try builder.buildRegistry()
-        let source = builder.registrySource
+        try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let first = try builder.buildRegistry()
+            let source = builder.registrySource
 
-        // The scripted server appends without a name check, so a second echo
-        // tool makes `tools/list` publish the echo verb two times — two tools
-        // at one path, which is the `.duplicateName` collision of the build.
-        await scripted.addTool(ScriptedServer.echoTool())
-        try await scripted.emitToolListChangedBurst(count: Self.oneNotification)
-        try await Self.waitUntilCatalog(of: server) { snapshot in
-            snapshot.tools.count == Self.echoToolCountAfterDuplicate
-        }
+            // The scripted server appends without a name check, so a second echo
+            // tool makes `tools/list` publish the echo verb two times — two tools
+            // at one path, which is the `.duplicateName` collision of the build.
+            await scripted.addTool(ScriptedServer.echoTool())
+            try await scripted.emitToolListChangedBurst(count: Self.oneNotification)
+            try await Self.waitUntilCatalog(of: server) { snapshot in
+                snapshot.tools.count == Self.echoToolCountAfterDuplicate
+            }
 
-        await #expect {
-            try await source.rebuildRegistry()
-        } throws: { error in
-            guard let builderError = error as? MultiToolBuilderError else { return false }
-            return builderError.kind == .duplicateName && builderError.name == ScriptedServer.echoToolName
+            await #expect {
+                try await source.rebuildRegistry()
+            } throws: { error in
+                guard let builderError = error as? MultiToolBuilderError else { return false }
+                return builderError.kind == .duplicateName && builderError.name == ScriptedServer.echoToolName
+            }
+            #expect(Self.paths(of: first) == [Self.echoPath])
         }
-        #expect(Self.paths(of: first) == [Self.echoPath])
         withExtendedLifetime(scripted) {}
     }
 
     @Test("a rebuild whose server now publishes an illegal verb throws, and the caller keeps the old registry")
     func rebuildWithAnIllegalVerbThrowsAndKeepsTheOldRegistry() async throws {
         let (scripted, server) = try await Self.connectedEchoServer()
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
-        let first = try builder.buildRegistry()
-        let source = builder.registrySource
+        try await MCPTestSupport.withConnection(of: server) {
+            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let first = try builder.buildRegistry()
+            let source = builder.registrySource
 
-        try await Self.publish(
-            ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted, seenBy: server)
+            try await Self.publish(
+                ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted, seenBy: server)
 
-        // The verb fails the renderer's own identifier check, which the build
-        // propagates unchanged — the posture `buildRegistry()` documents.
-        await #expect(throws: ToolAPIRendererError.self) {
-            try await source.rebuildRegistry()
+            // The verb fails the renderer's own identifier check, which the build
+            // propagates unchanged — the posture `buildRegistry()` documents.
+            await #expect(throws: ToolAPIRendererError.self) {
+                try await source.rebuildRegistry()
+            }
+            #expect(Self.paths(of: first) == [Self.echoPath])
         }
-        #expect(Self.paths(of: first) == [Self.echoPath])
         withExtendedLifetime(scripted) {}
     }
 
@@ -274,30 +282,32 @@ struct RegistryRebuildTests {
     @Test("the shell and files verbs are the same instances across a rebuild")
     func shellAndFilesVerbsHoldTheirInstancesAcrossARebuild() async throws {
         let (scripted, server) = try await Self.connectedEchoServer()
-        let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let storeDirectory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let builder = try await MultiTool.Builder()
-            .withShell(storeDirectory: storeDirectory)
-            .withFiles(root: root)
-            .withMCP(servers: [server])
-        let first = try builder.buildRegistry()
+        try await MCPTestSupport.withConnection(of: server) {
+            let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+            let storeDirectory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+            let builder = try await MultiTool.Builder()
+                .withShell(storeDirectory: storeDirectory)
+                .withFiles(root: root)
+                .withMCP(servers: [server])
+            let first = try builder.buildRegistry()
 
-        let rebuilt = try await builder.rebuildRegistry()
+            let rebuilt = try await builder.rebuildRegistry()
 
-        let firstGetLines = try #require(first.tools[Self.shellGetLinesPath] as? GetLines)
-        let rebuiltGetLines = try #require(rebuilt.tools[Self.shellGetLinesPath] as? GetLines)
-        #expect(firstGetLines.state === rebuiltGetLines.state)
+            let firstGetLines = try #require(first.tools[Self.shellGetLinesPath] as? GetLines)
+            let rebuiltGetLines = try #require(rebuilt.tools[Self.shellGetLinesPath] as? GetLines)
+            #expect(firstGetLines.state === rebuiltGetLines.state)
 
-        let firstRead = try #require(first.tools[Self.filesReadPath] as? Read)
-        let rebuiltRead = try #require(rebuilt.tools[Self.filesReadPath] as? Read)
-        #expect(firstRead.context === rebuiltRead.context)
+            let firstRead = try #require(first.tools[Self.filesReadPath] as? Read)
+            let rebuiltRead = try #require(rebuilt.tools[Self.filesReadPath] as? Read)
+            #expect(firstRead.context === rebuiltRead.context)
 
-        // The MCP verb is a new instance over the same server: the catalog
-        // was read again.
-        let firstEcho = try #require(first.tools[Self.echoPath] as? MCPTool)
-        let rebuiltEcho = try #require(rebuilt.tools[Self.echoPath] as? MCPTool)
-        #expect(firstEcho.server === rebuiltEcho.server)
-        #expect(Self.paths(of: rebuilt) == Self.paths(of: first))
+            // The MCP verb is a new instance over the same server: the catalog
+            // was read again.
+            let firstEcho = try #require(first.tools[Self.echoPath] as? MCPTool)
+            let rebuiltEcho = try #require(rebuilt.tools[Self.echoPath] as? MCPTool)
+            #expect(firstEcho.server === rebuiltEcho.server)
+            #expect(Self.paths(of: rebuilt) == Self.paths(of: first))
+        }
         withExtendedLifetime(scripted) {}
     }
 }

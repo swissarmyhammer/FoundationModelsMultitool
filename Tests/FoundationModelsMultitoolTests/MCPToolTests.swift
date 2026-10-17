@@ -263,11 +263,13 @@ struct MCPToolTests {
         let recorder = ArgumentRecorder()
         let (scripted, server) = try await Self.connected(
             serving: [Self.recordingTool(inputSchema: Self.anyObjectSchema, into: recorder)])
-        let tool = try await Self.tool(named: Self.recordingToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.recordingToolName, on: server)
 
-        _ = try await tool.call(arguments: Self.echoArguments)
+            _ = try await tool.call(arguments: Self.echoArguments)
 
-        #expect(recorder.received == [[ScriptedServer.echoTextArgument: .string(Self.echoText)]])
+            #expect(recorder.received == [[ScriptedServer.echoTextArgument: .string(Self.echoText)]])
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -276,23 +278,25 @@ struct MCPToolTests {
         let recorder = ArgumentRecorder()
         let (scripted, server) = try await Self.connected(
             serving: [Self.recordingTool(inputSchema: Self.anyObjectSchema, into: recorder)])
-        let tool = try await Self.tool(named: Self.recordingToolName, on: server)
-        let inner = GeneratedContent(properties: [Self.cityArgument: Self.cityText])
-        let arguments = GeneratedContent(
-            properties: [
-                Self.addressArgument: inner,
-                Self.tagsArgument: Self.tagTexts,
-            ] as KeyValuePairs<String, any ConvertibleToGeneratedContent>)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.recordingToolName, on: server)
+            let inner = GeneratedContent(properties: [Self.cityArgument: Self.cityText])
+            let arguments = GeneratedContent(
+                properties: [
+                    Self.addressArgument: inner,
+                    Self.tagsArgument: Self.tagTexts,
+                ] as KeyValuePairs<String, any ConvertibleToGeneratedContent>)
 
-        _ = try await tool.call(arguments: arguments)
+            _ = try await tool.call(arguments: arguments)
 
-        #expect(
-            recorder.received == [
-                [
-                    Self.addressArgument: .object([Self.cityArgument: .string(Self.cityText)]),
-                    Self.tagsArgument: .array(Self.tagTexts.map(Value.string)),
-                ]
-            ])
+            #expect(
+                recorder.received == [
+                    [
+                        Self.addressArgument: .object([Self.cityArgument: .string(Self.cityText)]),
+                        Self.tagsArgument: .array(Self.tagTexts.map(Value.string)),
+                    ]
+                ])
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -301,35 +305,41 @@ struct MCPToolTests {
     @Test("call(arguments:) renders a successful result for the model")
     func rendersSuccessResult() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
 
-        let output = try await tool.call(arguments: Self.echoArguments)
+            let output = try await tool.call(arguments: Self.echoArguments)
 
-        #expect(output == Self.echoText)
+            #expect(output == Self.echoText)
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("call(arguments:) renders an isError result as model-consumable text, never throwing")
     func rendersIsErrorResultWithoutThrowing() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.failingTool])
-        let tool = try await Self.tool(named: Self.failingToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.failingToolName, on: server)
 
-        let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
+            let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
 
-        #expect(output.contains(Self.renderedErrorHeading))
-        #expect(output.contains(Self.failingToolText))
+            #expect(output.contains(Self.renderedErrorHeading))
+            #expect(output.contains(Self.failingToolText))
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("call(arguments:) renders structuredContent alongside content")
     func rendersStructuredContentAlongsideContent() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.structuredTool])
-        let tool = try await Self.tool(named: Self.structuredToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.structuredToolName, on: server)
 
-        let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
+            let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
 
-        #expect(output.contains(Self.structuredToolText))
-        #expect(output.contains(String(Self.answerValue)))
+            #expect(output.contains(Self.structuredToolText))
+            #expect(output.contains(String(Self.answerValue)))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -340,11 +350,13 @@ struct MCPToolTests {
         let (scripted, server) = try await Self.connected(
             serving: [ScriptedServer.echoTool()],
             renderBudget: .limited(characters: Self.tightBudgetCharacters))
-        let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
 
-        let output = try await tool.call(arguments: Self.oversizedEchoArguments)
+            let output = try await tool.call(arguments: Self.oversizedEchoArguments)
 
-        #expect(output.contains(Self.elisionMarkerPrefix), "output was: \(output)")
+            #expect(output.contains(Self.elisionMarkerPrefix), "output was: \(output)")
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -353,12 +365,14 @@ struct MCPToolTests {
         let (scripted, server) = try await Self.connected(
             serving: [ScriptedServer.echoTool()],
             renderBudget: .limited(characters: Self.tightBudgetCharacters))
-        let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
-            .rendering(withBudget: .unlimited)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+                .rendering(withBudget: .unlimited)
 
-        let output = try await tool.call(arguments: Self.oversizedEchoArguments)
+            let output = try await tool.call(arguments: Self.oversizedEchoArguments)
 
-        #expect(output == String(repeating: Self.oversizedTextUnit, count: Self.oversizedTextCount))
+            #expect(output == String(repeating: Self.oversizedTextUnit, count: Self.oversizedTextCount))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -367,10 +381,12 @@ struct MCPToolTests {
     @Test("call(arguments:) rethrows the JSON-RPC error the server answered, unchanged")
     func propagatesServerError() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.throwingTool])
-        let tool = try await Self.tool(named: Self.throwingToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.throwingToolName, on: server)
 
-        await #expect(throws: MCPError.self) {
-            _ = try await tool.call(arguments: GeneratedContent(properties: [:]))
+            await #expect(throws: MCPError.self) {
+                _ = try await tool.call(arguments: GeneratedContent(properties: [:]))
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -384,55 +400,62 @@ struct MCPToolTests {
                 Self.answeringTool(
                     named: Self.searchToolName, with: CallTool.Result(content: []))
             ])
-        let discovered = try #require(await server.tool(named: Self.searchToolName))
-        let sourceTool = MCP.Tool(
-            name: Self.searchToolName, title: Self.searchTitle, description: Self.searchDescription,
-            inputSchema: Self.anyObjectSchema)
-        let entry = try MCPCatalogEntry(tool: sourceTool)
-        let tool = MCPTool(entry: entry, server: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let discovered = try #require(await server.tool(named: Self.searchToolName))
+            let sourceTool = MCP.Tool(
+                name: Self.searchToolName, title: Self.searchTitle, description: Self.searchDescription,
+                inputSchema: Self.anyObjectSchema)
+            let entry = try MCPCatalogEntry(tool: sourceTool)
+            let tool = MCPTool(entry: entry, server: server)
 
-        #expect(tool.name == Self.searchToolName)
-        #expect(tool.description == Self.searchDescription)
-        #expect(tool.entry.title == Self.searchTitle)
-        #expect(tool.entry.inputSchema == Self.anyObjectSchema)
-        #expect(discovered.name == tool.name)
+            #expect(tool.name == Self.searchToolName)
+            #expect(tool.description == Self.searchDescription)
+            #expect(tool.entry.title == Self.searchTitle)
+            #expect(tool.entry.inputSchema == Self.anyObjectSchema)
+            #expect(discovered.name == tool.name)
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("description falls back to an empty string when the server declared none")
     func descriptionFallsBackToEmptyStringWhenAbsent() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        let sourceTool = MCP.Tool(
-            name: Self.searchToolName, description: nil, inputSchema: Self.anyObjectSchema)
-        let entry = try MCPCatalogEntry(tool: sourceTool)
+        try await MCPTestSupport.withConnection(of: server) {
+            let sourceTool = MCP.Tool(
+                name: Self.searchToolName, description: nil, inputSchema: Self.anyObjectSchema)
+            let entry = try MCPCatalogEntry(tool: sourceTool)
 
-        let tool = MCPTool(entry: entry, server: server)
+            let tool = MCPTool(entry: entry, server: server)
 
-        #expect(tool.description.isEmpty)
+            #expect(tool.description.isEmpty)
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("includesSchemaInInstructions is always true")
     func includesSchemaInInstructionsIsAlwaysTrue() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
 
-        let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
-
-        #expect(tool.includesSchemaInInstructions)
+            #expect(tool.includesSchemaInInstructions)
+        }
         withExtendedLifetime(scripted) {}
     }
 
     @Test("parameters is the converted schema of the catalog entry")
     func parametersIsTheConvertedSchemaOfTheEntry() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        let entry = try #require(await server.tool(named: ScriptedServer.echoToolName))
+        try await MCPTestSupport.withConnection(of: server) {
+            let entry = try #require(await server.tool(named: ScriptedServer.echoToolName))
 
-        let tool = MCPTool(entry: entry, server: server)
+            let tool = MCPTool(entry: entry, server: server)
 
-        // `GenerationSchema` has no public equality; the sorted-key JSON it
-        // encodes to is the strongest comparison available, and it is what
-        // `ToolAPIRenderer` reads.
-        #expect(try Self.canonicalJSON(of: tool.parameters) == Self.canonicalJSON(of: entry.parameters))
+            // `GenerationSchema` has no public equality; the sorted-key JSON it
+            // encodes to is the strongest comparison available, and it is what
+            // `ToolAPIRenderer` reads.
+            #expect(try Self.canonicalJSON(of: tool.parameters) == Self.canonicalJSON(of: entry.parameters))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -441,10 +464,11 @@ struct MCPToolTests {
     @Test("MCPTool does not conform to BackgroundTool")
     func doesNotConformToBackgroundTool() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
 
-        let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
-
-        #expect(!((tool as Any) is any BackgroundTool))
+            #expect(!((tool as Any) is any BackgroundTool))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -458,17 +482,19 @@ struct MCPToolTests {
     @Test("with no ToolContext bound, call(arguments:) returns the rendered result while the server sends progress")
     func callsWithNoAmbientContext() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await scripted.addProgressReportingTool(
-            named: Self.progressToolName, totalSteps: Self.progressSteps)
-        let entry = try MCPCatalogEntry(
-            tool: MCP.Tool(
-                name: Self.progressToolName, description: nil, inputSchema: Self.anyObjectSchema))
-        let tool = MCPTool(entry: entry, server: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            await scripted.addProgressReportingTool(
+                named: Self.progressToolName, totalSteps: Self.progressSteps)
+            let entry = try MCPCatalogEntry(
+                tool: MCP.Tool(
+                    name: Self.progressToolName, description: nil, inputSchema: Self.anyObjectSchema))
+            let tool = MCPTool(entry: entry, server: server)
 
-        let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
+            let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
 
-        #expect(ToolContext.current == nil)
-        #expect(output == ScriptedServer.progressToolCompletionText)
+            #expect(ToolContext.current == nil)
+            #expect(output == ScriptedServer.progressToolCompletionText)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -481,15 +507,17 @@ struct MCPToolTests {
     func illegalNameFailsAtBuildRegistry() async throws {
         let (scripted, server) = try await Self.connected(
             serving: [ScriptedServer.echoTool(named: Self.illegalToolName)])
-        let tool = try await Self.tool(named: Self.illegalToolName, on: server)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.illegalToolName, on: server)
 
-        #expect(tool.name == Self.illegalToolName)
-        #expect {
-            try MultiTool.Builder()
-                .addTool(tool)
-                .buildRegistry()
-        } throws: { error in
-            error is ToolAPIRendererError
+            #expect(tool.name == Self.illegalToolName)
+            #expect {
+                try MultiTool.Builder()
+                    .addTool(tool)
+                    .buildRegistry()
+            } throws: { error in
+                error is ToolAPIRendererError
+            }
         }
         withExtendedLifetime(scripted) {}
     }

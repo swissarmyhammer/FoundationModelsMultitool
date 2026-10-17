@@ -168,36 +168,40 @@ struct MCPTracePropagationTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker, Self.resultMarker]) { context in
             let (server, wire) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, logger: context.logger)
-            let result = try await context.tracer.withSpan(Self.parentSpanName) { _ in
-                try await server.call(name: Self.echoToolName, arguments: Self.arguments)
+            try await MCPTestSupport.withConnection(of: server) {
+                let result = try await context.tracer.withSpan(Self.parentSpanName) { _ in
+                    try await server.call(name: Self.echoToolName, arguments: Self.arguments)
+                }
+
+                let parent = try #require(context.spans.first { $0.operationName == Self.parentSpanName })
+                let clients = Self.clientSpans(in: context)
+                #expect(clients.count == 1)
+                let client = try #require(clients.first)
+                #expect(client.kind == .client)
+                #expect(client.parentSpanID == parent.spanID)
+                #expect(client.traceID == parent.traceID)
+
+                let callMetas = await wire.sentMetas.filter { $0.method == CallTool.name }
+                #expect(callMetas.count == 1)
+                let meta = try #require(callMetas.first)
+                let traceparent = try #require(meta.fields[SpanIdentity.traceparentField])
+                #expect(traceparent.hasPrefix(Self.traceparentVersionPrefix))
+                let identity = try #require(SpanIdentity(traceparent: traceparent))
+                #expect(identity.traceID == client.traceID)
+                #expect(identity.spanID == client.spanID)
+                let progressToken = try #require(meta.fields[Self.progressTokenKey])
+
+                #expect(Self.attribute(.serverName, of: client) == .string(Self.serverName))
+                #expect(Self.attribute(.toolName, of: client) == .string(Self.echoToolName))
+                #expect(Self.attribute(.requestID, of: client) == .string(progressToken))
+                #expect(
+                    Self.attribute(.outcome, of: client)
+                        == .string(MultitoolTelemetry.OutcomeValue.succeeded.rawValue))
+                #expect(Self.attribute(.contentCount, of: client) == .int64(1))
+                let encodedContent = try JSONEncoder().encode(result.content)
+                #expect(Self.attribute(.contentBytes, of: client) == .int64(Int64(encodedContent.count)))
+                #expect(client.status?.code != .error)
             }
-
-            let parent = try #require(context.spans.first { $0.operationName == Self.parentSpanName })
-            let clients = Self.clientSpans(in: context)
-            #expect(clients.count == 1)
-            let client = try #require(clients.first)
-            #expect(client.kind == .client)
-            #expect(client.parentSpanID == parent.spanID)
-            #expect(client.traceID == parent.traceID)
-
-            let callMetas = await wire.sentMetas.filter { $0.method == CallTool.name }
-            #expect(callMetas.count == 1)
-            let meta = try #require(callMetas.first)
-            let traceparent = try #require(meta.fields[SpanIdentity.traceparentField])
-            #expect(traceparent.hasPrefix(Self.traceparentVersionPrefix))
-            let identity = try #require(SpanIdentity(traceparent: traceparent))
-            #expect(identity.traceID == client.traceID)
-            #expect(identity.spanID == client.spanID)
-            let progressToken = try #require(meta.fields[Self.progressTokenKey])
-
-            #expect(Self.attribute(.serverName, of: client) == .string(Self.serverName))
-            #expect(Self.attribute(.toolName, of: client) == .string(Self.echoToolName))
-            #expect(Self.attribute(.requestID, of: client) == .string(progressToken))
-            #expect(Self.attribute(.outcome, of: client) == .string(MultitoolTelemetry.OutcomeValue.succeeded.rawValue))
-            #expect(Self.attribute(.contentCount, of: client) == .int64(1))
-            let encodedContent = try JSONEncoder().encode(result.content)
-            #expect(Self.attribute(.contentBytes, of: client) == .int64(Int64(encodedContent.count)))
-            #expect(client.status?.code != .error)
         }
     }
 
@@ -207,17 +211,19 @@ struct MCPTracePropagationTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker, Self.resultMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, logger: context.logger)
-            _ = try await server.call(name: Self.echoToolName, arguments: Self.arguments)
+            try await MCPTestSupport.withConnection(of: server) {
+                _ = try await server.call(name: Self.echoToolName, arguments: Self.arguments)
 
-            let client = try #require(Self.clientSpans(in: context).first)
-            let enters = LogReadback.enterRecords(.mcpClientCall, in: context)
-            #expect(enters.count == 1)
-            let enter = try #require(enters.first)
-            #expect(enter.label == LogReadback.captureLoggerLabel)
-            #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.serverName) == Self.serverName)
-            #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.toolName) == Self.echoToolName)
-            #expect(enter.metadata[LogReadback.traceIDKey] == "\(client.traceID)")
-            #expect(enter.metadata[LogReadback.spanIDKey] == "\(client.spanID)")
+                let client = try #require(Self.clientSpans(in: context).first)
+                let enters = LogReadback.enterRecords(.mcpClientCall, in: context)
+                #expect(enters.count == 1)
+                let enter = try #require(enters.first)
+                #expect(enter.label == LogReadback.captureLoggerLabel)
+                #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.serverName) == Self.serverName)
+                #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.toolName) == Self.echoToolName)
+                #expect(enter.metadata[LogReadback.traceIDKey] == "\(client.traceID)")
+                #expect(enter.metadata[LogReadback.spanIDKey] == "\(client.spanID)")
+            }
         }
     }
 
@@ -231,12 +237,14 @@ struct MCPTracePropagationTests {
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger,
                 callTimeoutClock: clock)
-            let result = try await server.call(name: Self.hangingToolName, arguments: Self.arguments)
-            #expect(result.isError == true)
-            #expect(clock.recordedSleeps == [Self.shortCallTimeout])
+            try await MCPTestSupport.withConnection(of: server) {
+                let result = try await server.call(name: Self.hangingToolName, arguments: Self.arguments)
+                #expect(result.isError == true)
+                #expect(clock.recordedSleeps == [Self.shortCallTimeout])
 
-            let client = try #require(Self.clientSpans(in: context).first)
-            Self.expectFailure(of: client, outcome: .timedOut, errorKind: .timeout)
+                let client = try #require(Self.clientSpans(in: context).first)
+                Self.expectFailure(of: client, outcome: .timedOut, errorKind: .timeout)
+            }
         }
     }
 
@@ -248,12 +256,14 @@ struct MCPTracePropagationTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker, Self.resultMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, logger: context.logger)
-            let result = try await server.call(name: Self.failingToolName, arguments: Self.arguments)
-            #expect(result.isError == true)
+            try await MCPTestSupport.withConnection(of: server) {
+                let result = try await server.call(name: Self.failingToolName, arguments: Self.arguments)
+                #expect(result.isError == true)
 
-            let client = try #require(Self.clientSpans(in: context).first)
-            Self.expectFailure(of: client, outcome: .failed, errorKind: .isError)
-            #expect(Self.attribute(.contentCount, of: client) == .int64(1))
+                let client = try #require(Self.clientSpans(in: context).first)
+                Self.expectFailure(of: client, outcome: .failed, errorKind: .isError)
+                #expect(Self.attribute(.contentCount, of: client) == .int64(1))
+            }
         }
     }
 
@@ -268,16 +278,18 @@ struct MCPTracePropagationTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
-            let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-            try await handlerRan.wait()
-            await respawning.disconnect()
-            await #expect(throws: MCPServerError.self) {
-                _ = try await call.value
-            }
+            try await MCPTestSupport.withConnection(of: server) {
+                let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
+                try await handlerRan.wait()
+                await respawning.disconnect()
+                await #expect(throws: MCPServerError.self) {
+                    _ = try await call.value
+                }
 
-            let client = try #require(Self.clientSpans(in: context).first)
-            Self.expectOneEvent(on: client, named: .mcpTransportDropped)
-            Self.expectFailure(of: client, outcome: .threw, errorKind: .transport)
+                let client = try #require(Self.clientSpans(in: context).first)
+                Self.expectOneEvent(on: client, named: .mcpTransportDropped)
+                Self.expectFailure(of: client, outcome: .threw, errorKind: .transport)
+            }
         }
     }
 
@@ -290,16 +302,18 @@ struct MCPTracePropagationTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
-            let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
-            try await handlerRan.wait()
-            try await server.reconnect()
-            await #expect(throws: (any Error).self) {
-                _ = try await call.value
-            }
+            try await MCPTestSupport.withConnection(of: server) {
+                let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
+                try await handlerRan.wait()
+                try await server.reconnect()
+                await #expect(throws: (any Error).self) {
+                    _ = try await call.value
+                }
 
-            let client = try #require(Self.clientSpans(in: context).first)
-            Self.expectOneEvent(on: client, named: .mcpReconnectStarted)
-            #expect(client.status?.code == .error)
+                let client = try #require(Self.clientSpans(in: context).first)
+                Self.expectOneEvent(on: client, named: .mcpReconnectStarted)
+                #expect(client.status?.code == .error)
+            }
         }
     }
 }

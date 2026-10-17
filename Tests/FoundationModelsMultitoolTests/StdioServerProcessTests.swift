@@ -262,13 +262,14 @@ struct StdioServerProcessTests {
     @Test("respawn vends a transport whose logger has the label of the library")
     func respawnVendsATransportWithTheLibraryLogger() async throws {
         let stdio = try makeHeldChild(named: "logger-label-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            let transport = try await stdio.respawn()
+            let label = await transport.logger.label
 
-        let transport = try await stdio.respawn()
-        let label = await transport.logger.label
-
-        #expect(label == MultitoolTelemetry.logLabel)
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
+            #expect(label == MultitoolTelemetry.logLabel)
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
     }
 
     // MARK: - A failed spawn attempt does not leak the pipe fds it created
@@ -370,20 +371,22 @@ struct StdioServerProcessTests {
 
     @Test func respawnSpawnsInItsOwnProcessGroupAndRegistersThePid() async throws {
         let stdio = try makeHeldChild(named: "own-group-test")
-        _ = try await stdio.respawn()
+        try await ensuring({ await stdio.shutdown() }) {
+            _ = try await stdio.respawn()
 
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
+            // Alive, and its own process-group leader (pgid == pid) — the shape
+            // every group-kill in this suite depends on.
+            #expect(Self.isAlive(pid))
+            #expect(getpgid(pid) == pid)
+            #expect(Self.sharedRegistry.registeredPids.contains(pid))
+
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
         }
-        // Alive, and its own process-group leader (pgid == pid) — the shape
-        // every group-kill in this suite depends on.
-        #expect(Self.isAlive(pid))
-        #expect(getpgid(pid) == pid)
-        #expect(Self.sharedRegistry.registeredPids.contains(pid))
-
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
     }
 
     /// The public initializer registers into `ProcessRegistry.global`, thus
@@ -392,18 +395,20 @@ struct StdioServerProcessTests {
     @Test func publicInitRegistersIntoTheGlobalRegistryWhileTheProcessRuns() async throws {
         let stdio = try StdioServerProcess(
             command: Self.holdCommand, args: holdArguments, name: "global-registry-test")
-        _ = try await stdio.respawn()
+        try await ensuring({ await stdio.shutdown() }) {
+            _ = try await stdio.respawn()
 
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
+            #expect(ProcessRegistry.global.registeredPids.contains(pid))
+
+            await stdio.shutdown()
+
+            #expect(!ProcessRegistry.global.registeredPids.contains(pid))
+            #expect(Self.isGone(pid))
         }
-        #expect(ProcessRegistry.global.registeredPids.contains(pid))
-
-        await stdio.shutdown()
-
-        #expect(!ProcessRegistry.global.registeredPids.contains(pid))
-        #expect(Self.isGone(pid))
     }
 
     // MARK: - respawn() vends a working transport: a real handshake and tool call
@@ -414,19 +419,21 @@ struct StdioServerProcessTests {
     /// raw bytes through a pipe pair.
     @Test func respawnVendsAWorkingTransportThatCompletesAnMCPHandshakeAndToolCall() async throws {
         let stdio = try Self.makeTestServer(mode: .echo, named: "handshake-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            let (client, initialized) = try await Self.connectClient(
+                to: stdio, clientName: "StdioServerProcessTestClient")
+            try await MCPTestSupport.withConnection(of: client) {
+                #expect(initialized.serverInfo.name == Self.testServerReportedName)
 
-        let (client, initialized) = try await Self.connectClient(to: stdio, clientName: "StdioServerProcessTestClient")
-        #expect(initialized.serverInfo.name == Self.testServerReportedName)
-
-        let (content, isError) = try await client.callTool(
-            name: ScriptedServer.echoToolName,
-            arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
-        #expect(isError != true)
-        #expect(content == [.text(text: Self.echoedText, annotations: nil, _meta: nil)])
-
-        await client.disconnect()
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
+                let (content, isError) = try await client.callTool(
+                    name: ScriptedServer.echoToolName,
+                    arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
+                #expect(isError != true)
+                #expect(content == [.text(text: Self.echoedText, annotations: nil, _meta: nil)])
+            }
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
     }
 
     // MARK: - Killing the child externally surfaces as a thrown error, never a signal
@@ -446,31 +453,38 @@ struct StdioServerProcessTests {
     /// stands in `killingTheChildExternallyIsHealedByAReconnectThroughRespawn`.
     @Test func killingTheChildExternallySurfacesAsAThrownErrorAndNotASignal() async throws {
         let stdio = try Self.makeTestServer(mode: .echo, named: "external-kill-test")
-        let (client, _) = try await Self.connectClient(to: stdio, clientName: "ExternalKillTestClient")
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+        try await ensuring({ await stdio.shutdown() }) {
+            let (client, _) = try await Self.connectClient(to: stdio, clientName: "ExternalKillTestClient")
+            // The teardown below disconnects the client before the shutdown,
+            // and the check after the shutdown reads that order. Thus the
+            // explicit disconnect stays in the body.
+            try await MCPTestSupport.withConnection(of: client) {
+                guard let pid = stdio.currentPid else {
+                    Issue.record("expected respawn() to record a pid")
+                    return
+                }
+
+                // A real, unscripted death. The test waits until the child is a
+                // zombie, thus the fds of the child are closed before the call below
+                // writes to them. It does NOT reap the child: the product owns the
+                // reap. When the test reaped, the teardown below (`disconnect()`,
+                // `shutdown()`) sent `killpg` and `waitpid` to a pid that the kernel
+                // could already give to an unrelated process.
+                kill(pid, SIGKILL)
+                await Self.waitUntilZombie(pid)
+
+                await #expect(throws: (any Error).self) {
+                    _ = try await client.callTool(
+                        name: ScriptedServer.echoToolName,
+                        arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
+                }
+
+                await client.disconnect()
+                await stdio.shutdown()
+                #expect(Self.isGone(pid))
+                Self.confirmNoLeaks()
+            }
         }
-
-        // A real, unscripted death. The test waits until the child is a
-        // zombie, thus the fds of the child are closed before the call below
-        // writes to them. It does NOT reap the child: the product owns the
-        // reap. When the test reaped, the teardown below (`disconnect()`,
-        // `shutdown()`) sent `killpg` and `waitpid` to a pid that the kernel
-        // could already give to an unrelated process.
-        kill(pid, SIGKILL)
-        await Self.waitUntilZombie(pid)
-
-        await #expect(throws: (any Error).self) {
-            _ = try await client.callTool(
-                name: ScriptedServer.echoToolName,
-                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
-        }
-
-        await client.disconnect()
-        await stdio.shutdown()
-        #expect(Self.isGone(pid))
-        Self.confirmNoLeaks()
     }
 
     // MARK: - The request pipe of the child raises no SIGPIPE
@@ -484,13 +498,15 @@ struct StdioServerProcessTests {
     /// while other tests run.
     @Test func theRequestPipeOfTheChildRaisesNoSIGPIPE() async throws {
         let stdio = try makeHeldChild(named: "no-sigpipe-test")
-        let transport = try await stdio.respawn()
-        let vended = try #require(transport as? StdioServerTransport)
+        try await ensuring({ await stdio.shutdown() }) {
+            let transport = try await stdio.respawn()
+            let vended = try #require(transport as? StdioServerTransport)
 
-        #expect(fcntl(vended.requestDescriptor.rawValue, F_GETNOSIGPIPE) == Self.flagIsSet)
+            #expect(fcntl(vended.requestDescriptor.rawValue, F_GETNOSIGPIPE) == Self.flagIsSet)
 
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
     }
 
     // MARK: - An external kill is healed by a reconnect through a fresh spawn
@@ -501,34 +517,41 @@ struct StdioServerProcessTests {
     /// pid is a new one.
     @Test func killingTheChildExternallyIsHealedByAReconnectThroughRespawn() async throws {
         let stdio = try Self.makeTestServer(mode: .echo, named: "external-kill-reconnect-test")
-        let server = try await Self.connectServer(through: stdio, named: "external-kill-reconnect-test")
-        #expect(await server.state == .ready)
-        guard let firstPid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+        try await ensuring({ await stdio.shutdown() }) {
+            let server = try await Self.connectServer(through: stdio, named: "external-kill-reconnect-test")
+            // The teardown below disconnects the server before the shutdown,
+            // and the check after the shutdown reads that order. Thus the
+            // explicit disconnect stays in the body.
+            try await MCPTestSupport.withConnection(of: server) {
+                #expect(await server.state == .ready)
+                guard let firstPid = stdio.currentPid else {
+                    Issue.record("expected respawn() to record a pid")
+                    return
+                }
+
+                // The test waits until the child is a zombie and does NOT reap it:
+                // the teardown of `respawn()` reaps it. When the test reaped, that
+                // teardown sent `killpg` and `waitpid` to a pid that the kernel could
+                // already give to an unrelated process.
+                kill(firstPid, SIGKILL)
+                await Self.waitUntilZombie(firstPid)
+
+                try await server.reconnect()
+
+                #expect(await server.state == .ready)
+                guard let secondPid = stdio.currentPid else {
+                    Issue.record("expected the reconnect to have spawned a fresh process")
+                    return
+                }
+                #expect(secondPid != firstPid)
+                #expect(Self.isAlive(secondPid))
+
+                await server.disconnect()
+                await stdio.shutdown()
+                #expect(Self.isGone(secondPid))
+                Self.confirmNoLeaks()
+            }
         }
-
-        // The test waits until the child is a zombie and does NOT reap it:
-        // the teardown of `respawn()` reaps it. When the test reaped, that
-        // teardown sent `killpg` and `waitpid` to a pid that the kernel could
-        // already give to an unrelated process.
-        kill(firstPid, SIGKILL)
-        await Self.waitUntilZombie(firstPid)
-
-        try await server.reconnect()
-
-        #expect(await server.state == .ready)
-        guard let secondPid = stdio.currentPid else {
-            Issue.record("expected the reconnect to have spawned a fresh process")
-            return
-        }
-        #expect(secondPid != firstPid)
-        #expect(Self.isAlive(secondPid))
-
-        await server.disconnect()
-        await stdio.shutdown()
-        #expect(Self.isGone(secondPid))
-        Self.confirmNoLeaks()
     }
 
     // MARK: - name flows into ServerIdentity
@@ -536,58 +559,62 @@ struct StdioServerProcessTests {
     @Test func nameFlowsIntoServerIdentityOnceConnected() async throws {
         let serverName = "stdio-server-process-identity-test"
         let stdio = try Self.makeTestServer(mode: .echo, named: serverName)
-
-        let server = try await Self.connectServer(through: stdio, named: serverName)
-
-        #expect(await server.identity == ServerIdentity(name: serverName))
-
-        await server.disconnect()
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
+        try await ensuring({ await stdio.shutdown() }) {
+            let server = try await Self.connectServer(through: stdio, named: serverName)
+            try await MCPTestSupport.withConnection(of: server) {
+                #expect(await server.identity == ServerIdentity(name: serverName))
+            }
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
     }
 
     // MARK: - Explicit shutdown group-kills and reaps, asserted by pid
 
     @Test func shutdownGroupKillsAndReapsAssertedByPid() async throws {
         let stdio = try makeHeldChild(named: "shutdown-test")
-        _ = try await stdio.respawn()
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+        try await ensuring({ await stdio.shutdown() }) {
+            _ = try await stdio.respawn()
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
+            #expect(Self.isAlive(pid))
+
+            await stdio.shutdown()
+
+            #expect(Self.isGone(pid))
+            #expect(!Self.sharedRegistry.registeredPids.contains(pid))
+            Self.confirmNoLeaks()
         }
-        #expect(Self.isAlive(pid))
-
-        await stdio.shutdown()
-
-        #expect(Self.isGone(pid))
-        #expect(!Self.sharedRegistry.registeredPids.contains(pid))
-        Self.confirmNoLeaks()
     }
 
     // MARK: - respawn() tears down whatever it was fronting before spawning fresh
 
     @Test func respawnTerminatesAndReapsThePreviousProcessBeforeSpawningAFreshOne() async throws {
         let stdio = try makeHeldChild(named: "respawn-test")
-        _ = try await stdio.respawn()
-        guard let firstPid = stdio.currentPid else {
-            Issue.record("expected first respawn() to record a pid")
-            return
-        }
-        #expect(Self.isAlive(firstPid))
+        try await ensuring({ await stdio.shutdown() }) {
+            _ = try await stdio.respawn()
+            guard let firstPid = stdio.currentPid else {
+                Issue.record("expected first respawn() to record a pid")
+                return
+            }
+            #expect(Self.isAlive(firstPid))
 
-        _ = try await stdio.respawn()
-        guard let secondPid = stdio.currentPid else {
-            Issue.record("expected second respawn() to record a pid")
-            return
-        }
-        #expect(secondPid != firstPid)
-        #expect(Self.isGone(firstPid))
-        #expect(Self.isAlive(secondPid))
-        #expect(!Self.sharedRegistry.registeredPids.contains(firstPid))
-        #expect(Self.sharedRegistry.registeredPids.contains(secondPid))
+            _ = try await stdio.respawn()
+            guard let secondPid = stdio.currentPid else {
+                Issue.record("expected second respawn() to record a pid")
+                return
+            }
+            #expect(secondPid != firstPid)
+            #expect(Self.isGone(firstPid))
+            #expect(Self.isAlive(secondPid))
+            #expect(!Self.sharedRegistry.registeredPids.contains(firstPid))
+            #expect(Self.sharedRegistry.registeredPids.contains(secondPid))
 
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
     }
 
     // MARK: - Concurrent respawn() calls never orphan the losing pid
@@ -599,22 +626,23 @@ struct StdioServerProcessTests {
     /// registered but unreachable by every teardown path of the type.
     @Test func concurrentRespawnCallsNeverOrphanTheLosingPid() async throws {
         let stdio = try makeHeldChild(named: "concurrent-respawn-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            async let first = stdio.respawn()
+            async let second = stdio.respawn()
+            _ = try await (first, second)
 
-        async let first = stdio.respawn()
-        async let second = stdio.respawn()
-        _ = try await (first, second)
+            guard let survivingPid = stdio.currentPid else {
+                Issue.record("expected one of the two concurrent respawn() calls to leave a pid recorded")
+                return
+            }
+            // Exactly one process may stay alive and registered — the one that
+            // lost the race must be torn down, not orphaned.
+            #expect(Self.isAlive(survivingPid))
+            #expect(Self.sharedRegistry.registeredPids == [survivingPid])
 
-        guard let survivingPid = stdio.currentPid else {
-            Issue.record("expected one of the two concurrent respawn() calls to leave a pid recorded")
-            return
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
         }
-        // Exactly one process may stay alive and registered — the one that
-        // lost the race must be torn down, not orphaned.
-        #expect(Self.isAlive(survivingPid))
-        #expect(Self.sharedRegistry.registeredPids == [survivingPid])
-
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
     }
 
     // MARK: - Process-group kill also terminates a child the spawned process forked
@@ -640,31 +668,33 @@ struct StdioServerProcessTests {
             registry: Self.sharedRegistry
         )
         let transport = try await stdio.respawn()
-        try await transport.connect()
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
-        }
+        try await ensuring({ await transport.disconnect() }) {
+            try await transport.connect()
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
 
-        let childPids = try await Self.readPids(count: Self.forkedChildCount, from: transport)
-        #expect(childPids.count == Self.forkedChildCount)
-        for child in childPids {
-            #expect(Self.isAlive(child))
-            #expect(getpgid(child) == pid)
-        }
+            let childPids = try await Self.readPids(count: Self.forkedChildCount, from: transport)
+            #expect(childPids.count == Self.forkedChildCount)
+            for child in childPids {
+                #expect(Self.isAlive(child))
+                #expect(getpgid(child) == pid)
+            }
 
-        await stdio.shutdown()
+            await stdio.shutdown()
 
-        // A killed grandchild is reaped by the system, not by this process.
-        // The wait ends on the exit event of the kernel, or on a reading that
-        // shows the exit. The end of the wait is the result, thus no state is
-        // read again after it. A child that the group kill missed never exits,
-        // and that wait is the failure of the test.
-        for child in childPids {
-            await ProcessExitWait.waitUntilGone(child)
+            // A killed grandchild is reaped by the system, not by this process.
+            // The wait ends on the exit event of the kernel, or on a reading that
+            // shows the exit. The end of the wait is the result, thus no state is
+            // read again after it. A child that the group kill missed never exits,
+            // and that wait is the failure of the test.
+            for child in childPids {
+                await ProcessExitWait.waitUntilGone(child)
+            }
+            #expect(Self.isGone(pid))
+            Self.confirmNoLeaks()
         }
-        #expect(Self.isGone(pid))
-        Self.confirmNoLeaks()
     }
 
     // MARK: - Connection teardown (the vended transport's disconnect()) also group-kills and reaps
@@ -672,19 +702,21 @@ struct StdioServerProcessTests {
     @Test func disconnectingTheVendedTransportGroupKillsAndReapsTheProcess() async throws {
         let stdio = try makeHeldChild(named: "connection-teardown-test")
         let transport = try await stdio.respawn()
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
+        try await ensuring({ await transport.disconnect() }) {
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
+            #expect(Self.isAlive(pid))
+
+            // What a host's disconnect of the server built over this transport
+            // reaches, with no explicit `stdio.shutdown()` call at all.
+            await transport.disconnect()
+
+            #expect(Self.isGone(pid))
+            #expect(!Self.sharedRegistry.registeredPids.contains(pid))
+            Self.confirmNoLeaks()
         }
-        #expect(Self.isAlive(pid))
-
-        // What a host's disconnect of the server built over this transport
-        // reaches, with no explicit `stdio.shutdown()` call at all.
-        await transport.disconnect()
-
-        #expect(Self.isGone(pid))
-        #expect(!Self.sharedRegistry.registeredPids.contains(pid))
-        Self.confirmNoLeaks()
     }
 
     // MARK: - DisposableTransport conformance: dispose() reaps a never-connected spawn
@@ -695,24 +727,26 @@ struct StdioServerProcessTests {
     /// transport must release it.
     @Test func disposeTerminatesAndReapsANeverConnectedSpawn() async throws {
         let stdio = try makeHeldChild(named: "dispose-test")
-        let transport = try await stdio.respawn()
-        guard let pid = stdio.currentPid else {
-            Issue.record("expected respawn() to record a pid")
-            return
-        }
-        #expect(Self.isAlive(pid))
+        try await ensuring({ await stdio.shutdown() }) {
+            let transport = try await stdio.respawn()
+            guard let pid = stdio.currentPid else {
+                Issue.record("expected respawn() to record a pid")
+                return
+            }
+            #expect(Self.isAlive(pid))
 
-        guard let disposable = transport as? DisposableTransport else {
-            Issue.record("expected respawn()'s vended transport to conform to DisposableTransport")
-            return
-        }
-        // Disposed without a `connect()` — the one circumstance `dispose()`
-        // exists for.
-        await disposable.dispose()
+            guard let disposable = transport as? DisposableTransport else {
+                Issue.record("expected respawn()'s vended transport to conform to DisposableTransport")
+                return
+            }
+            // Disposed without a `connect()` — the one circumstance `dispose()`
+            // exists for.
+            await disposable.dispose()
 
-        #expect(Self.isGone(pid))
-        #expect(!Self.sharedRegistry.registeredPids.contains(pid))
-        Self.confirmNoLeaks()
+            #expect(Self.isGone(pid))
+            #expect(!Self.sharedRegistry.registeredPids.contains(pid))
+            Self.confirmNoLeaks()
+        }
     }
 
     /// Whichever `recordSpawn` runs second evicts the first pid. A `dispose()`
@@ -720,38 +754,39 @@ struct StdioServerProcessTests {
     /// be a no-op with respect to the fresher, live process.
     @Test func disposeNeverKillsAFresherConcurrentSpawnThatAlreadyWonTheRace() async throws {
         let stdio = try makeHeldChild(named: "dispose-race-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            let staleTransport = try await stdio.respawn()
+            guard let firstPid = stdio.currentPid else {
+                Issue.record("expected first respawn() to record a pid")
+                return
+            }
 
-        let staleTransport = try await stdio.respawn()
-        guard let firstPid = stdio.currentPid else {
-            Issue.record("expected first respawn() to record a pid")
-            return
+            // The second respawn() supersedes the first: it evicts firstPid and
+            // becomes the current pid — the documented eviction, reproduced in
+            // sequence for a deterministic test.
+            _ = try await stdio.respawn()
+            guard let secondPid = stdio.currentPid else {
+                Issue.record("expected second respawn() to record a pid")
+                return
+            }
+            #expect(secondPid != firstPid)
+            #expect(Self.isGone(firstPid))
+            #expect(Self.isAlive(secondPid))
+
+            guard let disposable = staleTransport as? DisposableTransport else {
+                Issue.record("expected respawn()'s vended transport to conform to DisposableTransport")
+                return
+            }
+            await disposable.dispose()
+
+            #expect(
+                Self.isAlive(secondPid),
+                "dispose() on a stale transport must never kill a fresher, currently-live process")
+            #expect(Self.sharedRegistry.registeredPids == [secondPid])
+
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
         }
-
-        // The second respawn() supersedes the first: it evicts firstPid and
-        // becomes the current pid — the documented eviction, reproduced in
-        // sequence for a deterministic test.
-        _ = try await stdio.respawn()
-        guard let secondPid = stdio.currentPid else {
-            Issue.record("expected second respawn() to record a pid")
-            return
-        }
-        #expect(secondPid != firstPid)
-        #expect(Self.isGone(firstPid))
-        #expect(Self.isAlive(secondPid))
-
-        guard let disposable = staleTransport as? DisposableTransport else {
-            Issue.record("expected respawn()'s vended transport to conform to DisposableTransport")
-            return
-        }
-        await disposable.dispose()
-
-        #expect(
-            Self.isAlive(secondPid),
-            "dispose() on a stale transport must never kill a fresher, currently-live process")
-        #expect(Self.sharedRegistry.registeredPids == [secondPid])
-
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
     }
 
     // MARK: - Owner teardown: releasing every reference reaps via deinit
@@ -834,23 +869,25 @@ struct StdioServerProcessTests {
             registry: Self.sharedRegistry
         )
         let transport = try await stdio.respawn()
-        try await transport.connect()
+        try await ensuring({ await transport.disconnect() }) {
+            try await transport.connect()
 
-        guard let line = try await Self.readLines(count: 1, from: transport).first else {
-            Issue.record("expected one line of output from the spawned shell")
+            guard let line = try await Self.readLines(count: 1, from: transport).first else {
+                Issue.record("expected one line of output from the spawned shell")
+                await stdio.shutdown()
+                return
+            }
+            let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
+
+            // The explicit override wins over the inherited parent value...
+            #expect(parts.first == "child-value")
+            // ...but $HOME (absent from `env`) is still visible, which proves an
+            // augmented environment and not a replacement.
+            #expect(parts.count == 2 && !parts[1].isEmpty)
+
             await stdio.shutdown()
-            return
+            Self.confirmNoLeaks()
         }
-        let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
-
-        // The explicit override wins over the inherited parent value...
-        #expect(parts.first == "child-value")
-        // ...but $HOME (absent from `env`) is still visible, which proves an
-        // augmented environment and not a replacement.
-        #expect(parts.count == 2 && !parts[1].isEmpty)
-
-        await stdio.shutdown()
-        Self.confirmNoLeaks()
     }
 
     // MARK: - Reading helpers

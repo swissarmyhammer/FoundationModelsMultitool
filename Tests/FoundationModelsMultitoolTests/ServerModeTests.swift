@@ -31,9 +31,9 @@ struct ServerModeTests {
     private func registeredTools(on server: ScriptedServer) async throws -> [MCP.Tool] {
         let client = try await MCPTestSupport.connectedServer(
             to: server, over: .inMemory, clientName: "ServerModeTestClient")
-        let (tools, _) = try await client.listTools()
-        await client.disconnect()
-        return tools
+        return try await MCPTestSupport.withConnection(of: client) {
+            try await client.listTools().tools
+        }
     }
 
     /// Connects a fresh client to `server` over an in-memory transport pair

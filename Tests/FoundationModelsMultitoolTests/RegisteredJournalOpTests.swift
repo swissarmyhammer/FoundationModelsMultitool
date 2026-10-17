@@ -114,14 +114,15 @@ struct RegisteredJournalOpTests {
     func anMCPServerRendersBothHalvesOfItsPair() async throws {
         let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
             serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
+        try await MCPTestSupport.withConnection(of: server) {
+            let surface = try await MultiTool.Builder()
+                .withMCP(servers: [server])
+                .build()
 
-        let surface = try await MultiTool.Builder()
-            .withMCP(servers: [server])
-            .build()
-
-        let entry = try #require(
-            surface.entries.first { $0.path == "\(Self.mcpServerName).\(ScriptedServer.echoToolName)" })
-        #expect(entry.journalOp == "\(ScriptedServer.echoToolName) \(Self.mcpServerName)")
+            let entry = try #require(
+                surface.entries.first { $0.path == "\(Self.mcpServerName).\(ScriptedServer.echoToolName)" })
+            #expect(entry.journalOp == "\(ScriptedServer.echoToolName) \(Self.mcpServerName)")
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -253,24 +254,26 @@ struct RegisteredJournalOpTests {
         await scripted.addTool(held.scriptedTool)
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.mcpServerName)
-        let registry = try await MultiTool.Builder()
-            .withMCP(servers: [server])
-            .buildRegistry()
-        let stampedOp = try await withOuterRunContext { context in
-            let run = Task {
-                try await Self.run(
-                    "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
-                    over: registry,
-                    under: context)
-            }
+        let stampedOp = try await MCPTestSupport.withConnection(of: server) {
+            let registry = try await MultiTool.Builder()
+                .withMCP(servers: [server])
+                .buildRegistry()
+            return try await withOuterRunContext { context in
+                let run = Task {
+                    try await Self.run(
+                        "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
+                        over: registry,
+                        under: context)
+                }
 
-            // The server records the call in flight before it sends the request,
-            // thus when the call arrives at the held tool, the record stands.
-            try await held.waitForArrival()
-            let stampedOp = await server.inFlightCalls.values.first?.context?.op
-            await held.release()
-            try await run.value
-            return stampedOp
+                // The server records the call in flight before it sends the request,
+                // thus when the call arrives at the held tool, the record stands.
+                try await held.waitForArrival()
+                let stampedOp = await server.inFlightCalls.values.first?.context?.op
+                await held.release()
+                try await run.value
+                return stampedOp
+            }
         }
 
         #expect(stampedOp == "\(Self.mcpHeldVerb) \(Self.mcpServerName)")

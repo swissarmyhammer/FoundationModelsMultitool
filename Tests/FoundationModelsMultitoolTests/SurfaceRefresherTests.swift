@@ -208,21 +208,37 @@ struct SurfaceRefresherTests {
         let refresher: SurfaceRefresher
     }
 
-    /// Connects an `MCPServer` named `name` against `scripted`, builds a
-    /// registry over it, mounts the session tools, and makes a refresher over
-    /// the mounted staging.
+    /// Connects an `MCPServer` named `name` against `scripted`, and gives it
+    /// to `body`. The server disconnects when `body` returns and when `body`
+    /// throws.
     ///
     /// - Parameters:
     ///   - name: The name of the server, and so the noun its verbs render
     ///     under.
-    ///   - scripted: The scripted server to serve on the far end.
-    /// - Returns: The ground of one case.
-    /// - Throws: What the connect, the build, or the mount throws.
-    private static func makeGround(
-        named name: String, serving scripted: ScriptedServer
-    ) async throws -> Ground {
+    ///   - scripted: The scripted server to serve on the far end, which this
+    ///     method keeps alive for the whole case.
+    ///   - body: The case, given the connected server.
+    /// - Throws: What the connect or `body` throws.
+    private static func withConnectedServer(
+        named name: String,
+        serving scripted: ScriptedServer,
+        _ body: (MCPServer) async throws -> Void
+    ) async throws {
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: name, clock: ManualClock())
+        try await MCPTestSupport.withConnection(of: server) {
+            try await body(server)
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// Builds a registry over the connected `server`, mounts the session
+    /// tools, and makes a refresher over the mounted staging.
+    ///
+    /// - Parameter server: The connected server the refresher watches.
+    /// - Returns: The ground of one case.
+    /// - Throws: What the build or the mount throws.
+    private static func makeGround(over server: MCPServer) async throws -> Ground {
         let builder = try await MultiTool.Builder().withMCP(servers: [server])
         let (tools, staging) = try builder.buildRegistry()
             .makeSessionToolsAndStaging(selection: nil, embedder: nil, sampleModel: nil)
@@ -236,8 +252,8 @@ struct SurfaceRefresherTests {
         )
     }
 
-    /// Runs `body` over a started refresher, and stops that refresher however
-    /// `body` ends.
+    /// Runs `body` over a started refresher. However `body` ends, this method
+    /// stops that refresher, and then disconnects its server.
     ///
     /// A refresher the case leaves running holds a task after the case
     /// returns, which its own `deinit` refuses in a debug build. So the stop
@@ -249,24 +265,18 @@ struct SurfaceRefresherTests {
     ///   - scripted: The scripted server to serve on the far end, which this
     ///     method keeps alive for the whole case.
     ///   - body: The case, given the ground.
-    /// - Throws: What `makeGround(named:serving:)` or `body` throws.
+    /// - Throws: What the connect, `makeGround(over:)` or `body` throws.
     private static func withStartedRefresher(
         named name: String,
         serving scripted: ScriptedServer,
         _ body: (Ground) async throws -> Void
     ) async throws {
-        let ground = try await makeGround(named: name, serving: scripted)
-        ground.refresher.start()
-        var thrown: (any Error)?
-        do {
-            try await body(ground)
-        } catch {
-            thrown = error
-        }
-        await ground.refresher.stop()
-        withExtendedLifetime(scripted) {}
-        if let thrown {
-            throw thrown
+        try await withConnectedServer(named: name, serving: scripted) { server in
+            let ground = try await makeGround(over: server)
+            ground.refresher.start()
+            try await ensuring({ await ground.refresher.stop() }) {
+                try await body(ground)
+            }
         }
     }
 
@@ -532,19 +542,20 @@ struct SurfaceRefresherTests {
         let scripted = ScriptedServer(name: Self.unwatchedServerName)
         await scripted.addEchoTool()
         let echoPath = Self.path(of: ScriptedServer.echoToolName, on: Self.unwatchedServerName)
-        let ground = try await Self.makeGround(named: Self.unwatchedServerName, serving: scripted)
+        try await Self.withConnectedServer(named: Self.unwatchedServerName, serving: scripted) { server in
+            let ground = try await Self.makeGround(over: server)
 
-        // No refresher is started. `makeSessionToolsAndStaging` starts no task
-        // of its own, so nothing watches the stream.
-        let generationBefore = await ground.server.toolListChangedGeneration
-        try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-        await Self.waitForRelist(of: ground.server, after: generationBefore)
-        #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
-        await ground.runCode.submissionWillBegin()
+            // No refresher is started. `makeSessionToolsAndStaging` starts no task
+            // of its own, so nothing watches the stream.
+            let generationBefore = await ground.server.toolListChangedGeneration
+            try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
+            await Self.waitForRelist(of: ground.server, after: generationBefore)
+            #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
+            await ground.runCode.submissionWillBegin()
 
-        #expect(ground.staging.count == 0)
-        #expect(try await helpPaths(of: ground.runCode) == [echoPath])
-        withExtendedLifetime(scripted) {}
+            #expect(ground.staging.count == 0)
+            #expect(try await helpPaths(of: ground.runCode) == [echoPath])
+        }
     }
 
     // MARK: - A late server
@@ -556,20 +567,21 @@ struct SurfaceRefresherTests {
         let lateScripted = ScriptedServer(name: Self.lateServerName)
         await lateScripted.addEchoTool()
 
-        try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
-            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
-            let late = try await MCPTestSupport.connectedMCPServer(
-                to: lateScripted, over: .inMemory, name: Self.lateServerName, clock: ManualClock())
+        // The late server disconnects after the refresher stops, thus no
+        // snapshot of its disconnect reaches a running refresher.
+        try await Self.withConnectedServer(named: Self.lateServerName, serving: lateScripted) { late in
+            try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
+                await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
 
-            try await ground.refresher.addServer(late)
-            await ground.runCode.submissionWillBegin()
+                try await ground.refresher.addServer(late)
+                await ground.runCode.submissionWillBegin()
 
-            #expect(
-                try await helpPaths(of: ground.runCode) == [
-                    Self.path(of: ScriptedServer.echoToolName, on: Self.firstServerName),
-                    Self.path(of: ScriptedServer.echoToolName, on: Self.lateServerName),
-                ])
-            withExtendedLifetime(lateScripted) {}
+                #expect(
+                    try await helpPaths(of: ground.runCode) == [
+                        Self.path(of: ScriptedServer.echoToolName, on: Self.firstServerName),
+                        Self.path(of: ScriptedServer.echoToolName, on: Self.lateServerName),
+                    ])
+            }
         }
     }
 
@@ -580,24 +592,25 @@ struct SurfaceRefresherTests {
         let lateScripted = ScriptedServer(name: Self.lateServerName)
         await lateScripted.addEchoTool()
 
-        try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
-            await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
-            let late = try await MCPTestSupport.connectedMCPServer(
-                to: lateScripted, over: .inMemory, name: Self.lateServerName, clock: ManualClock())
-            try await ground.refresher.addServer(late)
+        // The late server disconnects after the refresher stops, thus no
+        // snapshot of its disconnect reaches a running refresher.
+        try await Self.withConnectedServer(named: Self.lateServerName, serving: lateScripted) { late in
+            try await Self.withStartedRefresher(named: Self.firstServerName, serving: scripted) { ground in
+                await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+                try await ground.refresher.addServer(late)
 
-            try await Self.publish(
-                ScriptedServer.echoTool(named: Self.alphaToolName), on: lateScripted)
-            // The refresher stages a registry with the new verb when the late
-            // server re-lists. `addServer(_:)` staged its own registry before
-            // it returned, and the refresher applies the snapshots of the
-            // late server in order. Thus each stage after this one holds the
-            // new verb too, and the tick swaps in a registry that holds it.
-            let alphaPath = Self.path(of: Self.alphaToolName, on: Self.lateServerName)
-            await Self.waitForStage(holding: alphaPath, on: ground.staging)
-            await ground.runCode.submissionWillBegin()
-            #expect(try await helpPaths(of: ground.runCode).contains(alphaPath))
-            withExtendedLifetime(lateScripted) {}
+                try await Self.publish(
+                    ScriptedServer.echoTool(named: Self.alphaToolName), on: lateScripted)
+                // The refresher stages a registry with the new verb when the late
+                // server re-lists. `addServer(_:)` staged its own registry before
+                // it returned, and the refresher applies the snapshots of the
+                // late server in order. Thus each stage after this one holds the
+                // new verb too, and the tick swaps in a registry that holds it.
+                let alphaPath = Self.path(of: Self.alphaToolName, on: Self.lateServerName)
+                await Self.waitForStage(holding: alphaPath, on: ground.staging)
+                await ground.runCode.submissionWillBegin()
+                #expect(try await helpPaths(of: ground.runCode).contains(alphaPath))
+            }
         }
     }
 }

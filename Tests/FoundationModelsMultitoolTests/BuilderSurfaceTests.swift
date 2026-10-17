@@ -47,15 +47,16 @@ struct BuilderSurfaceTests {
     func mcpGroupMatchesGoldenFile() async throws {
         let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
             serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
+        try await MCPTestSupport.withConnection(of: server) {
+            let surface = try await MultiTool.Builder()
+                .withMCP(servers: [server])
+                .build()
 
-        let surface = try await MultiTool.Builder()
-            .withMCP(servers: [server])
-            .build()
+            let golden = try TestResource.surfaceGolden(named: Self.mcpGoldenName)
 
-        let golden = try TestResource.surfaceGolden(named: Self.mcpGoldenName)
-
-        #expect(surface.entries.map(\.path) == [Self.mcpEchoPath])
-        #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
+            #expect(surface.entries.map(\.path) == [Self.mcpEchoPath])
+            #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
+        }
         withExtendedLifetime(scripted) {}
     }
 

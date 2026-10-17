@@ -220,30 +220,32 @@ struct LiveCatalogTests {
         let windowClock = GatedClock()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName, clock: windowClock)
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
+        try await MCPTestSupport.withConnection(of: server) {
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
 
-        // The connect emits its own snapshot; wait for it, so the assertions
-        // below count only what the burst produced.
-        let afterConnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
-        #expect(afterConnect.count == Self.snapshotsAfterConnect)
-        #expect(afterConnect.first?.epoch == Self.firstEpoch)
+            // The connect emits its own snapshot; wait for it, so the assertions
+            // below count only what the burst produced.
+            let afterConnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+            #expect(afterConnect.count == Self.snapshotsAfterConnect)
+            #expect(afterConnect.first?.epoch == Self.firstEpoch)
 
-        await scripted.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        try await Self.emitBurstInOneWindow(from: scripted, to: server, windowClock: windowClock)
+            await scripted.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
+            try await Self.emitBurstInOneWindow(from: scripted, to: server, windowClock: windowClock)
 
-        let afterBurst = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
+            let afterBurst = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
-        // The burst coalesced into one re-list, not five: one watcher asked
-        // for one window, and the server emitted one snapshot after the
-        // connect.
-        #expect(windowClock.recordedSleeps.count == Self.oneCoalesceWindow)
-        #expect(await server.catalogEpoch == Self.secondEpoch)
-        #expect(afterBurst.count == Self.snapshotsAfterOneMore)
-        #expect(afterBurst.last?.epoch == Self.secondEpoch)
-        #expect(
-            afterBurst.last.map(Self.toolNames(of:))
-                == [Self.initialToolName, Self.addedToolName])
+            // The burst coalesced into one re-list, not five: one watcher asked
+            // for one window, and the server emitted one snapshot after the
+            // connect.
+            #expect(windowClock.recordedSleeps.count == Self.oneCoalesceWindow)
+            #expect(await server.catalogEpoch == Self.secondEpoch)
+            #expect(afterBurst.count == Self.snapshotsAfterOneMore)
+            #expect(afterBurst.last?.epoch == Self.secondEpoch)
+            #expect(
+                afterBurst.last.map(Self.toolNames(of:))
+                    == [Self.initialToolName, Self.addedToolName])
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -254,34 +256,36 @@ struct LiveCatalogTests {
         let windowClock = GatedClock()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: first, over: .inMemory, name: Self.serverName, clock: windowClock)
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
-
-        // A coalesced re-list.
-        await first.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        try await Self.emitBurstInOneWindow(from: first, to: server, windowClock: windowClock)
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-
-        // A reconnect to a differently-tooled server, same actor — an
-        // implicit re-list: "the returning server may differ".
         let second = await Self.scriptedServerWithInitialTool()
-        await second.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        await second.addTool(ScriptedServer.echoTool(named: Self.secondAddedToolName))
-        let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
-        try await server.connect(via: transport)
+        try await MCPTestSupport.withConnection(of: server) {
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
 
-        let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterTwoMore)
+            // A coalesced re-list.
+            await first.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
+            try await Self.emitBurstInOneWindow(from: first, to: server, windowClock: windowClock)
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
-        #expect(afterReconnect.count == Self.snapshotsAfterTwoMore)
-        expectStrictlyIncreasingEpochs(afterReconnect)
-        // Every snapshot is complete: a consumer reads the whole tool set
-        // from any one of them alone.
-        #expect(afterReconnect.map(Self.toolNames(of:)) == [
-            [Self.initialToolName],
-            [Self.initialToolName, Self.addedToolName],
-            [Self.initialToolName, Self.addedToolName, Self.secondAddedToolName],
-        ])
+            // A reconnect to a differently-tooled server, same actor — an
+            // implicit re-list: "the returning server may differ".
+            await second.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
+            await second.addTool(ScriptedServer.echoTool(named: Self.secondAddedToolName))
+            let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
+            try await server.connect(via: transport)
+
+            let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterTwoMore)
+
+            #expect(afterReconnect.count == Self.snapshotsAfterTwoMore)
+            expectStrictlyIncreasingEpochs(afterReconnect)
+            // Every snapshot is complete: a consumer reads the whole tool set
+            // from any one of them alone.
+            #expect(afterReconnect.map(Self.toolNames(of:)) == [
+                [Self.initialToolName],
+                [Self.initialToolName, Self.addedToolName],
+                [Self.initialToolName, Self.addedToolName, Self.secondAddedToolName],
+            ])
+        }
         withExtendedLifetime((first, second)) {}
     }
 
@@ -291,27 +295,29 @@ struct LiveCatalogTests {
         let first = await Self.scriptedServerWithInitialTool()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: first, over: .inMemory, name: Self.serverName)
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
-        let beforeReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
-        #expect(beforeReconnect.first?.epoch == Self.firstEpoch)
-
-        await server.disconnect()
-
         let second = await Self.scriptedServerWithInitialTool()
-        await second.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
-        try await server.connect(via: transport)
+        try await MCPTestSupport.withConnection(of: server) {
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
+            let beforeReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+            #expect(beforeReconnect.first?.epoch == Self.firstEpoch)
 
-        let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-        #expect(afterReconnect.count == Self.snapshotsAfterOneMore)
-        expectStrictlyIncreasingEpochs(afterReconnect)
-        #expect(
-            afterReconnect.last.map(Self.toolNames(of:))
-                == [Self.initialToolName, Self.addedToolName])
-        // The identity stays put across the reconnect even though the tool
-        // set changed — the returning server is still "the same server".
-        #expect(afterReconnect.first?.identity == afterReconnect.last?.identity)
+            await server.disconnect()
+
+            await second.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
+            let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
+            try await server.connect(via: transport)
+
+            let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
+            #expect(afterReconnect.count == Self.snapshotsAfterOneMore)
+            expectStrictlyIncreasingEpochs(afterReconnect)
+            #expect(
+                afterReconnect.last.map(Self.toolNames(of:))
+                    == [Self.initialToolName, Self.addedToolName])
+            // The identity stays put across the reconnect even though the tool
+            // set changed — the returning server is still "the same server".
+            #expect(afterReconnect.first?.identity == afterReconnect.last?.identity)
+        }
         withExtendedLifetime((first, second)) {}
     }
 
@@ -327,24 +333,26 @@ struct LiveCatalogTests {
             return (client, scripted)
         }
         let server = MCPTestSupport.makeServer(name: Self.serverName)
-        try await server.connect(via: respawning, backoffPolicy: .default)
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await server.connect(via: respawning, backoffPolicy: .default)
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
 
-        await respawning.disconnect()
-        try await server.reconnect()
+            await respawning.disconnect()
+            try await server.reconnect()
 
-        let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-        // `reconnect()` emits its snapshot before it returns, thus the epoch
-        // the server holds now counts every snapshot of the reconnect: one.
-        #expect(await server.catalogEpoch == Self.secondEpoch)
-        #expect(afterReconnect.count == Self.snapshotsAfterOneMore)
-        #expect(afterReconnect.last?.state == .ready)
-        expectStrictlyIncreasingEpochs(afterReconnect)
-        #expect(
-            afterReconnect.last.map(Self.toolNames(of:))
-                == [Self.initialToolName, Self.addedToolName])
+            let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
+            // `reconnect()` emits its snapshot before it returns, thus the epoch
+            // the server holds now counts every snapshot of the reconnect: one.
+            #expect(await server.catalogEpoch == Self.secondEpoch)
+            #expect(afterReconnect.count == Self.snapshotsAfterOneMore)
+            #expect(afterReconnect.last?.state == .ready)
+            expectStrictlyIncreasingEpochs(afterReconnect)
+            #expect(
+                afterReconnect.last.map(Self.toolNames(of:))
+                    == [Self.initialToolName, Self.addedToolName])
+        }
     }
 
     // MARK: - A readiness-state change
@@ -353,26 +361,28 @@ struct LiveCatalogTests {
         let scripted = await Self.scriptedServerWithInitialTool()
         let transport = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
         let server = MCPTestSupport.makeServer(name: Self.serverName)
-        try await server.connect(via: transport)
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
-        let beforeReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
-        #expect(beforeReconnect.count == Self.snapshotsAfterConnect)
-        #expect(beforeReconnect.first?.epoch == Self.firstEpoch)
-        #expect(beforeReconnect.first?.state == .ready)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await server.connect(via: transport)
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
+            let beforeReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+            #expect(beforeReconnect.count == Self.snapshotsAfterConnect)
+            #expect(beforeReconnect.first?.epoch == Self.firstEpoch)
+            #expect(beforeReconnect.first?.state == .ready)
 
-        let flaky = FlakyConnectTransport(
-            wrapping: transport, failingConnectAttempts: Self.oneFailingAttempt)
-        await #expect(throws: (any Error).self) {
-            try await server.connect(via: flaky)
-        }
+            let flaky = FlakyConnectTransport(
+                wrapping: transport, failingConnectAttempts: Self.oneFailingAttempt)
+            await #expect(throws: (any Error).self) {
+                try await server.connect(via: flaky)
+            }
 
-        let afterFailedReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-        #expect(afterFailedReconnect.count == Self.snapshotsAfterOneMore)
-        expectStrictlyIncreasingEpochs(afterFailedReconnect)
-        guard case .faulted = afterFailedReconnect.last?.state else {
-            Issue.record("expected the second snapshot to carry .faulted after the failed reconnect")
-            return
+            let afterFailedReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
+            #expect(afterFailedReconnect.count == Self.snapshotsAfterOneMore)
+            expectStrictlyIncreasingEpochs(afterFailedReconnect)
+            guard case .faulted = afterFailedReconnect.last?.state else {
+                Issue.record("expected the second snapshot to carry .faulted after the failed reconnect")
+                return
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -383,19 +393,21 @@ struct LiveCatalogTests {
         let scripted = await Self.scriptedServerWithInitialTool()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName, clock: ManualClock())
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+        try await MCPTestSupport.withConnection(of: server) {
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
 
-        let resolvedBeforeRemoval = await server.tool(named: Self.initialToolName)
-        #expect(resolvedBeforeRemoval?.name == Self.initialToolName)
+            let resolvedBeforeRemoval = await server.tool(named: Self.initialToolName)
+            #expect(resolvedBeforeRemoval?.name == Self.initialToolName)
 
-        await scripted.removeTool(named: Self.initialToolName)
-        try await scripted.emitToolListChangedBurst(count: Self.burstCount)
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
+            await scripted.removeTool(named: Self.initialToolName)
+            try await scripted.emitToolListChangedBurst(count: Self.burstCount)
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
-        let resolvedAfterRemoval = await server.tool(named: Self.initialToolName)
-        #expect(resolvedAfterRemoval == nil)
+            let resolvedAfterRemoval = await server.tool(named: Self.initialToolName)
+            #expect(resolvedAfterRemoval == nil)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -414,33 +426,35 @@ struct LiveCatalogTests {
         await scripted.startDynamicToolsetScenario()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName, clock: ManualClock())
-        let recording = await recordCatalogUpdates(from: server)
-        defer { recording.task.cancel() }
+        try await MCPTestSupport.withConnection(of: server) {
+            let recording = await recordCatalogUpdates(from: server)
+            defer { recording.task.cancel() }
 
-        _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
-        for stage in 1...ScriptedServer.dynamicToolsetStageCount {
-            #expect(await scripted.advanceDynamicToolsetScenario())
-            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+            for stage in 1...ScriptedServer.dynamicToolsetStageCount {
+                #expect(await scripted.advanceDynamicToolsetScenario())
+                _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)
+            }
+
+            let snapshots = await recording.recorder.snapshots
+            try #require(snapshots.count == Self.dynamicScenarioSnapshots)
+            expectStrictlyIncreasingEpochs(snapshots)
+
+            let added = snapshots[1].diff(from: snapshots[0])
+            #expect(added.added.map(\.name) == [ScriptedServer.dynamicToolsetVanishingToolName])
+            #expect(added.removed.isEmpty)
+            #expect(added.changed.isEmpty)
+
+            let reschemad = snapshots[2].diff(from: snapshots[1])
+            #expect(reschemad.changed.map(\.after.name) == [ScriptedServer.dynamicToolsetReschemadToolName])
+            #expect(reschemad.added.isEmpty)
+            #expect(reschemad.removed.isEmpty)
+
+            let removed = snapshots[3].diff(from: snapshots[2])
+            #expect(removed.removed.map(\.name) == [ScriptedServer.dynamicToolsetVanishingToolName])
+            #expect(removed.added.isEmpty)
+            #expect(removed.changed.isEmpty)
         }
-
-        let snapshots = await recording.recorder.snapshots
-        try #require(snapshots.count == Self.dynamicScenarioSnapshots)
-        expectStrictlyIncreasingEpochs(snapshots)
-
-        let added = snapshots[1].diff(from: snapshots[0])
-        #expect(added.added.map(\.name) == [ScriptedServer.dynamicToolsetVanishingToolName])
-        #expect(added.removed.isEmpty)
-        #expect(added.changed.isEmpty)
-
-        let reschemad = snapshots[2].diff(from: snapshots[1])
-        #expect(reschemad.changed.map(\.after.name) == [ScriptedServer.dynamicToolsetReschemadToolName])
-        #expect(reschemad.added.isEmpty)
-        #expect(reschemad.removed.isEmpty)
-
-        let removed = snapshots[3].diff(from: snapshots[2])
-        #expect(removed.removed.map(\.name) == [ScriptedServer.dynamicToolsetVanishingToolName])
-        #expect(removed.added.isEmpty)
-        #expect(removed.changed.isEmpty)
         withExtendedLifetime(scripted) {}
     }
 }

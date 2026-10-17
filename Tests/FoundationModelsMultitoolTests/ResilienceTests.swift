@@ -326,14 +326,16 @@ struct ResilienceTests {
             maxDelay: Self.scheduleMaxDelay, maxAttempts: Self.scheduleMaxAttempts)
 
         let server = makeServer(clock: clock)
-        try await server.connect(via: flaky, backoffPolicy: policy)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await server.connect(via: flaky, backoffPolicy: policy)
 
-        #expect(await server.state == .ready)
-        #expect(await flaky.connectAttempts == Self.thirdAttempt)
-        #expect(
-            clock.recordedSleeps == [
-                Self.scheduleBaseDelay, Self.scheduleBaseDelay * Self.backoffDoublingFactor,
-            ])
+            #expect(await server.state == .ready)
+            #expect(await flaky.connectAttempts == Self.thirdAttempt)
+            #expect(
+                clock.recordedSleeps == [
+                    Self.scheduleBaseDelay, Self.scheduleBaseDelay * Self.backoffDoublingFactor,
+                ])
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -519,27 +521,27 @@ struct ResilienceTests {
         let (logger, discarded) = makeStaleConnectDiscardLogger()
         let server = makeServer(connectAttemptClock: attemptClock, logger: logger)
 
-        // 1. The straggler holds its connect.
-        try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
+        try await MCPTestSupport.withConnection(of: server) {
+            // 1. The straggler holds its connect.
+            try await orphanStraggler(over: gated, on: server, attemptClock: attemptClock)
 
-        // 2. The retry becomes ready while the straggler still holds its connect.
-        try await server.connect(via: freshTransport, backoffPolicy: Self.oneRetryAttempt)
-        #expect(await server.state == .ready)
-        #expect(await gated.isOpen == false)
+            // 2. The retry becomes ready while the straggler still holds its connect.
+            try await server.connect(via: freshTransport, backoffPolicy: Self.oneRetryAttempt)
+            #expect(await server.state == .ready)
+            #expect(await gated.isOpen == false)
 
-        // 3. The straggler ends: its result is discarded, and its transport closes.
-        await gated.release()
-        try await discarded.wait()
-        try await gated.closeArrival.wait()
+            // 3. The straggler ends: its result is discarded, and its transport closes.
+            await gated.release()
+            try await discarded.wait()
+            try await gated.closeArrival.wait()
 
-        // 4. The connection of the retry still answers.
-        let result = try await server.call(name: Self.retryOnlyToolName)
-        #expect(result.isError != true)
-        #expect(result.content == [.text(text: Self.retryOnlyToolText, annotations: nil, _meta: nil)])
-        #expect(await server.state == .ready)
-        #expect(await gated.isOpen == false)
-
-        await server.disconnect()
+            // 4. The connection of the retry still answers.
+            let result = try await server.call(name: Self.retryOnlyToolName)
+            #expect(result.isError != true)
+            #expect(result.content == [.text(text: Self.retryOnlyToolText, annotations: nil, _meta: nil)])
+            #expect(await server.state == .ready)
+            #expect(await gated.isOpen == false)
+        }
         withExtendedLifetime((straggler, fresh)) {}
     }
 
@@ -678,32 +680,38 @@ struct ResilienceTests {
         let (initial, clientTransport1) = try await makeScriptedPair(name: "initial-server")
         let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
 
-        let server = makeServer()
-        try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
-        #expect(await server.state == .ready)
-
-        // The first disconnect tears the old client down, and the transport
-        // of that client then holds it in flight.
-        let firstDisconnect = Task { await server.disconnect() }
-        try await gatedDisconnect.disconnectArrival.wait()
-
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
-        let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
-        let spy = DisposableSpyTransport(wrapping: gatedConnect)
-        let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
+        let server = makeServer()
+        // The inner `ensuring` opens the disconnect gate also when the body
+        // throws. Thus no disconnect stays parked at the gate after the test.
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await gatedDisconnect.release() }) {
+                try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
+                #expect(await server.state == .ready)
 
-        // The fresh attempt connects its own transport while the first
-        // disconnect is still in flight.
-        try await spy.connectArrival.wait()
+                // The first disconnect tears the old client down, and the transport
+                // of that client then holds it in flight.
+                let firstDisconnect = Task { await server.disconnect() }
+                try await gatedDisconnect.disconnectArrival.wait()
 
-        // The first disconnect ends, and writes `.disconnected`. Then the
-        // fresh attempt ends, and writes `.ready`.
-        await gatedDisconnect.release()
-        await firstDisconnect.value
-        #expect(await server.state == .disconnected)
-        await gatedConnect.release()
-        try await attempt2.value
-        #expect(await server.state == .ready)
+                let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
+                let spy = DisposableSpyTransport(wrapping: gatedConnect)
+                let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
+
+                // The fresh attempt connects its own transport while the first
+                // disconnect is still in flight.
+                try await spy.connectArrival.wait()
+
+                // The first disconnect ends, and writes `.disconnected`. Then the
+                // fresh attempt ends, and writes `.ready`.
+                await gatedDisconnect.release()
+                await firstDisconnect.value
+                #expect(await server.state == .disconnected)
+                await gatedConnect.release()
+                try await attempt2.value
+                #expect(await server.state == .ready)
+            }
+        }
 
         withExtendedLifetime((initial, fresh)) {}
     }
@@ -725,25 +733,31 @@ struct ResilienceTests {
     @Test func aLateDisconnectOfAnOldClientNeverClosesTheCurrentConnection() async throws {
         let (initial, clientTransport1) = try await makeScriptedPair(name: "initial-server")
         let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
-        let server = makeServer()
-        try await server.connect(via: gatedDisconnect)
-
-        // 1. The disconnect tears the first client down, and stays in flight.
-        let firstDisconnect = Task { await server.disconnect() }
-        try await gatedDisconnect.disconnectArrival.wait()
-
-        // 2. The connect makes the new connection, and returns.
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
-        try await server.connect(via: clientTransport2)
-        let newClient = try #require(await server.client)
+        let server = makeServer()
+        // The inner `ensuring` opens the disconnect gate also when the body
+        // throws. Thus no disconnect stays parked at the gate after the test.
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await gatedDisconnect.release() }) {
+                try await server.connect(via: gatedDisconnect)
 
-        // 3. The old transport closes, and the disconnect ends.
-        await gatedDisconnect.release()
-        await firstDisconnect.value
+                // 1. The disconnect tears the first client down, and stays in flight.
+                let firstDisconnect = Task { await server.disconnect() }
+                try await gatedDisconnect.disconnectArrival.wait()
 
-        // 4. The new connection still answers.
-        _ = try await newClient.listTools()
-        #expect(await server.client === newClient)
+                // 2. The connect makes the new connection, and returns.
+                try await server.connect(via: clientTransport2)
+                let newClient = try #require(await server.client)
+
+                // 3. The old transport closes, and the disconnect ends.
+                await gatedDisconnect.release()
+                await firstDisconnect.value
+
+                // 4. The new connection still answers.
+                _ = try await newClient.listTools()
+                #expect(await server.client === newClient)
+            }
+        }
 
         withExtendedLifetime((initial, fresh)) {}
     }
@@ -771,26 +785,28 @@ struct ResilienceTests {
             connectTimeout: Self.hungReconnectConnectTimeout, baseDelay: Self.singleAttemptDelay,
             maxDelay: Self.singleAttemptDelay, maxAttempts: Self.singleAttempt)
         let attemptClock = GatedClock()
-        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
-        try await server.connect(via: respawning, backoffPolicy: policy)
-        #expect(await server.state == .ready)
-
-        await respawning.disconnect()
-        let reconnect = Task { try? await server.reconnect() }
-        // The hung second attempt is in flight, and armed its timeout.
-        try await hangArrival.wait()
-        try await attemptClock.waitForRecordedSleeps(atLeast: Self.secondAttempt)
-        #expect(counter.count == Self.secondAttempt)
-        #expect(attemptClock.recordedSleeps.count == Self.secondAttempt)
-
         let (fresh, freshTransport) = try await makeScriptedPair(name: "fresh-server")
-        try await server.connect(via: freshTransport)
-        #expect(await server.state == .ready)
+        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await server.connect(via: respawning, backoffPolicy: policy)
+            #expect(await server.state == .ready)
 
-        attemptClock.open()
-        _ = await reconnect.value
-        #expect(await server.state == .ready)
-        #expect(attemptClock.recordedSleeps == [Self.hungReconnectConnectTimeout, Self.hungReconnectConnectTimeout])
+            await respawning.disconnect()
+            let reconnect = Task { try? await server.reconnect() }
+            // The hung second attempt is in flight, and armed its timeout.
+            try await hangArrival.wait()
+            try await attemptClock.waitForRecordedSleeps(atLeast: Self.secondAttempt)
+            #expect(counter.count == Self.secondAttempt)
+            #expect(attemptClock.recordedSleeps.count == Self.secondAttempt)
+
+            try await server.connect(via: freshTransport)
+            #expect(await server.state == .ready)
+
+            attemptClock.open()
+            _ = await reconnect.value
+            #expect(await server.state == .ready)
+            #expect(attemptClock.recordedSleeps == [Self.hungReconnectConnectTimeout, Self.hungReconnectConnectTimeout])
+        }
         withExtendedLifetime(fresh) {}
     }
 
@@ -803,17 +819,19 @@ struct ResilienceTests {
         let scripted = ScriptedServer()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
-        #expect(await server.state == .ready)
+        try await MCPTestSupport.withConnection(of: server) {
+            #expect(await server.state == .ready)
 
-        let received = try #require(await scripted.receivedClientCapabilities)
-        let elicitation = try #require(received.elicitation)
-        #expect(elicitation.form != nil)
-        #expect(elicitation.url != nil)
+            let received = try #require(await scripted.receivedClientCapabilities)
+            let elicitation = try #require(received.elicitation)
+            #expect(elicitation.form != nil)
+            #expect(elicitation.url != nil)
 
-        // The client the actor built declares the same, as `@testable` sees.
-        let client = try #require(await server.client)
-        let declared = await client.capabilities
-        #expect(declared.elicitation == elicitation)
+            // The client the actor built declares the same, as `@testable` sees.
+            let client = try #require(await server.client)
+            let declared = await client.capabilities
+            #expect(declared.elicitation == elicitation)
+        }
     }
 
     /// A headless server declares no elicitation capability at `initialize`:
@@ -824,14 +842,16 @@ struct ResilienceTests {
         let scripted = ScriptedServer()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName, userPresence: .headless)
-        #expect(await server.state == .ready)
+        try await MCPTestSupport.withConnection(of: server) {
+            #expect(await server.state == .ready)
 
-        let received = try #require(await scripted.receivedClientCapabilities)
-        #expect(received.elicitation == nil)
+            let received = try #require(await scripted.receivedClientCapabilities)
+            #expect(received.elicitation == nil)
 
-        let client = try #require(await server.client)
-        let declared = await client.capabilities
-        #expect(declared.elicitation == nil)
+            let client = try #require(await server.client)
+            let declared = await client.capabilities
+            #expect(declared.elicitation == nil)
+        }
     }
 
     // MARK: - The state machine a host reads
@@ -841,11 +861,15 @@ struct ResilienceTests {
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
 
-        await server.disconnect()
+        try await MCPTestSupport.withConnection(of: server) {
+            // The disconnect under test. The second disconnect of the
+            // helper does nothing.
+            await server.disconnect()
 
-        #expect(await server.state == .disconnected)
-        #expect(await server.identity == ServerIdentity(name: Self.serverName))
-        await expectWaitUntilReadyThrowsNotReady(server, carrying: .disconnected)
+            #expect(await server.state == .disconnected)
+            #expect(await server.identity == ServerIdentity(name: Self.serverName))
+            await expectWaitUntilReadyThrowsNotReady(server, carrying: .disconnected)
+        }
     }
 
     @Test func waitUntilReadyAfterAFaultThrowsNotReady() async throws {
@@ -874,14 +898,16 @@ struct ResilienceTests {
         let gated = GatedConnectTransport(wrapping: clientTransport)
         let server = makeServer()
 
-        let connecting = Task { try await server.connect(via: gated) }
-        let waiting = Task { try await server.waitUntilReady() }
+        try await MCPTestSupport.withConnection(of: server) {
+            let connecting = Task { try await server.connect(via: gated) }
+            let waiting = Task { try await server.waitUntilReady() }
 
-        await gated.release()
-        try await connecting.value
-        try await waiting.value
+            await gated.release()
+            try await connecting.value
+            try await waiting.value
 
-        #expect(await server.state == .ready)
+            #expect(await server.state == .ready)
+        }
         withExtendedLifetime(scripted) {}
     }
 }

@@ -230,13 +230,15 @@ struct MetricsTests {
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker, Self.resultMarker]) { context in
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, logger: context.logger)
-            _ = try await server.call(
-                name: Self.failingToolName, arguments: [Self.argumentName: .string(Self.argumentMarker)])
+            try await MCPTestSupport.withConnection(of: server) {
+                _ = try await server.call(
+                    name: Self.failingToolName, arguments: [Self.argumentName: .string(Self.argumentMarker)])
 
-            let errors = try context.metricsFactory.expectCounter(
-                MultitoolTelemetry.MetricName.mcpServerErrors.rawValue, Self.errorDimensions(.isError))
-            #expect(errors.totalValue == Int64(Self.once))
-            #expect(Self.counters(.mcpServerErrors, in: context).count == Self.once)
+                let errors = try context.metricsFactory.expectCounter(
+                    MultitoolTelemetry.MetricName.mcpServerErrors.rawValue, Self.errorDimensions(.isError))
+                #expect(errors.totalValue == Int64(Self.once))
+                #expect(Self.counters(.mcpServerErrors, in: context).count == Self.once)
+            }
         }
     }
 
@@ -248,14 +250,16 @@ struct MetricsTests {
             let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
                 to: scripted, name: Self.serverName, callTimeout: Self.shortCallTimeout, logger: context.logger,
                 callTimeoutClock: clock)
-            _ = try await server.call(
-                name: Self.hangingToolName, arguments: [Self.argumentName: .string(Self.argumentMarker)])
-            #expect(clock.recordedSleeps == [Self.shortCallTimeout])
+            try await MCPTestSupport.withConnection(of: server) {
+                _ = try await server.call(
+                    name: Self.hangingToolName, arguments: [Self.argumentName: .string(Self.argumentMarker)])
+                #expect(clock.recordedSleeps == [Self.shortCallTimeout])
 
-            let errors = try context.metricsFactory.expectCounter(
-                MultitoolTelemetry.MetricName.mcpServerErrors.rawValue, Self.errorDimensions(.timeout))
-            #expect(errors.totalValue == Int64(Self.once))
-            #expect(Self.counters(.mcpServerErrors, in: context).count == Self.once)
+                let errors = try context.metricsFactory.expectCounter(
+                    MultitoolTelemetry.MetricName.mcpServerErrors.rawValue, Self.errorDimensions(.timeout))
+                #expect(errors.totalValue == Int64(Self.once))
+                #expect(Self.counters(.mcpServerErrors, in: context).count == Self.once)
+            }
         }
     }
 
@@ -265,14 +269,16 @@ struct MetricsTests {
         try await TelemetryCapture.run(forbidding: []) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
-            #expect(Self.counters(.mcpServerRestarts, in: context).isEmpty)
+            try await MCPTestSupport.withConnection(of: server) {
+                #expect(Self.counters(.mcpServerRestarts, in: context).isEmpty)
 
-            await respawning.disconnect()
-            try await server.reconnect()
+                await respawning.disconnect()
+                try await server.reconnect()
 
-            let restarts = try context.metricsFactory.expectCounter(
-                MultitoolTelemetry.MetricName.mcpServerRestarts.rawValue, Self.restartDimensions)
-            #expect(restarts.totalValue == Int64(Self.once))
+                let restarts = try context.metricsFactory.expectCounter(
+                    MultitoolTelemetry.MetricName.mcpServerRestarts.rawValue, Self.restartDimensions)
+                #expect(restarts.totalValue == Int64(Self.once))
+            }
         }
     }
 

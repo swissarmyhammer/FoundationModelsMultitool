@@ -221,14 +221,16 @@ struct MCPServerCallTests {
     @Test("a call against ScriptedServer returns the server's result")
     func aCallReturnsTheServersResult() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        try await withOuterRunContext { context in
-            let result = try await Self.call(
-                server, tool: ScriptedServer.echoToolName,
-                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)],
-                under: context)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await withOuterRunContext { context in
+                let result = try await Self.call(
+                    server, tool: ScriptedServer.echoToolName,
+                    arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)],
+                    under: context)
 
-            #expect(result.isError != true)
-            #expect(result.content == [.text(text: Self.echoText, annotations: nil, _meta: nil)])
+                #expect(result.isError != true)
+                #expect(result.content == [.text(text: Self.echoText, annotations: nil, _meta: nil)])
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -238,11 +240,13 @@ struct MCPServerCallTests {
     @Test("a result with isError returns as a value")
     func anIsErrorResultReturnsAsAValue() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.failingTool])
-        try await withOuterRunContext { context in
-            let result = try await Self.call(server, tool: Self.failingToolName, under: context)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await withOuterRunContext { context in
+                let result = try await Self.call(server, tool: Self.failingToolName, under: context)
 
-            #expect(result.isError == true)
-            #expect(result.content == [.text(text: Self.failingToolText, annotations: nil, _meta: nil)])
+                #expect(result.isError == true)
+                #expect(result.content == [.text(text: Self.failingToolText, annotations: nil, _meta: nil)])
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -252,17 +256,19 @@ struct MCPServerCallTests {
     @Test("a progress notification during a call reaches ToolContext.progress with the run's correlationID")
     func progressReachesTheAmbientContext() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await Self.addProgressTool(to: scripted)
-        // `settledOperationEvents(of:ofKind:)` closes the session before it
-        // reads. The scope also closes the session when the call throws.
-        try await withStubRun { run in
-            let context = run.context
+        try await MCPTestSupport.withConnection(of: server) {
+            await Self.addProgressTool(to: scripted)
+            // `settledOperationEvents(of:ofKind:)` closes the session before it
+            // reads. The scope also closes the session when the call throws.
+            try await withStubRun { run in
+                let context = run.context
 
-            _ = try await Self.call(server, tool: Self.progressToolName, under: context)
+                _ = try await Self.call(server, tool: Self.progressToolName, under: context)
 
-            let progressEvents = await settledOperationEvents(of: run, ofKind: .progress)
-            #expect(progressEvents.count == Self.progressSteps, "progress events were: \(progressEvents)")
-            #expect(progressEvents.allSatisfy { $0.correlationID == context.completionToken })
+                let progressEvents = await settledOperationEvents(of: run, ofKind: .progress)
+                #expect(progressEvents.count == Self.progressSteps, "progress events were: \(progressEvents)")
+                #expect(progressEvents.allSatisfy { $0.correlationID == context.completionToken })
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -275,20 +281,23 @@ struct MCPServerCallTests {
     func cancellationSendsTheNotificationAndThrows() async throws {
         let held = HeldScriptedTool(named: Self.heldToolName)
         let (scripted, server) = try await Self.connected(serving: [held.scriptedTool])
-        try await withOuterRunContext { context in
-            let callTask = Task {
-                try await Self.call(server, tool: Self.heldToolName, under: context)
-            }
-            try await held.waitForArrival()
-            callTask.cancel()
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await held.release() }) {
+                try await withOuterRunContext { context in
+                    let callTask = Task {
+                        try await Self.call(server, tool: Self.heldToolName, under: context)
+                    }
+                    try await held.waitForArrival()
+                    callTask.cancel()
 
-            await #expect(throws: CancellationError.self) {
-                _ = try await callTask.value
+                    await #expect(throws: CancellationError.self) {
+                        _ = try await callTask.value
+                    }
+                    let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
+                    #expect(recorded.first?.method == CancelledNotification.name)
+                }
             }
-            let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
-            #expect(recorded.first?.method == CancelledNotification.name)
         }
-        await held.release()
     }
 
     // MARK: - The transport drop
@@ -296,17 +305,19 @@ struct MCPServerCallTests {
     @Test("a transport drop mid-call throws MCPServerError.lost, and that value is a LostRunError")
     func aTransportDropMidCallThrowsLost() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await scripted.addTransportDroppingTool(named: Self.droppingToolName)
-        try await withOuterRunContext { context in
-            let thrown = await MCPCallProbe.thrownError {
-                _ = try await Self.call(server, tool: Self.droppingToolName, under: context)
-            }
+        try await MCPTestSupport.withConnection(of: server) {
+            await scripted.addTransportDroppingTool(named: Self.droppingToolName)
+            try await withOuterRunContext { context in
+                let thrown = await MCPCallProbe.thrownError {
+                    _ = try await Self.call(server, tool: Self.droppingToolName, under: context)
+                }
 
-            guard case .lost? = thrown as? MCPServerError else {
-                Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
-                return
+                guard case .lost? = thrown as? MCPServerError else {
+                    Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
+                    return
+                }
+                #expect(thrown is any LostRunError)
             }
-            #expect(thrown is any LostRunError)
         }
         withExtendedLifetime(scripted) {}
     }
@@ -317,30 +328,32 @@ struct MCPServerCallTests {
     @Test("a background runCode run whose snippet awaits the call across a transport drop settles as lost")
     func aBackgroundRunAcrossATransportDropSettlesAsLost() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await scripted.addTransportDroppingTool(named: Self.droppingToolName)
-        let registry = try MultiTool.Builder()
-            .addTool(Self.probe(server, tool: Self.droppingToolName))
-            .buildRegistry()
-        try await withOuterRunContext { context in
-            // A settle period of 0 sends the run to the background at once, so that
-            // the drop settles a background run and not the call itself.
-            let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
-            let mounted = try #require(
-                context.mount(runCode, as: .synchronous)
-                    as? any FoundationModels.Tool<RunCodeArguments, String>
-            )
+        try await MCPTestSupport.withConnection(of: server) {
+            await scripted.addTransportDroppingTool(named: Self.droppingToolName)
+            let registry = try MultiTool.Builder()
+                .addTool(Self.probe(server, tool: Self.droppingToolName))
+                .buildRegistry()
+            try await withOuterRunContext { context in
+                // A settle period of 0 sends the run to the background at once, so that
+                // the drop settles a background run and not the call itself.
+                let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
+                let mounted = try #require(
+                    context.mount(runCode, as: .synchronous)
+                        as? any FoundationModels.Tool<RunCodeArguments, String>
+                )
 
-            let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.probeSnippet))
+                let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.probeSnippet))
 
-            #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
-            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-            let settlement = await context.wait(
-                completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
-            guard case .settled(let terminal) = settlement else {
-                Issue.record("the background run never settled: \(settlement)")
-                return
+                #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
+                let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+                let settlement = await context.wait(
+                    completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
+                guard case .settled(let terminal) = settlement else {
+                    Issue.record("the background run never settled: \(settlement)")
+                    return
+                }
+                #expect(terminal.outcome == .lost, "terminal was: \(terminal)")
             }
-            #expect(terminal.outcome == .lost, "terminal was: \(terminal)")
         }
         withExtendedLifetime(scripted) {}
     }
@@ -353,15 +366,17 @@ struct MCPServerCallTests {
     @Test("a call on a server that is not ready answers an isError result in band")
     func aCallOnAServerThatIsNotReadyAnswersInBand() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        try await withOuterRunContext { context in
-            await server.disconnect()
+        try await MCPTestSupport.withConnection(of: server) {
+            try await withOuterRunContext { context in
+                await server.disconnect()
 
-            let result = try await Self.call(server, tool: ScriptedServer.echoToolName, under: context)
+                let result = try await Self.call(server, tool: ScriptedServer.echoToolName, under: context)
 
-            #expect(result.isError == true)
-            #expect(
-                ToolContentRenderer.render(result: result, budget: RenderBudget.default)
-                    .contains(Self.serverName))
+                #expect(result.isError == true)
+                #expect(
+                    ToolContentRenderer.render(result: result, budget: RenderBudget.default)
+                        .contains(Self.serverName))
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -378,14 +393,16 @@ struct MCPServerCallTests {
         let clock = ManualClock()
         let (scripted, server) = try await Self.connected(
             serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await held.release() }) {
+                let result = try await server.call(name: Self.heldToolName, arguments: nil)
 
-        let result = try await server.call(name: Self.heldToolName, arguments: nil)
-
-        #expect(result.isError == true)
-        #expect(clock.recordedSleeps == [Self.bareCallTimeout])
-        let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
-        #expect(recorded.first?.method == CancelledNotification.name)
-        await held.release()
+                #expect(result.isError == true)
+                #expect(clock.recordedSleeps == [Self.bareCallTimeout])
+                let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
+                #expect(recorded.first?.method == CancelledNotification.name)
+            }
+        }
     }
 
     /// The timer of a bare call sleeps on the clock that the server got at
@@ -403,34 +420,37 @@ struct MCPServerCallTests {
         let clock = GatedClock()
         let (scripted, server) = try await Self.connected(
             serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
-        let callEnded = TestGate()
-        let call = Task {
-            defer { callEnded.open() }
-            return try await server.call(name: Self.heldToolName, arguments: nil)
-        }
-        try await held.waitForArrival()
+        try await MCPTestSupport.withConnection(of: server) {
+            try await ensuring({ await held.release() }) {
+                let callEnded = TestGate()
+                let call = Task {
+                    defer { callEnded.open() }
+                    return try await server.call(name: Self.heldToolName, arguments: nil)
+                }
+                try await held.waitForArrival()
 
-        let first = try await withThrowingTaskGroup(of: BareCallFirstEvent.self) { group in
-            group.addTask {
-                try await clock.waitForRecordedSleeps(atLeast: Self.oneBareTimerSleep)
-                return .timerSlept
-            }
-            group.addTask {
-                try await callEnded.wait()
-                return .callEnded
-            }
-            let winner = try await group.next()
-            group.cancelAll()
-            return winner
-        }
+                let first = try await withThrowingTaskGroup(of: BareCallFirstEvent.self) { group in
+                    group.addTask {
+                        try await clock.waitForRecordedSleeps(atLeast: Self.oneBareTimerSleep)
+                        return .timerSlept
+                    }
+                    group.addTask {
+                        try await callEnded.wait()
+                        return .callEnded
+                    }
+                    let winner = try await group.next()
+                    group.cancelAll()
+                    return winner
+                }
 
-        #expect(first == .timerSlept)
-        #expect(clock.recordedSleeps == [Self.bareCallTimeout])
-        #expect(!callEnded.isOpen)
-        clock.open()
-        let result = try await call.value
-        #expect(result.isError == true)
-        await held.release()
+                #expect(first == .timerSlept)
+                #expect(clock.recordedSleeps == [Self.bareCallTimeout])
+                #expect(!callEnded.isOpen)
+                clock.open()
+                let result = try await call.value
+                #expect(result.isError == true)
+            }
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -472,39 +492,41 @@ struct MCPServerCallTests {
         let arrival = TestGate()
         let (scripted, server) = try await Self.connected(serving: [Self.hangingTool(arrival: arrival)])
         let clock = ManualRunClock()
-        try await withOuterRunContext(runClock: clock) { context in
-            let binding = RunBinding(context: context, innerMount: Self.shortInnerCallMount)
-            let sleepersBefore = clock.sleeperCount
-            let invokeEnded = TestGate()
+        try await MCPTestSupport.withConnection(of: server) {
+            try await withOuterRunContext(runClock: clock) { context in
+                let binding = RunBinding(context: context, innerMount: Self.shortInnerCallMount)
+                let sleepersBefore = clock.sleeperCount
+                let invokeEnded = TestGate()
 
-            let invoke = Task {
-                defer { invokeEnded.open() }
-                return await MCPCallProbe.thrownError {
-                    _ = try await binding.invoke(
-                        Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+                let invoke = Task {
+                    defer { invokeEnded.open() }
+                    return await MCPCallProbe.thrownError {
+                        _ = try await binding.invoke(
+                            Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+                    }
                 }
-            }
-            try await arrival.wait()
-            await clock.waitForSleepers(atLeast: sleepersBefore + Self.innerCallBoundSleepers)
-            #expect(!invokeEnded.isOpen)
-            clock.advance(by: .seconds(Self.innerCallBoundSeconds))
-            let thrown = await invoke.value
+                try await arrival.wait()
+                await clock.waitForSleepers(atLeast: sleepersBefore + Self.innerCallBoundSleepers)
+                #expect(!invokeEnded.isOpen)
+                clock.advance(by: .seconds(Self.innerCallBoundSeconds))
+                let thrown = await invoke.value
 
-            // The hanging tool never answers, thus a call that ended at all was
-            // ended by a bound, and the error names the bound that fired: the
-            // configured inner-call bound. The test replaces the old check of the
-            // real elapsed time (`elapsed >= bound`) with events: the call did
-            // not end while the timer slept, and it ended only after the run
-            // clock moved by exactly the bound. That is the same fact, and it
-            // reads no real time (card `^tm4x2hp`: no test checks the speed of
-            // the machine).
-            #expect(
-                thrown as? ToolMountError
-                    == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
-                "thrown was: \(String(describing: thrown))")
-            let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
-            #expect(recorded.first?.method == CancelledNotification.name)
-            #expect(await server.inFlightCalls.isEmpty)
+                // The hanging tool never answers, thus a call that ended at all was
+                // ended by a bound, and the error names the bound that fired: the
+                // configured inner-call bound. The test replaces the old check of the
+                // real elapsed time (`elapsed >= bound`) with events: the call did
+                // not end while the timer slept, and it ended only after the run
+                // clock moved by exactly the bound. That is the same fact, and it
+                // reads no real time (card `^tm4x2hp`: no test checks the speed of
+                // the machine).
+                #expect(
+                    thrown as? ToolMountError
+                        == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
+                    "thrown was: \(String(describing: thrown))")
+                let recorded = await scripted.waitForRecordedNotifications(count: Self.oneNotification)
+                #expect(recorded.first?.method == CancelledNotification.name)
+                #expect(await server.inFlightCalls.isEmpty)
+            }
         }
     }
 
@@ -519,22 +541,24 @@ struct MCPServerCallTests {
     @Test("a mounted call posts its progress events then exactly one completed, in that order")
     func progressThenExactlyOneCompleted() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await Self.addProgressTool(to: scripted)
-        let sink = RecordingEventSink()
-        try await withOuterRunContext { context in
-            let engine = MCPCallProbe.mountedRunToCompletion(
-                Self.probe(server, tool: Self.progressToolName), on: context,
-                postingTo: sink)
+        try await MCPTestSupport.withConnection(of: server) {
+            await Self.addProgressTool(to: scripted)
+            let sink = RecordingEventSink()
+            try await withOuterRunContext { context in
+                let engine = MCPCallProbe.mountedRunToCompletion(
+                    Self.probe(server, tool: Self.progressToolName), on: context,
+                    postingTo: sink)
 
-            _ = try await engine.call(arguments: NoArguments())
+                _ = try await engine.call(arguments: NoArguments())
 
-            let events = await sink.events
-            let kinds = events.map(\.kind)
-            #expect(kinds.count == Self.progressSteps + Self.terminalEventCount, "kinds were: \(kinds)")
-            #expect(kinds.last == .completed)
-            #expect(kinds.dropLast().allSatisfy { $0 == .progress })
-            #expect(events.last?.outcome == .succeeded)
-            #expect(events.dropLast().allSatisfy { $0.outcome == nil })
+                let events = await sink.events
+                let kinds = events.map(\.kind)
+                #expect(kinds.count == Self.progressSteps + Self.terminalEventCount, "kinds were: \(kinds)")
+                #expect(kinds.last == .completed)
+                #expect(kinds.dropLast().allSatisfy { $0 == .progress })
+                #expect(events.last?.outcome == .succeeded)
+                #expect(events.dropLast().allSatisfy { $0.outcome == nil })
+            }
         }
         withExtendedLifetime(scripted) {}
     }
@@ -542,27 +566,29 @@ struct MCPServerCallTests {
     @Test("two concurrent calls to the same tool produce events distinguishable by correlationID")
     func concurrentCallsAreDistinguishableByCorrelationID() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
-        await Self.addProgressTool(to: scripted)
-        try await withStubRun { run in
-            // A caller-supplied sink, because this is the assertion that needs the
-            // UNSTAMPED correlation: the mount's own sink re-stamps every event
-            // onto the mounting run's token, which collapses two concurrent runs to
-            // one correlation and makes this test inexpressible.
-            let sink = RecordingEventSink()
-            let engine = MCPCallProbe.mountedRunToCompletion(
-                Self.probe(server, tool: Self.progressToolName), on: run.context,
-                postingTo: sink)
+        try await MCPTestSupport.withConnection(of: server) {
+            await Self.addProgressTool(to: scripted)
+            try await withStubRun { run in
+                // A caller-supplied sink, because this is the assertion that needs the
+                // UNSTAMPED correlation: the mount's own sink re-stamps every event
+                // onto the mounting run's token, which collapses two concurrent runs to
+                // one correlation and makes this test inexpressible.
+                let sink = RecordingEventSink()
+                let engine = MCPCallProbe.mountedRunToCompletion(
+                    Self.probe(server, tool: Self.progressToolName), on: run.context,
+                    postingTo: sink)
 
-            async let first = engine.call(arguments: NoArguments())
-            async let second = engine.call(arguments: NoArguments())
-            _ = try await (first, second)
+                async let first = engine.call(arguments: NoArguments())
+                async let second = engine.call(arguments: NoArguments())
+                _ = try await (first, second)
 
-            let events = await sink.events
-            let correlationIDs = Set(events.map(\.correlationID))
-            #expect(correlationIDs.count == Self.concurrentCallCount)
-            for correlationID in correlationIDs {
-                let completed = events.filter { $0.correlationID == correlationID && $0.kind == .completed }
-                #expect(completed.count == Self.terminalEventCount)
+                let events = await sink.events
+                let correlationIDs = Set(events.map(\.correlationID))
+                #expect(correlationIDs.count == Self.concurrentCallCount)
+                for correlationID in correlationIDs {
+                    let completed = events.filter { $0.correlationID == correlationID && $0.kind == .completed }
+                    #expect(completed.count == Self.terminalEventCount)
+                }
             }
         }
         withExtendedLifetime(scripted) {}

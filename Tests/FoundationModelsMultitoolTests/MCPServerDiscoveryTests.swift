@@ -76,11 +76,12 @@ struct MCPServerDiscoveryTests {
         let scripted = await Self.scriptedServer(echoing: expectedNames, toolsPageSize: Self.pageSize)
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
+        try await MCPTestSupport.withConnection(of: server) {
+            let tools = try await server.mcpTools()
 
-        let tools = try await server.mcpTools()
-
-        #expect(tools.count == Self.paginatedToolCount)
-        #expect(tools.map(\.name) == expectedNames)
+            #expect(tools.count == Self.paginatedToolCount)
+            #expect(tools.map(\.name) == expectedNames)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -93,9 +94,11 @@ struct MCPServerDiscoveryTests {
         let server = MCPTestSupport.makeServer(name: Self.serverName)
         #expect(await server.state == .connecting)
 
-        try await server.connect(via: transport)
+        try await MCPTestSupport.withConnection(of: server) {
+            try await server.connect(via: transport)
 
-        #expect(await server.state == .ready)
+            #expect(await server.state == .ready)
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -138,15 +141,19 @@ struct MCPServerDiscoveryTests {
         let transport = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
         let server = MCPTestSupport.makeServer(name: Self.serverName)
 
-        await #expect(throws: (any Error).self) {
-            try await server.connect(via: transport)
-        }
+        // The handshake succeeds before the discovery fails. Thus the test
+        // disconnects the server on each path.
+        try await MCPTestSupport.withConnection(of: server) {
+            await #expect(throws: (any Error).self) {
+                try await server.connect(via: transport)
+            }
 
-        guard case .faulted = await server.state else {
-            Issue.record("expected .faulted state after a discovery-phase failure")
-            return
+            guard case .faulted = await server.state else {
+                Issue.record("expected .faulted state after a discovery-phase failure")
+                return
+            }
+            #expect(await server.identity == nil)
         }
-        #expect(await server.identity == nil)
         withExtendedLifetime(scripted) {}
     }
 
@@ -156,13 +163,14 @@ struct MCPServerDiscoveryTests {
         let scripted = await Self.scriptedServer(echoing: ["echo"])
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
+        try await MCPTestSupport.withConnection(of: server) {
+            let catalog = try await server.catalog
 
-        let catalog = try await server.catalog
-
-        #expect(catalog.tools.map(\.name) == ["echo"])
-        #expect(catalog.state == .ready)
-        #expect(catalog.epoch == Self.firstEpoch)
-        #expect(catalog.identity == ServerIdentity(name: Self.serverName))
+            #expect(catalog.tools.map(\.name) == ["echo"])
+            #expect(catalog.state == .ready)
+            #expect(catalog.epoch == Self.firstEpoch)
+            #expect(catalog.identity == ServerIdentity(name: Self.serverName))
+        }
         withExtendedLifetime(scripted) {}
     }
 
@@ -183,18 +191,22 @@ struct MCPServerDiscoveryTests {
         await first.addEchoTool()
         let server = try await MCPTestSupport.connectedMCPServer(
             to: first, over: .inMemory, name: Self.serverName)
-        let firstIdentity = await server.identity
-
-        await server.disconnect()
-
         let second = ScriptedServer(name: "renamed-server")
-        await second.addEchoTool()
-        let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
-        try await server.connect(via: transport)
-        let secondIdentity = await server.identity
+        // The scope disconnects the second connection. The first disconnect
+        // below is the step under test.
+        try await MCPTestSupport.withConnection(of: server) {
+            let firstIdentity = await server.identity
 
-        #expect(firstIdentity == ServerIdentity(name: Self.serverName))
-        #expect(firstIdentity == secondIdentity)
+            await server.disconnect()
+
+            await second.addEchoTool()
+            let transport = try await MCPTestSupport.clientTransport(serving: second, over: .inMemory)
+            try await server.connect(via: transport)
+            let secondIdentity = await server.identity
+
+            #expect(firstIdentity == ServerIdentity(name: Self.serverName))
+            #expect(firstIdentity == secondIdentity)
+        }
         withExtendedLifetime((first, second)) {}
     }
 }

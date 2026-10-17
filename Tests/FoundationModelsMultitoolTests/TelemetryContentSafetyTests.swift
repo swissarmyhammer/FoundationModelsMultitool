@@ -135,7 +135,8 @@ struct TelemetryContentSafetyTests {
         #expect(failure.contains(errorMarker))
     }
 
-    /// Calls the MCP tool that succeeds and the MCP tool that fails.
+    /// Calls the MCP tool that succeeds and the MCP tool that fails, and then
+    /// disconnects the MCP server, also when a call throws.
     ///
     /// - Parameters:
     ///   - scripted: The scripted server that serves the two tools.
@@ -144,11 +145,13 @@ struct TelemetryContentSafetyTests {
     private static func driveMCPCalls(against scripted: ScriptedServer, logger: Logger) async throws {
         let (server, _) = try await MCPTestSupport.connectedRecordingMCPServer(
             to: scripted, name: serverName, logger: logger)
-        let arguments: [String: Value] = [mcpArgumentName: .string(mcpArgumentMarker)]
-        let echoed = try await server.call(name: echoToolName, arguments: arguments)
-        #expect(echoed.isError != true)
-        let failed = try await server.call(name: failingToolName, arguments: arguments)
-        #expect(failed.isError == true)
+        try await MCPTestSupport.withConnection(of: server) {
+            let arguments: [String: Value] = [mcpArgumentName: .string(mcpArgumentMarker)]
+            let echoed = try await server.call(name: echoToolName, arguments: arguments)
+            #expect(echoed.isError != true)
+            let failed = try await server.call(name: failingToolName, arguments: arguments)
+            #expect(failed.isError == true)
+        }
     }
 
     // MARK: - Fixtures

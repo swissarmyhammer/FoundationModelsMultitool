@@ -18,6 +18,10 @@ import struct Foundation.Data
 /// `poll(timeout:until:)` helper of the source is not here either. No test
 /// depends on time: each test waits on an event (a `TestGate`, a
 /// `TestCountdown`, or a wait of the scripted server).
+///
+/// Each test that connects a client gives its body to
+/// ``MCPTestSupport/withConnection(of:_:)``. Thus the client disconnects
+/// also when the body throws.
 @Suite("ScriptedServerSelf")
 struct ScriptedServerSelfTests {
     /// The client name every test of this suite connects under.
@@ -207,20 +211,20 @@ struct ScriptedServerSelfTests {
             await scripted.addTool(ScriptedServer.echoTool(named: "tool-\(index)"))
         }
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            var collectedNames: [String] = []
+            var cursor: String?
+            var pageCount = 0
+            repeat {
+                let page = try await client.listTools(cursor: cursor)
+                collectedNames.append(contentsOf: page.tools.map(\.name))
+                cursor = page.nextCursor
+                pageCount += 1
+            } while cursor != nil
 
-        var collectedNames: [String] = []
-        var cursor: String?
-        var pageCount = 0
-        repeat {
-            let page = try await client.listTools(cursor: cursor)
-            collectedNames.append(contentsOf: page.tools.map(\.name))
-            cursor = page.nextCursor
-            pageCount += 1
-        } while cursor != nil
-
-        #expect(pageCount == Self.paginationExpectedPageCount)
-        #expect(collectedNames.count == Self.paginationToolCount)
-        await client.disconnect()
+            #expect(pageCount == Self.paginationExpectedPageCount)
+            #expect(collectedNames.count == Self.paginationToolCount)
+        }
     }
 
     // MARK: - tools/list_changed bursts
@@ -229,17 +233,17 @@ struct ScriptedServerSelfTests {
     func toolListChangedBurstEmission() async throws {
         let scripted = ScriptedServer()
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            let counter = NotificationCounter(expected: Self.burstCount)
+            await client.onNotification(ToolListChangedNotification.self) { _ in
+                await counter.increment()
+            }
 
-        let counter = NotificationCounter(expected: Self.burstCount)
-        await client.onNotification(ToolListChangedNotification.self) { _ in
-            await counter.increment()
+            try await scripted.emitToolListChangedBurst(count: Self.burstCount)
+
+            try await counter.allObserved.wait()
+            #expect(await counter.count == Self.burstCount)
         }
-
-        try await scripted.emitToolListChangedBurst(count: Self.burstCount)
-
-        try await counter.allObserved.wait()
-        #expect(await counter.count == Self.burstCount)
-        await client.disconnect()
     }
 
     // MARK: - add/remove/re-schema on command or on a scheduled trigger
@@ -249,44 +253,44 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         await scripted.addTool(ScriptedServer.echoTool(named: "alpha"))
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            var page = try await client.listTools()
+            #expect(page.tools.map(\.name) == ["alpha"])
 
-        var page = try await client.listTools()
-        #expect(page.tools.map(\.name) == ["alpha"])
+            await scripted.addTool(ScriptedServer.echoTool(named: "beta"))
+            page = try await client.listTools()
+            #expect(Set(page.tools.map(\.name)) == ["alpha", "beta"])
 
-        await scripted.addTool(ScriptedServer.echoTool(named: "beta"))
-        page = try await client.listTools()
-        #expect(Set(page.tools.map(\.name)) == ["alpha", "beta"])
+            await scripted.removeTool(named: "alpha")
+            page = try await client.listTools()
+            #expect(page.tools.map(\.name) == ["beta"])
 
-        await scripted.removeTool(named: "alpha")
-        page = try await client.listTools()
-        #expect(page.tools.map(\.name) == ["beta"])
+            let reschemaed = MCP.Tool(
+                name: "beta",
+                description: "updated description",
+                inputSchema: JSONSchemaBuilder.emptySchema
+            )
+            await scripted.replaceTool(
+                ScriptedTool(definition: reschemaed) { _ in
+                    CallTool.Result(content: [.text(text: "beta", annotations: nil, _meta: nil)])
+                }
+            )
+            page = try await client.listTools()
+            #expect(page.tools.first?.description == "updated description")
 
-        let reschemaed = MCP.Tool(
-            name: "beta",
-            description: "updated description",
-            inputSchema: JSONSchemaBuilder.emptySchema
-        )
-        await scripted.replaceTool(
-            ScriptedTool(definition: reschemaed) { _ in
-                CallTool.Result(content: [.text(text: "beta", annotations: nil, _meta: nil)])
+            // The scheduled mutation runs when the test opens `trigger`, and it
+            // opens `applied` when it is done. No time sets when it runs.
+            let trigger = TestGate()
+            let applied = TestGate()
+            await scripted.scheduleMutation(after: { try? await trigger.wait() }) { server in
+                await server.addTool(ScriptedServer.echoTool(named: "gamma"))
+                applied.open()
             }
-        )
-        page = try await client.listTools()
-        #expect(page.tools.first?.description == "updated description")
-
-        // The scheduled mutation runs when the test opens `trigger`, and it
-        // opens `applied` when it is done. No time sets when it runs.
-        let trigger = TestGate()
-        let applied = TestGate()
-        await scripted.scheduleMutation(after: { try? await trigger.wait() }) { server in
-            await server.addTool(ScriptedServer.echoTool(named: "gamma"))
-            applied.open()
+            trigger.open()
+            try await applied.wait()
+            page = try await client.listTools()
+            #expect(page.tools.map(\.name).contains("gamma"))
         }
-        trigger.open()
-        try await applied.wait()
-        page = try await client.listTools()
-        #expect(page.tools.map(\.name).contains("gamma"))
-        await client.disconnect()
     }
 
     // MARK: - The dynamic toolset scenario, one stage on each command
@@ -298,26 +302,26 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         await scripted.startDynamicToolsetScenario()
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            // No stage runs before the first command.
+            var page = try await client.listTools()
+            #expect(page.tools.map(\.name) == [counter])
 
-        // No stage runs before the first command.
-        var page = try await client.listTools()
-        #expect(page.tools.map(\.name) == [counter])
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            page = try await client.listTools()
+            #expect(page.tools.map(\.name) == [counter, greeter])
 
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        page = try await client.listTools()
-        #expect(page.tools.map(\.name) == [counter, greeter])
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            page = try await client.listTools()
+            #expect(page.tools.map(\.name) == [counter, greeter])
+            #expect(page.tools.first?.inputSchema != JSONSchemaBuilder.emptySchema)
 
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        page = try await client.listTools()
-        #expect(page.tools.map(\.name) == [counter, greeter])
-        #expect(page.tools.first?.inputSchema != JSONSchemaBuilder.emptySchema)
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            page = try await client.listTools()
+            #expect(page.tools.map(\.name) == [counter])
 
-        #expect(await scripted.advanceDynamicToolsetScenario())
-        page = try await client.listTools()
-        #expect(page.tools.map(\.name) == [counter])
-
-        #expect(await scripted.advanceDynamicToolsetScenario() == false)
-        await client.disconnect()
+            #expect(await scripted.advanceDynamicToolsetScenario() == false)
+        }
     }
 
     // MARK: - fail-N-times-then-succeed connects
@@ -327,17 +331,17 @@ struct ScriptedServerSelfTests {
         let (clientTransport, _) = await InMemoryTransport.createConnectedPair()
         let flaky = FlakyConnectTransport(
             wrapping: clientTransport, failingConnectAttempts: Self.failingConnectAttempts)
-
-        for _ in 0..<Self.failingConnectAttempts {
-            await #expect(throws: MCPError.self) {
-                try await flaky.connect()
+        try await ensuring({ await flaky.disconnect() }) {
+            for _ in 0..<Self.failingConnectAttempts {
+                await #expect(throws: MCPError.self) {
+                    try await flaky.connect()
+                }
             }
-        }
-        try await flaky.connect()
+            try await flaky.connect()
 
-        let attempts = await flaky.connectAttempts
-        #expect(attempts == Self.failingConnectAttempts + 1)
-        await flaky.disconnect()
+            let attempts = await flaky.connectAttempts
+            #expect(attempts == Self.failingConnectAttempts + 1)
+        }
     }
 
     // MARK: - transport drop mid-call
@@ -353,22 +357,23 @@ struct ScriptedServerSelfTests {
         try await scripted.start(transport: signaling)
         let client = MCPTestSupport.makeClient(name: Self.clientName)
         _ = try await client.connect(transport: clientTransport)
+        try await MCPTestSupport.withConnection(of: client) {
+            let callTask = Task {
+                try await client.callTool(name: "drop")
+            }
 
-        let callTask = Task {
-            try await client.callTool(name: "drop")
-        }
+            // Wait until the call reached the server and the tool dropped the
+            // transport.
+            try await signaling.dropped.wait()
 
-        // Wait until the call reached the server and the tool dropped the
-        // transport.
-        try await signaling.dropped.wait()
+            // A disconnect resolves every request still pending with a
+            // "Client disconnected" error. Had the drop not stopped the answer,
+            // `callTask` would already hold a result and this would fail.
+            await client.disconnect()
 
-        // A disconnect resolves every request still pending with a
-        // "Client disconnected" error. Had the drop not stopped the answer,
-        // `callTask` would already hold a result and this would fail.
-        await client.disconnect()
-
-        await #expect(throws: (any Error).self) {
-            _ = try await callTask.value
+            await #expect(throws: (any Error).self) {
+                _ = try await callTask.value
+            }
         }
     }
 
@@ -380,29 +385,29 @@ struct ScriptedServerSelfTests {
         await scripted.addLoopbackTools()
         let client = try await connect(
             to: scripted, advertising: Client.Capabilities(elicitation: .init()))
-
-        await client.withElicitationHandler { params in
-            guard case .form(let formParams) = params else {
-                return CreateElicitation.Result(action: .decline)
+        try await MCPTestSupport.withConnection(of: client) {
+            await client.withElicitationHandler { params in
+                guard case .form(let formParams) = params else {
+                    return CreateElicitation.Result(action: .decline)
+                }
+                #expect(formParams.message == ScriptedServer.elicitEchoMessage)
+                return CreateElicitation.Result(
+                    action: .accept, content: [ScriptedServer.elicitEchoAnswerField: .string(Self.scriptedAnswer)])
             }
-            #expect(formParams.message == ScriptedServer.elicitEchoMessage)
-            return CreateElicitation.Result(
-                action: .accept, content: [ScriptedServer.elicitEchoAnswerField: .string(Self.scriptedAnswer)])
+
+            let context = try await client.send(CallTool.request(.init(name: ScriptedServer.elicitEchoToolName)))
+            let result = try await context.value
+
+            #expect(result.content.contains { content in
+                if case .text(let text, _, _) = content {
+                    return text.contains("accept")
+                }
+                return false
+            })
+            #expect(
+                result.structuredContent?.objectValue?[ScriptedServer.elicitEchoAnswerField]?.stringValue
+                    == Self.scriptedAnswer)
         }
-
-        let context = try await client.send(CallTool.request(.init(name: ScriptedServer.elicitEchoToolName)))
-        let result = try await context.value
-
-        #expect(result.content.contains { content in
-            if case .text(let text, _, _) = content {
-                return text.contains("accept")
-            }
-            return false
-        })
-        #expect(
-            result.structuredContent?.objectValue?[ScriptedServer.elicitEchoAnswerField]?.stringValue
-                == Self.scriptedAnswer)
-        await client.disconnect()
     }
 
     @Test("the URL-mode loopback tool sends a URL elicitation, and the complete notification names its id")
@@ -411,28 +416,28 @@ struct ScriptedServerSelfTests {
         await scripted.addLoopbackTools()
         let client = try await connect(
             to: scripted, advertising: Client.Capabilities(elicitation: .init()))
-
-        await client.withElicitationHandler { params in
-            guard case .url(let urlParams) = params else {
-                return CreateElicitation.Result(action: .decline)
+        try await MCPTestSupport.withConnection(of: client) {
+            await client.withElicitationHandler { params in
+                guard case .url(let urlParams) = params else {
+                    return CreateElicitation.Result(action: .decline)
+                }
+                #expect(urlParams.url == ScriptedServer.elicitURLLink)
+                #expect(urlParams.elicitationId == ScriptedServer.elicitURLElicitationId)
+                return CreateElicitation.Result(action: .accept)
             }
-            #expect(urlParams.url == ScriptedServer.elicitURLLink)
-            #expect(urlParams.elicitationId == ScriptedServer.elicitURLElicitationId)
-            return CreateElicitation.Result(action: .accept)
-        }
-        let counter = NotificationCounter(expected: 1)
-        await client.onNotification(ElicitationCompleteNotification.self) { message in
-            #expect(message.params.elicitationId == ScriptedServer.elicitURLElicitationId)
-            await counter.increment()
-        }
+            let counter = NotificationCounter(expected: 1)
+            await client.onNotification(ElicitationCompleteNotification.self) { message in
+                #expect(message.params.elicitationId == ScriptedServer.elicitURLElicitationId)
+                await counter.increment()
+            }
 
-        let result = try await client.callTool(name: ScriptedServer.elicitURLToolName)
-        #expect(result.isError != true)
-        try await scripted.sendElicitationComplete(elicitationId: ScriptedServer.elicitURLElicitationId)
+            let result = try await client.callTool(name: ScriptedServer.elicitURLToolName)
+            #expect(result.isError != true)
+            try await scripted.sendElicitationComplete(elicitationId: ScriptedServer.elicitURLElicitationId)
 
-        try await counter.allObserved.wait()
-        #expect(await counter.count == 1)
-        await client.disconnect()
+            try await counter.allObserved.wait()
+            #expect(await counter.count == 1)
+        }
     }
 
     // MARK: - periodic progress notifications
@@ -443,19 +448,19 @@ struct ScriptedServerSelfTests {
         await scripted.addProgressReportingTool(named: "slow", totalSteps: Self.progressSteps)
         let (client, recorder) = try await connectRecordingProgress(
             to: scripted, expecting: Self.progressSteps)
+        try await MCPTestSupport.withConnection(of: client) {
+            let meta = Metadata(progressToken: .string("progress-token"))
+            _ = try await client.callTool(name: "slow", arguments: nil, meta: meta)
 
-        let meta = Metadata(progressToken: .string("progress-token"))
-        _ = try await client.callTool(name: "slow", arguments: nil, meta: meta)
+            // The response of the tool proves only that the server sent the last
+            // notification, not that the client's message loop processed it.
+            try await recorder.allArrived.wait()
 
-        // The response of the tool proves only that the server sent the last
-        // notification, not that the client's message loop processed it.
-        try await recorder.allArrived.wait()
-
-        let updates = await recorder.updates
-        #expect(updates.count == Self.progressSteps)
-        #expect(updates.map(\.progress) == Self.expectedProgress(steps: Self.progressSteps))
-        #expect(updates.allSatisfy { $0.total == Double(Self.progressSteps) })
-        await client.disconnect()
+            let updates = await recorder.updates
+            #expect(updates.count == Self.progressSteps)
+            #expect(updates.map(\.progress) == Self.expectedProgress(steps: Self.progressSteps))
+            #expect(updates.allSatisfy { $0.total == Double(Self.progressSteps) })
+        }
     }
 
     // MARK: - recording inbound notifications (cancelled)
@@ -468,17 +473,17 @@ struct ScriptedServerSelfTests {
         let held = HeldScriptedTool(named: Self.heldToolName)
         await scripted.addTool(held.scriptedTool)
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
+            try await held.waitForArrival()
+            try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
-        let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
-        try await held.waitForArrival()
-        try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
-
-        let recorded = await scripted.waitForRecordedNotifications(count: 1)
-        #expect(recorded.count == 1)
-        #expect(recorded.first?.method == CancelledNotification.name)
-        #expect(recorded.first?.reason == Self.cancellationReason)
-        await held.release()
-        await client.disconnect()
+            let recorded = await scripted.waitForRecordedNotifications(count: 1)
+            #expect(recorded.count == 1)
+            #expect(recorded.first?.method == CancelledNotification.name)
+            #expect(recorded.first?.reason == Self.cancellationReason)
+            await held.release()
+        }
     }
 
     // MARK: - slow build
@@ -489,19 +494,19 @@ struct ScriptedServerSelfTests {
         await scripted.addSlowBuildTool(totalSteps: Self.slowBuildSuccessSteps)
         let (client, recorder) = try await connectRecordingProgress(
             to: scripted, expecting: Self.slowBuildSuccessSteps)
+        try await MCPTestSupport.withConnection(of: client) {
+            let meta = Metadata(progressToken: .string("slow-build-token"))
+            let result = try await client.callTool(name: ServerMode.slowBuildToolName, arguments: nil, meta: meta)
 
-        let meta = Metadata(progressToken: .string("slow-build-token"))
-        let result = try await client.callTool(name: ServerMode.slowBuildToolName, arguments: nil, meta: meta)
+            try await recorder.allArrived.wait()
 
-        try await recorder.allArrived.wait()
-
-        let updates = await recorder.updates
-        #expect(updates.count == Self.slowBuildSuccessSteps)
-        #expect(updates.map(\.progress) == Self.expectedProgress(steps: Self.slowBuildSuccessSteps))
-        #expect(updates.allSatisfy { $0.total == Double(Self.slowBuildSuccessSteps) })
-        #expect(updates.allSatisfy { ($0.message ?? "").contains("step") })
-        #expect(result.isError != true)
-        await client.disconnect()
+            let updates = await recorder.updates
+            #expect(updates.count == Self.slowBuildSuccessSteps)
+            #expect(updates.map(\.progress) == Self.expectedProgress(steps: Self.slowBuildSuccessSteps))
+            #expect(updates.allSatisfy { $0.total == Double(Self.slowBuildSuccessSteps) })
+            #expect(updates.allSatisfy { ($0.message ?? "").contains("step") })
+            #expect(result.isError != true)
+        }
     }
 
     @Test("the slow-build tool finishes as isError when told should_fail, with no reliance on wall-clock timing")
@@ -509,11 +514,11 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         await scripted.addSlowBuildTool(totalSteps: Self.slowBuildFailureSteps)
         let client = try await connect(to: scripted)
+        try await MCPTestSupport.withConnection(of: client) {
+            let result = try await client.callTool(
+                name: ServerMode.slowBuildToolName, arguments: ["should_fail": .bool(true)])
 
-        let result = try await client.callTool(
-            name: ServerMode.slowBuildToolName, arguments: ["should_fail": .bool(true)])
-
-        #expect(result.isError == true)
-        await client.disconnect()
+            #expect(result.isError == true)
+        }
     }
 }

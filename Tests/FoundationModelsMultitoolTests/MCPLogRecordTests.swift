@@ -140,9 +140,11 @@ struct MCPLogRecordTests {
         let records = try await TelemetryCapture.run(forbidding: []) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
-            await respawning.disconnect()
-            try await server.reconnect()
-            return context.logRecords
+            return try await MCPTestSupport.withConnection(of: server) {
+                await respawning.disconnect()
+                try await server.reconnect()
+                return context.logRecords
+            }
         }
 
         let reconnected = try #require(LogReadback.records(.mcpReconnected, in: records).first)
@@ -168,20 +170,22 @@ struct MCPLogRecordTests {
         let records = try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
-            let call = Task {
-                try await server.call(
-                    name: Self.hangingToolName,
-                    arguments: [Self.argumentName: .string(Self.argumentMarker)])
+            return try await MCPTestSupport.withConnection(of: server) {
+                let call = Task {
+                    try await server.call(
+                        name: Self.hangingToolName,
+                        arguments: [Self.argumentName: .string(Self.argumentMarker)])
+                }
+                try await arrival.wait()
+                #expect(counter.count == Self.oneCallInFlight)
+                await respawning.disconnect()
+                // The server writes the drop record when it notices the drop.
+                await context.wait { !LogReadback.records(.mcpTransportDropped, in: $0).isEmpty }
+                await #expect(throws: MCPServerError.self) {
+                    _ = try await call.value
+                }
+                return context.logRecords
             }
-            try await arrival.wait()
-            #expect(counter.count == Self.oneCallInFlight)
-            await respawning.disconnect()
-            // The server writes the drop record when it notices the drop.
-            await context.wait { !LogReadback.records(.mcpTransportDropped, in: $0).isEmpty }
-            await #expect(throws: MCPServerError.self) {
-                _ = try await call.value
-            }
-            return context.logRecords
         }
 
         let dropped = try #require(LogReadback.records(.mcpTransportDropped, in: records).first)

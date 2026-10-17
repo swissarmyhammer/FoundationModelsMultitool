@@ -755,31 +755,12 @@ struct MCPElicitationTests {
         _ = await wait.result
     }
 
-    /// Runs `body`, and then disconnects `server`, also when `body` throws.
-    ///
-    /// The test awaits the disconnect on each path, thus the connection is
-    /// closed before the test ends. A `.http` connection holds a process-wide
-    /// registry entry of `LoopbackHTTPServer` until it closes, thus a
-    /// connection that stays open after its test is a fixture that leaks into
-    /// the next test.
-    ///
-    /// - Parameters:
-    ///   - server: The connected server to disconnect.
-    ///   - body: The work of the test on `server`.
-    /// - Returns: What `body` returned.
-    /// - Throws: What `body` threw, after the disconnect.
-    private static func withConnection<Result>(
-        of server: MCPServer, _ body: () async throws -> Result
-    ) async throws -> Result {
-        try await ensuring({ await server.disconnect() }, after: body)
-    }
-
     // MARK: - Case 1: a bound context answers
 
     @Test("the answer the test delivers through the session reaches elicitEcho", arguments: transports)
     func theSessionAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let context = run.context
                 let (call, event) = try await Self.startEliciting(on: run) {
@@ -805,7 +786,7 @@ struct MCPElicitationTests {
     @Test("a URL-mode accept keeps the call open until the session completes the flow", arguments: transports)
     func aURLAcceptHoldsTheCallUntilTheSessionCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let (call, request) = try await Self.startElicitingCall(
                     ScriptedServer.elicitURLToolName, on: server, in: run)
@@ -842,7 +823,7 @@ struct MCPElicitationTests {
     @Test("a wire completion of a URL flow under a context completes the flow on the run plane, one time")
     func aWireCompletionUnderAContextCompletesTheFlow() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = RecordingEventSink()
             let flow = try await Self.startContextURLFlow(on: server, runPlane: runPlane, sink: sink)
@@ -861,7 +842,7 @@ struct MCPElicitationTests {
     @Test("a runCode snippet suspends on the elicitation and returns the session answer over the HTTP loopback")
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
             let multiTool = MultiTool(registry: registry)
             try await BoundRun.with { run in
@@ -892,7 +873,7 @@ struct MCPElicitationTests {
     @Test("a question of an MCP server reaches the sink with the name of the server as its source")
     func aServerQuestionHasTheServerNameAsItsSource() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
             try await withStubRun { stub in
                 try await withScriptedElicitationSink(run: stub, answering: Self.scriptedAccept) { sink in
@@ -912,7 +893,7 @@ struct MCPElicitationTests {
     func theHandlerAnswersABareCall() async throws {
         let probe = HandlerProbe(responding: Self.scriptedAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
@@ -930,7 +911,7 @@ struct MCPElicitationTests {
     func theHandlerURLAcceptEndsOnComplete() async throws {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
             let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
@@ -955,7 +936,7 @@ struct MCPElicitationTests {
     func aWireCompletionEndsTheHeldHandlerAccept() async throws {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
             let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
@@ -1137,7 +1118,7 @@ struct MCPElicitationTests {
         arguments: ConnectionEnd.allCases)
     func theEndOfAConnectionEndsTheContextURLFlow(end: ConnectionEnd) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = RecordingEventSink()
             let flow = try await Self.startContextURLFlow(on: server, runPlane: runPlane, sink: sink)
@@ -1189,7 +1170,7 @@ struct MCPElicitationTests {
         arguments: ConnectionEnd.allCases)
     func aContextQuestionWhoseConnectionEndsDuringTheReplacementCancels(end: ConnectionEnd) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = EndHoldingEventSink()
             defer { sink.heldEnd.release.open() }
@@ -1253,7 +1234,7 @@ struct MCPElicitationTests {
     @Test("a second URL question of a context under a wire id in use ends the earlier question, and gets the entry")
     func aSecondContextQuestionUnderAWireIdInUseReplacesTheEarlierQuestion() async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = RecordingEventSink()
             let context = Self.relayContext(on: runPlane, sink: sink)
@@ -1315,7 +1296,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server, held) = try await Self.connectedForTwoCalls(
             over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = RecordingEventSink()
             let context = Self.relayContext(on: runPlane, sink: sink)
@@ -1366,7 +1347,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server, held) = try await Self.connectedForTwoCalls(
             over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let runPlane = RunPlane(userPresence: .interactive)
             let sink = RecordingEventSink()
             let context = Self.relayContext(on: runPlane, sink: sink)
@@ -1419,7 +1400,7 @@ struct MCPElicitationTests {
     func aQuestionOfAnOldClientDoesNotReachTheRun() async throws {
         let reconnected = try await Self.reconnectedForTwoCalls()
         let server = reconnected.server
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let holding = AnsweringRun(
                 session: ULID(), runPlane: RunPlane(userPresence: .interactive),
                 completionToken: Self.holdingRunToken, response: .decline)
@@ -1528,7 +1509,7 @@ struct MCPElicitationTests {
     @Test("with no context and no handler, elicitEcho gets cancel and the call returns without a throw")
     func noContextAndNoHandlerCancels() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
@@ -1544,7 +1525,7 @@ struct MCPElicitationTests {
     func theContextWinsOverTheHandler() async throws {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let (call, request) = try await Self.startElicitingCall(
                     ScriptedServer.elicitEchoToolName, on: server, in: run)
@@ -1939,7 +1920,7 @@ struct MCPElicitationTests {
         arguments: transports)
     func theProgressTokenLinksTheQuestionToItsCall(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let (holding, asking) = Self.twoRunsOfOneSession()
 
             let result = try await Self.call(
@@ -1958,7 +1939,7 @@ struct MCPElicitationTests {
         arguments: transports)
     func oneRunInFlightGetsTheQuestion(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let (holding, _) = Self.twoRunsOfOneSession()
 
             let result = try await Self.call(
@@ -1977,7 +1958,7 @@ struct MCPElicitationTests {
     func twoRunsWithNoLinkCancelWithTheReason(kind: MCPTransportKind) async throws {
         let recorded = RecordedLogMessages()
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind, logger: recorded.logger)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let (holding, asking) = Self.twoRunsOfOneSession()
 
             let result = try await Self.call(
@@ -2000,7 +1981,7 @@ struct MCPElicitationTests {
         arguments: transports)
     func anUnknownProgressTokenFallsToTheOneRun(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let (holding, _) = Self.twoRunsOfOneSession()
 
             let result = try await Self.call(
@@ -2023,7 +2004,7 @@ struct MCPElicitationTests {
         arguments: transports)
     func twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
             let multiTool = MultiTool(registry: registry)
             let (snippetRun, _) = Self.twoRunsOfOneSession()
@@ -2060,7 +2041,7 @@ struct MCPElicitationTests {
         refusal: (response: FoundationModelsExtras.ElicitationResponse, text: String)
     ) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let (call, request) = try await Self.startElicitingCall(
                     ScriptedServer.elicitEchoToolName, on: server, in: run)
@@ -2086,7 +2067,7 @@ struct MCPElicitationTests {
     @Test("under a headless context, elicitEcho gets cancel with the no-user-present reason in _meta")
     func aHeadlessContextCancelsWithTheReason() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let result = try await Self.callTool(
                 ScriptedServer.elicitEchoToolName, on: server, under: Self.headlessContext())
 
@@ -2103,7 +2084,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.scriptedAccept)
         let (scripted, server) = try await Self.connected(
             over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
@@ -2122,7 +2103,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.scriptedAccept)
         let (scripted, server) = try await Self.connected(
             over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             async let first = Self.bareCall(tool)
@@ -2162,7 +2143,7 @@ struct MCPElicitationTests {
     @Test("a requestedSchema outside the restricted subset is declined before it reaches the run")
     func aSchemaOutsideTheSubsetIsDeclined() async throws {
         let (scripted, server) = try await Self.connectedForTheNestedSchema()
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let result = try await Self.callTool(Self.nestedToolName, on: server, under: run.context)
 
@@ -2184,7 +2165,7 @@ struct MCPElicitationTests {
     @Test("a requestedSchema outside the restricted subset reaches the server as decline with the reason")
     func aSchemaOutsideTheSubsetDeclinesWithTheReason() async throws {
         let (scripted, server) = try await Self.connectedForTheNestedSchema()
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             _ = try await server.call(name: Self.nestedToolName, arguments: nil)
 
             let received = await scripted.receivedElicitationResults.last
@@ -2199,7 +2180,7 @@ struct MCPElicitationTests {
     @Test("a URL-mode request whose url is not valid reaches the server as decline with the reason")
     func anInvalidURLDeclinesWithTheReason() async throws {
         let (scripted, server) = try await Self.connected(askingFor: Self.invalidURL)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             _ = try await server.call(name: Self.invalidURLToolName, arguments: nil)
 
             let received = await scripted.receivedElicitationResults.last
@@ -2289,7 +2270,7 @@ struct MCPElicitationTests {
     func aNotHTTPURLIsDeclinedBeforeTheHandler(url: String) async throws {
         let probe = HandlerProbe(responding: .decline)
         let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
             _ = try await Self.bareCall(tool)
 
@@ -2307,7 +2288,7 @@ struct MCPElicitationTests {
     @Test("a URL-mode url that is not an absolute http or https URL is declined before the run", arguments: notHTTPURLs)
     func aNotHTTPURLIsDeclinedBeforeTheRun(url: String) async throws {
         let (scripted, server) = try await Self.connected(askingFor: url)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             try await BoundRun.with { run in
                 let context = run.context
                 let call = Task { try await Self.callTool(Self.invalidURLToolName, on: server, under: context) }
@@ -2329,7 +2310,7 @@ struct MCPElicitationTests {
     func anHTTPURLGoesOnToTheHandler(url: String) async throws {
         let probe = HandlerProbe(responding: .decline)
         let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
             _ = try await Self.bareCall(tool)
 
@@ -2365,7 +2346,7 @@ struct MCPElicitationTests {
         }
         try #require(released == nil, "the MCPServer stayed alive after its last reference went away")
         let transport = try await scripted.startOnInMemoryPair()
-        try await ensuring({ await client.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: client) {
             _ = try await client.connect(transport: transport)
             _ = try await client.callTool(name: ScriptedServer.elicitEchoToolName)
         }
@@ -2396,7 +2377,7 @@ struct MCPElicitationTests {
     @Test("a completion for an id no flow was opened under is ignored, from the host and from the wire")
     func anUnknownCompletionIsIgnored() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await Self.withConnection(of: server) {
+        try await MCPTestSupport.withConnection(of: server) {
             await server.complete(elicitationId: Self.unknownElicitationId)
             try await scripted.sendElicitationComplete(elicitationId: Self.unknownElicitationId)
             let echoed = try await server.call(

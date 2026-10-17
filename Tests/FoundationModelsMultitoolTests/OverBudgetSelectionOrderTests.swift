@@ -70,79 +70,83 @@ struct OverBudgetSelectionOrderTests {
 
     @Test("the surface four connected platform servers build stands above the budget, and every entry reaches exactly one slice")
     func theSurfaceIsAboveTheBudgetAndEveryEntryReachesOneSlice() async throws {
-        let mounted = try await makeOverBudgetSurface()
-        let entries = mounted.registry.surface.entries
-        let prefix = SelectionTier.assemblePrefix(
-            preamble: .selectionDefault, catalog: MetadataIndex(items: entries))
+        try await withOverBudgetSurface { mounted in
+            let entries = mounted.registry.surface.entries
+            let prefix = SelectionTier.assemblePrefix(
+                preamble: .selectionDefault, catalog: MetadataIndex(items: entries))
 
-        // Built in one piece because `#expect` takes a `Comment`, which a
-        // concatenation of string literals is not.
-        let size = "\(entries.count) entries assemble \(prefix.count) characters"
-        let budget = "the budget is \(SelectionConfig.defaultCapacityCharacterLimit)"
-        #expect(
-            prefix.count > SelectionConfig.defaultCapacityCharacterLimit,
-            "\(size), and \(budget): this suite would then measure the under-budget path"
-        )
+            // Built in one piece because `#expect` takes a `Comment`, which a
+            // concatenation of string literals is not.
+            let size = "\(entries.count) entries assemble \(prefix.count) characters"
+            let budget = "the budget is \(SelectionConfig.defaultCapacityCharacterLimit)"
+            #expect(
+                prefix.count > SelectionConfig.defaultCapacityCharacterLimit,
+                "\(size), and \(budget): this suite would then measure the under-budget path"
+            )
 
-        let recorder = SliceRecorder()
-        _ = try await Self.search(
-            over: mounted.registry, recorder: recorder, answering: { _ in [] })
+            let recorder = SliceRecorder()
+            _ = try await Self.search(
+                over: mounted.registry, recorder: recorder, answering: { _ in [] })
 
-        #expect(recorder.slices.count > 1)
-        // Every id, in catalog order, in exactly one slice: the tier splits
-        // the catalog and never cuts it.
-        #expect(recorder.slices.flatMap { $0 } == entries.map(\.path))
-        withExtendedLifetime(mounted.servers) {}
+            #expect(recorder.slices.count > 1)
+            // Every id, in catalog order, in exactly one slice: the tier splits
+            // the catalog and never cuts it.
+            #expect(recorder.slices.flatMap { $0 } == entries.map(\.path))
+            withExtendedLifetime(mounted.servers) {}
+        }
     }
 
     // MARK: - The order rule
 
     @Test("matches from more than one slice are spliced in slice order, and in the model's order inside each slice")
     func matchesAreSplicedInSliceOrderThenModelOrder() async throws {
-        let mounted = try await makeOverBudgetSurface()
-        let recorder = SliceRecorder()
+        try await withOverBudgetSurface { mounted in
+            let recorder = SliceRecorder()
 
-        // Each slice answers its own last id before its own first id. A
-        // score cannot tell those apart — every slice's first pick scores
-        // `1 / 1` — so an implementation that ordered by score could not
-        // produce this sequence, and one that ordered by catalog position
-        // could not either.
-        let feedback = try await Self.search(
-            over: mounted.registry, recorder: recorder,
-            answering: { ids in [ids.last, ids.first].compactMap { $0 } })
+            // Each slice answers its own last id before its own first id. A
+            // score cannot tell those apart — every slice's first pick scores
+            // `1 / 1` — so an implementation that ordered by score could not
+            // produce this sequence, and one that ordered by catalog position
+            // could not either.
+            let feedback = try await Self.search(
+                over: mounted.registry, recorder: recorder,
+                answering: { ids in [ids.last, ids.first].compactMap { $0 } })
 
-        let expected = recorder.slices.flatMap { slice in [slice.last, slice.first].compactMap { $0 } }
-        #expect(recorder.slices.count > 1, "the answer must span more than one slice for this to hold anything")
-        #expect(Self.catalogPaths(in: feedback) == expected)
-        withExtendedLifetime(mounted.servers) {}
+            let expected = recorder.slices.flatMap { slice in [slice.last, slice.first].compactMap { $0 } }
+            #expect(recorder.slices.count > 1, "the answer must span more than one slice for this to hold anything")
+            #expect(Self.catalogPaths(in: feedback) == expected)
+            withExtendedLifetime(mounted.servers) {}
+        }
     }
 
     @Test("an id the model answers twice is spliced one time")
     func aRepeatedIdIsSplicedOneTime() async throws {
-        let mounted = try await makeOverBudgetSurface()
-        let recorder = SliceRecorder()
+        try await withOverBudgetSurface { mounted in
+            let recorder = SliceRecorder()
 
-        let feedback = try await Self.search(
-            over: mounted.registry, recorder: recorder,
-            answering: { ids in [ids.first, ids.first].compactMap { $0 } })
+            let feedback = try await Self.search(
+                over: mounted.registry, recorder: recorder,
+                answering: { ids in [ids.first, ids.first].compactMap { $0 } })
 
-        let paths = Self.catalogPaths(in: feedback)
-        #expect(paths == recorder.slices.compactMap(\.first))
-        #expect(Set(paths).count == paths.count)
-        withExtendedLifetime(mounted.servers) {}
+            let paths = Self.catalogPaths(in: feedback)
+            #expect(paths == recorder.slices.compactMap(\.first))
+            #expect(Set(paths).count == paths.count)
+            withExtendedLifetime(mounted.servers) {}
+        }
     }
 
     @Test("the merged answer of every slice is cut to the limit the call asked for")
     func theMergedAnswerObeysTheLimit() async throws {
-        let mounted = try await makeOverBudgetSurface()
-        let recorder = SliceRecorder()
+        try await withOverBudgetSurface { mounted in
+            let recorder = SliceRecorder()
 
-        let feedback = try await Self.search(
-            over: mounted.registry, recorder: recorder, limit: Self.oneMatchLimit,
-            answering: { ids in ids })
+            let feedback = try await Self.search(
+                over: mounted.registry, recorder: recorder, limit: Self.oneMatchLimit,
+                answering: { ids in ids })
 
-        #expect(Self.catalogPaths(in: feedback).count == Self.oneMatchLimit)
-        withExtendedLifetime(mounted.servers) {}
+            #expect(Self.catalogPaths(in: feedback).count == Self.oneMatchLimit)
+            withExtendedLifetime(mounted.servers) {}
+        }
     }
 
     /// The limit the cut-to-limit case asks for: one match, against a
@@ -151,7 +155,14 @@ struct OverBudgetSelectionOrderTests {
 
     // MARK: - The ground of one test
 
-    /// Mounts the large surface under a temporary directory this suite owns.
+    /// Mounts the large surface under a temporary directory this suite owns,
+    /// gives it to `body`, and then disconnects each server of the mount,
+    /// also when `body` throws.
+    ///
+    /// The mount does not return its connected servers. Thus the `makeServer`
+    /// closure of the mount records each server that it makes. When the mount
+    /// throws, this function disconnects the servers that it made before the
+    /// throw.
     ///
     /// The mount itself is
     /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:domains:describing:makeServer:)`` in the
@@ -165,13 +176,42 @@ struct OverBudgetSelectionOrderTests {
     /// ``MCPTestSupport/makeServer(name:clock:connectAttemptClock:callTimeoutClock:callTimeout:renderBudget:elicitationHandler:userPresence:logger:)``,
     /// so no connect of the mount can time out on a busy machine.
     ///
-    /// - Returns: the registry and the servers behind it.
-    /// - Throws: what `makeDirectory(prefix:)` or the mount throws.
-    private func makeOverBudgetSurface() async throws -> LargeCatalogSurface {
-        try await makeLargeCatalogSurface(
-            root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
-            shellStoreDirectoryName: Self.shellStoreDirectoryName,
-            makeServer: { name in MCPTestSupport.makeServer(name: name) })
+    /// - Parameter body: The work of the test on the mount: the registry and
+    ///   the scripted servers behind it.
+    /// - Returns: What `body` returned.
+    /// - Throws: What `makeDirectory(prefix:)`, the mount or `body` throws,
+    ///   after the disconnect.
+    private func withOverBudgetSurface<Result>(
+        _ body: (LargeCatalogSurface) async throws -> Result
+    ) async throws -> Result {
+        var madeServers: [MCPServer] = []
+        let mounted: LargeCatalogSurface
+        do {
+            mounted = try await makeLargeCatalogSurface(
+                root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
+                shellStoreDirectoryName: Self.shellStoreDirectoryName,
+                makeServer: { name in
+                    let server = MCPTestSupport.makeServer(name: name)
+                    madeServers.append(server)
+                    return server
+                })
+        } catch {
+            await Self.disconnect(madeServers)
+            throw error
+        }
+        let servers = madeServers
+        return try await ensuring({ await Self.disconnect(servers) }) {
+            try await body(mounted)
+        }
+    }
+
+    /// Disconnects each server in `servers`, one after the other.
+    ///
+    /// - Parameter servers: The servers to disconnect.
+    private static func disconnect(_ servers: [MCPServer]) async {
+        for server in servers {
+            await server.disconnect()
+        }
     }
 
     /// Runs one `searchTools` call over `registry` through a selection tier

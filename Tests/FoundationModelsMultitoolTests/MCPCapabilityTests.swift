@@ -144,7 +144,7 @@ struct MCPCapabilityTests {
     @Test("the capability owns the server name as its noun and holds one verb for each catalog entry")
     func theCapabilityOwnsTheServerNameAndHoldsOneVerbPerTool() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        try await ensuring({ await server.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: server) {
             let capability = try await MCPCapability(server: server)
 
             #expect(capability.noun == Self.serverName)
@@ -161,7 +161,7 @@ struct MCPCapabilityTests {
     @Test("withMCP renders tools.<serverName>.<toolName> for each server tool, and no tools.mcp group", arguments: transports)
     func withMCPRendersOneGroupPerServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        try await ensuring({ await server.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await Self.makeRegistry(over: server)
 
             let paths = registry.surface.entries.map(\.path)
@@ -177,7 +177,7 @@ struct MCPCapabilityTests {
     @Test("a snippet that awaits tools.<serverName>.echo reaches the loopback server and returns the rendered result", arguments: transports)
     func anEchoSnippetReachesTheServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        try await ensuring({ await server.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await Self.makeRegistry(over: server)
 
             let result = try await Self.stringResult(
@@ -201,7 +201,7 @@ struct MCPCapabilityTests {
     @Test("searchTools finds each server verb with a sample snippet that runs", arguments: transports)
     func searchToolsFindsEachServerVerbWithARunnableExample(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
-        try await ensuring({ await server.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: server) {
             let registry = try await Self.makeRegistry(over: server)
             let surface = registry.surface
             let searchTools = Self.makeSearchTools(over: surface)
@@ -238,7 +238,7 @@ struct MCPCapabilityTests {
     func aServerNamedFilesBesideTheFilesCapabilityThrowsAtBuild() async throws {
         let (scripted, server) = try await MCPTestSupport.connectedLoopbackMCPServer(
             over: .inMemory, name: Self.filesNoun)
-        try await ensuring({ await server.disconnect() }) {
+        try await MCPTestSupport.withConnection(of: server) {
             let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
             let builder = try await MultiTool.Builder()
                 .withFiles(root: root)
