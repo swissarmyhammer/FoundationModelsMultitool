@@ -37,8 +37,24 @@ comments:
     - scope: MCPServer+Elicitation.swift, Fetch.swift (doc only), MCPElicitationTests.swift, and the .kanban files
     - next: review
   timestamp: 2026-10-17T03:24:40.268954+00:00
-position_column: doing
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m53yf4t04g1fxgszq6y7fv4e
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 204414a). 0 findings, 0 confirmed, 1 refuted. 3 files reviewed. 8 .kanban/ files not reviewed (.reviewignore).
+    - next: The task has no open findings. The task is in done.
+  timestamp: 2026-10-17T03:28:41.280288+00:00
+- actor: claude-code
+  id: 01m53yfheqnqzpwcnb4v2sqa8e
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files (the server URL-mode guard uses Fetch.httpURL; decline with invalidURLReason)
+    - test: green — swift test, exit 0, 2443 passed, 0 failed, 0 skipped
+    - commit: 204414a
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T03:28:54.231412+00:00
+position_column: done
+position_ordinal: ffffff9080
 title: Decline an MCP server URL-mode question whose url is not an absolute http or https URL
 ---
 Found on ^c9nevn0 (group D (a)). The MCP server URL-mode path in MCPServer+Elicitation.swift checks only `URL(string: url.url)` and declines with invalidURLReason only when that gives nil. Thus a server request with url "foo" or "javascript:x" goes on to the host.
