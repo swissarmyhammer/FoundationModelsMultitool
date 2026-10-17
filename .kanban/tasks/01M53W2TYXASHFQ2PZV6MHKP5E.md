@@ -108,10 +108,34 @@ comments:
     - evidence: `swift test` ran one time. Exit code 0. Swift Testing: "Test run with 2449 tests in 212 suites passed after 3.719 seconds." No warning and no error lines in the output. No test is skipped.
     - next: review
   timestamp: 2026-10-17T06:57:58.225843+00:00
+- actor: claude-code
+  id: 01m54af18b8ma8at3t3n266dn0
+  text: |-
+    ### commit — changed
+    - evidence: b175701 test: release held calls in ensuring and check the known error
+    - next: none
+  timestamp: 2026-10-17T06:58:20.555436+00:00
+- actor: claude-code
+  id: 01m54ar2d0kvza00r4jxp1cgne
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit b175701). 9 files reviewed. 2 .kanban files not reviewed (ignore rule). Counts: findings 0, confirmed 0, refuted 1, attempted 14, failed 0. All 3 items in "Review Findings (2026-10-17 01:26)" are checked.
+    - finding 2 (ResilienceTests.swift reconnect): the task uses `try await server.reconnect()`. expectBackoffExhausted(after:from:) awaits the value with try. It checks that the error is MCPServerError.backoffExhausted for this server with one attempt. A different error or no error records an issue. Thus a reconnect failure is not hidden. This satisfies the finding.
+    - next: none. The task is in done.
+  timestamp: 2026-10-17T07:03:16.640295+00:00
+- actor: claude-code
+  id: 01m54arq0q26409x2ypftxvw9r
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 9 files (3 of 3 findings fixed; held calls released in ensuring; known errors checked; expectBackoffExhausted helper)
+    - test: green — swift test, exit 0, 2449 passed, 0 failed, 0 skipped
+    - commit: b175701
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T07:03:37.751674+00:00
 depends_on:
 - 01M53W296FG93NMJT89T9DC8NB
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9780
 title: 'T1 group 2: MCP test fixtures — servers that are never disconnected'
 ---
 Split from ^nvxckvr (test rule T1). The list (most of the about 230 cases in the MCP test files other than MCPElicitationTests) is in the comments of ^nvxckvr.
