@@ -97,6 +97,25 @@ struct MCPTracePropagationTests {
         }
     }
 
+    /// Starts a call of the hanging tool on `server`, and waits until its
+    /// handler ran. The wait also ends when the call ends, and the test then
+    /// fails at once — see ``EventRace/watch(_:untilOpen:orFail:sourceLocation:)``.
+    ///
+    /// - Parameters:
+    ///   - server: The connected server to call.
+    ///   - handlerRan: The gate that the handler of the hanging tool opens.
+    /// - Returns: The task of the call.
+    /// - Throws: When the call ended before it reached the server, or when
+    ///   the task is cancelled first.
+    private static func startHangingCall(
+        on server: MCPServer, gate handlerRan: TestGate
+    ) async throws -> Task<CallTool.Result, any Error> {
+        try await EventRace.watch(
+            { try await server.call(name: hangingToolName, arguments: arguments) },
+            untilOpen: handlerRan, orFail: "the call ended before it reached the server"
+        ).task
+    }
+
     /// A scripted server that serves `tools`.
     ///
     /// - Parameter tools: The tools to serve.
@@ -280,10 +299,7 @@ struct MCPTracePropagationTests {
             try await server.connect(via: respawning, backoffPolicy: .default)
             try await MCPTestSupport.withConnection(of: server) {
                 // The wait for the handler also ends when the call ends.
-                let call = try await EventRace.start(
-                    { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) },
-                    awaiting: { try? await handlerRan.wait() })
-                try #require(handlerRan.isOpen, "the call ended before it reached the server")
+                let call = try await Self.startHangingCall(on: server, gate: handlerRan)
                 await respawning.disconnect()
                 await #expect(throws: MCPServerError.self) {
                     _ = try await call.value
@@ -307,10 +323,7 @@ struct MCPTracePropagationTests {
             try await server.connect(via: respawning, backoffPolicy: .default)
             try await MCPTestSupport.withConnection(of: server) {
                 // The wait for the handler also ends when the call ends.
-                let call = try await EventRace.start(
-                    { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) },
-                    awaiting: { try? await handlerRan.wait() })
-                try #require(handlerRan.isOpen, "the call ended before it reached the server")
+                let call = try await Self.startHangingCall(on: server, gate: handlerRan)
                 try await server.reconnect()
                 // The reconnect tears the old client down. That client gives
                 // each pending request the "Client disconnected" error, and no

@@ -16,15 +16,39 @@
 @testable import FoundationModelsMultitool
 
 extension MCPTestSupport {
-    /// Waits until `server` counted `generation` `tools/list_changed`
-    /// notifications, and the re-list for them ended — see
+    /// Runs `action`, and waits until `server` counted the `notifications`
+    /// `tools/list_changed` notifications that `action` sends.
+    ///
+    /// The count of `server` is read before `action` runs, thus the wait is
+    /// for the notifications of `action` only.
+    ///
+    /// - Parameters:
+    ///   - server: The server that counts the notifications.
+    ///   - notifications: How many notifications `action` sends.
+    ///   - action: The change that sends the notifications.
+    /// - Throws: What `action` throws.
+    static func waitForNotifications(
+        of server: MCPServer, count notifications: Int, sentBy action: () async throws -> Void
+    ) async rethrows {
+        let generationBefore = await server.toolListChangedGeneration
+        try await action()
+        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + notifications)
+    }
+
+    /// Runs `action`, and waits until `server` counted the `notifications`
+    /// notifications that `action` sends, and the re-list for them ended —
+    /// see ``waitForNotifications(of:count:sentBy:)`` and
     /// ``waitForRelistEnd(of:)``.
     ///
     /// - Parameters:
     ///   - server: The server that re-lists.
-    ///   - generation: The count of notifications that starts the re-list.
-    static func waitForRelist(of server: MCPServer, reaching generation: Int) async {
-        await server.waitUntilToolListChangedGeneration(reaches: generation)
+    ///   - notifications: How many notifications `action` sends.
+    ///   - action: The change that sends the notifications.
+    /// - Throws: What `action` throws.
+    static func waitForRelist(
+        of server: MCPServer, after notifications: Int, sentBy action: () async throws -> Void
+    ) async rethrows {
+        try await waitForNotifications(of: server, count: notifications, sentBy: action)
         await waitForRelistEnd(of: server)
     }
 

@@ -11,6 +11,8 @@
 //
 // No time is in this file. No clock, no sleep and no poll ends a wait.
 
+import Testing
+
 /// The waits that end on the first of two events.
 enum EventRace {
     /// Waits for the first event: `expected` returned, or one of `others`
@@ -30,6 +32,50 @@ enum EventRace {
     static func firstOf(
         _ expected: @escaping @Sendable () async -> Void,
         or others: (@Sendable () async -> Void)...
+    ) async throws {
+        try await firstOf(expected, orAnyOf: others)
+    }
+
+    /// Waits for the first of the events, and then fails the test at once
+    /// unless `gate` is open — the one race-and-require step of a test that
+    /// waits for a gate.
+    ///
+    /// The wait ends on the first event: `gate` opened, or one of `others`
+    /// returned — see ``firstOf(_:or:)``.
+    ///
+    /// - Parameters:
+    ///   - gate: The gate that the expected event opens.
+    ///   - others: The waits for the events that show that the expected
+    ///     event cannot come any more. A cancel must end each of them.
+    ///   - failure: What the failure of the test says when `gate` is not
+    ///     open.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Throws: When `gate` is not open, or when the task is cancelled
+    ///   before the first event.
+    static func requireOpen(
+        _ gate: TestGate,
+        orFirstOf others: (@Sendable () async -> Void)...,
+        orFail failure: Comment,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        try await require(
+            { try? await gate.wait() }, orAnyOf: others, requiring: { gate.isOpen }, orFail: failure,
+            sourceLocation: sourceLocation)
+    }
+
+    /// Waits for the first event: `expected` returned, or one of `others`
+    /// returned — the body of ``firstOf(_:or:)``.
+    ///
+    /// - Parameters:
+    ///   - expected: The wait for the event that the test expects. A cancel
+    ///     must end it.
+    ///   - others: The waits for the events that show that the expected
+    ///     event cannot come any more. A cancel must end each of them.
+    /// - Throws: `CancellationError` when the task is cancelled before the
+    ///   first event.
+    private static func firstOf(
+        _ expected: @escaping @Sendable () async -> Void,
+        orAnyOf others: [@Sendable () async -> Void]
     ) async throws {
         let firstEvent = TestGate()
         let waits = ([expected] + others).map { wait in
@@ -110,6 +156,109 @@ enum EventRace {
             throw error
         }
         return watched.task
+    }
+
+    /// Starts `work`, waits for its event, and then fails the test at once
+    /// unless the event came — the one start-and-require step of a test.
+    ///
+    /// The wait ends on the first of two events: `arrival` returned, or
+    /// `work` ended — see ``firstOf(_:or:)``. When the wait throws, the
+    /// teardown of the test ends `work`.
+    ///
+    /// - Parameters:
+    ///   - work: The work that makes the event occur.
+    ///   - arrival: The wait for the event. A cancel must end it.
+    ///   - hasArrived: Whether the event came.
+    ///   - failure: What the failure of the test says when the event did
+    ///     not come.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Returns: The started work.
+    /// - Throws: When the event did not come, or when the task is cancelled
+    ///   before the first event.
+    static func watch<Success: Sendable>(
+        _ work: @escaping @Sendable () async throws -> Success,
+        awaiting arrival: @escaping @Sendable () async -> Void,
+        requiring hasArrived: () -> Bool,
+        orFail failure: Comment,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws -> Watched<Success> {
+        let watched = watch(work)
+        try await require(
+            arrival, orAnyOf: [{ await watched.waitForEnd() }], requiring: hasArrived, orFail: failure,
+            sourceLocation: sourceLocation)
+        return watched
+    }
+
+    /// Starts `work`, waits until `gate` opened, and then fails the test at
+    /// once unless `gate` is open — see
+    /// ``watch(_:awaiting:requiring:orFail:sourceLocation:)``.
+    ///
+    /// - Parameters:
+    ///   - work: The work that opens `gate`.
+    ///   - gate: The gate that the event of `work` opens.
+    ///   - failure: What the failure of the test says when `gate` is not
+    ///     open.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Returns: The started work.
+    /// - Throws: When `gate` is not open, or when the task is cancelled
+    ///   before the first event.
+    static func watch<Success: Sendable>(
+        _ work: @escaping @Sendable () async throws -> Success,
+        untilOpen gate: TestGate,
+        orFail failure: Comment,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws -> Watched<Success> {
+        try await watch(
+            work, awaiting: { try? await gate.wait() }, requiring: { gate.isOpen }, orFail: failure,
+            sourceLocation: sourceLocation)
+    }
+
+    /// Starts `work`, waits until its call arrived at `held`, and then fails
+    /// the test at once unless the call arrived — see
+    /// ``watch(_:awaiting:requiring:orFail:sourceLocation:)``.
+    ///
+    /// - Parameters:
+    ///   - work: The work that calls `held`.
+    ///   - held: The held tool that the call of `work` arrives at.
+    ///   - failure: What the failure of the test says when no call arrived.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Returns: The started work.
+    /// - Throws: When no call arrived, or when the task is cancelled before
+    ///   the first event.
+    static func watch<Success: Sendable>(
+        _ work: @escaping @Sendable () async throws -> Success,
+        untilArrivalAt held: HeldScriptedTool,
+        orFail failure: Comment,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws -> Watched<Success> {
+        try await watch(
+            work, awaiting: { try? await held.waitForArrival() }, requiring: { held.hasArrived },
+            orFail: failure, sourceLocation: sourceLocation)
+    }
+
+    /// Waits for the first of the events, and then fails the test at once
+    /// unless `hasArrived` is true — the body of each race-and-require step.
+    ///
+    /// - Parameters:
+    ///   - expected: The wait for the event that the test expects. A cancel
+    ///     must end it.
+    ///   - others: The waits for the events that show that the expected
+    ///     event cannot come any more. A cancel must end each of them.
+    ///   - hasArrived: Whether the expected event came.
+    ///   - failure: What the failure of the test says when the event did
+    ///     not come.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Throws: When the event did not come, or when the task is cancelled
+    ///   before the first event.
+    private static func require(
+        _ expected: @escaping @Sendable () async -> Void,
+        orAnyOf others: [@Sendable () async -> Void],
+        requiring hasArrived: () -> Bool,
+        orFail failure: Comment,
+        sourceLocation: SourceLocation
+    ) async throws {
+        try await firstOf(expected, orAnyOf: others)
+        try #require(hasArrived(), failure, sourceLocation: sourceLocation)
     }
 
     /// Cancels `wait`, and waits until it ended — the one cancel-then-await

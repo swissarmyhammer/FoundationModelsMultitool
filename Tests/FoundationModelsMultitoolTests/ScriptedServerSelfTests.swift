@@ -372,10 +372,10 @@ struct ScriptedServerSelfTests {
             // Wait until the call reached the server and the tool dropped the
             // transport. The wait also ends when the call ends: a tool that
             // answered and did not drop the transport fails the test at once.
-            let callTask = try await EventRace.start(
+            let callTask = try await EventRace.watch(
                 { try await client.callTool(name: "drop") },
-                awaiting: { try? await signaling.dropped.wait() })
-            try #require(signaling.dropped.isOpen, "the call ended and the tool did not drop the transport")
+                untilOpen: signaling.dropped, orFail: "the call ended and the tool did not drop the transport"
+            ).task
 
             // A disconnect resolves every request still pending with a
             // "Client disconnected" error. Had the drop not stopped the answer,
@@ -489,9 +489,9 @@ struct ScriptedServerSelfTests {
             try await ensuring({ await held.release() }) {
                 let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
                 // The wait for the arrival also ends when the request ends.
-                _ = try await EventRace.start(
-                    { try await context.value }, awaiting: { try? await held.waitForArrival() })
-                try #require(held.hasArrived, "the request ended before it arrived at the server")
+                _ = try await EventRace.watch(
+                    { try await context.value }, untilArrivalAt: held,
+                    orFail: "the request ended before it arrived at the server")
                 try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
                 let recorded = await MCPTestSupport.notifications(

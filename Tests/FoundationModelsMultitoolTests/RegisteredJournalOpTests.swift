@@ -184,7 +184,7 @@ struct RegisteredJournalOpTests {
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
         try await withOuterRunContext { context in
             // The wait for the sandbox also ends when the run ends.
-            let run = try await EventRace.start(
+            let run = try await EventRace.watch(
                 {
                     try await Self.run(
                         """
@@ -194,8 +194,9 @@ struct RegisteredJournalOpTests {
                         over: registry,
                         under: context)
                 },
-                awaiting: { try? await sandbox.waitUntilConsulted() })
-            try #require(sandbox.isConsulted, "the run ended before it consulted the sandbox")
+                awaiting: { try? await sandbox.waitUntilConsulted() }, requiring: { sandbox.isConsulted },
+                orFail: "the run ended before it consulted the sandbox"
+            ).task
 
             #expect(await context.backgroundRuns().isEmpty)
             run.cancel()
@@ -266,15 +267,15 @@ struct RegisteredJournalOpTests {
                     // The server records the call in flight before it sends the request,
                     // thus when the call arrives at the held tool, the record stands.
                     // The wait for the arrival also ends when the run ends.
-                    let run = try await EventRace.start(
+                    let run = try await EventRace.watch(
                         {
                             try await Self.run(
                                 "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
                                 over: registry,
                                 under: context)
                         },
-                        awaiting: { try? await held.waitForArrival() })
-                    try #require(held.hasArrived, "the run ended before the call arrived at the server")
+                        untilArrivalAt: held, orFail: "the run ended before the call arrived at the server"
+                    ).task
                     let stampedOp = await server.inFlightCalls.values.first?.context?.op
                     await held.release()
                     try await run.value

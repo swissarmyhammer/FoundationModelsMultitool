@@ -595,6 +595,28 @@ struct MCPElicitationTests {
         return flow
     }
 
+    /// Delivers ``urlElicitation`` to `server` under `generation`, waits until
+    /// `gate` opened, and fails the test at once when the answer ended first
+    /// — see ``EventRace/watch(_:untilOpen:orFail:sourceLocation:)``.
+    ///
+    /// - Parameters:
+    ///   - server: The server that answers the question.
+    ///   - generation: The connect generation of the question.
+    ///   - gate: The gate that the answer opens when it gets to its step.
+    ///   - failure: What the failure of the test says when `gate` is not
+    ///     open.
+    /// - Returns: The task of the answer that `server` gives.
+    /// - Throws: When the answer ended before `gate` opened, or when the
+    ///   task is cancelled first.
+    private static func startURLAnswer(
+        on server: MCPServer, generation: Int, untilOpen gate: TestGate, orFail failure: Comment
+    ) async throws -> Task<CreateElicitation.Result, any Error> {
+        try await EventRace.watch(
+            { await server.answerElicitation(parameters: urlElicitation, generation: generation) },
+            untilOpen: gate, orFail: failure
+        ).task
+    }
+
     /// The two events that end the connection of a URL flow.
     enum ConnectionEnd: CaseIterable, Sendable {
         /// `disconnect()`.
@@ -959,8 +981,8 @@ struct MCPElicitationTests {
     ///
     /// The order is fixed. The question reaches the handler, and the test
     /// waits for the first of two events: the handler was called, or the
-    /// answer ended — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. When the
-    /// handler was not called, the test fails at once. Then the connection
+    /// answer ended — see ``startURLAnswer(on:generation:untilOpen:orFail:)``.
+    /// When the handler was not called, the test fails at once. Then the connection
     /// ends. Then the test lets the handler return the accept, and waits for
     /// the first of two events: the server holds the flow, or the answer
     /// ended. The test reads the held flows before it waits for the answer,
@@ -974,10 +996,9 @@ struct MCPElicitationTests {
         let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: handler.handler)
         defer { handler.call.release.open() }
         let generation = await server.connectGeneration
-        let answer = try await EventRace.start(
-            { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
-            awaiting: { try? await handler.call.arrival.wait() })
-        try #require(handler.call.arrival.isOpen, "the answer ended before the question reached the handler")
+        let answer = try await Self.startURLAnswer(
+            on: server, generation: generation, untilOpen: handler.call.arrival,
+            orFail: "the answer ended before the question reached the handler")
 
         await Self.endConnection(of: server, with: end)
         let lateAnswer = try await EventRace.start(
@@ -1105,8 +1126,8 @@ struct MCPElicitationTests {
     /// reaches the run, and the run accepts it. Then the newer question
     /// starts, and the test waits for the first of two events: the sink
     /// holds the end post of the earlier question, or the newer answer ended
-    /// — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``. When the end post is
-    /// not held, the test fails at once. The held call then ends, and the
+    /// — see ``startURLAnswer(on:generation:untilOpen:orFail:)``. When the end
+    /// post is not held, the test fails at once. The held call then ends, and the
     /// connection ends. Then the test lets the end post go on, and waits for
     /// the first of two events: the newer question reached the sink, or the
     /// newer answer ended. The test reads the entries before it waits for the
@@ -1127,10 +1148,9 @@ struct MCPElicitationTests {
                 let earlier = try await Self.startContextURLQuestion(on: server, sink: sink.recorded, after: [])
                 let delivery = await runPlane.respond(elicitationId: earlier.request.elicitationId, Self.urlAccept)
                 try #require(delivery == .acceptedAwaitingCompletion)
-                let newer = try await EventRace.start(
-                    { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
-                    awaiting: { try? await sink.heldEnd.arrival.wait() })
-                try #require(sink.heldEnd.arrival.isOpen, "the newer answer ended before the end of the earlier question")
+                let newer = try await Self.startURLAnswer(
+                    on: server, generation: generation, untilOpen: sink.heldEnd.arrival,
+                    orFail: "the newer answer ended before the end of the earlier question")
                 return (earlier, newer)
             }
 

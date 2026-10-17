@@ -197,6 +197,23 @@ struct MCPSessionSweepTests {
         try await expectTheCallOnTheWire(of: ground)
     }
 
+    /// Starts `work`, and waits until the held call of `ground` is on the
+    /// wire, or until `work` ended — see ``waitForTheCall(on:orUntil:)``.
+    ///
+    /// - Parameters:
+    ///   - ground: The ground whose wire to read.
+    ///   - work: The work that makes the held call.
+    /// - Returns: The task of `work`.
+    /// - Throws: When the call did not reach the server, or when the task is
+    ///   cancelled first.
+    private static func startTheCall<Success: Sendable>(
+        on ground: SweepGround, _ work: @escaping @Sendable () async throws -> Success
+    ) async throws -> Task<Success, any Error> {
+        let call = EventRace.watch(work)
+        try await waitForTheCall(on: ground, orUntil: { await call.waitForEnd() })
+        return call.task
+    }
+
     /// Fails the test at once unless the held call of `ground` reached the
     /// server, and records a failure unless the call is on the wire.
     ///
@@ -328,11 +345,9 @@ struct MCPSessionSweepTests {
                         SessionMount.synchronous(
                             MCPTool(entry: entry, server: ground.server), on: context)
                             as? any FoundationModels.Tool<GeneratedContent, String>)
-                    let held = ground.held
-                    let answer = try await EventRace.start(
-                        { try await mounted.call(arguments: GeneratedContent(properties: [:])) },
-                        awaiting: { try? await held.waitForArrival() })
-                    try await Self.expectTheCallOnTheWire(of: ground)
+                    let answer = try await Self.startTheCall(on: ground) {
+                        try await mounted.call(arguments: GeneratedContent(properties: [:]))
+                    }
                     #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
                     answer.cancel()

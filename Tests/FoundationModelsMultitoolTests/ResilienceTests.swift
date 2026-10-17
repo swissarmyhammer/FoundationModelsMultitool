@@ -193,9 +193,9 @@ struct ResilienceTests {
     private func waitForTheDiscard(
         _ discarded: TestGate, orApplied applied: TestGate, orClosed closed: TestGate
     ) async throws {
-        try await EventRace.firstOf(
-            { try? await discarded.wait() }, or: { try? await applied.wait() }, { try? await closed.wait() })
-        try #require(discarded.isOpen, "the stale attempt did not discard its late result")
+        try await EventRace.requireOpen(
+            discarded, orFirstOf: { try? await applied.wait() }, { try? await closed.wait() },
+            orFail: "the stale attempt did not discard its late result")
     }
 
     /// Starts a fresh `ScriptedServer` on the server end of an in-memory pair
@@ -289,8 +289,9 @@ struct ResilienceTests {
         _ server: MCPServer, attemptClock: GatedClock, inFlight: TestGate,
         connect: @escaping @Sendable () async throws -> Void
     ) async throws {
-        let connecting = try await EventRace.start(connect, awaiting: { try? await inFlight.wait() })
-        try #require(inFlight.isOpen, "the connect ended before its gated step was in flight")
+        let connecting = try await EventRace.watch(
+            connect, untilOpen: inFlight, orFail: "the connect ended before its gated step was in flight"
+        ).task
         attemptClock.open()
         await #expect(throws: MCPServerError.self) {
             try await connecting.value
@@ -313,15 +314,15 @@ struct ResilienceTests {
     private func orphanStraggler(
         over gated: GatedConnectTransport, on server: MCPServer, attemptClock: GatedClock
     ) async throws {
-        let firstAttempt = try await EventRace.start(
+        let firstAttempt = try await EventRace.watch(
             { try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt) },
             awaiting: {
                 try? await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout)
                 try? await gated.connectArrival.wait()
-            })
-        try #require(
-            attemptClock.recordedSleeps.count >= Self.oneArmedTimeout && gated.connectArrival.isOpen,
-            "the first attempt ended before it armed its timeout and held its connect")
+            },
+            requiring: { attemptClock.recordedSleeps.count >= Self.oneArmedTimeout && gated.connectArrival.isOpen },
+            orFail: "the first attempt ended before it armed its timeout and held its connect"
+        ).task
         attemptClock.open(sleepsOf: Self.gatedConnectTimeout)
         await #expect(throws: MCPServerError.self) {
             try await firstAttempt.value
@@ -336,6 +337,29 @@ struct ResilienceTests {
     private func expectStillConnecting(_ server: MCPServer) async {
         let state = await server.state
         #expect(state == .connecting, "expected .connecting, the orphaned attempt is still blocked")
+    }
+
+    /// Starts a disconnect of `server`, waits until the disconnect called
+    /// the `disconnect()` of `gatedDisconnect`, and fails the test at once
+    /// when the disconnect ended first — see
+    /// ``EventRace/watch(_:untilOpen:orFail:sourceLocation:)``.
+    ///
+    /// The gate of `gatedDisconnect` then holds the disconnect in flight.
+    ///
+    /// - Parameters:
+    ///   - server: The server to disconnect.
+    ///   - gatedDisconnect: The transport that holds its `disconnect()` at a
+    ///     gate.
+    /// - Returns: The task of the disconnect.
+    /// - Throws: When the disconnect ended before it closed the old
+    ///   transport, or when the task is cancelled first.
+    private static func startDisconnectAwaitingClose(
+        of server: MCPServer, gate gatedDisconnect: GatedDisconnectTransport
+    ) async throws -> Task<Void, any Error> {
+        try await EventRace.watch(
+            { await server.disconnect() }, untilOpen: gatedDisconnect.disconnectArrival,
+            orFail: "the disconnect ended before it closed the old transport"
+        ).task
     }
 
     /// Records a failure unless `waitUntilReady()` throws `notReady` carrying
@@ -443,11 +467,12 @@ struct ResilienceTests {
         let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
 
         // The wait for the timeout also ends when the connect ends.
-        let connecting = try await EventRace.start(
+        let connecting = try await EventRace.watch(
             { try await server.connect(via: hanging, backoffPolicy: policy) },
-            awaiting: { try? await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout) })
-        try #require(
-            attemptClock.recordedSleeps.count >= Self.oneArmedTimeout, "the connect ended before it armed its timeout")
+            awaiting: { try? await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout) },
+            requiring: { attemptClock.recordedSleeps.count >= Self.oneArmedTimeout },
+            orFail: "the connect ended before it armed its timeout"
+        ).task
         attemptClock.open()
 
         await #expect(throws: MCPServerError.self) {
@@ -552,9 +577,9 @@ struct ResilienceTests {
             // it, and never for a fixed time. The wait also ends when the
             // attempt connects the transport in place of the dispose.
             await gatedFactory.release()
-            try await EventRace.firstOf(
-                { try? await spy.disposeArrival.wait() }, or: { try? await spy.connectArrival.wait() })
-            try #require(spy.disposeArrival.isOpen, "the abandoned attempt did not release its transport")
+            try await EventRace.requireOpen(
+                spy.disposeArrival, orFirstOf: { try? await spy.connectArrival.wait() },
+                orFail: "the abandoned attempt did not release its transport")
 
             // Never connected, and disposed — the resource leak is closed.
             #expect(await spy.connectWasCalled == false)
@@ -612,8 +637,9 @@ struct ResilienceTests {
                 // 3. The straggler ends: its result is discarded, and its transport closes.
                 // The wait for the discard also ends when the transport closes.
                 await gated.release()
-                try await EventRace.firstOf({ try? await discarded.wait() }, or: { try? await gated.closeArrival.wait() })
-                try #require(discarded.isOpen, "the straggler did not discard its late result")
+                try await EventRace.requireOpen(
+                    discarded, orFirstOf: { try? await gated.closeArrival.wait() },
+                    orFail: "the straggler did not discard its late result")
                 try await gated.closeArrival.wait()
 
                 // 4. The connection of the retry still answers.
@@ -725,13 +751,13 @@ struct ResilienceTests {
         try await ensuring({ await gatedFactory.release() }) {
             // 1. The attempt holds its factory. The wait also ends when the
             // connect ends.
-            let connecting = try await EventRace.start(
+            let connecting = try await EventRace.watch(
                 {
                     try await server.connect(
                         via: { try await gatedFactory.make() }, backoffPolicy: Self.oneGatedAttempt)
                 },
-                awaiting: { try? await gatedFactory.makeArrival.wait() })
-            try #require(gatedFactory.makeArrival.isOpen, "the connect ended before the factory was called")
+                untilOpen: gatedFactory.makeArrival, orFail: "the connect ended before the factory was called"
+            ).task
 
             // 2. The teardown starts, and waits for the attempt.
             let (teardown, returnedFirst) = try await startTeardown(of: server)
@@ -784,19 +810,15 @@ struct ResilienceTests {
                 // The first disconnect tears the old client down, and the transport
                 // of that client then holds it in flight. Each wait below also
                 // ends when its work ends.
-                let firstDisconnect = try await EventRace.start(
-                    { await server.disconnect() }, awaiting: { try? await gatedDisconnect.disconnectArrival.wait() })
-                try #require(
-                    gatedDisconnect.disconnectArrival.isOpen, "the disconnect ended before it closed the old transport")
+                let firstDisconnect = try await Self.startDisconnectAwaitingClose(of: server, gate: gatedDisconnect)
 
                 let spy = DisposableSpyTransport(wrapping: gatedConnect)
-                let attempt2 = try await EventRace.start(
-                    { try await server.connect(via: spy, backoffPolicy: .default) },
-                    awaiting: { try? await spy.connectArrival.wait() })
-
                 // The fresh attempt connects its own transport while the first
                 // disconnect is still in flight.
-                try #require(spy.connectArrival.isOpen, "the fresh connect ended before it connected its transport")
+                let attempt2 = try await EventRace.watch(
+                    { try await server.connect(via: spy, backoffPolicy: .default) },
+                    untilOpen: spy.connectArrival, orFail: "the fresh connect ended before it connected its transport"
+                ).task
 
                 // The first disconnect ends, and writes `.disconnected`. Then the
                 // fresh attempt ends, and writes `.ready`.
@@ -839,10 +861,7 @@ struct ResilienceTests {
 
                 // 1. The disconnect tears the first client down, and stays in flight.
                 // The wait also ends when the disconnect ends.
-                let firstDisconnect = try await EventRace.start(
-                    { await server.disconnect() }, awaiting: { try? await gatedDisconnect.disconnectArrival.wait() })
-                try #require(
-                    gatedDisconnect.disconnectArrival.isOpen, "the disconnect ended before it closed the old transport")
+                let firstDisconnect = try await Self.startDisconnectAwaitingClose(of: server, gate: gatedDisconnect)
 
                 // 2. The connect makes the new connection, and returns.
                 try await server.connect(via: clientTransport2)
@@ -893,15 +912,15 @@ struct ResilienceTests {
             await respawning.disconnect()
             // The hung second attempt is in flight, and armed its timeout. The
             // wait also ends when the reconnect ends.
-            let reconnect = try await EventRace.start(
+            let reconnect = try await EventRace.watch(
                 { try await server.reconnect() },
                 awaiting: {
                     try? await hangArrival.wait()
                     try? await attemptClock.waitForRecordedSleeps(atLeast: Self.secondAttempt)
-                })
-            try #require(
-                hangArrival.isOpen && attemptClock.recordedSleeps.count >= Self.secondAttempt,
-                "the reconnect ended before its second attempt hung and armed its timeout")
+                },
+                requiring: { hangArrival.isOpen && attemptClock.recordedSleeps.count >= Self.secondAttempt },
+                orFail: "the reconnect ended before its second attempt hung and armed its timeout"
+            ).task
             #expect(counter.count == Self.secondAttempt)
             #expect(attemptClock.recordedSleeps.count == Self.secondAttempt)
 

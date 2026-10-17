@@ -508,9 +508,9 @@ struct SurfaceRefresherTests {
             await ground.refresher.stop()
 
             #expect(!ground.refresher.isWatching)
-            let generationBefore = await ground.server.toolListChangedGeneration
-            try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            await MCPTestSupport.waitForRelist(of: ground.server, reaching: generationBefore + Self.oneNotification)
+            try await MCPTestSupport.waitForRelist(of: ground.server, after: Self.oneNotification) {
+                try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
+            }
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
 
             // Only the watch task stages, and `stop()` ended that task before
@@ -529,9 +529,9 @@ struct SurfaceRefresherTests {
 
             // No refresher is started. `makeSessionToolsAndStaging` starts no task
             // of its own, so nothing watches the stream.
-            let generationBefore = await ground.server.toolListChangedGeneration
-            try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            await MCPTestSupport.waitForRelist(of: ground.server, reaching: generationBefore + Self.oneNotification)
+            try await MCPTestSupport.waitForRelist(of: ground.server, after: Self.oneNotification) {
+                try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
+            }
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
             await ground.runCode.submissionWillBegin()
 

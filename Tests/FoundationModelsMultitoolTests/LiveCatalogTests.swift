@@ -230,11 +230,11 @@ struct LiveCatalogTests {
     private static func emitBurstInOneWindow(
         from scripted: ScriptedServer, to server: MCPServer, windowClock: GatedClock
     ) async throws {
-        let generationBefore = await server.toolListChangedGeneration
-        try await scripted.emitToolListChangedBurst(count: burstCount)
         // The server resumes this wait when it counts the last notification
         // of the burst.
-        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + burstCount)
+        try await MCPTestSupport.waitForNotifications(of: server, count: burstCount) {
+            try await scripted.emitToolListChangedBurst(count: burstCount)
+        }
         windowClock.open()
         await MCPTestSupport.waitForRelistEnd(of: server)
     }
@@ -428,9 +428,9 @@ struct LiveCatalogTests {
             #expect(resolvedBeforeRemoval?.name == Self.initialToolName)
 
             await scripted.removeTool(named: Self.initialToolName)
-            let generationBefore = await server.toolListChangedGeneration
-            try await scripted.emitToolListChangedBurst(count: Self.burstCount)
-            await MCPTestSupport.waitForRelist(of: server, reaching: generationBefore + Self.burstCount)
+            try await MCPTestSupport.waitForRelist(of: server, after: Self.burstCount) {
+                try await scripted.emitToolListChangedBurst(count: Self.burstCount)
+            }
             _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
             let resolvedAfterRemoval = await server.tool(named: Self.initialToolName)
@@ -462,9 +462,9 @@ struct LiveCatalogTests {
             for stage in 1...ScriptedServer.dynamicToolsetStageCount {
                 // Each stage sends one notification, and the test waits until
                 // its re-list ended.
-                let generationBefore = await server.toolListChangedGeneration
-                #expect(await scripted.advanceDynamicToolsetScenario())
-                await MCPTestSupport.waitForRelist(of: server, reaching: generationBefore + Self.oneStageNotification)
+                await MCPTestSupport.waitForRelist(of: server, after: Self.oneStageNotification) {
+                    #expect(await scripted.advanceDynamicToolsetScenario())
+                }
                 _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)
             }
 

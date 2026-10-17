@@ -171,13 +171,13 @@ struct MCPLogRecordTests {
             let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             return try await MCPTestSupport.withConnection(of: server) {
-                let call = EventRace.watch {
-                    try await server.call(
-                        name: Self.hangingToolName,
-                        arguments: [Self.argumentName: .string(Self.argumentMarker)])
-                }
-                try await EventRace.firstOf({ try? await arrival.wait() }, or: { await call.waitForEnd() })
-                try #require(arrival.isOpen, "the call ended before it reached the server")
+                let call = try await EventRace.watch(
+                    {
+                        try await server.call(
+                            name: Self.hangingToolName,
+                            arguments: [Self.argumentName: .string(Self.argumentMarker)])
+                    },
+                    untilOpen: arrival, orFail: "the call ended before it reached the server")
                 #expect(counter.count == Self.oneCallInFlight)
                 await respawning.disconnect()
                 // The server writes the drop record when it notices the drop, and

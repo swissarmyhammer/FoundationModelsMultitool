@@ -216,6 +216,39 @@ struct MCPServerCallTests {
         MCPCallProbeTool(server: server, toolName: tool, callArguments: nil)
     }
 
+    /// Starts `call`, waits until it arrived at `held`, and fails the test
+    /// at once when the call ended first — see
+    /// ``EventRace/watch(_:untilArrivalAt:orFail:sourceLocation:)``.
+    ///
+    /// - Parameters:
+    ///   - held: The held tool that the call arrives at.
+    ///   - call: The call of `held`.
+    /// - Returns: The started call.
+    /// - Throws: When the call ended before it arrived, or when the task is
+    ///   cancelled first.
+    private static func watchHeldCall<Success: Sendable>(
+        on held: HeldScriptedTool, _ call: @escaping @Sendable () async throws -> Success
+    ) async throws -> EventRace.Watched<Success> {
+        try await EventRace.watch(
+            call, untilArrivalAt: held, orFail: "the call ended before it arrived at the server")
+    }
+
+    /// Disconnects `server`, reads the notifications that `scripted`
+    /// recorded, and records a failure unless the first one is the
+    /// `notifications/cancelled` of the call — see
+    /// ``MCPTestSupport/notifications(recordedBy:afterDisconnectOf:count:)``.
+    ///
+    /// - Parameters:
+    ///   - scripted: The server that records the notifications.
+    ///   - server: The connected server whose call was cancelled.
+    private static func expectOneCancelledNotification(
+        recordedBy scripted: ScriptedServer, afterDisconnectOf server: MCPServer
+    ) async {
+        let recorded = await MCPTestSupport.notifications(
+            recordedBy: scripted, afterDisconnectOf: server, count: oneNotification)
+        #expect(recorded.first?.method == CancelledNotification.name)
+    }
+
     // MARK: - The result
 
     @Test("a call against ScriptedServer returns the server's result")
@@ -284,18 +317,15 @@ struct MCPServerCallTests {
         try await MCPTestSupport.withConnection(of: server) {
             try await ensuring({ await held.release() }) {
                 try await withOuterRunContext { context in
-                    let callTask = try await EventRace.start(
-                        { try await Self.call(server, tool: Self.heldToolName, under: context) },
-                        awaiting: { try? await held.waitForArrival() })
-                    try #require(held.hasArrived, "the call ended before it arrived at the server")
+                    let callTask = try await Self.watchHeldCall(on: held) {
+                        try await Self.call(server, tool: Self.heldToolName, under: context)
+                    }.task
                     callTask.cancel()
 
                     await #expect(throws: CancellationError.self) {
                         _ = try await callTask.value
                     }
-                    let recorded = await MCPTestSupport.notifications(
-                        recordedBy: scripted, afterDisconnectOf: server, count: Self.oneNotification)
-                    #expect(recorded.first?.method == CancelledNotification.name)
+                    await Self.expectOneCancelledNotification(recordedBy: scripted, afterDisconnectOf: server)
                 }
             }
         }
@@ -423,10 +453,10 @@ struct MCPServerCallTests {
             serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout, callTimeoutClock: clock)
         try await MCPTestSupport.withConnection(of: server) {
             try await ensuring({ await held.release() }) {
-                let call = EventRace.watch { try await server.call(name: Self.heldToolName, arguments: nil) }
+                let call = try await Self.watchHeldCall(on: held) {
+                    try await server.call(name: Self.heldToolName, arguments: nil)
+                }
                 let callEnded = call.ended
-                try await EventRace.firstOf({ try? await held.waitForArrival() }, or: { await call.waitForEnd() })
-                try #require(held.hasArrived, "the call ended before it arrived at the server")
 
                 let first = try await withThrowingTaskGroup(of: BareCallFirstEvent.self) { group in
                     group.addTask {
@@ -502,14 +532,14 @@ struct MCPServerCallTests {
                 let binding = RunBinding(context: context, innerMount: Self.shortInnerCallMount)
                 let sleepersBefore = clock.sleeperCount
 
-                let invoke = EventRace.watch {
-                    await MCPCallProbe.thrownError {
-                        _ = try await binding.invoke(
-                            Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
-                    }
-                }
-                try await EventRace.firstOf({ try? await arrival.wait() }, or: { await invoke.waitForEnd() })
-                try #require(arrival.isOpen, "the call ended before it reached the server")
+                let invoke = try await EventRace.watch(
+                    {
+                        await MCPCallProbe.thrownError {
+                            _ = try await binding.invoke(
+                                Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+                        }
+                    },
+                    untilOpen: arrival, orFail: "the call ended before it reached the server")
                 await clock.waitForSleepers(
                     atLeast: sleepersBefore + Self.innerCallBoundSleepers, orUntil: { await invoke.waitForEnd() })
                 #expect(!invoke.ended.isOpen)
@@ -532,9 +562,7 @@ struct MCPServerCallTests {
                 // returned. When the notice ended, the call left the table.
                 await server.cancellationNotices.drain()
                 #expect(await server.inFlightCalls.isEmpty)
-                let recorded = await MCPTestSupport.notifications(
-                    recordedBy: scripted, afterDisconnectOf: server, count: Self.oneNotification)
-                #expect(recorded.first?.method == CancelledNotification.name)
+                await Self.expectOneCancelledNotification(recordedBy: scripted, afterDisconnectOf: server)
             }
         }
     }

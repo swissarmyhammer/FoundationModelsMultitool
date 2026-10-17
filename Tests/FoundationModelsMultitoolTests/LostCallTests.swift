@@ -197,14 +197,14 @@ struct LostCallTests {
         try await MCPTestSupport.withConnection(of: server) {
             try await withOuterRunContext { context in
                 // The wait for the arrival also ends when the call ends.
-                let callTask = try await EventRace.start(
+                let callTask = try await EventRace.watch(
                     {
                         try await ToolContext.$current.withValue(context) {
                             try await server.call(name: Self.hangingToolName, arguments: nil)
                         }
                     },
-                    awaiting: { try? await arrival.wait() })
-                try #require(arrival.isOpen, "the call ended before it reached the server")
+                    untilOpen: arrival, orFail: "the call ended before it reached the server"
+                ).task
                 #expect(counter.count == Self.oneInvocation)
                 await respawning.disconnect()
 
