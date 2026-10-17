@@ -379,8 +379,9 @@ public actor MCPServer {
     /// Every URL-mode elicitation the host's ``elicitationHandler`` accepted
     /// and this actor still holds open, keyed by the wire `elicitationId` —
     /// resumed with `nil` by `complete(elicitationId:)`, and with a cancel by
-    /// `endHeldHostElicitations()` when the connection ends. See
-    /// `MCPServer+Elicitation.swift`.
+    /// `endHeldHostElicitations()` when the connection ends, or by
+    /// `replaceEarlierURLFlows(under:)` when a newer URL flow uses the same
+    /// wire id. See `MCPServer+Elicitation.swift`.
     var pendingHostElicitations: [String: CheckedContinuation<ElicitationResponse?, Never>] = [:]
 
     /// Every URL-mode elicitation that a bound `ToolContext` answers and that
@@ -389,8 +390,9 @@ public actor MCPServer {
     /// the question, and the ``connectGeneration`` of the attempt that got
     /// the request. `complete(elicitationId:generation:)` relays a completion
     /// through it, and `endOldContextElicitations()` ends and takes out each
-    /// entry of an older generation when the connection ends. See
-    /// `MCPServer+Elicitation.swift`.
+    /// entry of an older generation when the connection ends.
+    /// `replaceEarlierURLFlows(under:)` ends and takes out the entry of a
+    /// wire id that a newer URL flow uses. See `MCPServer+Elicitation.swift`.
     var pendingContextElicitations: [String: (context: ToolContext, id: ULID, generation: Int)] = [:]
 
     /// Each caller of `waitUntilHostElicitationHeld(elicitationId:)` that

@@ -455,19 +455,15 @@ enum MultitoolTelemetry {
         /// The record holds the delivery. Level: `debug`.
         case mcpElicitationCompletionRelayed = "mcp elicitation completion relayed to the run"
 
-        /// A URL-mode elicitation came under a bound `ToolContext` with a
-        /// wire id that an open elicitation already uses. The newer
-        /// elicitation gets the entry of that wire id, and the earlier one
-        /// ends with a cancel. Thus a completion of that wire id reaches the
-        /// newer one. Level: `warning`.
-        case mcpElicitationWireIdInUse = "mcp url elicitation wire id already in use"
-
-        /// A URL-mode elicitation that the host's handler accepted came with
-        /// a wire id of a flow that the server still holds. The earlier flow
+        /// A URL-mode elicitation came with a wire id that an earlier URL
+        /// flow still uses: an open elicitation of a bound `ToolContext`, or
+        /// a flow that the host's handler accepted and the server still
+        /// holds. The newer flow can be of either kind too. The earlier flow
         /// ends with `cancel` and the reason, because its completion can no
-        /// longer be told apart from the completion of the newer flow. Level:
-        /// `warning`.
-        case mcpElicitationHeldFlowReplaced = "mcp url elicitation held flow replaced by a newer flow"
+        /// longer be told apart from the completion of the newer flow, and
+        /// the newer flow gets the wire id. Thus a completion of that wire id
+        /// reaches the newer one. Level: `warning`.
+        case mcpElicitationWireIdInUse = "mcp url elicitation wire id already in use"
 
         /// An elicitation came in a headless session, and the answer is
         /// `cancel` with the no-user-present reason. Level: `debug`.
