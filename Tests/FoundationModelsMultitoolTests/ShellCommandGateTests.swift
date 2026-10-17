@@ -20,22 +20,61 @@ struct ShellCommandGateTests {
     /// The program that reads its standard input until the end of the file.
     private static let catPath = "/bin/cat"
 
+    /// Starts `executable` as a child, gives the child to `body`, and ends the
+    /// child when `body` throws.
+    ///
+    /// A child that waits on a gate stays blocked when a step of the test
+    /// throws before the release. Thus on the throw path this function kills
+    /// the child with `SIGKILL` while `Process` still runs it, and then waits
+    /// for the exit event of the kernel (``ProcessExitWait/waitUntilGone(_:)``).
+    /// `SIGKILL` cannot be caught, thus the exit comes. On the return path the
+    /// child got its release, or the end of its input, or `body` stopped it,
+    /// and `Process` reaps it.
+    ///
+    /// - Parameters:
+    ///   - executable: The path of the program to start.
+    ///   - arguments: The arguments of the program.
+    ///   - input: The standard input of the child, or `nil` — the default —
+    ///     for the standard input of this process.
+    ///   - body: The steps of the test while the child runs.
+    /// - Returns: What `body` returned.
+    /// - Throws: What `Process.run()` throws, or what `body` threw, after the
+    ///   child exited.
+    private static func withChild<Result>(
+        _ executable: String, arguments: [String] = [], input: Pipe? = nil,
+        _ body: (Process) async throws -> Result
+    ) async throws -> Result {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: executable)
+        child.arguments = arguments
+        if let input {
+            child.standardInput = input
+        }
+        try child.run()
+        do {
+            return try await body(child)
+        } catch {
+            if child.isRunning {
+                kill(child.processIdentifier, SIGKILL)
+            }
+            await ProcessExitWait.waitUntilGone(child.processIdentifier)
+            throw error
+        }
+    }
+
     /// A child that waits on the gate gets the line, and the release gives
     /// ``ShellCommandGate/Release/reached``.
     @Test("a release reaches a command that waits on the gate")
     func releaseReachesACommandThatWaitsOnTheGate() async throws {
         let gate = try ShellCommandGate()
-        let child = Process()
-        child.executableURL = URL(fileURLWithPath: Self.shellPath)
-        child.arguments = ["-c", gate.waitCommand]
-        try child.run()
+        try await Self.withChild(Self.shellPath, arguments: ["-c", gate.waitCommand]) { child in
+            // The result of the release is the event: `.reached` comes only after
+            // the child opened the FIFO and the write of the line succeeded. The
+            // child then reads the line and exits, and `Process` reaps it.
+            let release = try await gate.release(whileAlive: child.processIdentifier)
 
-        // The result of the release is the event: `.reached` comes only after
-        // the child opened the FIFO and the write of the line succeeded. The
-        // child then reads the line and exits, and `Process` reaps it.
-        let release = try await gate.release(whileAlive: child.processIdentifier)
-
-        #expect(release == .reached)
+            #expect(release == .reached)
+        }
     }
 
     /// One gate releases one wait. A second release of one gate throws, and it
@@ -57,22 +96,20 @@ struct ShellCommandGateTests {
     @Test("a second release of one gate throws and writes no line")
     func aSecondReleaseOfOneGateThrows() async throws {
         let gate = try ShellCommandGate()
-        let first = Process()
-        first.executableURL = URL(fileURLWithPath: Self.shellPath)
-        first.arguments = ["-c", gate.waitCommand]
-        try first.run()
-        #expect(try await gate.release(whileAlive: first.processIdentifier) == .reached)
-
-        let second = Process()
-        second.executableURL = URL(fileURLWithPath: Self.shellPath)
-        second.arguments = ["-c", gate.waitCommand]
-        try second.run()
-        let secondPid = second.processIdentifier
-        await #expect(throws: ShellCommandGate.Failure.self) {
-            _ = try await gate.release(whileAlive: secondPid)
+        let waitArguments = ["-c", gate.waitCommand]
+        try await Self.withChild(Self.shellPath, arguments: waitArguments) { first in
+            let release = try await gate.release(whileAlive: first.processIdentifier)
+            #expect(release == .reached)
         }
-        second.terminate()
-        await ProcessExitWait.waitUntilGone(secondPid)
+
+        try await Self.withChild(Self.shellPath, arguments: waitArguments) { second in
+            let secondPid = second.processIdentifier
+            await #expect(throws: ShellCommandGate.Failure.self) {
+                _ = try await gate.release(whileAlive: secondPid)
+            }
+            second.terminate()
+            await ProcessExitWait.waitUntilGone(secondPid)
+        }
     }
 
     /// A child that exits and never opens the FIFO cannot make the release
@@ -86,16 +123,14 @@ struct ShellCommandGateTests {
     func releaseEndsWhenTheCommandExitsBeforeItOpensTheGate() async throws {
         let gate = try ShellCommandGate()
         let input = Pipe()
-        let child = Process()
-        child.executableURL = URL(fileURLWithPath: Self.catPath)
-        child.standardInput = input
-        try child.run()
-        let pid = child.processIdentifier
+        try await Self.withChild(Self.catPath, input: input) { child in
+            let pid = child.processIdentifier
 
-        let release = Task { try await gate.release(whileAlive: pid) }
-        try input.fileHandleForWriting.close()
+            let release = Task { try await gate.release(whileAlive: pid) }
+            try input.fileHandleForWriting.close()
 
-        #expect(try await release.value == .commandExited)
+            #expect(try await release.value == .commandExited)
+        }
     }
 
     /// What the call of ``releaseEndsWhenTheCallEndsBeforeTheCommandStarts()``

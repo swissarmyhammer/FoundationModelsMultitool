@@ -486,20 +486,20 @@ struct ShellRunnerTests {
                     command: "sleep \(marker) & sleep \(marker) & \(Self.readyThenWait)",
                     completionToken: token, timeout: Self.treeKillTimeout))
         }
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask) {
+            #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
+            let members = await processIDs(matching: pattern)
+            #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
-        #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let members = await processIDs(matching: pattern)
-        #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
+            clock.open()
+            let outcome = try await runTask.value
+            #expect(outcome.status == .timedOut)
+            #expect(outcome.exitCode == Self.absentExitCode)
+            #expect(clock.recordedSleeps == [Self.treeKillTimeout])
 
-        clock.open()
-        let outcome = try await runTask.value
-        #expect(outcome.status == .timedOut)
-        #expect(outcome.exitCode == Self.absentExitCode)
-        #expect(clock.recordedSleeps == [Self.treeKillTimeout])
-
-        let exited = await exitedCount(of: members)
-        #expect(exited == members.count, "the group kill left \(members.count - exited) survivor(s)")
+            let exited = await exitedCount(of: members)
+            #expect(exited == members.count, "the group kill left \(members.count - exited) survivor(s)")
+        }
     }
 
     // MARK: - The default captured-output cap
@@ -722,28 +722,29 @@ struct ShellRunnerTests {
             printf 'err2\\n' >&2
             """
         let runTask = Task { try await runner.run(.init(command: command, completionToken: token)) }
-        defer { runTask.cancel() }
-        for (step, gate) in [("out1", afterOut1), ("err1", afterErr1), ("out2", afterOut2)] {
-            guard await Self.waitForOutput(containing: step, from: &events) else {
-                let result = await runTask.result
-                Issue.record("the step \(step) never wrote; the run gave \(result)")
-                return
+        try await endingShellRun(runTask) {
+            for (step, gate) in [("out1", afterOut1), ("err1", afterErr1), ("out2", afterOut2)] {
+                guard await Self.waitForOutput(containing: step, from: &events) else {
+                    let result = await runTask.result
+                    Issue.record("the step \(step) never wrote; the run gave \(result)")
+                    return
+                }
+                guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
+                    return
+                }
             }
-            guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
-                return
-            }
+            _ = try await runTask.value
+            let lines = try await state.getLines(commandID: token)
+
+            // Each line arrived exactly one time — none went away, and none came
+            // twice — whatever order the two streams happened to take.
+            #expect(lines.count == Self.interleavedLineCount)
+            #expect(Set(lines.map(\.text)) == ["out1", "out2", "err1", "err2"])
+
+            // The lines of one stream stand in write order.
+            #expect(lines.filter { $0.text.hasPrefix("out") }.map(\.text) == ["out1", "out2"])
+            #expect(lines.filter { $0.text.hasPrefix("err") }.map(\.text) == ["err1", "err2"])
         }
-        _ = try await runTask.value
-        let lines = try await state.getLines(commandID: token)
-
-        // Each line arrived exactly one time — none went away, and none came
-        // twice — whatever order the two streams happened to take.
-        #expect(lines.count == Self.interleavedLineCount)
-        #expect(Set(lines.map(\.text)) == ["out1", "out2", "err1", "err2"])
-
-        // The lines of one stream stand in write order.
-        #expect(lines.filter { $0.text.hasPrefix("out") }.map(\.text) == ["out1", "out2"])
-        #expect(lines.filter { $0.text.hasPrefix("err") }.map(\.text) == ["err1", "err2"])
     }
 
     // MARK: - The output reaches the store while the command still runs
@@ -753,19 +754,19 @@ struct ShellRunnerTests {
         let (runner, state, directory) = try makeRunner()
         let token = ToolContext.makeCompletionToken()
         let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask, closing: gate) {
+            let lines = try await waitForLines(in: state, commandID: token)
+            #expect(lines == [LogLine(lineNumber: 1, text: "one")])
 
-        let lines = try await waitForLines(in: state, commandID: token)
-        #expect(lines == [LogLine(lineNumber: 1, text: "one")])
+            // The record must still read `running`: the child stays alive until
+            // the test opens the gate below.
+            let record = await state.record(commandID: token)
+            #expect(record?.status == .running)
 
-        // The record must still read `running`: the child stays alive until
-        // the test opens the gate below.
-        let record = await state.record(commandID: token)
-        #expect(record?.status == .running)
-
-        try openGate(gate)
-        let outcome = try await runTask.value
-        #expect(outcome.status == .completed)
+            try openGate(gate)
+            let outcome = try await runTask.value
+            #expect(outcome.status == .completed)
+        }
     }
 
     // MARK: - The canceler
@@ -787,21 +788,21 @@ struct ShellRunnerTests {
             try await runner.run(
                 .init(command: "sleep \(marker) & \(Self.readyThenWait)", completionToken: token))
         }
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask) {
+            #expect(await Self.waitForReadiness(on: live), "the command never reported that it runs")
+            let members = await processIDs(matching: pattern)
+            #expect(members.count >= 1, "expected the command to run, saw \(members.count)")
 
-        #expect(await Self.waitForReadiness(on: live), "the command never reported that it runs")
-        let members = await processIDs(matching: pattern)
-        #expect(members.count >= 1, "expected the command to run, saw \(members.count)")
+            let outcome = await runner.canceler(completionToken: token)()
+            #expect(outcome == .stopped)
 
-        let outcome = await runner.canceler(completionToken: token)()
-        #expect(outcome == .stopped)
+            let exited = await exitedCount(of: members)
+            #expect(exited == members.count, "the canceler left \(members.count - exited) survivor(s)")
 
-        let exited = await exitedCount(of: members)
-        #expect(exited == members.count, "the canceler left \(members.count - exited) survivor(s)")
-
-        _ = try? await runTask.value
-        let record = try #require(await state.record(commandID: token))
-        #expect(record.status == .killed)
+            _ = try? await runTask.value
+            let record = try #require(await state.record(commandID: token))
+            #expect(record.status == .killed)
+        }
     }
 
     /// The canceler never sends a kill after the run reaped its child.
@@ -823,35 +824,37 @@ struct ShellRunnerTests {
     func cancelerSendsNoKillAfterTheRunReapedItsChild() async throws {
         let kills = KillRecorder()
         var (runner, state, directory) = try makeRunner()
-        let (entered, enteredContinuation) = AsyncStream<Void>.makeStream()
+        let entered = TestGate()
         let (released, releasedContinuation) = AsyncStream<Void>.makeStream()
         runner.signalProcessGroup = { pid in kills.record(pid) }
         runner.cancelerWillSignal = {
-            enteredContinuation.yield()
-            enteredContinuation.finish()
+            entered.open()
             for await _ in released {}
         }
         let token = ToolContext.makeCompletionToken()
         let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
-        defer { runTask.cancel() }
         defer { releasedContinuation.finish() }
 
-        // The first line is stored inside the body, after the registration of
-        // the process group, thus the canceler finds a group to kill.
-        _ = try await waitForLines(in: state, commandID: token)
-        let canceler = runner.canceler(completionToken: token)
-        let cancel = Task { await canceler() }
-        for await _ in entered {}
+        try await endingShellRun(runTask, closing: gate) {
+            // The first line is stored inside the body, after the registration of
+            // the process group, thus the canceler finds a group to kill.
+            _ = try await waitForLines(in: state, commandID: token)
+            let canceler = runner.canceler(completionToken: token)
+            // The wait for the hook also ends when the canceler ends first.
+            let cancel = try await EventRace.watch(
+                { await canceler() }, untilOpen: entered,
+                orFail: "the canceler ended before it came to the hook before its kill")
 
-        try openGate(gate)
-        _ = try await runTask.value
-        let killsAtReap = kills.count
+            try openGate(gate)
+            _ = try await runTask.value
+            let killsAtReap = kills.count
 
-        releasedContinuation.finish()
-        #expect(await cancel.value == .stopped)
-        #expect(
-            kills.count == killsAtReap,
-            "the canceler sent \(kills.count - killsAtReap) kill(s) after the run reaped its child")
+            releasedContinuation.finish()
+            #expect(try await cancel.task.value == .stopped)
+            #expect(
+                kills.count == killsAtReap,
+                "the canceler sent \(kills.count - killsAtReap) kill(s) after the run reaped its child")
+        }
     }
 
     /// The canceler signals the whole process group, and not the leader alone:
@@ -870,19 +873,20 @@ struct ShellRunnerTests {
                     command: "sleep \(marker) & sleep \(marker) & \(Self.readyThenWait)",
                     completionToken: token))
         }
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask) {
+            #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
+            let members = await processIDs(matching: pattern)
+            #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
 
-        #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
-        let members = await processIDs(matching: pattern)
-        #expect(members.count >= Self.treeMemberCount, "expected the sleep tree to run, saw \(members.count)")
+            let outcome = await runner.canceler(completionToken: token)()
+            #expect(outcome == .stopped)
 
-        let outcome = await runner.canceler(completionToken: token)()
-        #expect(outcome == .stopped)
+            let exited = await exitedCount(of: members)
+            #expect(
+                exited == members.count, "the canceler left \(members.count - exited) member(s) of the group alive")
 
-        let exited = await exitedCount(of: members)
-        #expect(exited == members.count, "the canceler left \(members.count - exited) member(s) of the group alive")
-
-        _ = try? await runTask.value
+            _ = try? await runTask.value
+        }
     }
 
     // MARK: - The wall clock of the time limit, and the default of no limit
@@ -898,15 +902,15 @@ struct ShellRunnerTests {
         let token = ToolContext.makeCompletionToken()
         let (runTask, gate) = try startGatedRun(
             of: runner, token: token, in: directory, timeout: Self.shortTimeout)
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask, closing: gate) {
+            clock.open()
+            let outcome = try await runTask.value
 
-        clock.open()
-        let outcome = try await runTask.value
-
-        #expect(outcome.status == .timedOut)
-        #expect(outcome.exitCode == Self.absentExitCode)
-        #expect(clock.recordedSleeps == [Self.shortTimeout])
-        try openGate(gate)
+            #expect(outcome.status == .timedOut)
+            #expect(outcome.exitCode == Self.absentExitCode)
+            #expect(clock.recordedSleeps == [Self.shortTimeout])
+            try openGate(gate)
+        }
     }
 
     /// With no limit the command runs to its own end. The command writes one
@@ -928,16 +932,17 @@ struct ShellRunnerTests {
             try await runner.run(
                 .init(command: "printf 'ready\\n'; \(gate.waitCommand)", completionToken: token))
         }
-        defer { runTask.cancel() }
-        await state.waitForStoredLines(commandID: token, atLeast: 1)
-        guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
-            return
-        }
-        let outcome = try await runTask.value
+        try await endingShellRun(runTask) {
+            await state.waitForStoredLines(commandID: token, atLeast: 1)
+            guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
+                return
+            }
+            let outcome = try await runTask.value
 
-        #expect(outcome.status == .completed)
-        #expect(outcome.exitCode == 0)
-        #expect(clock.recordedSleeps.isEmpty, "a run with no limit slept on its clock: \(clock.recordedSleeps)")
+            #expect(outcome.status == .completed)
+            #expect(outcome.exitCode == 0)
+            #expect(clock.recordedSleeps.isEmpty, "a run with no limit slept on its clock: \(clock.recordedSleeps)")
+        }
     }
 
     // MARK: - The registry across one run
@@ -952,22 +957,22 @@ struct ShellRunnerTests {
         let (runner, state, directory) = try makeRunner(registry: registry)
         let token = ToolContext.makeCompletionToken()
         let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
-        defer { runTask.cancel() }
+        try await endingShellRun(runTask, closing: gate) {
+            // The line arrives only after the child started, and the child stays
+            // alive until the test opens the gate. Thus the registry certainly
+            // holds the pid at this point.
+            _ = try await waitForLines(in: state, commandID: token)
+            #expect(
+                !registry.registeredPids.isEmpty,
+                "expected the pid of the child to be registered while it runs")
 
-        // The line arrives only after the child started, and the child stays
-        // alive until the test opens the gate. Thus the registry certainly
-        // holds the pid at this point.
-        _ = try await waitForLines(in: state, commandID: token)
-        #expect(
-            !registry.registeredPids.isEmpty,
-            "expected the pid of the child to be registered while it runs")
+            try openGate(gate)
+            _ = try await runTask.value
 
-        try openGate(gate)
-        _ = try await runTask.value
-
-        #expect(
-            registry.registeredPids.isEmpty,
-            "expected the registry to be empty once the run ended")
+            #expect(
+                registry.registeredPids.isEmpty,
+                "expected the registry to be empty once the run ended")
+        }
     }
 
     // MARK: - The record is finalized when the body throws

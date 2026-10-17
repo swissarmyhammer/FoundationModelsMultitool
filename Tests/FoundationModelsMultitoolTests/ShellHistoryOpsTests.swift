@@ -140,15 +140,6 @@ struct ShellHistoryOpsTests {
         return (token, run, gate)
     }
 
-    /// Kills a live run and waits for its child to go away, thus nothing of
-    /// this test outlives it.
-    ///
-    /// - Parameter run: The task that runs the command.
-    private func stop(_ run: Task<ShellRunner.Outcome, Error>) async {
-        run.cancel()
-        _ = try? await run.value
-    }
-
     /// Waits until the store holds the one line of the live run, and then
     /// reads one answer.
     ///
@@ -208,17 +199,16 @@ struct ShellHistoryOpsTests {
         let state = try makeState()
         let verb = GetLines(state: state)
         let live = try startLiveRun(in: state)
-        defer { live.run.cancel() }
 
-        let result = try await readAfterTheLine(of: live.token, in: state) {
-            try await verb.call(arguments: GetLinesArguments(commandID: live.token))
+        try await endingShellRun(live.run) {
+            let result = try await readAfterTheLine(of: live.token, in: state) {
+                try await verb.call(arguments: GetLinesArguments(commandID: live.token))
+            }
+
+            #expect(result.lines == ["1: \(Self.liveMarker)"])
+            #expect(result.status == CommandStatus.running.rawValue)
+            #expect(result.correction == nil)
         }
-
-        #expect(result.lines == ["1: \(Self.liveMarker)"])
-        #expect(result.status == CommandStatus.running.rawValue)
-        #expect(result.correction == nil)
-
-        await stop(live.run)
     }
 
     @Test("getLines answers with the stored output of a run that ended")
@@ -312,18 +302,17 @@ struct ShellHistoryOpsTests {
         let state = try makeState()
         let verb = GrepHistory(state: state)
         let live = try startLiveRun(in: state)
-        defer { live.run.cancel() }
 
-        let result = try await readAfterTheLine(of: live.token, in: state) {
-            try await verb.call(arguments: GrepHistoryArguments(pattern: Self.liveMarker))
+        try await endingShellRun(live.run) {
+            let result = try await readAfterTheLine(of: live.token, in: state) {
+                try await verb.call(arguments: GrepHistoryArguments(pattern: Self.liveMarker))
+            }
+
+            #expect(result.total == 1)
+            #expect(result.matches.map(\.text) == [Self.liveMarker])
+            #expect(result.matches.map(\.commandID) == [live.token])
+            #expect(result.correction == nil)
         }
-
-        #expect(result.total == 1)
-        #expect(result.matches.map(\.text) == [Self.liveMarker])
-        #expect(result.matches.map(\.commandID) == [live.token])
-        #expect(result.correction == nil)
-
-        await stop(live.run)
     }
 
     /// The `limit`/`total` split is the point of the verb: `limit` caps how

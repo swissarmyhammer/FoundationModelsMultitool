@@ -8,6 +8,14 @@ comments:
     ### owner decision (2026-10-17), from ^t9dc8nb
     - ManualRunClock.waitForSleepers(atLeast:) in FoundationModelsExtras has no cancellation handler. In this repo, use the test-side wrapper waitForSleepers(atLeast:orUntil:) (Tests/FoundationModelsMultitoolTests/Support/ManualRunClockWaits.swift) at each call site in this group, with the end of the call as the second event. Groups 4 and 5 together hold 11 such call sites. Do not change Extras.
   timestamp: 2026-10-17T05:33:52.271718+00:00
+- actor: claude-code
+  id: 01m54hzhen8y8j56872wtw0pgh
+  text: |-
+    ### two more items for this card (found on ^8y8htqx, 2026-10-17)
+    - Tests/FoundationModelsMultitoolTests/MCPServerCallTests.swift:605 calls ManualRunClock.waitForSleepers(atLeast:) directly. It is an MCP test, not a shell test, and group 3 (^c1v08m3) is done. Move it to the wrapper waitForSleepers(atLeast:orUntil:) here, with the end of the call as the second event (owner decision B).
+    - Tests/FoundationModelsMultitoolTests/MCPSessionSweepTests.swift:298 has the same journal wait after close() as the waits of ShellSessionSweepTests that went on ^vg01093 in group 4. It is not on ^vg01093. Find a second event for it; if none exists without a production change, add its line to ^vg01093 with the reason.
+    - Groups 4 and 5 hold 11 waitForSleepers call sites. Group 4 moved 4. The 6 that stay: RunCodeToolTimeoutTests (4), SuspendedContextTests (1), and MCPServerCallTests.swift:605 (above).
+  timestamp: 2026-10-17T09:09:41.461440+00:00
 depends_on:
 - 01M53W31F0R9FSZW7FV8Y8HTQX
 position_column: todo

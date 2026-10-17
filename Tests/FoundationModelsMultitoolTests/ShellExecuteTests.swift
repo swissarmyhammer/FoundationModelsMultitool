@@ -317,9 +317,14 @@ struct ShellExecuteTests {
     /// for the answer of `call`.
     ///
     /// The command of `call` waits on a `ShellCommandGate`, and the shell
-    /// runner does not end a command on a cancel. When a step throws, the
-    /// scope of the `async let` waits for `call`. Thus a stop on the return
-    /// path alone makes that wait hang.
+    /// runner does not end a command on a cancel. Thus a stop on the return
+    /// path alone makes the wait for the answer hang when a step throws. On
+    /// each path this function waits for the end of `call` after `stop`, thus
+    /// no call stays open after it returns.
+    ///
+    /// `steps` gets the started call. Thus a wait of a step also ends on the
+    /// end of the call (``EventRace/Watched/waitForEnd()``): a call that
+    /// ended cannot make the event of the step any more.
     ///
     /// - Parameters:
     ///   - stop: Ends the command of `call`.
@@ -330,11 +335,15 @@ struct ShellExecuteTests {
     private static func callStopped<Readings>(
         by stop: () async -> Void,
         _ call: @escaping @Sendable () async throws -> String,
-        during steps: () async throws -> Readings
+        during steps: (EventRace.Watched<String>) async throws -> Readings
     ) async throws -> Readings {
-        async let answer = call()
-        let readings = try await ensuring(stop, after: steps)
-        _ = try await answer
+        let answer = EventRace.watch(call)
+        let readings = try await ensuring(
+            {
+                await stop()
+                _ = await answer.task.result
+            }, after: { try await steps(answer) })
+        _ = try await answer.task.value
         return readings
     }
 
@@ -667,12 +676,17 @@ struct ShellExecuteTests {
                 by: { _ = await stop() }
             ) {
                 try await Self.call(verb, ExecuteArguments(command: command), under: context)
-            } during: {
-                try await clock.waitForRecordedSleeps(atLeast: 1)
+            } during: { call in
+                // Each wait also ends when the call ends first.
+                try await EventRace.firstOf(
+                    { try? await clock.waitForRecordedSleeps(atLeast: 1) }, or: { await call.waitForEnd() })
                 let isCollecting = clock.recordedSleeps.contains(interval)
                 let before = await recordedOperationEvents(of: run, ofKind: .progress)
                 clock.open(sleepsOf: interval)
-                let after = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1).map(\.detail)
+                try await EventRace.firstOf(
+                    { _ = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1) },
+                    or: { await call.waitForEnd() })
+                let after = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
                 return (isCollecting, before, after)
             }
 
@@ -699,7 +713,7 @@ struct ShellExecuteTests {
         await #expect(throws: HeldCallStepFailure.self) {
             try await Self.callStopped(by: { stops.withLock { $0 += 1 } }) {
                 "answered"
-            } during: { () async throws -> Void in
+            } during: { (_: EventRace.Watched<String>) async throws -> Void in
                 throw HeldCallStepFailure()
             }
         }

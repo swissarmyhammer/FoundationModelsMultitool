@@ -349,10 +349,13 @@ struct BackgroundSettleGraceTests {
             step: runningSnippet(snippet(heldCommand(gate))), clock: ManualRunClock()
         ) { session in
             let callEnd = CallEnd()
-            async let responded = callEnd.recording { try await session.respond(to: "run the snippet") }
-            try await snippetEnded.wait()
+            // The wait for the end of the snippet code also ends when the call
+            // ends first.
+            let responded = try await EventRace.watch(
+                { try await callEnd.recording { try await session.respond(to: "run the snippet") } },
+                untilOpen: snippetEnded, orFail: "the call ended before the code of the snippet ended")
             try await Self.release(gate, commandIn: probe.state, orEndOf: callEnd)
-            return try await responded
+            return try await responded.task.value
         }
         #expect(!PendingRunEnvelope.isRendered(text: result), "the snippet went to the background: \(result)")
         return (result, probe.state)
@@ -445,10 +448,11 @@ struct BackgroundSettleGraceTests {
         ) { session in
             let log = await SessionOutputLog.reading(session)
 
-            async let asked = log.ask("run the long command")
-            await clock.waitForSleepers(atLeast: Self.runCodeSleepers)
-            clock.advance(by: .seconds(Self.shortGrace))
-            let answer = try await asked.reply
+            let answer = try await callPastSettlePeriod(
+                on: clock, grace: Self.shortGrace, timers: Self.runCodeSleepers
+            ) {
+                try await log.ask("run the long command")
+            }.reply
 
             let envelope = try mailProbeEnvelope(answer)
             try await Self.release(
@@ -506,10 +510,11 @@ struct BackgroundSettleGraceTests {
         ) { session in
             let log = await SessionOutputLog.reading(session)
 
-            async let asked = log.ask("run the long command")
-            await clock.waitForSleepers(atLeast: Self.runCodeSleepers)
-            clock.advance(by: .seconds(Self.shortGrace))
-            let answer = try await asked.reply
+            let answer = try await callPastSettlePeriod(
+                on: clock, grace: Self.shortGrace, timers: Self.runCodeSleepers
+            ) {
+                try await log.ask("run the long command")
+            }.reply
 
             let envelope = try mailProbeEnvelope(answer)
             try await Self.release(
@@ -601,10 +606,11 @@ struct BackgroundSettleGraceTests {
         ) { session in
             let log = await SessionOutputLog.reading(session)
 
-            async let asked = log.ask("run the command")
-            await clock.waitForSleepers(atLeast: Self.executeSleepers)
-            clock.advance(by: .seconds(Self.oneSecondGrace))
-            let answer = try await asked.reply
+            let answer = try await callPastSettlePeriod(
+                on: clock, grace: Self.oneSecondGrace, timers: Self.executeSleepers
+            ) {
+                try await log.ask("run the command")
+            }.reply
 
             let envelope = try mailProbeEnvelope(answer)
             #expect(envelope.pending)
@@ -632,11 +638,15 @@ struct BackgroundSettleGraceTests {
             mounting: [verbs.execute], prompts: prompts, step: Self.executing(Self.heldCommand(gate)), clock: clock
         ) { session in
             let callEnd = CallEnd()
-            async let responded = callEnd.recording { try await session.respond(to: "run the command") }
-            await clock.waitForSleepers(atLeast: Self.executeSleepers)
+            let responded = EventRace.watch {
+                try await callEnd.recording { try await session.respond(to: "run the command") }
+            }
+            // The wait for the timer of the settle period also ends when the
+            // call ends first.
+            await clock.waitForSleepers(atLeast: Self.executeSleepers, orUntil: { await responded.waitForEnd() })
             clock.advance(by: Self.threeSecondRun)
             try await Self.release(gate, commandIn: verbs.state, orEndOf: callEnd)
-            let report = try await responded
+            let report = try await responded.task.value
 
             #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
             guard case .object(let fields) = try Self.returnedValue(of: report) else {

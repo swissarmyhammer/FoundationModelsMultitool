@@ -434,10 +434,11 @@ struct OutputChunkStreamTests {
             maxPendingBytes: ShellOutputChunkStream.defaultMaxPendingBytes,
             onConsumerWait: { consumerWaits.open() })
 
-        let consuming = Task { for await _ in stream {} }
-        try await consumerWaits.wait()
-        consuming.cancel()
-        _ = await consuming.value
+        // The wait for the hook also ends when the consumer ends first.
+        let consuming = try await EventRace.watch(
+            { for await _ in stream {} }, untilOpen: consumerWaits,
+            orFail: "the consumer ended before it came to its wait for an event")
+        await EventRace.endWait(consuming.task)
 
         #expect(stream.isFinished, "a cancelled consumer leaves the stream spent; say so")
 
