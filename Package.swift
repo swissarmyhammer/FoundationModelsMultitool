@@ -330,12 +330,14 @@ private let testServerTargetName = "MCPTestServer"
 /// that exports it.
 ///
 /// **Test support, declared as a product**, for the same reason as
-/// `testServerTargetName`. It carries `ConcurrencyGate` alone — the actor that
+/// `testServerTargetName`. It carries `ConcurrencyGate` — the actor that
 /// holds one shared resource to one user at a time. Two callers share it, and
 /// they stand in two packages: `LoopbackHTTPServer` in `testServerTargetName`
 /// below, and `liveProfileTurnstile` in the nested `IntegrationTests` package.
 /// Each one held a gate of its own before, and the two were the same actor with
-/// two sets of names.
+/// two sets of names. It also carries `WaitList`, the list of open waits that
+/// a cancel also ends, which the gate, the test support targets and the unit
+/// test target share.
 ///
 /// A target of its own, and not a file of `testServerTargetName`: that target
 /// is the scripted MCP server and it links the `MCP` product, while a gate over
@@ -599,11 +601,13 @@ let package = Package(
             path: "\(testSupportPath)\(testConcurrencyTargetName)"
         ),
         // The model-free half of the gated scenario suite — see
-        // `scenarioGradingTargetName`. It links Router and the metadata
-        // registry, and no target of this package.
+        // `scenarioGradingTargetName`. It links Router, the metadata
+        // registry, and of this package only `testConcurrencyTargetName`, for
+        // the wait list that its waits share with the other test support.
         .target(
             name: scenarioGradingTargetName,
             dependencies: [
+                .target(name: testConcurrencyTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],

@@ -379,18 +379,25 @@ extension MCPServer {
     /// on in place of a poll of the flag. Returns at once when the flag is
     /// already set.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call. The caller reads ``isTransportDropped`` when it must
+    /// know which event came.
+    ///
     /// Internal, for `@testable import`: no product code waits here.
     func waitUntilTransportDropped() async {
-        guard !isTransportDropped else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            transportDropWaiters.append(continuation)
-        }
+        let waiterID = nextTestHookWaiterID
+        nextTestHookWaiterID += 1
+        await suspendTestHookWait(
+            cancelValue: (),
+            resolvedValue: { isTransportDropped ? () : nil },
+            record: { continuation in transportDropWaiters[waiterID] = continuation },
+            end: { server, _ in server.transportDropWaiters.removeValue(forKey: waiterID)?.resume() })
     }
 
     /// Resumes each wait of ``waitUntilTransportDropped()``.
     private func resumeTransportDropWaiters() {
-        let waiters = transportDropWaiters
-        transportDropWaiters = []
+        let waiters = transportDropWaiters.values
+        transportDropWaiters = [:]
         for waiter in waiters {
             waiter.resume()
         }

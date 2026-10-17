@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsRouter
+import TestConcurrency
 import os
 
 // MARK: - Phase-1 `RunBinding` fixtures (eventplan.md § "Async JavaScript" —
@@ -69,13 +70,15 @@ actor RecordingEventSink: OperationEventSink {
         let response: ElicitationResponse
     }
 
-    /// One wait of ``waitUntilEvent(where:)`` that did not end yet.
-    private struct EventWaiter {
-        /// The test of one event.
-        let isMet: @Sendable (OperationEvent) -> Bool
+    /// What one wait of this sink waits for.
+    private enum AwaitedPost: Sendable {
+        /// An event that the test accepts — a wait of
+        /// ``waitUntilEvent(where:)``.
+        case event(@Sendable (OperationEvent) -> Bool)
 
-        /// The continuation that an event that `isMet` accepts resumes.
-        let continuation: CheckedContinuation<Void, Never>
+        /// A URL flow that completed or ended — a wait of
+        /// ``waitUntilElicitationSettled()``.
+        case settledElicitation
     }
 
     /// Every event posted to this sink, in arrival order.
@@ -88,24 +91,15 @@ actor RecordingEventSink: OperationEventSink {
     /// Each question that the run plane ended, in arrival order.
     private(set) var endedElicitations: [EndedElicitation] = []
 
-    /// Each wait of ``waitUntilEvent(where:)`` that did not end yet, by the
-    /// id of the wait.
-    private var eventWaiters: [Int: EventWaiter] = [:]
-
-    /// The id that the next wait of ``waitUntilEvent(where:)`` gets.
-    private var nextEventWaiterID = 0
-
-    /// Each wait of ``waitUntilElicitationSettled()`` that did not end yet.
-    private var settleWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Each wait of ``waitUntilEvent(where:)`` and of
+    /// ``waitUntilElicitationSettled()`` that did not end yet.
+    private let waiters = WaitList<AwaitedPost>()
 
     func post(event: OperationEvent) async {
         events.append(event)
-        let met = eventWaiters.filter { $0.value.isMet(event) }
-        for waiterID in met.keys {
-            eventWaiters.removeValue(forKey: waiterID)
-        }
-        for waiter in met.values {
-            waiter.continuation.resume()
+        waiters.resume { awaited in
+            guard case .event(let isMet) = awaited else { return false }
+            return isMet(event)
         }
     }
 
@@ -121,10 +115,9 @@ actor RecordingEventSink: OperationEventSink {
 
     /// Ends each wait of ``waitUntilElicitationSettled()``.
     private func resumeSettleWaiters() {
-        let waiters = settleWaiters
-        settleWaiters = []
-        for waiter in waiters {
-            waiter.resume()
+        waiters.resume { awaited in
+            guard case .settledElicitation = awaited else { return false }
+            return true
         }
     }
 
@@ -138,24 +131,7 @@ actor RecordingEventSink: OperationEventSink {
     ///
     /// - Parameter isMet: The test of one event.
     func waitUntilEvent(where isMet: @escaping @Sendable (OperationEvent) -> Bool) async {
-        guard !events.contains(where: isMet), !Task.isCancelled else { return }
-        let waiterID = nextEventWaiterID
-        nextEventWaiterID += 1
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                eventWaiters[waiterID] = EventWaiter(isMet: isMet, continuation: continuation)
-            }
-        } onCancel: {
-            Task { await self.endEventWait(waiterID) }
-        }
-    }
-
-    /// Ends the wait `waiterID` of ``waitUntilEvent(where:)`` — the cancel of
-    /// that wait. A no-op when the wait ended before.
-    ///
-    /// - Parameter waiterID: The id of the wait.
-    private func endEventWait(_ waiterID: Int) {
-        eventWaiters.removeValue(forKey: waiterID)?.continuation.resume()
+        await waiters.wait(for: .event(isMet), unless: { events.contains(where: isMet) })
     }
 
     /// Waits until this sink recorded one URL flow that completed or ended.
@@ -165,12 +141,12 @@ actor RecordingEventSink: OperationEventSink {
     /// The wait ends on the first of two events: a completion, or an end with
     /// a decline or a cancel. A flow that does not complete ends some other
     /// way, thus a test that waits here for a completion fails, and does not
-    /// wait for ever, when the flow ends with no completion.
+    /// wait for ever, when the flow ends with no completion. A cancel of the
+    /// calling task also ends the wait, also a cancel that came before the
+    /// call, as it ends a wait of ``waitUntilEvent(where:)``.
     func waitUntilElicitationSettled() async {
-        guard completedElicitationIds.isEmpty, endedElicitations.isEmpty else { return }
-        await withCheckedContinuation { continuation in
-            settleWaiters.append(continuation)
-        }
+        await waiters.wait(
+            for: .settledElicitation, unless: { !completedElicitationIds.isEmpty || !endedElicitations.isEmpty })
     }
 
     /// The `detail` of every recorded event of one kind, in arrival order.

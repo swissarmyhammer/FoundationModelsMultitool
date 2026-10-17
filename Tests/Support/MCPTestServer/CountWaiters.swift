@@ -74,6 +74,17 @@ final class CountWaiters<Item: Sendable> {
         }
     }
 
+    /// Ends each wait, because no more item comes to the record.
+    ///
+    /// - Parameter recorded: The items recorded now.
+    func endAll(recorded: [Item]) {
+        let open = waiters
+        waiters.removeAll()
+        for waiter in open.values {
+            waiter.continuation.resume(returning: recorded)
+        }
+    }
+
     /// Ends one wait whose task was cancelled, or marks the wait so that it
     /// ends when it is stored.
     ///

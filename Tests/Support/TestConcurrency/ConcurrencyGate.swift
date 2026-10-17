@@ -21,7 +21,12 @@
 ///
 /// ``acquire()`` and ``release()`` are a pair. A caller that takes the gate owes
 /// a ``release()`` on every exit path, the failure paths included, because a
-/// gate nobody releases parks every later caller for ever.
+/// gate nobody releases parks every later caller until each of them is
+/// cancelled.
+///
+/// A cancel ends each wait of the gate. A parked ``acquire()`` then throws
+/// `CancellationError` and does not hold the gate, thus its caller owes no
+/// ``release()``.
 ///
 /// A gate is made for one named resource, and the resource states why it needs
 /// one. See ``LoopbackHTTPServer`` in the `MCPTestServer` target, and
@@ -31,20 +36,11 @@ public actor ConcurrencyGate {
     private var isHeld = false
 
     /// The callers parked until the holder releases the gate, in arrival order.
-    private var parked: [CheckedContinuation<Void, Never>] = []
+    private let parked = WaitList<Void>()
 
-    /// One wait of ``waitForWaiters(atLeast:)``: the count of parked callers
-    /// it waits for, and the continuation that ends it.
-    private struct WaiterCountWatch {
-        /// The count of parked callers that ends the wait.
-        let count: Int
-
-        /// Resumes the wait.
-        let continuation: CheckedContinuation<Void, Never>
-    }
-
-    /// Each wait of ``waitForWaiters(atLeast:)`` that did not end.
-    private var waiterCountWatches: [WaiterCountWatch] = []
+    /// Each wait of ``waitForWaiters(atLeast:)``, by the count of parked
+    /// callers that ends it.
+    private let waiterCountWatches = WaitList<Int>()
 
     /// Creates a gate that no caller holds.
     public init() {}
@@ -61,26 +57,27 @@ public actor ConcurrencyGate {
     ///
     /// This is the event that a caller parked: ``acquire()`` ends each wait
     /// that its arrival satisfies. A test waits here, and does not read
-    /// ``waiterCount`` again and again.
+    /// ``waiterCount`` again and again. A cancel of the task of the caller
+    /// also ends the wait.
     ///
     /// - Parameter count: The count of parked callers that ends the wait.
     public func waitForWaiters(atLeast count: Int) async {
-        guard parked.count < count else { return }
-        await withCheckedContinuation { continuation in
-            waiterCountWatches.append(WaiterCountWatch(count: count, continuation: continuation))
-        }
+        await waiterCountWatches.wait(for: count, unless: { parked.count >= count })
     }
 
     /// Takes the gate, and waits for the holder to give it back when another
     /// caller holds it. The caller owes a matching ``release()``.
-    public func acquire() async {
+    ///
+    /// - Throws: `CancellationError` when the task is cancelled before the
+    ///   gate came to it. The caller then does not hold the gate.
+    public func acquire() async throws {
         guard isHeld else {
             isHeld = true
             return
         }
-        await withCheckedContinuation { continuation in
-            parked.append(continuation)
-            resumeSatisfiedWatches()
+        let granted = await parked.wait(for: (), afterStoring: { resumeSatisfiedWatches() })
+        guard granted else {
+            throw CancellationError()
         }
     }
 
@@ -88,20 +85,13 @@ public actor ConcurrencyGate {
     /// parked callers satisfies.
     private func resumeSatisfiedWatches() {
         let parkedCount = parked.count
-        let satisfied = waiterCountWatches.filter { $0.count <= parkedCount }
-        waiterCountWatches.removeAll { $0.count <= parkedCount }
-        for watch in satisfied {
-            watch.continuation.resume()
-        }
+        waiterCountWatches.resume { $0 <= parkedCount }
     }
 
     /// Gives the gate up. It goes to the caller that waited longest, or it opens
     /// for the next ``acquire()`` when no caller waits.
     public func release() {
-        guard parked.isEmpty else {
-            parked.removeFirst().resume()
-            return
-        }
+        guard !parked.resumeFirst() else { return }
         isHeld = false
     }
 }

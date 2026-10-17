@@ -198,6 +198,10 @@ actor ShellState {
     /// One wait of ``waitForStoredLines(commandID:atLeast:)``: the count of
     /// stored lines it waits for, and the continuation that ends it.
     private struct LineCountWaiter {
+        /// The id of the wait. A cancel of the task of the wait finds the
+        /// wait with this id.
+        let id: Int
+
         /// The count of stored lines that ends the wait.
         let count: Int
 
@@ -211,8 +215,13 @@ actor ShellState {
     /// `appendLines(commandID:stdout:stderr:)` ends each wait whose count the
     /// stored lines reach, after the write to the log. `completeCommand` ends
     /// each wait of the command, thus a command that ends with fewer lines
-    /// never leaves a wait suspended.
+    /// never leaves a wait suspended. A cancel of the task of a wait ends
+    /// that wait.
     private var lineCountWaiters: [String: [LineCountWaiter]] = [:]
+
+    /// The id that the next wait of ``waitForStoredLines(commandID:atLeast:)``
+    /// gets.
+    private var nextLineCountWaiterID = 0
 
     /// One wait of ``waitForCommand(holding:)``: the text the command line
     /// must hold, and the continuation that ends the wait.
@@ -554,7 +563,9 @@ actor ShellState {
     /// the write occurred. It returns at once when the store already holds
     /// the lines, or when the command already ended. A wait for a token that
     /// no command started under yet continues until such a command stores the
-    /// lines or ends.
+    /// lines or ends. A cancel of the task of the wait also ends it, also a
+    /// cancel that came before the call. The caller reads the record of the
+    /// command when it must know which event came.
     ///
     /// - Parameters:
     ///   - commandID: The completion token of the run.
@@ -563,10 +574,37 @@ actor ShellState {
         if let found = record(commandID: commandID), found.lineCount >= count || found.status != .running {
             return
         }
-        await withCheckedContinuation { continuation in
-            lineCountWaiters[commandID, default: []].append(
-                LineCountWaiter(count: count, continuation: continuation))
+        let id = nextLineCountWaiterID
+        nextLineCountWaiterID += 1
+        // The check of the cancel and the record of the wait occur in one hop
+        // of this actor, as in `waitForCommand(holding:)`.
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume()
+                    return
+                }
+                lineCountWaiters[commandID, default: []].append(
+                    LineCountWaiter(id: id, count: count, continuation: continuation))
+            }
+        } onCancel: {
+            Task { await self.endLineCountWait(commandID: commandID, id: id) }
         }
+    }
+
+    /// Ends the wait of ``waitForStoredLines(commandID:atLeast:)`` with `id`.
+    /// Does nothing when that wait already ended.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token the wait waits for.
+    ///   - id: The id of the wait.
+    private func endLineCountWait(commandID: String, id: Int) {
+        guard var waiters = lineCountWaiters[commandID],
+            let index = waiters.firstIndex(where: { $0.id == id })
+        else { return }
+        let waiter = waiters.remove(at: index)
+        lineCountWaiters[commandID] = waiters.isEmpty ? nil : waiters
+        waiter.continuation.resume()
     }
 
     /// Ends each wait of ``waitForStoredLines(commandID:atLeast:)`` for

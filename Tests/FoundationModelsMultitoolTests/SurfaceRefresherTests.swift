@@ -3,6 +3,7 @@ import FoundationModels
 import MCPTestServer
 import Synchronization
 import TelemetryTestSupport
+import TestConcurrency
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -136,32 +137,16 @@ struct SurfaceRefresherTests {
     /// stage is the last step of the watcher's work for one snapshot. The
     /// wait ends on the stage itself, not on a timer.
     private final class RecordingStaging: RegistryStaging {
-        /// One caller of ``waitUntil(_:)`` that waits, with its condition.
-        private struct Waiter {
-            /// The condition on the paths of every staged registry, in stage
-            /// order, that ends the wait.
-            let isSatisfied: @Sendable ([[String]]) -> Bool
-
-            /// The continuation that the stage which satisfies the condition
-            /// resumes.
-            let continuation: CheckedContinuation<Void, Never>
-        }
-
-        /// What the lock guards.
-        private struct State {
-            /// The paths of every staged registry, in stage order.
-            var stagedPaths: [[String]] = []
-
-            /// Each caller of ``waitUntil(_:)`` that waits.
-            var waiters: [Waiter] = []
-        }
-
         /// The staging of the mounted session, which every staged registry is
         /// passed on to.
         private let mounted: any RegistryStaging
 
-        /// The staged paths and the waiters.
-        private let state = Mutex(State())
+        /// The paths of every staged registry, in stage order.
+        private let stagedPaths = Mutex<[[String]]>([])
+
+        /// Each caller of ``waitUntil(_:)`` that waits, with its condition on
+        /// the paths of every staged registry, in stage order.
+        private let waiters = WaitList<@Sendable ([[String]]) -> Bool>()
 
         /// Creates a staging that records, and then passes on to `mounted`.
         ///
@@ -172,7 +157,7 @@ struct SurfaceRefresherTests {
 
         /// How many registries this staging recorded so far.
         var count: Int {
-            state.withLock { $0.stagedPaths.count }
+            stagedPaths.withLock { $0.count }
         }
 
         /// Records `registry`, stages it on the mounted staging, and then
@@ -184,44 +169,25 @@ struct SurfaceRefresherTests {
         /// - Parameter registry: The registry to stage.
         func stage(_ registry: MultiTool.Registry) {
             let paths = registry.surface.entries.map(\.path)
-            let reached = state.withLock { state -> [Waiter] in
-                state.stagedPaths.append(paths)
-                var reached: [Waiter] = []
-                var waiting: [Waiter] = []
-                for waiter in state.waiters {
-                    if waiter.isSatisfied(state.stagedPaths) {
-                        reached.append(waiter)
-                    } else {
-                        waiting.append(waiter)
-                    }
-                }
-                state.waiters = waiting
-                return reached
+            let staged = stagedPaths.withLock { current -> [[String]] in
+                current.append(paths)
+                return current
             }
             mounted.stage(registry)
-            for waiter in reached {
-                waiter.continuation.resume()
-            }
+            waiters.resume { isSatisfied in isSatisfied(staged) }
         }
 
         /// Waits until the paths of the staged registries satisfy
         /// `isSatisfied`. Returns at once when they already do.
         ///
+        /// A cancel of the task of the caller also ends the wait, also a
+        /// cancel that came before the call. The case then reads the staged
+        /// registries, and its check fails when the stage did not come.
+        ///
         /// - Parameter isSatisfied: The condition on the paths of every
         ///   staged registry, in stage order.
         func waitUntil(_ isSatisfied: @escaping @Sendable ([[String]]) -> Bool) async {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                let satisfiedNow = state.withLock { state -> Bool in
-                    if isSatisfied(state.stagedPaths) {
-                        return true
-                    }
-                    state.waiters.append(Waiter(isSatisfied: isSatisfied, continuation: continuation))
-                    return false
-                }
-                if satisfiedNow {
-                    continuation.resume()
-                }
-            }
+            await waiters.wait(for: isSatisfied, unless: { isSatisfied(stagedPaths.withLock { $0 }) })
         }
     }
 

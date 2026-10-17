@@ -613,10 +613,16 @@ func withStubSession<Result>(
 /// clock past its settle period. No real time passes.
 ///
 /// The order is fixed. The call starts, and the test waits until the timers
-/// of the call wait on `clock` (``ManualRunClock/waitForSleepers(atLeast:)``).
-/// Then the clock moves by `grace`, the settle period ends, and the call
-/// answers with its pending envelope. The work of the call must not end by
-/// itself before that: hold it on a gate that the test opens later.
+/// of the call wait on `clock`
+/// (``ManualRunClock/waitForSleepers(atLeast:orUntil:)``). Then the clock
+/// moves by `grace`, the settle period ends, and the call answers with its
+/// pending envelope. The work of the call must not end by itself before
+/// that: hold it on a gate that the test opens later.
+///
+/// The wait for the timers also ends when the call ends first, or when the
+/// task of the test is cancelled. A call that ends with no timer on the clock
+/// then gives its answer, and the check of the test on that answer fails.
+/// A cancel of the task of the test also cancels the call.
 ///
 /// - Parameters:
 ///   - clock: The run clock of the session that the call is mounted on.
@@ -635,10 +641,14 @@ func callPastSettlePeriod<Answer: Sendable>(
     _ call: @escaping @Sendable () async throws -> Answer
 ) async throws -> Answer {
     let sleepersBefore = clock.sleeperCount
-    async let answer = call()
-    await clock.waitForSleepers(atLeast: sleepersBefore + timers)
-    clock.advance(by: .seconds(grace))
-    return try await answer
+    let answer = Task { try await call() }
+    return try await withTaskCancellationHandler {
+        await clock.waitForSleepers(atLeast: sleepersBefore + timers, orUntil: { _ = await answer.result })
+        clock.advance(by: .seconds(grace))
+        return try await answer.value
+    } onCancel: {
+        answer.cancel()
+    }
 }
 
 /// How many timers a mounted call with no run timeout puts on the run clock

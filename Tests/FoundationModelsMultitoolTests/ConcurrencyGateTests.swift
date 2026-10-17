@@ -9,8 +9,9 @@ import TestConcurrency
 /// The two cases are the whole contract of the gate. One caller holds it at a
 /// time, and a caller that waits gets it in arrival order.
 ///
-/// A gate that never hands itself over parks every caller for ever, and a
-/// parked task shows as a hang and not as an assertion. Each case waits on
+/// A gate that never hands itself over parks every caller until its task is
+/// cancelled, and a parked task shows as a hang and not as an assertion. A
+/// cancelled caller throws and does not hold the gate. Each case waits on
 /// events and never on a time. No test checks the speed of the machine (card
 /// `^tm4x2hp`).
 @Suite("ConcurrencyGate")
@@ -52,14 +53,14 @@ struct ConcurrencyGateTests {
     }
 
     @Test("the gate keeps every caller but one out of the critical section")
-    func oneHolderAtATime() async {
+    func oneHolderAtATime() async throws {
         let gate = ConcurrencyGate()
         let counter = OverlapCounter()
 
-        await withTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<Self.callerCount {
                 group.addTask {
-                    await gate.acquire()
+                    try await gate.acquire()
                     await counter.enter()
                     // Gives the other callers a turn. Without the gate one of
                     // them enters here, and the count of holders goes past one.
@@ -68,6 +69,7 @@ struct ConcurrencyGateTests {
                     await gate.release()
                 }
             }
+            try await group.waitForAll()
         }
 
         let maximum = await counter.maximum
@@ -78,16 +80,16 @@ struct ConcurrencyGateTests {
     func handsTheGateOverInArrivalOrder() async throws {
         let gate = ConcurrencyGate()
         let log = ArrivalLog()
-        await gate.acquire()
+        try await gate.acquire()
 
         // Each caller starts, and then the test waits until the gate counts it.
         // A caller that the gate counts is parked, thus the arrival order of
         // the callers is the order of this loop.
-        var callers: [Task<Void, Never>] = []
+        var callers: [Task<Void, any Error>] = []
         for index in 0..<Self.callerCount {
             callers.append(
                 Task {
-                    await gate.acquire()
+                    try await gate.acquire()
                     await log.append(index)
                     await gate.release()
                 })
@@ -96,7 +98,7 @@ struct ConcurrencyGateTests {
 
         await gate.release()
         for caller in callers {
-            await caller.value
+            try await caller.value
         }
 
         let order = await log.order

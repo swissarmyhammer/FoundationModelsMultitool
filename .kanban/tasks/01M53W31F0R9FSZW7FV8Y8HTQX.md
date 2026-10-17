@@ -1,6 +1,13 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m545m9n7gyh0p1vmt6wxcd4w
+  text: |-
+    ### owner decision (2026-10-17), from ^t9dc8nb
+    - ManualRunClock.waitForSleepers(atLeast:) in FoundationModelsExtras has no cancellation handler. In this repo, use the test-side wrapper waitForSleepers(atLeast:orUntil:) (Tests/FoundationModelsMultitoolTests/Support/ManualRunClockWaits.swift) at each call site in this group, with the end of the call as the second event. Groups 4 and 5 together hold 11 such call sites. Do not change Extras.
+  timestamp: 2026-10-17T05:33:50.119779+00:00
 depends_on:
 - 01M53W2YHNPEH570WMMC1V08M3
 position_column: todo

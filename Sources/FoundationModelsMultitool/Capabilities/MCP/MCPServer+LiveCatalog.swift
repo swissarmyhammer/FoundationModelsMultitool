@@ -82,24 +82,35 @@ extension MCPServer {
     /// event a test of the coalesce window waits on in place of a poll of
     /// the count. Returns at once when the count already reached it.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call. The caller reads ``toolListChangedGeneration`` when
+    /// it must know which event came.
+    ///
     /// Internal, for `@testable import`: no product code waits here.
     ///
     /// - Parameter generation: The count of `tools/list_changed`
     ///   notifications that ends the wait.
     func waitUntilToolListChangedGeneration(reaches generation: Int) async {
-        guard toolListChangedGeneration < generation else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            toolListChangedGenerationWaiters.append((generation, continuation))
-        }
+        let waiterID = nextTestHookWaiterID
+        nextTestHookWaiterID += 1
+        await suspendTestHookWait(
+            cancelValue: (),
+            resolvedValue: { toolListChangedGeneration >= generation ? () : nil },
+            record: { continuation in toolListChangedGenerationWaiters[waiterID] = (generation, continuation) },
+            end: { server, _ in
+                server.toolListChangedGenerationWaiters.removeValue(forKey: waiterID)?.continuation.resume()
+            })
     }
 
     /// Resumes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
     /// whose count ``toolListChangedGeneration`` reached.
     private func resumeToolListChangedGenerationWaiters() {
         let current = toolListChangedGeneration
-        let reached = toolListChangedGenerationWaiters.filter { $0.generation <= current }
-        toolListChangedGenerationWaiters.removeAll { $0.generation <= current }
-        for waiter in reached {
+        let reached = toolListChangedGenerationWaiters.filter { $0.value.generation <= current }
+        for waiterID in reached.keys {
+            toolListChangedGenerationWaiters[waiterID] = nil
+        }
+        for waiter in reached.values {
             waiter.continuation.resume()
         }
     }

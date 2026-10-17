@@ -134,8 +134,12 @@ struct BackgroundSettleGraceTests {
     /// - Returns: The end of the run, with the terminal event of the run.
     private static func endOfRun(_ completionToken: String, in log: SessionOutputLog) -> CallEnd {
         CallEnd.after {
-            let runMail = await log.runMail(settling: completionToken)
-            return "settled with \(String(describing: await log.settledRun(in: runMail)))"
+            do {
+                let runMail = try await log.runMail(settling: completionToken)
+                return "settled with \(String(describing: await log.settledRun(in: runMail)))"
+            } catch {
+                return "ended with no run mail: \(error)"
+            }
         }
     }
 

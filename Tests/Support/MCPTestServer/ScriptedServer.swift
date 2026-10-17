@@ -119,10 +119,19 @@ public actor ScriptedServer {
     /// hold a stored property.
     var dynamicToolsetStagesRun = 0
 
-    /// How many stages of the dynamic toolset scenario are done, and each
-    /// caller of `waitForDynamicToolsetStages(atLeast:)` that waits. It is
-    /// stored here for the same reason as ``dynamicToolsetStagesRun``.
-    var dynamicToolsetStageWaiters = DynamicToolsetStageWaiters()
+    /// The index of each stage of the dynamic toolset scenario that is done,
+    /// in the order the stages ended. It is stored here for the same reason
+    /// as ``dynamicToolsetStagesRun``.
+    var doneDynamicToolsetStages: [Int] = []
+
+    /// Whether the stage task of `runDynamicToolsetStages(on:)` ended. No
+    /// stage comes on its clock after that.
+    var isDynamicToolsetStageTaskEnded = false
+
+    /// Each wait of `waitForDynamicToolsetStages(atLeast:)` that did not
+    /// end. It is stored here for the same reason as
+    /// ``dynamicToolsetStagesRun``.
+    let dynamicToolsetStageWaiters = CountWaiters<Int>()
 
     /// Creates a scripted server around a fresh `MCP.Server`.
     ///
@@ -834,8 +843,10 @@ public actor ScriptedServer {
     // MARK: - Count waits
 
     /// Waits until one record of this server holds at least `count` items —
-    /// the one wait that ``waitForRecordedNotifications(count:)`` and
-    /// ``waitForElicitationResults(count:)`` share.
+    /// the one wait that ``waitForRecordedNotifications(count:)``,
+    /// ``waitForElicitationResults(count:)`` and
+    /// `waitForDynamicToolsetStages(atLeast:)` share. It is internal, and not
+    /// private, because the last one stands in `DynamicToolsetScenario.swift`.
     ///
     /// The wait ends at once when the record already holds `count` items.
     /// Otherwise it is stored in `waiters`, and the record of an item or a
@@ -851,7 +862,7 @@ public actor ScriptedServer {
     ///     cancel handler.
     /// - Returns: The record at the moment `count` was reached, or at the
     ///   moment the task of the caller was cancelled.
-    private func waitForCount<Item: Sendable>(
+    func waitForCount<Item: Sendable>(
         _ count: Int,
         of recorded: @autoclosure () -> [Item],
         in waiters: CountWaiters<Item>,

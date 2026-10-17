@@ -1,5 +1,6 @@
 import FoundationModels
 import FoundationModelsRouter
+import TestConcurrency
 
 // MARK: - The output of a session, read by mail id
 //
@@ -40,6 +41,13 @@ public struct DeliveredRunMail: Sendable {
     public let answer: SessionAnswer
 }
 
+/// What a wait of ``SessionOutputLog`` throws when its event did not come.
+public enum SessionOutputLogError: Error, Equatable {
+    /// The event stream of the session finished, or the task of the caller
+    /// was cancelled, before the run mail of the run came.
+    case noRunMail(completionToken: String)
+}
+
 /// The output events of one Router session, in the order the session sent
 /// them, with waits on those events.
 public actor SessionOutputLog {
@@ -53,17 +61,13 @@ public actor SessionOutputLog {
     /// the order the test sent them.
     public private(set) var askedMails: [AnsweredMail] = []
 
-    /// The waits that are not satisfied yet.
-    private var waiters: [Waiter] = []
+    /// Whether the event stream of the session finished. No event comes to
+    /// the log after that.
+    public private(set) var isStreamFinished = false
 
-    /// One wait on the log.
-    private struct Waiter {
-        /// The condition that ends the wait.
-        let condition: @Sendable ([SessionOutput]) -> Bool
-
-        /// The continuation that the log resumes when the condition is true.
-        let continuation: CheckedContinuation<Void, Never>
-    }
+    /// The waits that are not satisfied yet, each with its condition on all
+    /// events so far.
+    private let waiters = WaitList<@Sendable ([SessionOutput]) -> Bool>()
 
     /// Makes a log for `session`. Use ``reading(_:)``.
     ///
@@ -87,6 +91,7 @@ public actor SessionOutputLog {
                 guard let log else { return }
                 await log.append(output)
             }
+            await log?.streamDidFinish()
         }
         return log
     }
@@ -97,25 +102,30 @@ public actor SessionOutputLog {
     private func append(_ output: SessionOutput) {
         outputs.append(output)
         let current = outputs
-        var open: [Waiter] = []
-        for waiter in waiters {
-            if waiter.condition(current) {
-                waiter.continuation.resume()
-            } else {
-                open.append(waiter)
-            }
-        }
-        waiters = open
+        waiters.resume { condition in condition(current) }
+    }
+
+    /// Records that the event stream of the session finished, and ends each
+    /// wait: no event that could satisfy it comes any more.
+    private func streamDidFinish() {
+        isStreamFinished = true
+        waiters.endAll()
     }
 
     /// Waits until `condition` is true for the events in the log.
     ///
+    /// The wait ends on the first of three events: `condition` is true, the
+    /// event stream of the session finished, or the task of the caller is
+    /// cancelled. Thus a session that never sends the event does not make
+    /// the wait stay.
+    ///
     /// - Parameter condition: The condition on all events so far.
-    public func wait(until condition: @escaping @Sendable ([SessionOutput]) -> Bool) async {
-        if condition(outputs) { return }
-        await withCheckedContinuation { continuation in
-            waiters.append(Waiter(condition: condition, continuation: continuation))
-        }
+    /// - Returns: `true` when `condition` is true. `false` when the stream
+    ///   finished or the task was cancelled first.
+    @discardableResult
+    public func wait(until condition: @escaping @Sendable ([SessionOutput]) -> Bool) async -> Bool {
+        guard !isStreamFinished else { return condition(outputs) }
+        return await waiters.wait(for: condition, unless: { condition(outputs) })
     }
 
     /// Sends `text` as a user message, and waits for its answer.
@@ -159,9 +169,15 @@ public actor SessionOutputLog {
     ///
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The id of the run mail.
-    public func runMail(settling completionToken: String) async -> MailID {
-        await wait { outputs in Self.runMailIds(settling: completionToken, in: outputs).first != nil }
-        return Self.runMailIds(settling: completionToken, in: outputs)[0]
+    /// - Throws: ``SessionOutputLogError/noRunMail(completionToken:)`` when
+    ///   the event stream of the session finished, or the task of the caller
+    ///   was cancelled, before the run mail came.
+    public func runMail(settling completionToken: String) async throws -> MailID {
+        let came = await wait { outputs in Self.runMailIds(settling: completionToken, in: outputs).first != nil }
+        guard came, let id = Self.runMailIds(settling: completionToken, in: outputs).first else {
+            throw SessionOutputLogError.noRunMail(completionToken: completionToken)
+        }
+        return id
     }
 
     /// The id of each run mail that holds the terminal of the run
@@ -191,9 +207,10 @@ public actor SessionOutputLog {
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The id of the run mail, the terminal event of the run that
     ///   it holds, and the answer that delivered it.
-    /// - Throws: The error of a failed answer.
+    /// - Throws: What ``runMail(settling:)`` throws, and the error of a
+    ///   failed answer.
     public func deliveredRunMail(settling completionToken: String) async throws -> DeliveredRunMail {
-        let id = await runMail(settling: completionToken)
+        let id = try await runMail(settling: completionToken)
         let answer = try await session.awaitAnswer(of: id)
         await waitForTerminal(of: id)
         guard let event = settledRun(in: id) else {

@@ -3,42 +3,35 @@
 //
 // A test that must have two `runCode` calls in flight at the same time, before
 // either makes its mutation, needs each snippet to stop and wait for the
-// other. `ReleaseGate` holds ONE waiter, thus two snippets cannot both wait
-// on one gate. The rendezvous counts arrivals instead: each arrival before
-// the last waits on the gate, and the last arrival releases it. For a party
-// of two, one waiter blocks at a time, and the gate stays what it is.
+// other. The rendezvous counts arrivals on a `TestCountdown`: each arrival
+// before the last waits on it, and the last arrival opens it. A cancel of the
+// task of an arrival ends its wait, as it ends each wait of that countdown.
 
 import FoundationModels
 
 /// A meeting point for a party of a fixed size: each arrival waits until the
 /// whole party has arrived, and every arrival then proceeds at once.
-actor Rendezvous {
-    /// The gate the early arrivals wait on.
-    private let gate = ReleaseGate()
-
-    /// How many arrivals open the gate.
-    private let partySize: Int
-
-    /// How many have arrived so far.
-    private var arrivals = 0
+final class Rendezvous: Sendable {
+    /// The count of arrivals that opens when the whole party came.
+    private let countdown: TestCountdown
 
     /// Makes a rendezvous for `partySize` arrivals.
     ///
     /// - Parameter partySize: how many arrivals open the gate.
     init(partySize: Int) {
-        self.partySize = partySize
+        countdown = TestCountdown(count: partySize)
     }
 
-    /// Records one arrival, and waits until the party is complete.
+    /// Records one arrival, and waits until the party is complete or the
+    /// task of the caller is cancelled.
     ///
-    /// The arrival that completes the party releases the gate, thus each
-    /// earlier arrival resumes, and its own wait returns at once.
+    /// The arrival that completes the party opens the countdown, thus each
+    /// earlier arrival resumes, and its own wait returns at once. A cancelled
+    /// arrival goes on, and the cancel that its task carries ends the run
+    /// after the wait.
     func arrive() async {
-        arrivals += 1
-        if arrivals >= partySize {
-            await gate.release()
-        }
-        await gate.wait()
+        countdown.arrive()
+        try? await countdown.wait()
     }
 }
 

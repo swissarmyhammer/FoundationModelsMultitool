@@ -1,5 +1,6 @@
 import MCP
 import MCPTestServer
+import TestConcurrency
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -81,9 +82,13 @@ struct LiveCatalogTests {
         /// Every snapshot recorded so far.
         private(set) var snapshots: [MCPToolCatalog] = []
 
+        /// Whether the stream of snapshots finished. No snapshot comes after
+        /// that.
+        private var isFinished = false
+
         /// Each caller of ``waitForSnapshots(atLeast:)`` that waits, with the
         /// count of snapshots that ends its wait.
-        private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+        private let waiters = WaitList<Int>()
 
         /// Appends one snapshot, and resumes each waiter whose count the
         /// recorder now holds.
@@ -91,23 +96,31 @@ struct LiveCatalogTests {
         /// - Parameter snapshot: The snapshot to record.
         func append(_ snapshot: MCPToolCatalog) {
             snapshots.append(snapshot)
-            let reached = waiters.filter { $0.count <= snapshots.count }
-            waiters.removeAll { $0.count <= snapshots.count }
-            for waiter in reached {
-                waiter.continuation.resume()
-            }
+            let recorded = snapshots.count
+            waiters.resume { $0 <= recorded }
+        }
+
+        /// Records that the stream of snapshots finished, and ends each wait:
+        /// no snapshot comes any more.
+        func finish() {
+            isFinished = true
+            waiters.endAll()
         }
 
         /// Waits until the recorder holds at least `count` snapshots. The
         /// wait ends on the append of the snapshot, not on a timer.
         ///
+        /// The wait also ends on the first of two other events: the stream of
+        /// snapshots finished, or the task of the caller is cancelled. The
+        /// caller then checks the snapshots it got, and the check fails when
+        /// one is missing.
+        ///
         /// - Parameter count: The minimum number of snapshots to wait for.
-        /// - Returns: The snapshots when the recorder holds `count` of them.
+        /// - Returns: The snapshots when the recorder holds `count` of them,
+        ///   or when one of the other events ended the wait.
         func waitForSnapshots(atLeast count: Int) async -> [MCPToolCatalog] {
-            if snapshots.count < count {
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    waiters.append((count: count, continuation: continuation))
-                }
+            if !isFinished {
+                await waiters.wait(for: count, unless: { snapshots.count >= count })
             }
             return snapshots
         }
@@ -142,6 +155,7 @@ struct LiveCatalogTests {
             for await snapshot in stream {
                 await recorder.append(snapshot)
             }
+            await recorder.finish()
         }
         return Recording(recorder: recorder, task: task)
     }

@@ -14,41 +14,6 @@
 
 import MCP
 
-/// The count of the done stages of the dynamic toolset scenario, and each
-/// caller of ``ScriptedServer/waitForDynamicToolsetStages(atLeast:)`` that
-/// waits.
-///
-/// A value type that the `ScriptedServer` actor holds, so the actor
-/// isolation guards it.
-struct DynamicToolsetStageWaiters {
-    /// How many stages are done.
-    private(set) var stagesDone = 0
-
-    /// Each wait, with the count of done stages that ends it.
-    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
-
-    /// Adds a wait that the done stage number `count` resumes.
-    ///
-    /// - Parameters:
-    ///   - count: The number of done stages that ends the wait.
-    ///   - continuation: The continuation to resume.
-    mutating func add(count: Int, continuation: CheckedContinuation<Void, Never>) {
-        waiters.append((count: count, continuation: continuation))
-    }
-
-    /// Counts one more done stage, and resumes each wait whose count the
-    /// done stages now reach.
-    mutating func recordStageDone() {
-        stagesDone += 1
-        let done = stagesDone
-        let reached = waiters.filter { $0.count <= done }
-        waiters.removeAll { $0.count <= done }
-        for waiter in reached {
-            waiter.continuation.resume()
-        }
-    }
-}
-
 extension ScriptedServer {
     /// The name of the tool the scenario re-schemas partway through —
     /// present from the start, still present at the end under the same name
@@ -175,9 +140,11 @@ extension ScriptedServer {
         let stage = Self.dynamicToolsetStages[dynamicToolsetStagesRun]
         // Counted before the stage runs: the stage suspends, and a second
         // call that the actor takes in that gap must run the stage after it.
+        let stageIndex = dynamicToolsetStagesRun
         dynamicToolsetStagesRun += 1
         await stage(self)
-        dynamicToolsetStageWaiters.recordStageDone()
+        doneDynamicToolsetStages.append(stageIndex)
+        dynamicToolsetStageWaiters.resume(reachedBy: doneDynamicToolsetStages)
         return true
     }
 
@@ -191,12 +158,33 @@ extension ScriptedServer {
     /// ``runDynamicToolsetStages(on:)`` waits here for the stages its clock
     /// let run.
     ///
+    /// The wait also ends on the first of two other events: the stage task
+    /// of ``runDynamicToolsetStages(on:)`` ended, so no stage comes on its
+    /// clock any more, or the task of the caller is cancelled. The caller
+    /// then reads the tool set, and its check fails when a stage is missing.
+    ///
     /// - Parameter count: The number of done stages that ends the wait.
     public func waitForDynamicToolsetStages(atLeast count: Int) async {
-        guard dynamicToolsetStageWaiters.stagesDone < count else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            dynamicToolsetStageWaiters.add(count: count, continuation: continuation)
+        guard !isDynamicToolsetStageTaskEnded else { return }
+        _ = await waitForCount(count, of: doneDynamicToolsetStages, in: dynamicToolsetStageWaiters) { server, id in
+            await server.cancelDynamicToolsetStageWait(id: id)
         }
+    }
+
+    /// Ends one wait for done stages whose task was cancelled, or marks the
+    /// wait so that it ends when it is stored.
+    ///
+    /// - Parameter id: The id of the wait.
+    private func cancelDynamicToolsetStageWait(id: Int) {
+        dynamicToolsetStageWaiters.cancel(id: id, recorded: doneDynamicToolsetStages)
+    }
+
+    /// Records that the stage task of ``runDynamicToolsetStages(on:)``
+    /// ended, and ends each wait for done stages: no stage comes on its
+    /// clock any more.
+    private func dynamicToolsetStageTaskDidEnd() {
+        isDynamicToolsetStageTaskEnded = true
+        dynamicToolsetStageWaiters.endAll(recorded: doneDynamicToolsetStages)
     }
 
     /// Runs each stage of the scenario that did not run yet, one
@@ -209,7 +197,8 @@ extension ScriptedServer {
     /// observes the stages from the far side of the connection. The task
     /// ends by itself after the last stage, it ends early when its sleep
     /// throws, and it holds `self` weakly, so it never keeps a released
-    /// server alive.
+    /// server alive. On each path, its end ends each wait of
+    /// ``waitForDynamicToolsetStages(atLeast:)``.
     ///
     /// - Parameter clock: The clock each wait sleeps on — `ContinuousClock`
     ///   in the executable, and a clock the test opens in a test.
@@ -219,12 +208,13 @@ extension ScriptedServer {
                 do {
                     try await clock.sleep(for: Self.dynamicToolsetStageDelay)
                 } catch {
-                    return
+                    break
                 }
-                guard let self, await self.advanceDynamicToolsetScenario() else {
-                    return
+                guard let server = self, await server.advanceDynamicToolsetScenario() else {
+                    break
                 }
             }
+            await self?.dynamicToolsetStageTaskDidEnd()
         }
     }
 }

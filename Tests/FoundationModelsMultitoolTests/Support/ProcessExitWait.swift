@@ -70,47 +70,76 @@ enum ProcessExitWait {
     /// took the pid again.
     ///
     /// A process that never exits, for example one that the kill missed,
-    /// makes the wait last until the test ends. That wait is the failure of
-    /// the test.
+    /// makes the wait last until the task of the caller is cancelled. A
+    /// cancel ends the wait, also a cancel that came before the call. No
+    /// other event can end it: the exit is the event under test.
     ///
     /// - Parameter pid: The pid to wait for.
     static func waitUntilGone(_ pid: pid_t) async {
-        guard !hasExited(pid) else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
-            let ending = ExitWaitEnding(continuation: continuation, source: source)
-            source.setEventHandler { ending.end() }
-            source.resume()
-            if hasExited(pid) {
-                ending.end()
+        guard !hasExited(pid), !Task.isCancelled else { return }
+        let ending = ExitWaitEnding()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+                source.setEventHandler { ending.end() }
+                source.resume()
+                ending.start(continuation, source: source)
+                if hasExited(pid) {
+                    ending.end()
+                }
             }
+        } onCancel: {
+            ending.end()
         }
     }
 }
 
 /// The one end of one wait of ``ProcessExitWait/waitUntilGone(_:)``: it
-/// resumes the waiter one time, and cancels the source.
+/// resumes the waiter one time, and cancels the source. The exit event, a
+/// reading that shows the exit, and a cancel of the task each end it.
 private final class ExitWaitEnding: Sendable {
-    /// The waiter and the source, until the wait ends.
-    private let state: Mutex<(continuation: CheckedContinuation<Void, Never>, source: any DispatchSourceProcess)?>
+    /// Where the wait stands.
+    private enum Phase {
+        /// The waiter and the source are not stored yet.
+        case starting
 
-    /// Makes the end of one wait.
+        /// The wait waits for its end.
+        case waiting(continuation: CheckedContinuation<Void, Never>, source: any DispatchSourceProcess)
+
+        /// The wait ended, or a cancel came before it was stored.
+        case ended
+    }
+
+    /// Where the wait stands now.
+    private let phase = Mutex(Phase.starting)
+
+    /// Stores the waiter and the source, or ends them at once when an end
+    /// came before.
     ///
     /// - Parameters:
     ///   - continuation: The waiter to resume.
-    ///   - source: The exit source to cancel.
-    init(continuation: CheckedContinuation<Void, Never>, source: any DispatchSourceProcess) {
-        state = Mutex((continuation, source))
+    ///   - source: The resumed exit source to cancel.
+    func start(_ continuation: CheckedContinuation<Void, Never>, source: any DispatchSourceProcess) {
+        let endedBefore = phase.withLock { current -> Bool in
+            guard case .starting = current else { return true }
+            current = .waiting(continuation: continuation, source: source)
+            return false
+        }
+        guard endedBefore else { return }
+        source.cancel()
+        continuation.resume()
     }
 
     /// Resumes the waiter and cancels the source. A second call does nothing.
+    /// A call before ``start(_:source:)`` makes that start end at once.
     func end() {
-        let taken = state.withLock { current in
-            defer { current = nil }
-            return current
+        let taken = phase.withLock { current -> (CheckedContinuation<Void, Never>, any DispatchSourceProcess)? in
+            defer { current = .ended }
+            guard case .waiting(let continuation, let source) = current else { return nil }
+            return (continuation, source)
         }
-        guard let taken else { return }
-        taken.source.cancel()
-        taken.continuation.resume()
+        guard case let (continuation, source)? = taken else { return }
+        source.cancel()
+        continuation.resume()
     }
 }

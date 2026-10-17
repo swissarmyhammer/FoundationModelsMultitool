@@ -11,6 +11,7 @@
 // both take them.
 
 import Synchronization
+import TestConcurrency
 
 /// A gate that holds each waiter until a scenario runner opens it. After it
 /// opens, each wait returns at once.
@@ -49,13 +50,13 @@ public final class ScenarioGate: Sendable {
 
         /// Whether a call of ``wait()`` started.
         var hadWaiter = false
-
-        /// Each call of ``waitForWaiter()`` that did not end.
-        var waiterWatches: [CheckedContinuation<Void, Never>] = []
     }
 
     /// The state of the gate.
     private let state = Mutex(State())
+
+    /// Each call of ``waitForWaiter()`` that did not end.
+    private let waiterWatches = WaitList<Void>()
 
     /// Makes a closed gate.
     public init() {}
@@ -86,15 +87,12 @@ public final class ScenarioGate: Sendable {
     /// - Throws: `CancellationError` when the task is cancelled before the
     ///   gate opens.
     public func wait() async throws {
-        let (id, watches) = state.withLock { current -> (Int, [CheckedContinuation<Void, Never>]) in
+        let id = state.withLock { current -> Int in
             defer { current.nextID += 1 }
             current.hadWaiter = true
-            defer { current.waiterWatches.removeAll() }
-            return (current.nextID, current.waiterWatches)
+            return current.nextID
         }
-        for watch in watches {
-            watch.resume()
-        }
+        waiterWatches.resumeAll()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 let start = state.withLock { current -> WaitStart in
@@ -126,18 +124,11 @@ public final class ScenarioGate: Sendable {
     /// already did.
     ///
     /// A test waits here to know that a fixture call reached its wait on the
-    /// gate, and thus did not answer yet.
+    /// gate, and thus did not answer yet. A cancel of the task of the caller
+    /// also ends the wait. The caller reads the run when it must know that a
+    /// fixture call came.
     public func waitForWaiter() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let hadWaiter = state.withLock { current -> Bool in
-                if current.hadWaiter { return true }
-                current.waiterWatches.append(continuation)
-                return false
-            }
-            if hadWaiter {
-                continuation.resume()
-            }
-        }
+        await waiterWatches.wait(for: (), unless: { state.withLock { $0.hadWaiter } })
     }
 
     /// Ends one wait with `CancellationError`, or records the cancel when the

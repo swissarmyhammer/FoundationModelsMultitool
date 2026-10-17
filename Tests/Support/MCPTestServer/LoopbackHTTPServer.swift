@@ -102,34 +102,24 @@ public actor LoopbackHTTPServer {
     /// elicits or notifies waits for this reading before it calls.
     public private(set) var isServingEventStream = false
 
+    /// Whether ``stop()`` ran. No stream starts after it.
+    private var isStopped = false
+
     /// Each caller of ``waitUntilServingEventStream()`` that waits for the
     /// standalone SSE stream. `handle(_:)` resumes each of them when the
-    /// stream starts, and ``stop()`` resumes each of them too.
-    private var eventStreamWaiters: [CheckedContinuation<Void, Never>] = []
+    /// stream starts, and ``stop()`` ends each of them.
+    private let eventStreamWaiters = WaitList<Void>()
 
     /// Waits until a standalone SSE stream (a `GET`) is being served.
     ///
     /// Returns at once when ``isServingEventStream`` is already `true`. This
     /// wait is an event, not a poll: `handle(_:)` resumes it when it sets
-    /// ``isServingEventStream``. ``stop()`` also resumes it, so a wait does
-    /// not stay after the loopback stops.
+    /// ``isServingEventStream``. The wait also ends on the first of two other
+    /// events: ``stop()`` ran, or the task of the caller is cancelled. Thus a
+    /// stream that never starts does not make the wait stay. The caller reads
+    /// ``isServingEventStream`` when it must know which event came.
     public func waitUntilServingEventStream() async {
-        if isServingEventStream {
-            return
-        }
-        await withCheckedContinuation { continuation in
-            eventStreamWaiters.append(continuation)
-        }
-    }
-
-    /// Resumes each caller of ``waitUntilServingEventStream()`` and clears
-    /// the list.
-    private func resumeEventStreamWaiters() {
-        let waiters = eventStreamWaiters
-        eventStreamWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+        await eventStreamWaiters.wait(for: (), unless: { isServingEventStream || isStopped })
     }
 
     /// Creates a loopback over `scripted`, not yet started.
@@ -157,7 +147,7 @@ public actor LoopbackHTTPServer {
     ///   `protocolClasses` routes the endpoint to this loopback.
     /// - Throws: What `ScriptedServer.start(transport:)` throws.
     public func start() async throws -> (endpoint: URL, configuration: URLSessionConfiguration) {
-        await Self.concurrencyGate.acquire()
+        try await Self.concurrencyGate.acquire()
         do {
             try await scripted.start(transport: transport)
         } catch {
@@ -179,7 +169,8 @@ public actor LoopbackHTTPServer {
     public func stop() async {
         _ = Self.registry.withLock { $0.removeValue(forKey: host) }
         isServingEventStream = false
-        resumeEventStreamWaiters()
+        isStopped = true
+        eventStreamWaiters.endAll()
         await transport.disconnect()
         await Self.concurrencyGate.release()
     }
@@ -215,7 +206,7 @@ public actor LoopbackHTTPServer {
         let response = await transport.handleRequest(request)
         if request.method == Self.eventStreamMethod, case .stream = response {
             isServingEventStream = true
-            resumeEventStreamWaiters()
+            eventStreamWaiters.resumeAll()
         }
         return response
     }

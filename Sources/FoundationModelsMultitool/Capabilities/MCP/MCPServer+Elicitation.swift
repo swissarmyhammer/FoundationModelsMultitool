@@ -604,18 +604,18 @@ extension MCPServer {
     }
 
     /// Suspends until one wait of a test hook ends, and gives the value that
-    /// ended it — the one scaffold of the waits of the test hooks in this
-    /// file.
+    /// ended it — the one scaffold of the waits of the test hooks of this
+    /// actor: the waits in this file, `waitUntilTransportDropped()` and
+    /// `waitUntilToolListChangedGeneration(reaches:)`.
     ///
     /// The steps, in order:
     ///
     /// 1. A cancel that came before the call returns `cancelValue` at once.
     /// 2. Else, when `resolvedValue` gives a value, the wait has nothing to
     ///    wait for and returns that value at once.
-    /// 3. Else `record` records the continuation of the wait in the
-    ///    ``ElicitationWaiters`` of the hook. A resume of those waiters ends
-    ///    the wait. A cancel of the calling task calls `end` on this actor
-    ///    with `cancelValue`.
+    /// 3. Else `record` records the continuation of the wait in the store of
+    ///    the hook. A resume of that store ends the wait. A cancel of the
+    ///    calling task calls `end` on this actor with `cancelValue`.
     ///
     /// - Parameters:
     ///   - cancelValue: The value the wait gives when a cancel ends it.
@@ -625,7 +625,7 @@ extension MCPServer {
     ///   - end: Ends the recorded wait with the value it gets — the cancel
     ///     step. It runs on this actor.
     /// - Returns: The value that ended the wait.
-    private func suspendTestHookWait<WaitValue: Sendable>(
+    func suspendTestHookWait<WaitValue: Sendable>(
         cancelValue: WaitValue,
         resolvedValue: () -> WaitValue?,
         record: (CheckedContinuation<WaitValue, Never>) -> Void,

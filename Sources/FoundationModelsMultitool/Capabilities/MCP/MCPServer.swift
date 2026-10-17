@@ -329,9 +329,11 @@ public actor MCPServer {
 
     /// Each caller of `waitUntilToolListChangedGeneration(reaches:)` that
     /// waits for a count of `tools/list_changed` notifications, with that
-    /// count — resumed by `handleToolListChangedNotification()`. A test hook:
-    /// no product code waits here.
-    var toolListChangedGenerationWaiters: [(generation: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    /// count, by the id of the wait — resumed by
+    /// `handleToolListChangedNotification()`, and ended by a cancel of the
+    /// task of the wait. A test hook: no product code waits here.
+    var toolListChangedGenerationWaiters: [Int: (generation: Int, continuation: CheckedContinuation<Void, Never>)] =
+        [:]
 
     /// Whether a `coalesceAndRelist()` watcher is running, so a burst of
     /// notifications starts one watcher and not one per notification.
@@ -372,9 +374,15 @@ public actor MCPServer {
     var isTransportDropped = false
 
     /// Each caller of `waitUntilTransportDropped()` that waits for a
-    /// transport drop — resumed by `handleTransportDrop(generation:)`. A test
-    /// hook: no product code waits here.
-    var transportDropWaiters: [CheckedContinuation<Void, Never>] = []
+    /// transport drop, by the id of the wait — resumed by
+    /// `handleTransportDrop(generation:)`, and ended by a cancel of the task
+    /// of the wait. A test hook: no product code waits here.
+    var transportDropWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    /// The id that the next wait of `waitUntilTransportDropped()` or of
+    /// `waitUntilToolListChangedGeneration(reaches:)` gets. A test hook: no
+    /// product code reads it.
+    var nextTestHookWaiterID = 0
 
     /// Every URL-mode elicitation the host's ``elicitationHandler`` accepted
     /// and this actor still holds open, keyed by the wire `elicitationId` —

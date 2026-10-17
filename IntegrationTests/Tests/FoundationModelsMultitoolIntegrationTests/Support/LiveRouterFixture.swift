@@ -686,7 +686,7 @@ struct LiveRouterFixture {
         // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
         // before any live model resolution touches the GPU device.
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
-        await liveProfileTurnstile.acquire()
+        try await liveProfileTurnstile.acquire()
         do {
             let recordingsDir = Self.makeRecordingsDir()
             let router = Self.makeRouter(recordingsDir: recordingsDir, loader: LiveModelLoader())
