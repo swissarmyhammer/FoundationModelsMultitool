@@ -19,6 +19,12 @@ comments:
     - Work on a local pin to 1f586a7 (or later main). Push only after the Extras CI for 2d1c476 is green.
     - Use: on disconnect() and on each new connect, end each pendingContextElicitations entry of an older generation with .cancel(reason: connectionEndedReason). Start with a test that fails on the current code.
   timestamp: 2026-10-16T23:58:20.658553+00:00
+- actor: claude-code
+  id: 01m53k8y4yj2qyycmg5a74g10c
+  text: |-
+    ### Extras CI green (2026-10-16)
+    - Extras CI for 1f586a7 (with ToolContext.endElicitation, 2d1c476) is green: run 38984125973. The push of this card is permitted when the card is done.
+  timestamp: 2026-10-17T00:13:03.518504+00:00
 position_column: todo
 position_ordinal: '8880'
 title: 'Group A (b): end the context URL flow of an old connect generation on a disconnect'

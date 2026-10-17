@@ -366,9 +366,56 @@ extension MCPServer {
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                 hostElicitationHeldWaiters[waiterID] = (elicitationId, continuation)
+                resumeHostElicitationHeldWaitRecordedWaiters(of: elicitationId)
             }
         } onCancel: {
             Task { await self.endHostElicitationHeldWait(waiterID) }
+        }
+    }
+
+    /// Waits until ``hostElicitationHeldWaiters`` records a wait of
+    /// ``waitUntilHostElicitationHeld(elicitationId:)`` for `elicitationId` —
+    /// the event a test waits on before it cancels that wait. Returns at once
+    /// when such a wait is recorded already. A cancel of the calling task
+    /// ends the wait.
+    ///
+    /// Internal, for `@testable import`: no product code waits here.
+    ///
+    /// - Parameter elicitationId: The wire id of the flow that the recorded
+    ///   wait waits for.
+    func waitUntilHostElicitationHeldWaitIsRecorded(elicitationId: String) async {
+        guard !hostElicitationHeldWaiters.values.contains(where: { $0.elicitationId == elicitationId }) else { return }
+        let waiterID = nextHostElicitationHeldWaitRecordedWaiterID
+        nextHostElicitationHeldWaitRecordedWaiterID += 1
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                hostElicitationHeldWaitRecordedWaiters[waiterID] = (elicitationId, continuation)
+            }
+        } onCancel: {
+            Task { await self.endHostElicitationHeldWaitRecordedWait(waiterID) }
+        }
+    }
+
+    /// Ends the wait `waiterID` of
+    /// ``waitUntilHostElicitationHeldWaitIsRecorded(elicitationId:)`` — the
+    /// cancel of that wait. A no-op when the wait ended before.
+    ///
+    /// - Parameter waiterID: The id of the wait.
+    private func endHostElicitationHeldWaitRecordedWait(_ waiterID: Int) {
+        hostElicitationHeldWaitRecordedWaiters.removeValue(forKey: waiterID)?.continuation.resume()
+    }
+
+    /// Resumes each wait of
+    /// ``waitUntilHostElicitationHeldWaitIsRecorded(elicitationId:)`` for
+    /// `elicitationId`.
+    ///
+    /// - Parameter elicitationId: The wire id of the flow that a recorded
+    ///   wait now waits for.
+    private func resumeHostElicitationHeldWaitRecordedWaiters(of elicitationId: String) {
+        let recorded = hostElicitationHeldWaitRecordedWaiters.filter { $0.value.elicitationId == elicitationId }
+        for (waiterID, waiter) in recorded {
+            hostElicitationHeldWaitRecordedWaiters.removeValue(forKey: waiterID)
+            waiter.continuation.resume()
         }
     }
 

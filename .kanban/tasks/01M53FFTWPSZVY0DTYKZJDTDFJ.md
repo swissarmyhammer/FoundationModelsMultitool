@@ -121,6 +121,60 @@ comments:
     - evidence: 9a97d78 fix(mcp): end the wait for a held URL flow when a cancel comes
     - next: review
   timestamp: 2026-10-17T00:00:36.244137+00:00
+- actor: claude-code
+  id: 01m53jv57bphg7snxde0569gpj
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit d6c66f6). 3 files reviewed. 1 finding, 1 confirmed, 0 refuted: Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:731 `completeness/inverse-operation-coverage`. The prior finding (MCPElicitationTests.swift:445) is checked.
+    - next: Add a test in which a cancel comes during the wait. The test must assert that waitUntilHostElicitationHeld returns false and that hostElicitationHeldWaiters is empty after the cancel. The task stays in review.
+  timestamp: 2026-10-17T00:05:32.011273+00:00
+- actor: claude-code
+  id: 01m53jvsvdm8a6ep7yzb21kt69
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 3 files (1 of 1 finding fixed)
+    - test: green — swift test, exit 0, 2430 passed, 0 failed, 0 skipped
+    - commit: d6c66f6 (the commit comment names 9a97d78, the sha before the amend)
+    - review: findings — Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:731
+  timestamp: 2026-10-17T00:05:53.133281+00:00
+- actor: claude-code
+  id: 01m53kaym396t7k4twpyxzg1qx
+  text: |-
+    Finding MCPElicitationTests.swift:731 (completeness/inverse-operation-coverage) is fixed.
+
+    Seam (MCPServer.swift, MCPServer+Elicitation.swift): new internal test hook `waitUntilHostElicitationHeldWaitIsRecorded(elicitationId:)`. It returns when `hostElicitationHeldWaiters` records a wait for that wire id, at once when such a wait is recorded already, or when its task is cancelled. It has the same style as `waitUntilTransportCloseIsAwaited()`: new storage `hostElicitationHeldWaitRecordedWaiters` with `nextHostElicitationHeldWaitRecordedWaiterID`, and the private functions `endHostElicitationHeldWaitRecordedWait(_:)` and `resumeHostElicitationHeldWaitRecordedWaiters(of:)`. `waitUntilHostElicitationHeld` calls the resume function in its continuation body, right after it records its wait. Product behaviour does not change.
+
+    Test (MCPElicitationTests.swift): new `aCancelDuringTheWaitEndsIt`. The wait starts on a live Task and the server holds no flow. A TestGate opens on the first of two events: the seam says the wait is recorded, or the wait task ended (T1). Then the test cancels the seam wait and waits for it to end. It reads the waiter count, cancels the wait task, and awaits its value. It expects that 1 waiter was recorded before the cancel, that the value is `false`, and that `hostElicitationHeldWaiters` is empty. When the gate wait throws, the test ends the seam wait, cancels the wait task and awaits its end before the throw.
+
+    RED 1 (before the seam): `swift test --filter 'MCPElicitationTests/aCancelDuringTheWaitEndsIt'`. Build failed: "value of type 'MCPServer' has no member 'waitUntilHostElicitationHeldWaitIsRecorded'".
+    GREEN: the same command, exit 0, "Test run with 1 test in 1 suite passed".
+    RED 2 (a mutation, then reverted): `endHostElicitationHeldWait` resumed with `true`. The same command, exit 1, "Expectation failed: endedOnTheHold == false" (endedOnTheHold → true), no hang. I did not remove the cancellation handler for RED: with no handler, the cancel of the wait cannot end it, so the test would hang (a T1 break).
+    Full run: `swift test`, exit 0, "Test run with 2431 tests in 211 suites passed after 4.940 seconds". XCTest: "Executed 0 tests, with 0 failures". The one warning line is the SwiftPM build line "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It was there before this change.
+  timestamp: 2026-10-17T00:14:09.539198+00:00
+- actor: claude-code
+  id: 01m53kb1qe25kf9vp1y4hmynd1
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift. Findings checked 1/1. RED 1: build failed with no seam. GREEN: exit 0, 1 test passed. RED 2: a mutation (the cancel resumes with true), exit 1, 1 test failed, then reverted. `swift test` exit 0, "Test run with 2431 tests in 211 suites passed after 4.940 seconds", 0 failed, 0 skipped.
+    - next: test, commit, review. Part (b) stays on ^aj384vm. Task stays in doing.
+  timestamp: 2026-10-17T00:14:12.718108+00:00
+- actor: claude-code
+  id: 01m53ke06k4g1pc1dwwtw41d8s
+  text: |-
+    ### test - green
+    - evidence: swift test, exit code 0. Swift Testing summary: "Test run with 2431 tests in 211 suites passed after 5.843 seconds."
+    - no test failed. No test was skipped. No issue was recorded.
+    - one build tool line was seen: "warning: missing creator for mutated node" for the bundle mlx-swift_Cmlx.bundle. It comes from the dependency bundle step of SwiftPM. It does not come from the sources of this package.
+    - the suite ran one time. No code was changed in this step.
+    - next: review.
+  timestamp: 2026-10-17T00:15:49.459178+00:00
+- actor: claude-code
+  id: 01m53kesph71nh8gpm8kt0eef6
+  text: |-
+    ### commit — changed
+    - evidence: baff8f0 test(mcp): add a fixed-order test for a cancel during a held URL flow wait
+    - next: review
+  timestamp: 2026-10-17T00:16:15.569406+00:00
 depends_on:
 - 01M53FFH3GERR2DZ8938SAQKGT
 position_column: doing
@@ -143,3 +197,12 @@ Each fix starts with a fixed-order test that fails before the fix (RED), then pa
 > - `.kanban/ (from .reviewignore)` — 6 file(s)
 
 - [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:445` `swift/concurrency` — The unstructured `Task` in `startHeldHostFlow` is never stored or cancelled. If the answer ends before `server` holds the flow, the waiter stays suspended in `waitUntilHostElicitationHeld` forever, because nothing resumes its continuation. The task leaks for the rest of the test run. Store the waiter task and cancel it once `firstEvent.wait()` returns, or make `waitUntilHostElicitationHeld` return when the server's answer task ends. Another option is to resume every pending held-waiter when the flow ends with no hold.
+
+## Review Findings (2026-10-16 19:01)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:731` `completeness/inverse-operation-coverage` — The new test aCancelEndsTheWaitForTheHold only covers a cancel that comes before the wait starts. The main new behaviour of the change is a cancel that comes during the wait, which resumes the continuation with false through the cancellation handler. No test asserts that a mid-wait cancel returns false. The helper startHeldHostFlow reaches that branch only as a side effect, and it does not check the return value. Add one case in which the wait starts on a live task, no hold arrives, the task is cancelled, and the test asserts that waitUntilHostElicitationHeld returns false and that hostElicitationHeldWaiters is empty afterwards.

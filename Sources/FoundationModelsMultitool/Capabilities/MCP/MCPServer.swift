@@ -402,6 +402,18 @@ public actor MCPServer {
     /// The id the next wait of ``hostElicitationHeldWaiters`` gets.
     var nextHostElicitationHeldWaiterID = 0
 
+    /// Each caller of `waitUntilHostElicitationHeldWaitIsRecorded(elicitationId:)`
+    /// that waits until ``hostElicitationHeldWaiters`` records a wait for that
+    /// wire id, by the id of its wait — resumed by
+    /// `waitUntilHostElicitationHeld(elicitationId:)` when it records its
+    /// wait, or when the task of the wait is cancelled. A test hook: no
+    /// product code waits here.
+    var hostElicitationHeldWaitRecordedWaiters: [Int: (elicitationId: String, continuation: CheckedContinuation<Void, Never>)] =
+        [:]
+
+    /// The id the next wait of ``hostElicitationHeldWaitRecordedWaiters`` gets.
+    var nextHostElicitationHeldWaitRecordedWaiterID = 0
+
     /// Creates a server that makes a new `MCP.Client` named `name` for each
     /// connect attempt.
     ///

@@ -748,6 +748,50 @@ struct MCPElicitationTests {
         #expect(await server.hostElicitationHeldWaiters.isEmpty)
     }
 
+    /// A cancel that comes during a wait for the hold of a URL flow ends the
+    /// wait with `false`, and leaves no waiter.
+    ///
+    /// The order is fixed. The wait starts on a live task, and the server
+    /// holds no flow. The test waits for the first of two events: the server
+    /// recorded the wait, or the wait ended. Each event can occur, thus that
+    /// wait always ends. Then the test cancels the wait and reads its result.
+    /// When the gate wait throws, the test ends each task before the throw.
+    @Test("a cancel during a wait for the hold of a URL flow ends the wait with false")
+    func aCancelDuringTheWaitEndsIt() async throws {
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
+        let wait = Task {
+            await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+        }
+        let firstEvent = TestGate()
+        let recorded = Task {
+            await server.waitUntilHostElicitationHeldWaitIsRecorded(
+                elicitationId: ScriptedServer.elicitURLElicitationId)
+            firstEvent.open()
+        }
+        let ended = Task {
+            _ = await wait.value
+            firstEvent.open()
+        }
+        do {
+            try await firstEvent.wait()
+        } catch {
+            await Self.endWait(recorded)
+            wait.cancel()
+            await ended.value
+            throw error
+        }
+        await Self.endWait(recorded)
+        let waitersBeforeTheCancel = await server.hostElicitationHeldWaiters.count
+
+        wait.cancel()
+        let endedOnTheHold = await wait.value
+        await ended.value
+
+        #expect(waitersBeforeTheCancel == 1)
+        #expect(endedOnTheHold == false)
+        #expect(await server.hostElicitationHeldWaiters.isEmpty)
+    }
+
     // MARK: - Case 3: nothing answers
 
     @Test("with no context and no handler, elicitEcho gets cancel and the call returns without a throw")
