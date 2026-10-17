@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m53xxsanz6n4fvj20cjwf44h
+  text: |-
+    ### priority — owner (2026-10-17)
+    - This card comes before T1 (^nvxckvr), and before ^mdr1wq4. It leaves a question that nothing ends (the same class as group A).
+    - The answer: the second question must end at once with cancel and a reason in `_meta.reason`, or get an entry that a disconnect ends. Start with a test that fails on the current code.
+    - Push: this card and ^mdr1wq4 go together in one push, after the push of ^179vr1r, ^fcvjb8j and ^7y77mjf.
+  timestamp: 2026-10-17T03:19:12.469543+00:00
 position_column: todo
 position_ordinal: '9580'
 title: A second context URL question under a wire id in use has no entry, thus no wire completion and no connection end can end it

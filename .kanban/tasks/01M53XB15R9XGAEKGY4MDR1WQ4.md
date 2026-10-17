@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m53xxv78qc5njwz30zjnbj49
+  text: |-
+    ### priority — owner (2026-10-17)
+    - This card comes after ^e7vbxzd and before T1 (^nvxckvr). It leaves a flow that nothing ends (the same class as group A).
+    - The answer: a late accept from an old generation must end with cancel and a reason in `_meta.reason`, not stay held. Start with a test that fails on the current code.
+    - Push: this card and ^e7vbxzd go together in one push.
+  timestamp: 2026-10-17T03:19:14.408147+00:00
 position_column: todo
 position_ordinal: '9680'
 title: End a host-handler URL accept that returns after the connect generation moved

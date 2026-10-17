@@ -195,6 +195,16 @@ struct MCPElicitationTests {
     /// `URL(string:)` does not read as a URL.
     private static let invalidURL = ""
 
+    /// Each `url` that `URL(string:)` reads as a URL, but that is not an
+    /// absolute `http` or `https` URL with a host: a relative reference, a
+    /// `javascript` URL, and an `https` URL with no host.
+    private static let notHTTPURLs = ["foo", "javascript:x", "https:///no-host"]
+
+    /// Each absolute `https` URL with a host that goes on to the host: one
+    /// with a lowercase scheme, and one with an uppercase scheme, because
+    /// URL schemes are not case-sensitive.
+    private static let httpURLs = ["https://example.com/verify", "HTTPS://example.com/verify"]
+
     /// A URL-mode `elicitation/create` with the message, the link and the
     /// wire id of the loopback URL tool.
     private static let urlElicitation = CreateElicitation.Parameters.url(
@@ -1726,17 +1736,144 @@ struct MCPElicitationTests {
     /// tells the server why. Before the fix, the decline had no `_meta`.
     @Test("a URL-mode request whose url is not valid reaches the server as decline with the reason")
     func anInvalidURLDeclinesWithTheReason() async throws {
-        let scripted = ScriptedServer()
-        await scripted.addURLElicitingTool(
-            named: Self.invalidURLToolName, message: ScriptedServer.elicitURLMessage, url: Self.invalidURL,
-            elicitationId: ScriptedServer.elicitURLElicitationId)
-        let server = try await MCPTestSupport.connectedMCPServer(to: scripted, over: .inMemory, name: Self.serverName)
+        let (scripted, server) = try await Self.connected(askingFor: Self.invalidURL)
         try await Self.withConnection(of: server) {
             _ = try await server.call(name: Self.invalidURLToolName, arguments: nil)
 
             let received = await scripted.receivedElicitationResults.last
             #expect(received?.action == .decline)
             #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// A fresh scripted server that serves ``invalidURLToolName`` with `url`,
+    /// beside a server named ``serverName`` connected against it in memory.
+    ///
+    /// - Parameters:
+    ///   - url: The `url` of the URL-mode request of the tool.
+    ///   - elicitationHandler: The host's answerer, or `nil`.
+    /// - Returns: The scripted server, which the test keeps alive, and the
+    ///   connected server.
+    /// - Throws: What the connect throws.
+    private static func connected(
+        askingFor url: String, elicitationHandler: MCPServer.ElicitationHandler? = nil
+    ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
+        let scripted = ScriptedServer()
+        await scripted.addURLElicitingTool(
+            named: invalidURLToolName, message: ScriptedServer.elicitURLMessage, url: url,
+            elicitationId: ScriptedServer.elicitURLElicitationId)
+        let server = try await MCPTestSupport.connectedMCPServer(
+            to: scripted, over: .inMemory, name: serverName, elicitationHandler: elicitationHandler)
+        return (scripted, server)
+    }
+
+    /// Whether the run got the question of `call` before `call` ended.
+    ///
+    /// The order is fixed, and each wait ends on each result: one child task
+    /// waits for the end of `call`, and one child task waits for the
+    /// elicitation event of the run. When the run gets the question first,
+    /// the session declines it, thus `call` ends also then. When `call` ends
+    /// first, the cancel of the group ends the wait for the event.
+    ///
+    /// - Parameters:
+    ///   - call: The call that the server can answer with a question.
+    ///   - run: The run that `call` is bound to.
+    /// - Returns: `true` when the run got the question, `false` when `call`
+    ///   ended with no question to the run.
+    /// - Throws: What a child task throws.
+    private static func runGotTheQuestion(
+        of call: Task<CallTool.Result, any Error>, on run: BoundRun
+    ) async throws -> Bool {
+        try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = await call.result
+                return false
+            }
+            group.addTask {
+                await run.stub.recorder.waitUntil { events in events.contains { $0.kind == .elicitation } }
+            }
+            let gotTheQuestion = try await group.next() == true
+            if gotTheQuestion {
+                await declineTheQuestion(of: run, orCancel: call)
+            }
+            group.cancelAll()
+            try await group.waitForAll()
+            return gotTheQuestion
+        }
+    }
+
+    /// Declines the question that the run recorded, thus the call that asked
+    /// it ends. When the event of the run holds no request, the test cancels
+    /// `call` in its place.
+    ///
+    /// - Parameters:
+    ///   - run: The run that recorded the elicitation event.
+    ///   - call: The call that asked the question.
+    private static func declineTheQuestion(of run: BoundRun, orCancel call: Task<CallTool.Result, any Error>) async {
+        let request = await recordedOperationEvents(of: run.stub, ofKind: .elicitation).first?.elicitation
+        if let request {
+            await run.session.respond(elicitationId: request.elicitationId.description, response: .decline)
+        } else {
+            call.cancel()
+        }
+    }
+
+    /// A `url` that is not an absolute `http` or `https` URL with a host
+    /// gets a decline with the reason, and the handler gets no request.
+    /// Before the fix, only `URL(string:)` checked the url, thus each such
+    /// url went on to the handler.
+    @Test("a URL-mode url that is not an absolute http or https URL is declined before the handler", arguments: notHTTPURLs)
+    func aNotHTTPURLIsDeclinedBeforeTheHandler(url: String) async throws {
+        let probe = HandlerProbe(responding: .decline)
+        let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
+        try await Self.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
+            _ = try await Self.bareCall(tool)
+
+            let received = await scripted.receivedElicitationResults.last
+            #expect(received?.action == .decline)
+            #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+            #expect(await probe.requests.count == Self.noHandlerCalls)
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// A `url` that is not an absolute `http` or `https` URL with a host
+    /// gets a decline with the reason, and the bound run gets no question.
+    /// Before the fix, each such url went on to the run.
+    @Test("a URL-mode url that is not an absolute http or https URL is declined before the run", arguments: notHTTPURLs)
+    func aNotHTTPURLIsDeclinedBeforeTheRun(url: String) async throws {
+        let (scripted, server) = try await Self.connected(askingFor: url)
+        try await Self.withConnection(of: server) {
+            try await BoundRun.with { run in
+                let call = Self.startCall(server, tool: Self.invalidURLToolName, under: run.context)
+                let gotTheQuestion = try await Self.runGotTheQuestion(of: call, on: run)
+                _ = try await call.value
+
+                #expect(!gotTheQuestion, "the run got the question of the url \(url)")
+                let received = await scripted.receivedElicitationResults.last
+                #expect(received?.action == .decline)
+                #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+            }
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// An absolute `https` URL with a host goes on to the handler as before,
+    /// also when its scheme is uppercase.
+    @Test("a URL-mode url that is an absolute https URL goes on to the handler", arguments: httpURLs)
+    func anHTTPURLGoesOnToTheHandler(url: String) async throws {
+        let probe = HandlerProbe(responding: .decline)
+        let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
+        try await Self.withConnection(of: server) {
+            let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
+            _ = try await Self.bareCall(tool)
+
+            let requests = await probe.requests
+            #expect(requests.count == Self.oneHandlerCall)
+            #expect(requests.first?.url?.absoluteString == url)
+            #expect(await scripted.receivedElicitationResults.last?.action == .decline)
         }
         withExtendedLifetime(scripted) {}
     }

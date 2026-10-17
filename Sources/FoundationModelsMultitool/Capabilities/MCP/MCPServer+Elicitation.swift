@@ -48,6 +48,12 @@
 // decode answers `decline`, with `schemaOutsideTheSubsetReason` under the
 // `reason` key of `_meta`, and a log line.
 //
+// **The URL rule.** The `url` of a URL-mode request must be an absolute
+// `http` or `https` URL with a host — `Fetch.httpURL(_:)`, the same rule as
+// the `url` of an `elicit()` request. A request whose `url` does not obey it
+// answers `decline`, with `invalidURLReason` under the `reason` key of
+// `_meta`, and a log line. The context and the host's handler are not asked.
+//
 // **URL mode is a three-message flow**, and both answerers hold the accept
 // until the flow ends. Under a context, the `RunPlane` keeps the run
 // suspended after the accept until the flow completes, so the accept reaches
@@ -174,7 +180,11 @@ extension MCPServer {
             return Self.wireResult(
                 of: await resolve(request, urlElicitationId: nil, linkedBy: form._meta, generation: generation))
         case .url(let url):
-            guard let link = URL(string: url.url) else {
+            // The url obeys the one URL rule of the web capability, the rule
+            // of the url of an `elicit()` request: an absolute `http` or
+            // `https` URL with a host. Thus a relative url or a `javascript`
+            // url does not go on to the context or the host's handler.
+            guard let link = Fetch.httpURL(url.url) else {
                 // The url is content of the server, thus the record holds the
                 // wire id of the elicitation and not the url.
                 record(
@@ -404,7 +414,8 @@ extension MCPServer {
         "the requested schema is outside the supported subset of the form schema"
 
     /// The reason of the decline of a URL-mode request whose `url` is not a
-    /// valid URL.
+    /// valid URL: not an absolute `http` or `https` URL with a host, the rule
+    /// of ``Fetch/httpURL(_:)``.
     static let invalidURLReason = "the url of the URL-mode request is not a valid URL"
 
     /// The reason of the cancel of a question that the calling run threw on
