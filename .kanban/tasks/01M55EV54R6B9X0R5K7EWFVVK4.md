@@ -83,8 +83,25 @@ comments:
     - staged: NeverConnectingTransport.swift (new), HangingTransport.swift, HeldConnectTransport.swift, and the .kanban task files
     - next: review
   timestamp: 2026-10-17T18:00:17.529573+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m55ggwbr72n3knjb1qv6cp1d
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 81966c0). 0 findings, 0 confirmed, 0 refuted. 3 files reviewed. 2 .kanban files not reviewed because of an ignore rule. The 1 item in "Review Findings (2026-10-17 12:51)" is checked.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-17T18:03:26.968562+00:00
+- actor: claude-code
+  id: 01m55ghdrta7dazg1v10mfs0kh
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 test files (1 of 1 finding fixed; one shared NeverConnectingTransport stub set)
+    - test: green — swift test, exit 0, 2459 passed, 0 failed, 0 skipped, 0 continuation misuse lines
+    - commit: 81966c0 (the commit comment names 461253a, the sha before the amend)
+    - review: clean — 0 findings
+    - known limit (on the card): the test cannot catch an await of the losing attempt with no cancel; such a change hangs the test.
+  timestamp: 2026-10-17T18:03:44.794141+00:00
+position_column: done
+position_ordinal: ffffffa480
 title: Test that a losing MCP connect attempt is not awaited, in a form that cannot hang
 ---
 Follow-up of ^4vvg00p (owner decision 2026-10-17). The old HangingTransport hang ignored a cancel, so a change that cancels the losing connect attempt and then waits for it would have hung the tests. The new hangUntilCancelled() ends on a cancel, so those tests no longer show such a change.
