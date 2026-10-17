@@ -17,9 +17,10 @@ struct JSCInterpreterTests {
     /// An async host function that calls `hold.pass()` is a genuine async
     /// call: it suspends until the test releases it. The release comes at an
     /// event (the first call arrived) and never after a real delay. After the
-    /// release, each later call passes at once. Each snippet that this helper
-    /// runs must call an async host function that passes `hold`, or the
-    /// helper waits forever.
+    /// release, each later call passes at once. The wait for the first call
+    /// also ends when the run ends — see ``HeldCall/releaseOnArrival(during:)``.
+    /// Thus a snippet that never calls an async host function that passes
+    /// `hold` gives its own result, and the checks of the test fail on it.
     ///
     /// - Parameters:
     ///   - interpreter: The interpreter that runs the snippet.
@@ -36,9 +37,9 @@ struct JSCInterpreterTests {
         installingAsync: [AsyncHostFunction],
         releasing hold: HeldCall
     ) async throws -> InterpreterResult {
-        async let result = interpreter.run(code: code, installing: installing, installingAsync: installingAsync)
-        try await hold.releaseOnArrival()
-        return try await result
+        try await hold.releaseOnArrival {
+            try await interpreter.run(code: code, installing: installing, installingAsync: installingAsync)
+        }
     }
 
     @Test("a snippet's return value round-trips out as JSON")
@@ -219,9 +220,10 @@ struct JSCInterpreterTests {
     /// The sandbox has no clock, thus only the cancellation can end the loop,
     /// and the `CancellationError` is the outcome that proves it did. The
     /// cancel comes at an event — the loop started — and never after a real
-    /// delay. A cancellation that the watchdog does not read makes the test
-    /// hang. The test reads no real time (card `^3np5yzj`: no test checks the
-    /// speed of the machine).
+    /// delay. The wait for the start also ends when the run ends, and the test
+    /// then fails at once. A cancellation that the watchdog does not read
+    /// makes the test hang. The test reads no real time (card `^3np5yzj`: no
+    /// test checks the speed of the machine).
     @Test("cancelling the calling task forces early termination of an infinite loop")
     func cancellationForcesEarlyTerminationOfAnInfiniteLoop() async throws {
         let interpreter = JSCInterpreter()
@@ -230,13 +232,12 @@ struct JSCInterpreterTests {
             loopStarted.open()
             return .null
         }
-        let run = Task {
-            try await interpreter.run(code: "started(); while (true) {}", installing: [started])
-        }
-        try await loopStarted.wait()
-        run.cancel()
+        let run = try await EventRace.watch(
+            { try await interpreter.run(code: "started(); while (true) {}", installing: [started]) },
+            untilOpen: loopStarted, orFail: "the run ended before the loop started")
+        run.task.cancel()
 
-        await #expect(throws: CancellationError.self) { try await run.value }
+        await #expect(throws: CancellationError.self) { try await run.task.value }
     }
 
     @Test("concurrent run() calls from multiple tasks stay isolated")
@@ -553,7 +554,9 @@ struct JSCInterpreterTests {
         //
         // The order is fixed by gates and never by a real delay. The fast
         // call rejects before the test opens the slow call: `slow` waits on
-        // `slowGate`, and the test opens it only after `fast` has ended.
+        // `slowGate`, and the test opens it only after `fast` has ended. The
+        // wait for the end of `fast` also ends when the run ends, and the test
+        // then fails at once.
         let interpreter = JSCInterpreter()
         let slowGate = TestGate()
         let fastEnded = TestGate()
@@ -565,24 +568,29 @@ struct JSCInterpreterTests {
             defer { fastEnded.open() }
             throw InterpreterError(kind: .exception, message: "fast-boom")
         }
-        async let running = interpreter.run(
-            code: """
-            const slowPromise = slow();
-            const fastPromise = fast();
-            try {
-              await slowPromise;
-              await fastPromise;
-              return "unreachable";
-            } catch (e) {
-              return "caught";
-            }
-            """,
-            installing: [],
-            installingAsync: [slow, fast]
-        )
-        try await fastEnded.wait()
+        // On each path the slow call goes on, thus the run can end.
+        defer { slowGate.open() }
+        let running = try await EventRace.watch(
+            {
+                try await interpreter.run(
+                    code: """
+                    const slowPromise = slow();
+                    const fastPromise = fast();
+                    try {
+                      await slowPromise;
+                      await fastPromise;
+                      return "unreachable";
+                    } catch (e) {
+                      return "caught";
+                    }
+                    """,
+                    installing: [],
+                    installingAsync: [slow, fast]
+                )
+            },
+            untilOpen: fastEnded, orFail: "the run ended before the fast call ended")
         slowGate.open()
-        let result = try await running
+        let result = try await running.task.value
         #expect(result.returnValue == .string("caught"))
     }
 
@@ -672,10 +680,7 @@ struct JSCInterpreterTests {
             installingAsync: [boom],
             releasing: hold
         )
-        guard case .string(let value) = result.returnValue else {
-            Issue.record("expected a string return value")
-            return
-        }
+        let value = try #require(result.returnValue.stringText, "expected a string return value")
         #expect(value.hasPrefix("caught:"))
     }
 
@@ -1028,10 +1033,7 @@ struct JSCInterpreterTests {
             installingAsync: [boom],
             releasing: hold
         )
-        guard case .string(let value) = result.returnValue else {
-            Issue.record("expected a string return value")
-            return
-        }
+        let value = try #require(result.returnValue.stringText, "expected a string return value")
         #expect(value.hasPrefix("caught:"))
     }
 
@@ -1119,17 +1121,18 @@ struct JSCInterpreterTests {
             }
             return .null
         }
-        let run = Task {
-            try await interpreter.run(
-                code: "await slowAsync(); return \"done\";",
-                installing: [],
-                installingAsync: [slow]
-            )
-        }
-        try await callStarted.wait()
-        run.cancel()
+        let run = try await EventRace.watch(
+            {
+                try await interpreter.run(
+                    code: "await slowAsync(); return \"done\";",
+                    installing: [],
+                    installingAsync: [slow]
+                )
+            },
+            untilOpen: callStarted, orFail: "the run ended before the pending call started")
+        run.task.cancel()
 
-        await #expect(throws: CancellationError.self) { try await run.value }
+        await #expect(throws: CancellationError.self) { try await run.task.value }
         // The cancelled backing Task observes its own cancellation after the
         // run ended: wait for that event.
         try await taskWasCancelled.wait()
@@ -1230,17 +1233,18 @@ struct JSCInterpreterTests {
             try await neverOpened.wait()
             return .null
         }
-        let run = Task {
-            try await interpreter.run(
-                code: Self.cleanupWitnessSnippet,
-                installing: [Self.makeRecorder(into: markers, attached: attached)],
-                installingAsync: [slow]
-            )
-        }
-        try await pendingCallStarted.wait()
-        run.cancel()
+        let run = try await EventRace.watch(
+            {
+                try await interpreter.run(
+                    code: Self.cleanupWitnessSnippet,
+                    installing: [Self.makeRecorder(into: markers, attached: attached)],
+                    installingAsync: [slow]
+                )
+            },
+            untilOpen: pendingCallStarted, orFail: "the run ended before the pending call started")
+        run.task.cancel()
 
-        await #expect(throws: CancellationError.self) { try await run.value }
+        await #expect(throws: CancellationError.self) { try await run.task.value }
         // The cancelled backing Task unwinds after the run ended, and its
         // late completion reaches the job queue of the run. Waiting for that
         // unwind gives a late resumption of the suspended continuation its

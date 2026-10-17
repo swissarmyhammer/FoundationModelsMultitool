@@ -133,8 +133,10 @@ final class GatedScriptedTool: Tool, Sendable {
     /// The gate the fixture opens once the run is in the background.
     private let backgrounded: SettlementGate
 
-    /// The gate the call opens once its progress post returned.
-    private let progressPosted: SettlementGate
+    /// The gate the call opens once its progress post returned. A cancel of
+    /// the task of a waiter ends its wait, thus a test can also end the wait
+    /// on the end of the run.
+    private let progressPosted: TestGate
 
     /// What the call returns once the gate opens; the terminal event's
     /// detail. Also the reason it throws, when `fails` is set.
@@ -161,7 +163,7 @@ final class GatedScriptedTool: Tool, Sendable {
         name: String,
         gate: SettlementGate,
         backgrounded: SettlementGate,
-        progressPosted: SettlementGate,
+        progressPosted: TestGate,
         detail: String,
         progress: String?,
         fails: Bool
@@ -191,7 +193,7 @@ final class GatedScriptedTool: Tool, Sendable {
             // `RunPlane.updateProgress`). Thus the gate opens after the row
             // shows the detail, in a fixed order.
             await ToolContext.current?.progress(progress)
-            await progressPosted.open()
+            progressPosted.open()
         }
         await gate.wait()
         if fails { throw ScriptedToolFailure(description: detail) }
@@ -240,7 +242,7 @@ func startScriptedRun(
 ) async throws -> ScriptedRun {
     let gate = SettlementGate()
     let backgrounded = SettlementGate()
-    let progressPosted = SettlementGate()
+    let progressPosted = TestGate()
     let engine = context.mount(
         GatedScriptedTool(
             name: tool,
@@ -274,9 +276,14 @@ func startScriptedRun(
             .completionToken
         if let progress {
             // The envelope is proof the run is in the background, so the call may
-            // post now.
+            // post now. The wait for the post also ends when the run ends: a
+            // run that ended has no status row, and the check below then
+            // throws.
             await backgrounded.open()
-            await progressPosted.wait()
+            let token = completionToken
+            try await EventRace.firstOf(
+                { try? await progressPosted.wait() },
+                or: { await TerminalDetail.waitForEnd(of: token, in: context) })
             try await expectProgress(progress, of: completionToken, on: context)
         }
     } catch {
@@ -644,5 +651,19 @@ actor ElicitationAnswerLog {
         watchEnded = true
         deliveryWaiters = Self.resume(deliveryWaiters, reaching: .max)
         completionWaiters = Self.resume(completionWaiters, reaching: .max)
+    }
+}
+
+/// Reads the string case of one property of a requested schema as an
+/// optional, thus a test can unwrap it with the require macro and does not
+/// need a `guard case`.
+extension ElicitationPrimitiveSchema {
+    /// The string schema of the property, or `nil` when the property is a
+    /// different case.
+    var stringSchema: ElicitationStringSchema? {
+        if case .string(let schema) = self {
+            return schema
+        }
+        return nil
     }
 }

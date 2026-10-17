@@ -147,8 +147,13 @@ struct InlineSettleGraceTests {
                     try await slowMount.call(arguments: RunCodeArguments(code: "return await tools.hog();"))
                 )
                 #expect(slow.pending)
-                // The event of the slow tool: a child started to spin.
-                try await hog.waitUntilStarted()
+                // The event of the slow tool: a child started to spin. The wait
+                // also ends when the slow snippet ends, and the test then fails
+                // at once.
+                try await EventRace.firstOf(
+                    { try? await hog.waitUntilStarted() },
+                    or: { await TerminalDetail.waitForEnd(of: slow.completionToken, in: context) })
+                try #require(hog.hasStarted, "the slow snippet ended before the slow tool started to spin")
 
                 let quick = try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
 
@@ -193,13 +198,7 @@ struct InlineSettleGraceTests {
                 envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken)
             )
 
-            let collected = await context.wait(
-                completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds
-            )
-            guard case .settled(let terminal) = collected else {
-                Issue.record("the snippet never settled: \(collected)")
-                return
-            }
+            let terminal = try await TerminalDetail.settledEvent(of: envelope.completionToken, in: context)
             #expect(terminal.detail == Self.quickSnippetResult)
         }
     }

@@ -132,10 +132,10 @@ struct MultiToolExecutionTests {
         // `return tools.delayed();`, with no `await`, is correct per
         // eventplan.md: "An unawaited return settles at the boundary...
         // `return tools.x.y(...)` is correct." The call is pending until the
-        // test releases it, after the call came.
-        async let called = multiTool.call(arguments: RunCodeArguments(code: "return tools.delayed();"))
-        try await delayedTool.hold.releaseOnArrival()
-        let output = try await called
+        // test releases it, after the call came, or when the run ended first.
+        let output = try await delayedTool.hold.releaseOnArrival {
+            try await multiTool.call(arguments: RunCodeArguments(code: "return tools.delayed();"))
+        }
 
         #expect(output == "\"delayed-result\"")
         #expect(delayedTool.ranOnMainThread == false)
@@ -149,11 +149,11 @@ struct MultiToolExecutionTests {
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        async let called = multiTool.call(
-            arguments: RunCodeArguments(code: "const result = await tools.delayed(); return result;")
-        )
-        try await delayedTool.hold.releaseOnArrival()
-        let output = try await called
+        let output = try await delayedTool.hold.releaseOnArrival {
+            try await multiTool.call(
+                arguments: RunCodeArguments(code: "const result = await tools.delayed(); return result;")
+            )
+        }
 
         #expect(output == "\"delayed-result\"")
         #expect(delayedTool.ranOnMainThread == false)

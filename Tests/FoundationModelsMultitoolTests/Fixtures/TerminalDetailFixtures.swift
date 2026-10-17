@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModelsRouter
 import Testing
 
@@ -38,6 +39,40 @@ enum TerminalDetail {
             throw TerminalDetailFailure.neverSettled(String(describing: settlement))
         }
         return terminal
+    }
+
+    /// Waits until one background run settled, with no deadline — the
+    /// second event of a test that waits for a step of that run.
+    ///
+    /// A run that settled cannot do a step any more. Thus a test that waits
+    /// for the step also waits for this event, and fails at once when it
+    /// comes first. The wait returns at once for a run that already settled,
+    /// and for a token that the run plane does not know. A cancel of the task
+    /// of the caller also ends it, thus ``EventRace/firstOf(_:or:)`` can end
+    /// it.
+    ///
+    /// - Parameters:
+    ///   - completionToken: The token of the run.
+    ///   - context: The session context that tracks the run.
+    static func waitForEnd(of completionToken: String, in context: ToolContext) async {
+        _ = await context.wait(completionToken: completionToken, seconds: nil)
+    }
+
+    /// The wait for the end of the run of a pending envelope — see
+    /// ``waitForEnd(of:in:)``.
+    ///
+    /// - Parameters:
+    ///   - rendered: The pending envelope that a mounted call answered with.
+    ///   - context: The session context that tracks the run.
+    /// - Returns: The wait, for ``EventRace/firstOf(_:or:)`` or for
+    ///   `ManualRunClock.waitForSleepers(atLeast:orUntil:)`.
+    /// - Throws: When `rendered` is not a pending envelope.
+    static func runEnd(
+        of rendered: String, in context: ToolContext
+    ) throws -> @Sendable () async -> Void {
+        let completionToken = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+            .completionToken
+        return { await waitForEnd(of: completionToken, in: context) }
     }
 
     /// The part of `section` in front of the truncation note.

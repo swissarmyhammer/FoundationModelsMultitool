@@ -659,10 +659,9 @@ struct SandboxGlobalsTests {
                 let request = try #require(await sink.observedRequest)
                 #expect(request.mode == .form)
                 #expect(request.requestedSchema?.required == ["repo"])
-                guard case .string(let repoSchema)? = request.requestedSchema?.properties["repo"] else {
-                    Issue.record("the repo property did not decode as a string schema")
-                    return
-                }
+                let repoSchema = try #require(
+                    request.requestedSchema?.properties["repo"]?.stringSchema,
+                    "the repo property did not decode as a string schema")
                 #expect(repoSchema.title == "Repository")
             }
         }

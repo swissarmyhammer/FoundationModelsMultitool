@@ -431,9 +431,9 @@ struct SearchToolsToolTests {
                     as? any Tool<SearchToolsArguments, String>
             )
 
-            async let called = mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
-            try await hold.releaseOnArrival()
-            let feedback = try await called
+            let feedback = try await hold.releaseOnArrival {
+                try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+            }
 
             #expect(!PendingRunEnvelope.isRendered(text: feedback))
             #expect(feedback.contains("getCities"))

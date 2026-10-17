@@ -160,11 +160,14 @@ struct RegistrySwapTests {
         let gated = GatedTool(latch: latch)
         let first = try MultiTool.Builder().addTool(gated).addTool(CitiesTool()).buildRegistry()
         let runCode = MultiTool(registry: first)
-        let run = Task {
+        // On each path the latch opens, thus the run can end.
+        defer { latch.release() }
+        // The gated tool opens its start gate when the snippet calls it. The
+        // wait also ends when the run ends, and the test then fails at once.
+        let run = EventRace.watch {
             try await runCode.call(arguments: RunCodeArguments(code: Self.gatedCitiesSnippet))
         }
-        // The gated tool opens its start gate when the snippet calls it.
-        try await gated.waitUntilStarted()
+        try await gated.requireStart(orUntil: { await run.waitForEnd() })
 
         // The swap lands while the snippet waits on the latch. The registry
         // it swaps to has no cities verb.
@@ -172,7 +175,7 @@ struct RegistrySwapTests {
         await runCode.submissionWillBegin()
         latch.release()
 
-        #expect(try await run.value == Self.joinedCities)
+        #expect(try await run.task.value == Self.joinedCities)
         // The next run sees the swapped surface.
         #expect(try await helpPaths(of: runCode) == [Self.temperaturePath])
     }

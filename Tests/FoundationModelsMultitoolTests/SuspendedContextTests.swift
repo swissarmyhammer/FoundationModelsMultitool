@@ -93,8 +93,10 @@ struct SuspendedContextTests {
             // The run plane waits on the manual clock of the harness: the timeout
             // of the run is the one wait on it. The clock moves past the alive
             // window only after that timer waits, in a fixed order. A timer that
-            // ends inside the window ends here, and no real time passes.
-            await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers)
+            // ends inside the window ends here, and no real time passes. The
+            // wait also ends when the run ends, and the checks below then fail.
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: harness.run.context)
+            await harness.clock.waitForSleepers(atLeast: Self.runTimeoutSleepers, orUntil: runEnded)
             harness.clock.advance(by: Self.aliveWindow)
 
             // Alive: the run plane still holds the background run, and the
@@ -127,8 +129,10 @@ struct SuspendedContextTests {
             // the envelope returned: that instant races JSC start-up, which made a
             // true statement about the product fail whenever the machine was
             // loaded. The latch is still closed here, so the call starting at all
-            // is what the assertion was always after.
-            try await harness.gated.waitUntilStarted()
+            // is what the assertion was always after. The wait also ends when
+            // the run ends, and the test then fails at once.
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: harness.run.context)
+            try await harness.gated.requireStart(orUntil: runEnded)
             #expect(!harness.gated.wasCancelled)
 
             let token = try Self.completionToken(of: rendered)
@@ -165,8 +169,10 @@ struct SuspendedContextTests {
             // The envelope returns before JSC starts the first snippet. A cancel
             // that lands before the gated call starts leaves nothing to unwind,
             // so `wasCancelled` would never be written. Wait for the call to
-            // start, then cancel.
-            try await harness.gated.waitUntilStarted()
+            // start, then cancel. The wait also ends when the run ends, and the
+            // test then fails at once.
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: harness.run.context)
+            try await harness.gated.requireStart(orUntil: runEnded)
 
             // A second snippet, in the same session and through the same mounted
             // tool, cancels the first through the sandbox's own `cancel()` global.

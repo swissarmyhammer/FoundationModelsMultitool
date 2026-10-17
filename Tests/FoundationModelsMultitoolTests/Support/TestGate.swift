@@ -196,12 +196,35 @@ final class HeldCall: Sendable {
         try await release.wait()
     }
 
-    /// Waits until a call came, and then lets each call go on.
+    /// Starts `work`, lets each call go on when a call came, and gives what
+    /// `work` returned.
     ///
-    /// - Throws: `CancellationError` when the task is cancelled before a call
-    ///   came.
-    func releaseOnArrival() async throws {
-        try await arrival.wait()
+    /// The wait for the call ends on the first of two events: a call came, or
+    /// `work` ended — see ``EventRace/start(_:awaiting:cleaningUpOnThrow:)``.
+    /// Thus a `work` that ends with no call does not make the test hang: the
+    /// test gets what `work` returned or threw, and its checks of that answer
+    /// fail. After the wait, each call goes on. A cancel of the task of the
+    /// caller also cancels `work`.
+    ///
+    /// - Parameter work: The work that makes the call.
+    /// - Returns: What `work` returned.
+    /// - Throws: What `work` threw, or `CancellationError` when the task is
+    ///   cancelled before the first event. On that cancel, each call goes on,
+    ///   and the work ends before the throw.
+    func releaseOnArrival<Success: Sendable>(
+        during work: @escaping @Sendable () async throws -> Success
+    ) async throws -> Success {
+        let started = try await EventRace.start(
+            work, awaiting: { try? await self.arrival.wait() },
+            cleaningUpOnThrow: { task in
+                self.release.open()
+                await EventRace.endWait(task)
+            })
         release.open()
+        return try await withTaskCancellationHandler {
+            try await started.value
+        } onCancel: {
+            started.cancel()
+        }
     }
 }

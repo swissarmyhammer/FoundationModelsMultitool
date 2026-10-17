@@ -84,17 +84,37 @@ struct HardeningTests {
         return (makeMultiTool(registry: registry), started)
     }
 
+    /// Starts ``reportingInfiniteLoop`` on `multiTool`, and waits until the
+    /// snippet reported its start to `started`.
+    ///
+    /// The wait also ends when the run ends — see
+    /// ``EventRace/watch(_:untilOpen:orFail:sourceLocation:)``. Thus a run
+    /// that ends before its report does not make the test hang: the test
+    /// fails at once.
+    ///
+    /// - Parameters:
+    ///   - multiTool: The `runCode` tool that runs the loop.
+    ///   - started: The tool whose call reports the start.
+    /// - Returns: The task of the run. The loop spins in it.
+    /// - Throws: When the run ended before the report, or when the task is
+    ///   cancelled first.
+    private static func startReportingLoop(
+        of multiTool: MultiTool, reportingTo started: WindowRecordingTool
+    ) async throws -> Task<String, any Error> {
+        try await EventRace.watch(
+            { try await multiTool.call(arguments: RunCodeArguments(code: reportingInfiniteLoop)) },
+            untilOpen: started.hold.arrival, orFail: "the run ended before the snippet reported its start"
+        ).task
+    }
+
     @Test("cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError")
     func cancellationTerminatesInfiniteLoopSnippet() async throws {
         // The sandbox has no clock: if cancellation did not reach the loop,
         // the test would hang.
         let (multiTool, started) = try Self.makeReportingMultiTool()
 
-        let task = Task {
-            try await multiTool.call(arguments: RunCodeArguments(code: Self.reportingInfiniteLoop))
-        }
         // The event: the snippet started, and the loop spins.
-        try await started.hold.arrival.wait()
+        let task = try await Self.startReportingLoop(of: multiTool, reportingTo: started)
         task.cancel()
 
         await Self.expectCancellationError { _ = try await task.value }
@@ -116,11 +136,12 @@ struct HardeningTests {
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
         let multiTool = Self.makeMultiTool(registry: registry)
 
-        let task = Task {
-            try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();"))
-        }
-        // The event: the pending call started, so the snippet awaits it.
-        try await slowTool.hold.arrival.wait()
+        // The event: the pending call started, so the snippet awaits it. The
+        // wait also ends when the run ends, and the test then fails at once.
+        let task = try await EventRace.watch(
+            { try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();")) },
+            untilOpen: slowTool.hold.arrival, orFail: "the run ended before the pending call started"
+        ).task
         task.cancel()
 
         await Self.expectCancellationError { _ = try await task.value }
@@ -138,10 +159,7 @@ struct HardeningTests {
             for _ in 0..<iterations {
                 group.addTask {
                     let (multiTool, started) = try Self.makeReportingMultiTool()
-                    let task = Task {
-                        try await multiTool.call(arguments: RunCodeArguments(code: Self.reportingInfiniteLoop))
-                    }
-                    try await started.hold.arrival.wait()
+                    let task = try await Self.startReportingLoop(of: multiTool, reportingTo: started)
                     task.cancel()
                     await Self.expectCancellationError { _ = try await task.value }
                 }

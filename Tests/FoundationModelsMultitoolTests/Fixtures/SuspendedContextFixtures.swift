@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import Testing
 
 // MARK: - Phase-1 suspended-context fixtures (eventplan.md § "The constraint
 // boundary, and the escape hatch")
@@ -44,7 +45,7 @@ final class ToolReleaseLatch: Sendable {
 ///
 /// Each call records that it started, and whether it ended by cancellation
 /// instead of by release. A test waits for each of those events with
-/// ``waitUntilStarted()`` and ``waitUntilCancelled()``.
+/// ``requireStart(orUntil:sourceLocation:)`` and ``waitUntilCancelled()``.
 ///
 /// `final class … Sendable` (rather than a `struct`), the same pattern as
 /// `DelayedTool`/`WindowRecordingTool`: the test reads `hasStarted` and
@@ -92,11 +93,26 @@ final class GatedTool: Tool, Sendable {
     /// pending promise's own work.
     var wasCancelled: Bool { cancelled.isOpen }
 
-    /// Waits until a call entered.
+    /// Waits until a call entered, or until `ended` returned, and then fails
+    /// the test at once unless a call entered.
     ///
-    /// - Throws: `CancellationError` when the waiting task is cancelled first.
-    func waitUntilStarted() async throws {
-        try await started.wait()
+    /// The wait ends on the first of the two events — see
+    /// ``EventRace/requireOpen(_:orFirstOf:orFail:sourceLocation:)``. Thus a
+    /// run that ends before its call enters does not make the test hang.
+    ///
+    /// - Parameters:
+    ///   - ended: The wait for the event that shows that no call can enter
+    ///     any more, for example the end of the run that makes the call. A
+    ///     cancel must end it.
+    ///   - sourceLocation: The place in the test that the failure names.
+    /// - Throws: When no call entered, or when the task is cancelled first.
+    func requireStart(
+        orUntil ended: @escaping @Sendable () async -> Void,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        try await EventRace.requireOpen(
+            started, orFirstOf: ended, orFail: "the run ended before it called the gated tool",
+            sourceLocation: sourceLocation)
     }
 
     /// Waits until a call ended by cancellation.

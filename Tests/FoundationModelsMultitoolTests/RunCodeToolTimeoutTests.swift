@@ -19,9 +19,14 @@ import os
 /// The engine clock waits on the run clock of the session, and each session
 /// here runs on a `ManualRunClock`. A test moves that clock with
 /// `ManualRunClock.advance(by:)` only after the timer waits
-/// (`ManualRunClock.waitForSleepers(atLeast:)`), in a fixed order. No test
-/// waits on real time or reads the time that a run took (card `^3np5yzj`: no
-/// test checks the speed of the machine).
+/// (`ManualRunClock.waitForSleepers(atLeast:orUntil:)`), in a fixed order. No
+/// test waits on real time or reads the time that a run took (card `^3np5yzj`:
+/// no test checks the speed of the machine).
+///
+/// Each wait for a step of a run also ends when the run ends
+/// (``TerminalDetail/runEnd(of:in:)``). A run that ends before its step thus
+/// does not make the test hang: the test fails at once, or its checks of the
+/// terminal event fail.
 @Suite("runCode ends at its tool-level timeout")
 struct RunCodeToolTimeoutTests {
     // MARK: - A run with no progress
@@ -70,8 +75,9 @@ struct RunCodeToolTimeoutTests {
 
             await #expect(throws: InjectedStepFailure.self) {
                 try await Self.callEndingOneWindow(of: clock, on: context) { () async throws -> String in
-                    _ = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
-                    await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                    let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
+                    let runEnded = try TerminalDetail.runEnd(of: rendered, in: context)
+                    await clock.waitForSleepers(atLeast: Self.timeoutSleepers, orUntil: runEnded)
                     throw InjectedStepFailure()
                 }
             }
@@ -124,9 +130,12 @@ struct RunCodeToolTimeoutTests {
 
             let snippet = "return await tools.web.fetch({ url: \"\(Self.hangingPageURL)\" });"
             let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
-            // The event of the stub: the request is in flight.
-            try await stub.waitForRequest()
-            await Self.endOneWindow(of: clock)
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: context)
+            // The event of the stub: the request is in flight. The wait also
+            // ends when the run ends, and the test then fails at once.
+            try await EventRace.firstOf({ try? await stub.waitForRequest() }, or: runEnded)
+            try #require(!stub.requestedURLs.isEmpty, "the run ended before its request reached the stub")
+            await Self.endOneWindow(of: clock, orUntil: runEnded)
 
             let terminal = try await Self.terminal(of: rendered, on: context)
             #expect(terminal.outcome == .timedOut)
@@ -164,12 +173,19 @@ struct RunCodeToolTimeoutTests {
             )
 
             let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.progressSnippet))
+            // Each wait of a turn also ends when the run ends, and the test then
+            // fails at once.
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: context)
             for turn in 0..<Self.turnCount {
-                try await sink.waitForProgress(Self.progressDetail(turn: turn))
-                try await pause.hold(turn: turn).arrival.wait()
-                await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                try await EventRace.requireOpen(
+                    sink.gate(for: Self.progressDetail(turn: turn)), orFirstOf: runEnded,
+                    orFail: "the run ended before the progress of turn \(turn)")
+                try await EventRace.requireOpen(
+                    pause.hold(turn: turn).arrival, orFirstOf: runEnded,
+                    orFail: "the run ended before the pause of turn \(turn)")
+                await clock.waitForSleepers(atLeast: Self.timeoutSleepers, orUntil: runEnded)
                 clock.advance(by: Self.pauseStep)
-                await clock.waitForSleepers(atLeast: Self.timeoutSleepers)
+                await clock.waitForSleepers(atLeast: Self.timeoutSleepers, orUntil: runEnded)
                 pause.hold(turn: turn).release.open()
             }
 
@@ -253,9 +269,18 @@ struct RunCodeToolTimeoutTests {
     /// Waits until the timer of the run waits on `clock`, and then moves the
     /// clock one full stall window, so that a timer with no progress ends.
     ///
-    /// - Parameter clock: The run clock of the session.
-    private static func endOneWindow(of clock: ManualRunClock) async {
-        await clock.waitForSleepers(atLeast: timeoutSleepers)
+    /// The wait for the timer also ends when `runEnded` returns. A run that
+    /// ended before its timer waits thus does not make the test hang: the
+    /// clock moves, and the check of the terminal event of the run fails.
+    ///
+    /// - Parameters:
+    ///   - clock: The run clock of the session.
+    ///   - runEnded: The wait for the end of the run — see
+    ///     ``TerminalDetail/runEnd(of:in:)``.
+    private static func endOneWindow(
+        of clock: ManualRunClock, orUntil runEnded: @escaping @Sendable () async -> Void
+    ) async {
+        await clock.waitForSleepers(atLeast: timeoutSleepers, orUntil: runEnded)
         clock.advance(by: .seconds(stallWindowSeconds))
     }
 
@@ -286,8 +311,8 @@ struct RunCodeToolTimeoutTests {
         let runsBefore = Set(await context.backgroundRuns().map(\.completionToken))
         return try await ensuring({
             let runsAfter = Set(await context.backgroundRuns().map(\.completionToken))
-            guard !runsAfter.subtracting(runsBefore).isEmpty else { return }
-            await endOneWindow(of: clock)
+            guard let newRun = runsAfter.subtracting(runsBefore).first else { return }
+            await endOneWindow(of: clock, orUntil: { await TerminalDetail.waitForEnd(of: newRun, in: context) })
         }, after: call)
     }
 
@@ -369,8 +394,11 @@ struct RunCodeToolTimeoutTests {
             let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
 
             let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
-            try await gated.waitUntilStarted()
-            await endOneWindow(of: clock)
+            // The wait for the start also ends when the run ends, and the test
+            // then fails at once.
+            let runEnded = try TerminalDetail.runEnd(of: rendered, in: context)
+            try await gated.requireStart(orUntil: runEnded)
+            await endOneWindow(of: clock, orUntil: runEnded)
 
             let terminal = try await Self.terminal(of: rendered, on: context)
             #expect(terminal.outcome == .timedOut)
@@ -505,19 +533,12 @@ private final class ProgressSignalSink: OperationEventSink, Sendable {
         gate(for: event.detail).open()
     }
 
-    /// Waits until a progress event with `detail` arrived.
-    ///
-    /// - Parameter detail: The progress detail.
-    /// - Throws: `CancellationError` when the task is cancelled first.
-    func waitForProgress(_ detail: String) async throws {
-        try await gate(for: detail).wait()
-    }
-
-    /// The gate of one progress detail.
+    /// The gate of one progress detail: it opens when a progress event with
+    /// `detail` arrived.
     ///
     /// - Parameter detail: The progress detail.
     /// - Returns: The gate, made when it did not exist.
-    private func gate(for detail: String) -> TestGate {
+    func gate(for detail: String) -> TestGate {
         gates.withLock { gates in
             if let gate = gates[detail] {
                 return gate

@@ -41,9 +41,9 @@ struct RunBindingTests {
         try await withOuterRunContext { context in
             let binding = RunBinding(context: context)
 
-            async let invoked = binding.invoke(slowTool, arguments: NoArguments(unused: nil))
-            try await slowTool.hold.releaseOnArrival()
-            let output = try await invoked
+            let output = try await slowTool.hold.releaseOnArrival {
+                try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))
+            }
 
             #expect(output == "slow-result")
             #expect(!PendingRunEnvelope.isRendered(text: output))
