@@ -310,20 +310,21 @@ extension MCPServer {
 
     /// Waits until a caller waits for the close of an open attempt — the
     /// event a test waits on to know that a teardown waits for an attempt.
-    /// A cancel of the calling task ends the wait.
+    /// Returns at once when a caller waits already.
+    ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call.
     ///
     /// Internal, for `@testable import`: no product code waits here.
     func waitUntilTransportCloseIsAwaited() async {
-        guard !openTransports.values.contains(where: { !$0.closeWaiters.isEmpty }) else { return }
         let waiterID = nextTransportCloseAwaitedWaiterID
         nextTransportCloseAwaitedWaiterID += 1
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                transportCloseAwaitedWaiters[waiterID] = continuation
-            }
-        } onCancel: {
-            Task { await self.endTransportCloseAwaitedWait(waiterID) }
-        }
+        await TestHookWait.suspend(
+            on: self,
+            cancelValue: (),
+            resolvedValue: { openTransports.values.contains(where: { !$0.closeWaiters.isEmpty }) ? () : nil },
+            record: { continuation in transportCloseAwaitedWaiters[waiterID] = continuation },
+            end: { server, _ in server.endTransportCloseAwaitedWait(waiterID) })
     }
 
     /// Ends the wait `waiterID` of ``waitUntilTransportCloseIsAwaited()`` —

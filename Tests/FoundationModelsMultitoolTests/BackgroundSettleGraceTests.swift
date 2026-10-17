@@ -315,7 +315,10 @@ struct BackgroundSettleGraceTests {
             #expect(message.answer.mailIds == [message.id], "the answer delivered: \(message.answer.mailIds)")
         }
         for runMail in await log.allRunMailIds {
-            await log.waitForTerminal(of: runMail)
+            guard await log.waitForTerminal(of: runMail) else {
+                Issue.record("run mail \(runMail) got no terminal event: the event stream finished or the task was cancelled first")
+                continue
+            }
             guard case .cancelled = await log.terminal(of: runMail) else {
                 Issue.record("run mail \(runMail) ended with \(String(describing: await log.terminal(of: runMail)))")
                 continue

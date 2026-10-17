@@ -572,7 +572,8 @@ extension MCPServer {
     @discardableResult
     func waitUntilHostElicitationHeld(elicitationId: String) async -> Bool {
         let waiterID = hostElicitationHeldWaiters.makeWaiterID()
-        return await suspendTestHookWait(
+        return await TestHookWait.suspend(
+            on: self,
             cancelValue: false,
             resolvedValue: { pendingHostElicitations[elicitationId] != nil ? true : nil },
             record: { continuation in
@@ -594,50 +595,14 @@ extension MCPServer {
     ///   wait waits for.
     func waitUntilHostElicitationHeldWaitIsRecorded(elicitationId: String) async {
         let waiterID = hostElicitationHeldWaitRecordedWaiters.makeWaiterID()
-        await suspendTestHookWait(
+        await TestHookWait.suspend(
+            on: self,
             cancelValue: (),
             resolvedValue: { hostElicitationHeldWaiters.contains(elicitationId: elicitationId) ? () : nil },
             record: { continuation in
                 hostElicitationHeldWaitRecordedWaiters.record(continuation, as: waiterID, for: elicitationId)
             },
             end: { server, value in server.hostElicitationHeldWaitRecordedWaiters.end(waiterID, with: value) })
-    }
-
-    /// Suspends until one wait of a test hook ends, and gives the value that
-    /// ended it — the one scaffold of the waits of the test hooks of this
-    /// actor: the waits in this file, `waitUntilTransportDropped()` and
-    /// `waitUntilToolListChangedGeneration(reaches:)`.
-    ///
-    /// The steps, in order:
-    ///
-    /// 1. A cancel that came before the call returns `cancelValue` at once.
-    /// 2. Else, when `resolvedValue` gives a value, the wait has nothing to
-    ///    wait for and returns that value at once.
-    /// 3. Else `record` records the continuation of the wait in the store of
-    ///    the hook. A resume of that store ends the wait. A cancel of the
-    ///    calling task calls `end` on this actor with `cancelValue`.
-    ///
-    /// - Parameters:
-    ///   - cancelValue: The value the wait gives when a cancel ends it.
-    ///   - resolvedValue: Gives the value of a wait that has nothing to wait
-    ///     for, or `nil` when the wait must suspend.
-    ///   - record: Records the continuation of the wait.
-    ///   - end: Ends the recorded wait with the value it gets — the cancel
-    ///     step. It runs on this actor.
-    /// - Returns: The value that ended the wait.
-    func suspendTestHookWait<WaitValue: Sendable>(
-        cancelValue: WaitValue,
-        resolvedValue: () -> WaitValue?,
-        record: (CheckedContinuation<WaitValue, Never>) -> Void,
-        end: @escaping @Sendable (isolated MCPServer, WaitValue) -> Void
-    ) async -> WaitValue {
-        guard !Task.isCancelled else { return cancelValue }
-        if let resolved = resolvedValue() { return resolved }
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in record(continuation) }
-        } onCancel: {
-            Task { await end(self, cancelValue) }
-        }
     }
 
     /// Ends the URL-mode flow named `elicitationId`. The host calls this when

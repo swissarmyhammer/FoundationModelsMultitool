@@ -183,7 +183,7 @@ private final class ExitWaitEnding: Sendable {
             guard case .waiting(let continuation, let source) = current else { return nil }
             return (continuation, source)
         }
-        guard case let (continuation, source)? = taken else { return }
+        guard case (let continuation, let source)? = taken else { return }
         source.cancel()
         continuation.resume()
     }

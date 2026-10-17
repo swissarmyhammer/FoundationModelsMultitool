@@ -387,7 +387,8 @@ extension MCPServer {
     func waitUntilTransportDropped() async {
         let waiterID = nextTestHookWaiterID
         nextTestHookWaiterID += 1
-        await suspendTestHookWait(
+        await TestHookWait.suspend(
+            on: self,
             cancelValue: (),
             resolvedValue: { isTransportDropped ? () : nil },
             record: { continuation in transportDropWaiters[waiterID] = continuation },

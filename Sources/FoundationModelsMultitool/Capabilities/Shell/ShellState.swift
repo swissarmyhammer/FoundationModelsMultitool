@@ -377,20 +377,16 @@ actor ShellState {
         }
         let id = nextCommandStartWaiterID
         nextCommandStartWaiterID += 1
-        // The check of the cancel and the record of the wait occur in one hop
-        // of this actor. A cancel that comes after the check sends its end in
-        // a later hop, thus that end finds the recorded wait.
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume(returning: nil)
-                    return
-                }
+        // A command that started already gives its token above, also to a
+        // cancelled task. Thus the wait below has nothing to resolve at once.
+        return await TestHookWait.suspend(
+            on: self,
+            cancelValue: nil,
+            resolvedValue: { nil },
+            record: { continuation in
                 commandStartWaiters.append(CommandStartWaiter(id: id, text: text, continuation: continuation))
-            }
-        } onCancel: {
-            Task { await self.endCommandStartWait(id: id) }
-        }
+            },
+            end: { state, _ in state.endCommandStartWait(id: id) })
     }
 
     /// Ends the wait of ``waitForCommand(holding:)`` with `id` with `nil`.
@@ -571,25 +567,22 @@ actor ShellState {
     ///   - commandID: The completion token of the run.
     ///   - count: The count of stored lines that ends the wait.
     func waitForStoredLines(commandID: String, atLeast count: Int) async {
-        if let found = record(commandID: commandID), found.lineCount >= count || found.status != .running {
-            return
-        }
         let id = nextLineCountWaiterID
         nextLineCountWaiterID += 1
-        // The check of the cancel and the record of the wait occur in one hop
-        // of this actor, as in `waitForCommand(holding:)`.
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume()
-                    return
-                }
+        await TestHookWait.suspend(
+            on: self,
+            cancelValue: (),
+            resolvedValue: {
+                guard let found = record(commandID: commandID),
+                    found.lineCount >= count || found.status != .running
+                else { return nil }
+                return ()
+            },
+            record: { continuation in
                 lineCountWaiters[commandID, default: []].append(
                     LineCountWaiter(id: id, count: count, continuation: continuation))
-            }
-        } onCancel: {
-            Task { await self.endLineCountWait(commandID: commandID, id: id) }
-        }
+            },
+            end: { state, _ in state.endLineCountWait(commandID: commandID, id: id) })
     }
 
     /// Ends the wait of ``waitForStoredLines(commandID:atLeast:)`` with `id`.

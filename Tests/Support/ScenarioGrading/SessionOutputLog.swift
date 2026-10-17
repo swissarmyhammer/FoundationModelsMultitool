@@ -46,6 +46,10 @@ public enum SessionOutputLogError: Error, Equatable {
     /// The event stream of the session finished, or the task of the caller
     /// was cancelled, before the run mail of the run came.
     case noRunMail(completionToken: String)
+
+    /// The event stream of the session finished, or the task of the caller
+    /// was cancelled, before the terminal event of the mail came.
+    case noTerminal(mailID: MailID)
 }
 
 /// The output events of one Router session, in the order the session sent
@@ -122,7 +126,6 @@ public actor SessionOutputLog {
     /// - Parameter condition: The condition on all events so far.
     /// - Returns: `true` when `condition` is true. `false` when the stream
     ///   finished or the task was cancelled first.
-    @discardableResult
     public func wait(until condition: @escaping @Sendable ([SessionOutput]) -> Bool) async -> Bool {
         guard !isStreamFinished else { return condition(outputs) }
         return await waiters.wait(for: condition, unless: { condition(outputs) })
@@ -136,11 +139,14 @@ public actor SessionOutputLog {
     ///
     /// - Parameter text: The text of the message.
     /// - Returns: The id of the message and its answer.
-    /// - Throws: What `send(_:)` throws, and the error of a failed answer.
+    /// - Throws: What `send(_:)` throws, the error of a failed answer, and
+    ///   ``SessionOutputLogError/noTerminal(mailID:)`` when the event stream
+    ///   of the session finished, or the task of the caller was cancelled,
+    ///   before the terminal event of the message came.
     public func ask(_ text: String) async throws -> AnsweredMail {
         let id = try session.send(Transcript.Prompt(segments: [.text(Transcript.TextSegment(content: text))]))
         let answer = try await session.awaitAnswer(of: id)
-        await waitForTerminal(of: id)
+        try await requireTerminal(of: id)
         let asked = AnsweredMail(id: id, answer: answer)
         askedMails.append(asked)
         return asked
@@ -148,9 +154,28 @@ public actor SessionOutputLog {
 
     /// Waits until the log holds the terminal event of the mail `id`.
     ///
+    /// The wait ends on the first of three events, as ``wait(until:)`` does:
+    /// the terminal event is in the log, the event stream of the session
+    /// finished, or the task of the caller is cancelled.
+    ///
     /// - Parameter id: The id of one mail.
-    public func waitForTerminal(of id: MailID) async {
+    /// - Returns: `true` when the log holds the terminal event of `id`.
+    ///   `false` when the stream finished or the task was cancelled first.
+    public func waitForTerminal(of id: MailID) async -> Bool {
         await wait { outputs in outputs.contains { Self.isTerminal($0.event, of: id) } }
+    }
+
+    /// Waits until the log holds the terminal event of the mail `id`, and
+    /// throws when it did not come.
+    ///
+    /// - Parameter id: The id of one mail.
+    /// - Throws: ``SessionOutputLogError/noTerminal(mailID:)`` when the event
+    ///   stream of the session finished, or the task of the caller was
+    ///   cancelled, before the terminal event came.
+    private func requireTerminal(of id: MailID) async throws {
+        guard await waitForTerminal(of: id) else {
+            throw SessionOutputLogError.noTerminal(mailID: id)
+        }
     }
 
     /// The terminal event of the mail `id`, when the log holds it.
@@ -207,12 +232,14 @@ public actor SessionOutputLog {
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The id of the run mail, the terminal event of the run that
     ///   it holds, and the answer that delivered it.
-    /// - Throws: What ``runMail(settling:)`` throws, and the error of a
-    ///   failed answer.
+    /// - Throws: What ``runMail(settling:)`` throws, the error of a failed
+    ///   answer, and ``SessionOutputLogError/noTerminal(mailID:)`` when the
+    ///   event stream of the session finished, or the task of the caller was
+    ///   cancelled, before the terminal event of the run mail came.
     public func deliveredRunMail(settling completionToken: String) async throws -> DeliveredRunMail {
         let id = try await runMail(settling: completionToken)
         let answer = try await session.awaitAnswer(of: id)
-        await waitForTerminal(of: id)
+        try await requireTerminal(of: id)
         guard let event = settledRun(in: id) else {
             preconditionFailure("runMail(settling:) returned an id with no runSettled event")
         }

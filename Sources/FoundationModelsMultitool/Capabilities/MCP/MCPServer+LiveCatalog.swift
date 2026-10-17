@@ -93,7 +93,8 @@ extension MCPServer {
     func waitUntilToolListChangedGeneration(reaches generation: Int) async {
         let waiterID = nextTestHookWaiterID
         nextTestHookWaiterID += 1
-        await suspendTestHookWait(
+        await TestHookWait.suspend(
+            on: self,
             cancelValue: (),
             resolvedValue: { toolListChangedGeneration >= generation ? () : nil },
             record: { continuation in toolListChangedGenerationWaiters[waiterID] = (generation, continuation) },
