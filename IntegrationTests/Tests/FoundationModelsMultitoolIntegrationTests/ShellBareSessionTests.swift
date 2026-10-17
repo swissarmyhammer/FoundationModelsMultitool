@@ -18,7 +18,8 @@ import FoundationModelsMultitool
 /// `IntegrationTests` package.
 @Suite(
     "A shell command on a bare LanguageModelSession",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct ShellBareSessionTests {
 

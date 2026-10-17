@@ -159,14 +159,9 @@ struct OverBudgetSelectionOrderTests {
     /// gives it to `body`, and then disconnects each server of the mount,
     /// also when `body` throws.
     ///
-    /// The mount does not return its connected servers. Thus the `makeServer`
-    /// closure of the mount records each server that it makes. When the mount
-    /// throws, this function disconnects the servers that it made before the
-    /// throw.
-    ///
-    /// The mount itself is
-    /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:domains:describing:makeServer:)`` in the
-    /// `MCPTestServer` product, which the gated
+    /// The mount and its teardown are
+    /// ``LargeCatalogSurface/withMounted(root:shellStoreDirectoryName:domains:describing:makeServer:_:)``
+    /// in the `MCPTestServer` product, which the gated
     /// `OverBudgetSurfaceDiscoveryTests` in the nested `IntegrationTests`
     /// package calls too. A package cannot import another package's test
     /// target, so a mount both suites read stands in a product, and that
@@ -184,34 +179,11 @@ struct OverBudgetSelectionOrderTests {
     private func withOverBudgetSurface<Result>(
         _ body: (LargeCatalogSurface) async throws -> Result
     ) async throws -> Result {
-        var madeServers: [MCPServer] = []
-        let mounted: LargeCatalogSurface
-        do {
-            mounted = try await makeLargeCatalogSurface(
-                root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
-                shellStoreDirectoryName: Self.shellStoreDirectoryName,
-                makeServer: { name in
-                    let server = MCPTestSupport.makeServer(name: name)
-                    madeServers.append(server)
-                    return server
-                })
-        } catch {
-            await Self.disconnect(madeServers)
-            throw error
-        }
-        let servers = madeServers
-        return try await ensuring({ await Self.disconnect(servers) }) {
-            try await body(mounted)
-        }
-    }
-
-    /// Disconnects each server in `servers`, one after the other.
-    ///
-    /// - Parameter servers: The servers to disconnect.
-    private static func disconnect(_ servers: [MCPServer]) async {
-        for server in servers {
-            await server.disconnect()
-        }
+        try await LargeCatalogSurface.withMounted(
+            root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
+            shellStoreDirectoryName: Self.shellStoreDirectoryName,
+            makeServer: { name in MCPTestSupport.makeServer(name: name) },
+            body)
     }
 
     /// Runs one `searchTools` call over `registry` through a selection tier

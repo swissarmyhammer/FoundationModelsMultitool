@@ -21,7 +21,8 @@ import FoundationModelsMultitool
 /// `IntegrationTests` package.
 @Suite(
     "A file read on a bare LanguageModelSession",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct FilesBareSessionTests {
 

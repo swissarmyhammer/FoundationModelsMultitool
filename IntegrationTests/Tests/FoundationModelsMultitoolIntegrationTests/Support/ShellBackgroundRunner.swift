@@ -180,6 +180,7 @@ func runShellBackgroundScenario(name: String) async throws {
         let modelGate = try ShellCommandGate()
         let sweptGate = try ShellCommandGate()
         let answerEnded = ScenarioGate()
+        let command = shellBackgroundCommand(holdingOn: modelGate)
 
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface, and their own
@@ -197,18 +198,20 @@ func runShellBackgroundScenario(name: String) async throws {
         let watcher = Task {
             await observeShellRunPlane(
                 probe: probe, registry: registry, declaredJournalOp: declaredJournalOp,
-                answerEnded: answerEnded, sweptGate: sweptGate)
+                expectedCommand: command, answerEnded: answerEnded, sweptGate: sweptGate)
         }
         let start = Date()
         let answer: StreamedAnswer
         do {
-            answer = try await streamAnswer(
-                of: session, prompt: shellBackgroundPrompt(starting: shellBackgroundCommand(holdingOn: modelGate)))
+            answer = try await streamAnswer(of: session, prompt: shellBackgroundPrompt(starting: command))
         } catch {
             answerEnded.open()
+            // The cancel ends each wait of the watcher, and the watcher is
+            // awaited, thus it does not run after the scenario (test rule
+            // T1). Closed on this path too, before the fixture checks the
+            // handles of the profile.
             watcher.cancel()
-            // Closed on this path too, before the fixture checks the handles
-            // of the profile.
+            _ = await watcher.value
             await session.close()
             throw error
         }
@@ -311,6 +314,15 @@ struct ShellRunPlaneObservation: Sendable {
     /// run plane (card `^6nnykct`).
     var executeRunToken: String?
 
+    /// The command that the prompt asks the model to start: the scenario
+    /// command.
+    let scenarioCommand: String
+
+    /// The command line that the model typed for its `tools.shell.execute`
+    /// run, as the probe sandbox kept it, or `nil` when no execute run
+    /// started.
+    var typedCommand: String?
+
     /// The model's own `runCode` run, which holds the shell run, as the run
     /// plane reported it, or `nil` when it never reached the plane.
     var backgroundRun: BackgroundShellRun?
@@ -352,30 +364,39 @@ struct ShellRunPlaneObservation: Sendable {
 ///   the task of the body, and the shell run is inside that body. Thus one
 ///   read after the context came is enough.
 /// - The live output comes with the event of the store
-///   (`ShellState.waitForStoredLines`).
+///   (`ShellState.waitForStoredLines`): the first stored line, or the end of
+///   the run. The run ends only by the cancel that comes after this step,
+///   thus the step first examines the command that the run got (test rule
+///   T1: a check before the wait). Only ``shellBackgroundCommand(holdingOn:)``
+///   is certain to write a line before it waits. A run with any other command
+///   gets no live read, and the `getLinesReadsLiveRun` check fails at once,
+///   in place of a wait that has no end. Its message names the command that
+///   the model typed and the scenario command.
 ///
 /// A step that cannot read leaves its readings unset, and the verdict says
 /// which one stopped.
 ///
 /// - Parameters:
 ///   - probe: the sandbox the shell capability was built with, which hands over
-///     the ambient context of each `tools.shell.execute` run.
+///     the ambient context and the command of each `tools.shell.execute` run.
 ///   - registry: the built registry, whose `tools` hold the live
 ///     `tools.shell.getLines` verb over the same store.
 ///   - declaredJournalOp: the op the registration site declared for
 ///     `tools.shell.execute`, which the swept run stands under.
+///   - expectedCommand: the command the prompt asks the model to start.
 ///   - answerEnded: the gate the runner opens when the answer ended.
 ///   - sweptGate: the FIFO the command of the swept run waits on.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
     probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?,
-    answerEnded: ScenarioGate, sweptGate: ShellCommandGate
+    expectedCommand: String, answerEnded: ScenarioGate, sweptGate: ShellCommandGate
 ) async -> ShellRunPlaneObservation {
-    var observation = ShellRunPlaneObservation()
+    var observation = ShellRunPlaneObservation(scenarioCommand: expectedCommand)
 
     guard let context = await firstShellRunContext(of: probe, orAfter: answerEnded) else { return observation }
     let token = context.completionToken
     observation.executeRunToken = token
+    observation.typedCommand = probe.command(ofRun: token)
 
     // The run plane `status()` reports. `MultiTool`'s `status()` global is
     // `ToolContext.backgroundRuns()` rendered as JS objects — see
@@ -387,8 +408,10 @@ private func observeShellRunPlane(
         tool: background.tool, op: background.op, kind: background.kind,
         completionToken: background.completionToken)
 
-    observation.liveLines = await liveOutput(of: token, in: registry)
-    observation.childProcessGroup = processGroup(in: observation.liveLines)
+    if isScenarioCommand(observation.typedCommand, expected: expectedCommand) {
+        observation.liveLines = await liveOutput(of: token, in: registry)
+        observation.childProcessGroup = processGroup(in: observation.liveLines)
+    }
 
     // Started BEFORE the cancel of `cancelSnippetRun(observed:probe:)`, so the
     // session certainly holds a background shell run when `close()` sweeps:
@@ -398,6 +421,20 @@ private func observeShellRunPlane(
         under: context, alongside: background.completionToken, in: registry, op: declaredJournalOp,
         holdingOn: sweptGate)
     return observation
+}
+
+/// Whether the model typed the scenario command.
+///
+/// The probe keeps the command line as the shell got it, thus whitespace at
+/// the two ends is not part of the comparison.
+///
+/// - Parameters:
+///   - typed: the command line that the model typed, or `nil` when no
+///     command was typed.
+///   - expected: the scenario command.
+/// - Returns: `true` only when the model typed the scenario command.
+private func isScenarioCommand(_ typed: String?, expected: String) -> Bool {
+    typed?.trimmingCharacters(in: .whitespacesAndNewlines) == expected
 }
 
 /// The ambient context of the model's first shell run, or `nil` when the answer
@@ -715,6 +752,29 @@ private let shellChildGoneCheckName = "childProcessGone"
 /// terminal event for the swept run.
 private let shellJournaledTerminalCheckName = "oneJournaledTerminal"
 
+/// The failure message of the `getLinesReadsLiveRun` check.
+///
+/// The live read runs only for the scenario command (see
+/// `observeShellRunPlane`). Thus when the model typed a different command, or
+/// typed no command, the message names the command that the model typed and
+/// the scenario command. A reader then sees at once that the cause is the
+/// choice of the model, not the tool.
+///
+/// - Parameter plane: what the harness read off the run plane.
+/// - Returns: the failure message.
+private func liveOutputFailureMessage(for plane: ShellRunPlaneObservation) -> String {
+    guard let typed = plane.typedCommand else {
+        return "the model typed no command, thus not the scenario command `\(plane.scenarioCommand)`; "
+            + "the live read runs only for the scenario command"
+    }
+    guard isScenarioCommand(typed, expected: plane.scenarioCommand) else {
+        return "the model typed `\(typed)`, not the scenario command `\(plane.scenarioCommand)`; "
+            + "the live read runs only for the scenario command"
+    }
+    return "expected tools.shell.getLines to read the live run's output under the same "
+        + "completion token, and it read \(plane.liveLines)"
+}
+
 /// Grades one shell background run into the conditions its verdict is the
 /// conjunction of.
 ///
@@ -763,9 +823,7 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
         ScenarioCheck(
             name: shellLiveOutputCheckName,
             held: plane.childProcessGroup != nil,
-            failureMessage:
-                "expected tools.shell.getLines to read the live run's output under the same "
-                + "completion token, and it read \(plane.liveLines)"
+            failureMessage: liveOutputFailureMessage(for: plane)
         ),
         ScenarioCheck(
             name: snippetCancelCheckName,

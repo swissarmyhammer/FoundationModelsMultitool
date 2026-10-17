@@ -81,7 +81,8 @@ private let noDescriptionQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated searchTools discovery over a surface of tools with no description",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct NoDescriptionSurfaceDiscoveryTests {
     @Test("the shipped text for a tool with no description gives answers of real catalog paths, one time each")
@@ -91,29 +92,33 @@ struct NoDescriptionSurfaceDiscoveryTests {
         ) { fixture in
             // The mount stands in the `MCPTestServer` product, the same one
             // the over-budget suites read, with the description turned off.
-            let mounted = try await makeLargeCatalogSurface(
+            // It disconnects each server of the mount when the body ends,
+            // also when the body throws.
+            try await LargeCatalogSurface.withMounted(
                 root: LiveRouterFixture.makeTempDir(),
                 shellStoreDirectoryName: noDescriptionShellStoreDirectoryName,
                 domains: [noDescriptionDomain],
-                describing: false)
-            let entries = mounted.registry.surface.entries
-            let selection = try #require(
-                try SearchToolsTool.makeSelection(
-                    fixture.discoverySeams.selection, ids: entries.map(\.path)),
-                "the profile resolved no librarian, so no selection could be measured"
-            )
-            reportGatedResult(
-                scenario: noDescriptionScenarioName,
-                line: "entries=\(entries.count) domain=\(noDescriptionDomain.serverName) "
-                    + "queries=\(noDescriptionQueries.count)")
-            let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
-            check.expectEveryDeclaredPathIsInTheCatalog(of: noDescriptionQueries)
+                describing: false
+            ) { mounted in
+                let entries = mounted.registry.surface.entries
+                let selection = try #require(
+                    try SearchToolsTool.makeSelection(
+                        fixture.discoverySeams.selection, ids: entries.map(\.path)),
+                    "the profile resolved no librarian, so no selection could be measured"
+                )
+                reportGatedResult(
+                    scenario: noDescriptionScenarioName,
+                    line: "entries=\(entries.count) domain=\(noDescriptionDomain.serverName) "
+                        + "queries=\(noDescriptionQueries.count)")
+                let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
+                check.expectEveryDeclaredPathIsInTheCatalog(of: noDescriptionQueries)
 
-            let searcher = MetadataSearcher(
-                items: entries, mode: .selection, embedder: nil, selection: selection)
-            let group = try await measure(through: searcher, limit: check.limit)
-            check.expectNoFault(in: group, answering: noDescriptionQueries)
-            withExtendedLifetime(mounted.servers) {}
+                let searcher = MetadataSearcher(
+                    items: entries, mode: .selection, embedder: nil, selection: selection)
+                let group = try await measure(through: searcher, limit: check.limit)
+                check.expectNoFault(in: group, answering: noDescriptionQueries)
+                withExtendedLifetime(mounted.servers) {}
+            }
         }
     }
 }

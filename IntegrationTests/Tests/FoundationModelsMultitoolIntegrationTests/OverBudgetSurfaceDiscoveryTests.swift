@@ -86,7 +86,8 @@ private let overBudgetQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated searchTools discovery over a surface above the selection budget",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct OverBudgetSurfaceDiscoveryTests {
     @Test("a surface above the budget answers spliced-once, unique, in-limit matches from its slices")
@@ -94,41 +95,44 @@ struct OverBudgetSurfaceDiscoveryTests {
         try await withLiveRouterFixture(name: overBudgetScenarioName, profile: plumbingProbeProfile) { fixture in
             // The mount stands in the `MCPTestServer` product, which the root
             // package's `OverBudgetSelectionOrderTests` calls too — see
-            // `makeLargeCatalogSurface(root:shellStoreDirectoryName:)`.
-            let mounted = try await makeLargeCatalogSurface(
+            // `LargeCatalogSurface.withMounted`. It disconnects each server
+            // of the mount when the body ends, also when the body throws.
+            try await LargeCatalogSurface.withMounted(
                 root: LiveRouterFixture.makeTempDir(),
-                shellStoreDirectoryName: overBudgetShellStoreDirectoryName)
-            // The production mount, never a reimplementation of its wiring:
-            // the same call a Router host makes, with the profile's
-            // flash slot as the librarian and its embedding handle beside it,
-            // through the same `RouterDiscoverySeams` adapter.
-            let seams = fixture.discoverySeams
-            let searchTools = try #require(
-                mounted.registry
-                    .makeSessionTools(selection: seams.selection, embedder: seams.embedder)
-                    .compactMap { $0 as? SearchToolsTool }
-                    .first
-            )
-            reportOverBudgetCatalogSize(of: mounted.registry)
-            #expect(
-                selectionPrefix(of: mounted.registry).count > SelectionConfig.defaultCapacityCharacterLimit,
-                "the surface is at or under the budget, so this suite measures the under-budget path"
-            )
-
-            let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
-            let clock = ContinuousClock()
-            for query in overBudgetQueries {
-                let start = clock.now
-                let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query))
-                let elapsed = clock.now - start
-
-                let paths = catalogPaths(in: feedback)
-                report(
-                    overBudgetLine: "matches=\(paths.count) elapsed=\(elapsed) paths=\(paths) query=\"\(query)\""
+                shellStoreDirectoryName: overBudgetShellStoreDirectoryName
+            ) { mounted in
+                // The production mount, never a reimplementation of its wiring:
+                // the same call a Router host makes, with the profile's
+                // flash slot as the librarian and its embedding handle beside it,
+                // through the same `RouterDiscoverySeams` adapter.
+                let seams = fixture.discoverySeams
+                let searchTools = try #require(
+                    mounted.registry
+                        .makeSessionTools(selection: seams.selection, embedder: seams.embedder)
+                        .compactMap { $0 as? SearchToolsTool }
+                        .first
                 )
-                check.expectNoFault(in: paths, answering: query)
+                reportOverBudgetCatalogSize(of: mounted.registry)
+                #expect(
+                    selectionPrefix(of: mounted.registry).count > SelectionConfig.defaultCapacityCharacterLimit,
+                    "the surface is at or under the budget, so this suite measures the under-budget path"
+                )
+
+                let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
+                let clock = ContinuousClock()
+                for query in overBudgetQueries {
+                    let start = clock.now
+                    let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query))
+                    let elapsed = clock.now - start
+
+                    let paths = catalogPaths(in: feedback)
+                    report(
+                        overBudgetLine: "matches=\(paths.count) elapsed=\(elapsed) paths=\(paths) query=\"\(query)\""
+                    )
+                    check.expectNoFault(in: paths, answering: query)
+                }
+                withExtendedLifetime(mounted.servers) {}
             }
-            withExtendedLifetime(mounted.servers) {}
         }
     }
 }

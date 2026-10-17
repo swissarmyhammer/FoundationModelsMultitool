@@ -20,6 +20,12 @@ import Synchronization
 // package's `RegisteredJournalOpTests` already reads the journal op through this
 // same seam, with the same shape of probe.
 //
+// The probe keeps the context in `wrap`, and not in `preflight`. `wrap` runs in
+// the same call and the same task, after `ShellState.startCommand` recorded the
+// run and before the spawn, and it is the one step that sees the command line.
+// Thus the event of a run carries the command that the run got, and a harness
+// can examine the command before it waits on the output of the run.
+//
 // The seam is the shipped configuration and not a back door:
 // `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)` takes
 // the sandbox a host configures, so a scenario that passes this probe is running
@@ -41,11 +47,19 @@ import Synchronization
 /// copy the caller never reads.
 final class ShellRunContextProbe: CommandSandbox {
 
-    /// Everything that `preflight` and the waiters change.
+    /// One run that consulted this probe.
+    private struct ObservedRun {
+        /// The ambient context of the run.
+        let context: ToolContext
+
+        /// The command line of the run: the last argument that the shell got.
+        let command: String?
+    }
+
+    /// Everything that `wrap` and the waiters change.
     private struct State {
-        /// The ambient context of each run that consulted this probe, in call
-        /// order.
-        var contexts: [ToolContext] = []
+        /// Each run that consulted this probe, in call order.
+        var runs: [ObservedRun] = []
 
         /// Each wait of ``waitForFirstContext()`` that did not end, by id.
         var waiters: [Int: CheckedContinuation<ToolContext, any Error>] = [:]
@@ -79,7 +93,21 @@ final class ShellRunContextProbe: CommandSandbox {
     /// recorded: it has no completion token, so it names nothing on the run
     /// plane and there is nothing for a scenario to read it by.
     var observedContexts: [ToolContext] {
-        state.withLock { $0.contexts }
+        state.withLock { $0.runs.map(\.context) }
+    }
+
+    /// The command line that the run `completionToken` got, or `nil` when no
+    /// such run consulted this probe.
+    ///
+    /// The command is known when ``waitForFirstContext()`` returns the context
+    /// of the run: the probe keeps both in the same step.
+    ///
+    /// - Parameter completionToken: The completion token of the run.
+    /// - Returns: The command line of the run.
+    func command(ofRun completionToken: String) -> String? {
+        state.withLock { current in
+            current.runs.first { $0.context.completionToken == completionToken }?.command
+        }
     }
 
     /// Waits until a run consulted this probe, and answers the context of the
@@ -100,8 +128,8 @@ final class ShellRunContextProbe: CommandSandbox {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ToolContext, any Error>) in
                 let start = state.withLock { current -> WaitStart in
                     let wasCancelled = current.cancelled.remove(id) != nil
-                    if let first = current.contexts.first {
-                        return .ready(first)
+                    if let first = current.runs.first {
+                        return .ready(first.context)
                     }
                     if wasCancelled {
                         return .cancelled
@@ -130,29 +158,17 @@ final class ShellRunContextProbe: CommandSandbox {
         }
     }
 
-    /// Keeps the ambient context of this run, ends each wait of
-    /// ``waitForFirstContext()``, and proves nothing about the confinement.
+    /// Keeps the ambient context and the command line of this run, ends each
+    /// wait of ``waitForFirstContext()``, and gives back `shellPath` and
+    /// `shellArguments` unchanged.
     ///
-    /// - Parameters:
-    ///   - workingDirectory: Not read — nothing is proved.
-    ///   - temporaryDirectory: Not read — nothing is proved.
-    func preflight(workingDirectory: String, temporaryDirectory: String) async {
-        guard let context = ToolContext.current else { return }
-        let (first, waiting) = state.withLock { current -> (ToolContext, [CheckedContinuation<ToolContext, any Error>]) in
-            current.contexts.append(context)
-            defer { current.waiters.removeAll() }
-            return (current.contexts[0], Array(current.waiters.values))
-        }
-        for waiter in waiting {
-            waiter.resume(returning: first)
-        }
-    }
-
-    /// Gives back `shellPath` and `shellArguments` unchanged.
+    /// The probe takes the default `preflight` of `CommandSandbox`, which does
+    /// nothing: it proves nothing about the confinement.
     ///
     /// - Parameters:
     ///   - shellPath: The absolute path of the shell to run.
-    ///   - shellArguments: The arguments of that shell.
+    ///   - shellArguments: The arguments of that shell. The last one is the
+    ///     command line (`sh -c <command>`).
     ///   - workingDirectory: Not read — no confinement is applied.
     ///   - temporaryDirectory: Not read — no confinement is applied.
     /// - Returns: The shell invocation as it came in.
@@ -162,6 +178,24 @@ final class ShellRunContextProbe: CommandSandbox {
         workingDirectory: String,
         temporaryDirectory: String
     ) -> SandboxedInvocation {
-        SandboxedInvocation(executable: shellPath, arguments: shellArguments)
+        if let context = ToolContext.current {
+            record(ObservedRun(context: context, command: shellArguments.last))
+        }
+        return SandboxedInvocation(executable: shellPath, arguments: shellArguments)
+    }
+
+    /// Keeps `run`, and ends each wait of ``waitForFirstContext()`` with the
+    /// context of the first run.
+    ///
+    /// - Parameter run: The run that consulted this probe.
+    private func record(_ run: ObservedRun) {
+        let (first, waiting) = state.withLock { current -> (ToolContext, [CheckedContinuation<ToolContext, any Error>]) in
+            current.runs.append(run)
+            defer { current.waiters.removeAll() }
+            return (current.runs[0].context, Array(current.waiters.values))
+        }
+        for waiter in waiting {
+            waiter.resume(returning: first)
+        }
     }
 }

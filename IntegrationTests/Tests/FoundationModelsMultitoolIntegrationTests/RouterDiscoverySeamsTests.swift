@@ -14,7 +14,7 @@ import Testing
 /// and knows nothing of Router. This adapter is where the suite turns the
 /// Router handles of a resolved profile into those seams. Every Router handle
 /// here comes from `makeStubProfile()`, so no test loads a model.
-@Suite("RouterDiscoverySeams")
+@Suite("RouterDiscoverySeams", .ownsTemporaryDirectories)
 struct RouterDiscoverySeamsTests {
     /// The catalog ids a test gives the selection factory.
     private static let catalogIDs = ["getTrip", "github.createIssue"]

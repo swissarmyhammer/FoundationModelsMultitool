@@ -39,14 +39,18 @@ struct MCPElicitationBareSessionTests {
             elicitationHandler: { _ in mcpElicitationBareSessionAnswer },
             userPresence: .interactive)
         try await server.connect(via: scripted.startOnInMemoryPair())
-        let entry = try #require(await server.tool(named: ScriptedServer.elicitEchoToolName))
-        let tool = MCPTool(entry: entry, server: server)
 
-        try await runBareSessionScenario(
-            named: mcpElicitationBareSessionScenarioName,
-            tools: [tool],
-            prompt: mcpElicitationBareSessionPrompt,
-            marker: mcpElicitationBareSessionMarker)
+        // The server is disconnected when the scenario ends, also when it
+        // throws or a requirement fails (test rule T1).
+        try await DisconnectScope.disconnecting([server]) {
+            let entry = try #require(await server.tool(named: ScriptedServer.elicitEchoToolName))
+            let tool = MCPTool(entry: entry, server: server)
+            try await runBareSessionScenario(
+                named: mcpElicitationBareSessionScenarioName,
+                tools: [tool],
+                prompt: mcpElicitationBareSessionPrompt,
+                marker: mcpElicitationBareSessionMarker)
+        }
         withExtendedLifetime(scripted) {}
     }
 }

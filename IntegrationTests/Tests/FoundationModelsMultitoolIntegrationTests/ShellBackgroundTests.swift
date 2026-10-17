@@ -38,7 +38,8 @@ import Testing
 /// without it.
 @Suite(
     "A shell command on the background path (phase-2)",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
     // No test checks the speed of the machine (card `^tm4x2hp`).
     //
     // No step waits on time. When the answer never gets to

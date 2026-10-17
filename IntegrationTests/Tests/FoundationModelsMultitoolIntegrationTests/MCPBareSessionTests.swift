@@ -35,14 +35,18 @@ struct MCPBareSessionTests {
         await scripted.addEchoTool()
         let server = MCPServer(name: mcpBareSessionServerName, userPresence: .interactive)
         try await server.connect(via: scripted.startOnInMemoryPair())
-        let entry = try #require(await server.tool(named: ScriptedServer.echoToolName))
-        let tool = MCPTool(entry: entry, server: server)
 
-        try await runBareSessionScenario(
-            named: mcpBareSessionScenarioName,
-            tools: [tool],
-            prompt: mcpBareSessionPrompt,
-            marker: mcpBareSessionMarker)
+        // The server is disconnected when the scenario ends, also when it
+        // throws or a requirement fails (test rule T1).
+        try await DisconnectScope.disconnecting([server]) {
+            let entry = try #require(await server.tool(named: ScriptedServer.echoToolName))
+            let tool = MCPTool(entry: entry, server: server)
+            try await runBareSessionScenario(
+                named: mcpBareSessionScenarioName,
+                tools: [tool],
+                prompt: mcpBareSessionPrompt,
+                marker: mcpBareSessionMarker)
+        }
         withExtendedLifetime(scripted) {}
     }
 }

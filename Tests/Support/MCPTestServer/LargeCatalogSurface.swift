@@ -27,6 +27,68 @@ public struct LargeCatalogSurface: Sendable {
 
     /// The scripted servers the registry's MCP verbs are served by.
     public let servers: [ScriptedServer]
+
+    /// The `MCPServer` of one domain that the mount makes by default: the
+    /// public initializer with `.interactive` presence, because a person can
+    /// answer in this surface. Its connect attempts are timed on the real
+    /// clock.
+    ///
+    /// - Parameter name: The server name of the domain.
+    /// - Returns: The server, not yet connected.
+    public static func makeInteractiveServer(name: String) -> MCPServer {
+        MCPServer(name: name, userPresence: .interactive)
+    }
+
+    /// Mounts the large surface, gives it to `body`, and then disconnects each
+    /// `MCPServer` of the mount, also when `body` throws (test rule T1).
+    ///
+    /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:domains:describing:makeServer:)``
+    /// does not return its connected servers. Thus this function wraps
+    /// `makeServer` and records each server that it makes. When the mount
+    /// throws, this function disconnects the servers that it made before the
+    /// throw.
+    ///
+    /// - Parameters:
+    ///   - root: The session root, as the mount takes it. The caller owns that
+    ///     directory and removes it when its test ends.
+    ///   - shellStoreDirectoryName: The name of the shell store directory, as
+    ///     the mount takes it.
+    ///   - domains: The domains to connect a server for, as the mount takes
+    ///     them.
+    ///   - describing: Whether each connected verb publishes a description,
+    ///     as the mount takes it.
+    ///   - makeServer: Builds the `MCPServer` of each domain, as the mount
+    ///     takes it.
+    ///   - body: The work of the test on the mount.
+    /// - Returns: What `body` returned.
+    /// - Throws: What the mount or `body` throws, after each disconnect.
+    public static func withMounted<Result>(
+        root: URL,
+        shellStoreDirectoryName: String,
+        domains: [LargeCatalogDomain] = LargeCatalogDomain.allCases,
+        describing: Bool = true,
+        makeServer: (_ name: String) -> MCPServer = LargeCatalogSurface.makeInteractiveServer(name:),
+        _ body: (LargeCatalogSurface) async throws -> Result
+    ) async throws -> Result {
+        var madeServers: [MCPServer] = []
+        let mounted: LargeCatalogSurface
+        do {
+            mounted = try await makeLargeCatalogSurface(
+                root: root, shellStoreDirectoryName: shellStoreDirectoryName, domains: domains,
+                describing: describing,
+                makeServer: { name in
+                    let server = makeServer(name)
+                    madeServers.append(server)
+                    return server
+                })
+        } catch {
+            await DisconnectScope.disconnect(madeServers)
+            throw error
+        }
+        return try await DisconnectScope.disconnecting(madeServers) {
+            try await body(mounted)
+        }
+    }
 }
 
 /// Mounts the large surface: the files and shell capabilities of a host, plus
@@ -51,11 +113,10 @@ public struct LargeCatalogSurface: Sendable {
 ///     see ``ScriptedServer/addLargeCatalogTools(of:describing:)``. `false`
 ///     builds the surface of a server that gives none.
 ///   - makeServer: builds the `MCPServer` of each domain, not yet connected,
-///     from the server name of the domain. The default is the public
-///     initializer with `.interactive` presence, because a person can
-///     answer in this surface. Its connect attempts are timed on the real
-///     clock. A unit test passes a maker whose connect-attempt clock it
-///     holds, so no connect of the mount can time out on a busy machine.
+///     from the server name of the domain. The default is
+///     ``LargeCatalogSurface/makeInteractiveServer(name:)``. A unit test
+///     passes a maker whose connect-attempt clock it holds, so no connect of
+///     the mount can time out on a busy machine.
 /// - Returns: the registry and the servers behind it.
 /// - Throws: what the connect, the capability mounts or `buildRegistry()`
 ///   throws.
@@ -64,7 +125,7 @@ public func makeLargeCatalogSurface(
     shellStoreDirectoryName: String,
     domains: [LargeCatalogDomain] = LargeCatalogDomain.allCases,
     describing: Bool = true,
-    makeServer: (_ name: String) -> MCPServer = { name in MCPServer(name: name, userPresence: .interactive) }
+    makeServer: (_ name: String) -> MCPServer = LargeCatalogSurface.makeInteractiveServer(name:)
 ) async throws -> LargeCatalogSurface {
     var scriptedServers: [ScriptedServer] = []
     var connectedServers: [MCPServer] = []

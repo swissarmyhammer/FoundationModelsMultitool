@@ -300,7 +300,8 @@ private let retrievalTextGroups = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated retrieval-text measurement over the agent's files-and-shell surface",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct RetrievalTextSurfaceDiscoveryTests {
     @Test("every setting ranks only real catalog paths, one time each, for every query")

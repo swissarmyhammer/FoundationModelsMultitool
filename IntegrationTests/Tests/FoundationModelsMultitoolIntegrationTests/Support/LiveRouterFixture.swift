@@ -872,27 +872,54 @@ struct LiveRouterFixture {
     private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
 
     /// Creates a unique temporary directory, for state that must NOT outlive
-    /// the run — a capability store a scenario configures for the surface it
+    /// the test — a capability store a scenario configures for the surface it
     /// mounts.
+    ///
+    /// The test that runs now owns the directory before it exists, and the
+    /// `ownsTemporaryDirectories` trait of its suite removes it when the test
+    /// ends, also when the test throws (test rule T1). A test with no such
+    /// trait records an issue, and its directory stays.
     static func makeTempDir() -> URL {
-        makeUniqueDirectory(under: FileManager.default.temporaryDirectory)
+        let dir = uniqueDirectory(under: FileManager.default.temporaryDirectory)
+        currentScratchFolders().own(dir)
+        return createdDirectory(dir)
     }
 
     /// Creates a unique recordings directory under ``recordingsRoot``, for
     /// the one output that must outlive the run: the recorded transcripts a
     /// hang investigation reads.
     static func makeRecordingsDir() -> URL {
-        makeUniqueDirectory(under: recordingsRoot)
+        createdDirectory(uniqueDirectory(under: recordingsRoot))
     }
 
-    /// Creates one uniquely named directory under `parent`, creating `parent`
-    /// itself when it is not there yet.
+    /// The folders of the test that runs now.
+    ///
+    /// - Returns: `ScratchFolders.current`, or a new set of folders that no
+    ///   scope removes, after an issue, when no `ownsTemporaryDirectories`
+    ///   trait holds the test.
+    private static func currentScratchFolders() -> ScratchFolders {
+        guard let folders = ScratchFolders.current.get() else {
+            Issue.record(
+                "a test made a temporary directory with no owner: put the ownsTemporaryDirectories trait on its suite")
+            return ScratchFolders()
+        }
+        return folders
+    }
+
+    /// One uniquely named directory path under `parent`, which nothing made
+    /// yet.
     ///
     /// - Parameter parent: the directory the new directory stands in.
-    /// - Returns: the created directory.
-    private static func makeUniqueDirectory(under parent: URL) -> URL {
-        let dir = parent
-            .appendingPathComponent("\(fixtureDirectoryPrefix)\(UUID().uuidString)", isDirectory: true)
+    /// - Returns: the path of the new directory.
+    private static func uniqueDirectory(under parent: URL) -> URL {
+        parent.appendingPathComponent("\(fixtureDirectoryPrefix)\(UUID().uuidString)", isDirectory: true)
+    }
+
+    /// Creates `dir`, and each parent of it that is not there yet.
+    ///
+    /// - Parameter dir: the directory to create.
+    /// - Returns: `dir`, unchanged.
+    private static func createdDirectory(_ dir: URL) -> URL {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

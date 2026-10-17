@@ -103,7 +103,8 @@ let operationToolQueries = [
 /// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated operation tool: a real @Operation tool is found and called through runCode",
-    .serialized
+    .serialized,
+    .ownsTemporaryDirectories
 )
 struct OperationToolLiveTests {
     @Test("the notes verbs stand in the catalog beside the distractors, and each answer holds only catalog paths")
