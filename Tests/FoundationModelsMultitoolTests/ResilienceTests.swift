@@ -8,7 +8,8 @@ import Testing
 
 /// Coverage for the connection resilience of `MCPServer`: the backoff-retried
 /// connect, its exhaustion, the per-attempt timeout against a transport that
-/// hangs, the generation guard against a late attempt, the new client of
+/// hangs, a losing attempt that the connect neither cancels nor waits for,
+/// the generation guard against a late attempt, the new client of
 /// each attempt against a straggler, the teardown that ends each straggler
 /// and waits for each pending attempt, and the state machine a host reads.
 ///
@@ -313,19 +314,41 @@ struct ResilienceTests {
     private func orphanStraggler(
         over gated: GatedConnectTransport, on server: MCPServer, attemptClock: GatedClock
     ) async throws {
-        let firstAttempt = try await EventRace.watch(
-            { try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt) },
-            awaiting: {
-                try? await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout)
-                try? await gated.connectArrival.wait()
-            },
-            requiring: { attemptClock.recordedSleeps.count >= Self.oneArmedTimeout && gated.connectArrival.isOpen },
-            orFail: "the first attempt ended before it armed its timeout and held its connect"
-        ).task
+        let firstAttempt = try await startAttemptHeld(at: gated.connectArrival, attemptClock: attemptClock) {
+            try await server.connect(via: gated, backoffPolicy: Self.oneGatedAttempt)
+        }.task
         attemptClock.open(sleepsOf: Self.gatedConnectTimeout)
         await #expect(throws: MCPServerError.self) {
             try await firstAttempt.value
         }
+    }
+
+    /// Starts `connect`, and waits until its first attempt armed its timeout
+    /// on `attemptClock` and held its connect: the connect of the transport
+    /// opened `arrival`. The wait also ends when the connect ends, and the
+    /// test then fails at once.
+    ///
+    /// - Parameters:
+    ///   - arrival: The gate that the connect of the transport of the
+    ///     attempt opens before it holds.
+    ///   - attemptClock: The clock the timeout of the attempt sleeps on.
+    ///   - connect: Starts the connect of one attempt.
+    /// - Returns: The started connect.
+    /// - Throws: When the connect ended before both events, or when the task
+    ///   is cancelled first.
+    private func startAttemptHeld(
+        at arrival: TestGate, attemptClock: GatedClock,
+        connect: @escaping @Sendable () async throws -> Void
+    ) async throws -> EventRace.Watched<Void> {
+        try await EventRace.watch(
+            connect,
+            awaiting: {
+                try? await attemptClock.waitForRecordedSleeps(atLeast: Self.oneArmedTimeout)
+                try? await arrival.wait()
+            },
+            requiring: { attemptClock.recordedSleeps.count >= Self.oneArmedTimeout && arrival.isOpen },
+            orFail: "the first attempt ended before it armed its timeout and held its connect"
+        )
     }
 
     /// Records a failure unless `server` is `.connecting` — the state an
@@ -478,6 +501,65 @@ struct ResilienceTests {
             try await connecting.value
         }
         #expect(attemptClock.recordedSleeps == [Self.hangingConnectTimeout])
+    }
+
+    // MARK: - A losing connect attempt is not awaited
+
+    /// The timeout wins the race of the one attempt. The connect must then
+    /// return while the losing attempt still holds its connect: nothing
+    /// cancels the loser, and nothing waits for it.
+    ///
+    /// The order is fixed, and no load can change it (card `^kdtrmhv`):
+    ///
+    /// 1. The attempt holds its connect, and arms its timeout.
+    /// 2. The test ends the timeout, thus the timeout wins the race.
+    /// 3. The test waits for the first of three events: the connect ended,
+    ///    the loser recorded a cancel, or the loser ended. The connect must
+    ///    end first, and the loser must still hold.
+    ///
+    /// A change that cancels the loser and then waits for it opens the
+    /// cancel gate of the loser, and the test fails at once. A cancel does
+    /// not end the hold of the loser, thus the cancel is the event, also
+    /// when the change waits for the loser. A change that ends the loser
+    /// before the return opens its end gate, and the test fails at once. The
+    /// teardown releases the loser on each path, thus the connect and the
+    /// test then end.
+    ///
+    /// A change that waits for the loser and does not cancel it makes this
+    /// test hang. No form of this test can make that change fail without a
+    /// hang. Each event that the test can see before such a wait also comes
+    /// before the return of the connect as it is now, and no event comes
+    /// after such a wait until the loser ends.
+    @Test
+    func aLosingConnectAttemptIsNotAwaited() async throws {
+        let loser = HeldConnectTransport()
+        let attemptClock = GatedClock()
+        let server = makeServer(connectAttemptClock: attemptClock)
+
+        // The teardown releases the loser on each path, and waits until its
+        // connect ended.
+        try await ensuring({ await loser.releaseAndWaitForEnd() }) {
+            // 1. The attempt holds its connect. The wait also ends when the
+            // connect ends.
+            let connecting = try await startAttemptHeld(at: loser.connectArrival, attemptClock: attemptClock) {
+                try await server.connect(via: loser, backoffPolicy: Self.oneGatedAttempt)
+            }
+
+            // 2. The timeout wins the race.
+            attemptClock.open()
+
+            // 3. The connect returns first. The wait also ends when the loser
+            // records a cancel or ends.
+            try await EventRace.requireOpen(
+                connecting.ended, orFirstOf: { try? await loser.connectCancel.wait() },
+                { try? await loser.connectEnd.wait() },
+                orFail: "the connect did not return while the losing attempt held its connect")
+            #expect(!loser.connectCancel.isOpen, "the connect cancelled the losing attempt")
+            #expect(!loser.connectEnd.isOpen, "the losing attempt ended before the connect returned")
+            await expectBackoffExhausted(after: Self.singleAttempt) {
+                try await connecting.task.value
+            }
+        }
     }
 
     /// The gate holds the attempt in its connect, and the test ends the
