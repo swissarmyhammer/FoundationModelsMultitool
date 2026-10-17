@@ -160,6 +160,32 @@ struct MCPElicitationTests {
     /// product, so the test compiles on the code before the change.
     private static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
 
+    /// The reason of the decline of a `requestedSchema` outside the
+    /// restricted subset. The test spells it out, and does not read the
+    /// constant of the product, so the test compiles on the code before the
+    /// change.
+    private static let schemaOutsideTheSubsetReason =
+        "the requested schema is outside the supported subset of the form schema"
+
+    /// The reason of the decline of a URL-mode request whose `url` is not a
+    /// valid URL, spelled out for the same reason.
+    private static let invalidURLReason = "the url of the URL-mode request is not a valid URL"
+
+    /// The reason of the cancel of a request that arrives after the
+    /// `MCPServer` of the client is gone, spelled out for the same reason.
+    private static let hostGoneReason = "the host side of the MCP connection no longer exists"
+
+    /// The reason of the cancel of a question that the calling run threw on,
+    /// spelled out for the same reason.
+    private static let runFailedReason = "the calling run failed to ask the question"
+
+    /// The name of the URL-mode tool whose `url` is not a valid URL.
+    private static let invalidURLToolName = "elicitInvalidURL"
+
+    /// The `url` of ``invalidURLToolName``: an empty string, which
+    /// `URL(string:)` does not read as a URL.
+    private static let invalidURL = ""
+
     /// A URL-mode `elicitation/create` with the message, the link and the
     /// wire id of the loopback URL tool.
     private static let urlElicitation = CreateElicitation.Parameters.url(
@@ -1367,16 +1393,27 @@ struct MCPElicitationTests {
 
     // MARK: - The restricted form schema
 
-    @Test("a requestedSchema outside the restricted subset is declined before it reaches the run")
-    func aSchemaOutsideTheSubsetIsDeclined() async throws {
+    /// A fresh scripted server that serves ``nestedToolName``, whose
+    /// `requestedSchema` nests an object, beside a server named
+    /// ``serverName`` connected against it in memory.
+    ///
+    /// - Returns: The scripted server, which the test keeps alive, and the
+    ///   connected server.
+    /// - Throws: What the connect throws.
+    private static func connectedForTheNestedSchema() async throws -> (scripted: ScriptedServer, server: MCPServer) {
         let scripted = ScriptedServer()
         await scripted.addElicitingTool(
-            named: Self.nestedToolName,
-            message: Self.nestedMessage,
+            named: nestedToolName,
+            message: nestedMessage,
             requestedSchema: Elicitation.RequestSchema(
-                properties: [Self.nestedFieldName: .object(["type": .string(Self.objectTypeName)])]))
-        let server = try await MCPTestSupport.connectedMCPServer(
-            to: scripted, over: .inMemory, name: Self.serverName)
+                properties: [nestedFieldName: .object(["type": .string(objectTypeName)])]))
+        let server = try await MCPTestSupport.connectedMCPServer(to: scripted, over: .inMemory, name: serverName)
+        return (scripted, server)
+    }
+
+    @Test("a requestedSchema outside the restricted subset is declined before it reaches the run")
+    func aSchemaOutsideTheSubsetIsDeclined() async throws {
+        let (scripted, server) = try await Self.connectedForTheNestedSchema()
         try await BoundRun.with { run in
             let result = try await ToolContext.$current.withValue(run.context) {
                 try await server.call(name: Self.nestedToolName, arguments: nil)
@@ -1386,6 +1423,98 @@ struct MCPElicitationTests {
             #expect(await recordedOperationEvents(of: run.stub).isEmpty)
         }
         withExtendedLifetime(scripted) {}
+    }
+
+    // MARK: - Each decline and cancel of Multitool gives a reason
+
+    /// The error of a calling run that fails to ask its question.
+    private struct FailedRun: Error {}
+
+    /// A decline that Multitool makes for a schema outside the subset tells
+    /// the server why, under the `reason` key of `_meta`. Before the fix, the
+    /// decline had no `_meta`, and only the log held the cause.
+    @Test("a requestedSchema outside the restricted subset reaches the server as decline with the reason")
+    func aSchemaOutsideTheSubsetDeclinesWithTheReason() async throws {
+        let (scripted, server) = try await Self.connectedForTheNestedSchema()
+        defer { Task { await server.disconnect() } }
+
+        _ = try await server.call(name: Self.nestedToolName, arguments: nil)
+
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .decline)
+        #expect(Self.reason(of: received) == .string(Self.schemaOutsideTheSubsetReason))
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// A decline that Multitool makes for a `url` that is not a valid URL
+    /// tells the server why. Before the fix, the decline had no `_meta`.
+    @Test("a URL-mode request whose url is not valid reaches the server as decline with the reason")
+    func anInvalidURLDeclinesWithTheReason() async throws {
+        let scripted = ScriptedServer()
+        await scripted.addURLElicitingTool(
+            named: Self.invalidURLToolName, message: ScriptedServer.elicitURLMessage, url: Self.invalidURL,
+            elicitationId: ScriptedServer.elicitURLElicitationId)
+        let server = try await MCPTestSupport.connectedMCPServer(to: scripted, over: .inMemory, name: Self.serverName)
+        defer { Task { await server.disconnect() } }
+
+        _ = try await server.call(name: Self.invalidURLToolName, arguments: nil)
+
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .decline)
+        #expect(Self.reason(of: received) == .string(Self.invalidURLReason))
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// The handler that an `MCPServer` registers on its client holds the
+    /// server weakly. A request that arrives after the server is gone gets a
+    /// cancel that tells the server why. Before the fix, the cancel had no
+    /// `_meta`.
+    ///
+    /// The order is fixed: the server registers its handler on a client of
+    /// the test, and the test releases the server. The test fails before
+    /// the connect when the server is not gone. Then the client calls the
+    /// eliciting tool, and disconnects also when the call throws.
+    @Test("a request that arrives after the MCPServer is gone reaches the server as cancel with the reason")
+    func aRequestAfterTheServerIsGoneCancelsWithTheReason() async throws {
+        let scripted = ScriptedServer()
+        await scripted.addLoopbackTools()
+        let client = MCP.Client(
+            name: Self.serverName, version: MCPServer.defaultClientVersion,
+            capabilities: MCPServer.clientCapabilities(for: .interactive))
+        weak var released: MCPServer?
+        do {
+            let server = MCPTestSupport.makeServer(name: Self.serverName)
+            await server.registerElicitationHandler(on: client)
+            released = server
+        }
+        try #require(released == nil, "the MCPServer stayed alive after its last reference went away")
+        let transport = try await scripted.startOnInMemoryPair()
+        _ = try await client.connect(transport: transport)
+
+        let call = Task { try await client.callTool(name: ScriptedServer.elicitEchoToolName) }
+        let outcome = await call.result
+        await client.disconnect()
+        _ = try outcome.get()
+
+        let received = await scripted.receivedElicitationResults.last
+        #expect(received?.action == .cancel)
+        #expect(Self.reason(of: received) == .string(Self.hostGoneReason))
+    }
+
+    /// A throw of the calling run answers a cancel that tells the server
+    /// why. `ToolContext.elicit(_:)` has no path that throws, thus the test
+    /// gives a throwing question to the seam of that call, and reads the
+    /// wire result that the handler returns to the server. Before the fix,
+    /// the cancel had no `_meta`.
+    @Test("a throw of the calling run gives the server a cancel with the reason")
+    func aThrowOfTheRunCancelsWithTheReason() async {
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
+
+        let response = await server.answerThroughRun { throw FailedRun() }
+
+        let result = MCPServer.wireResult(of: response)
+        #expect(result.action == .cancel)
+        #expect(Self.reason(of: result) == .string(Self.runFailedReason))
     }
 
     // MARK: - An unknown completion

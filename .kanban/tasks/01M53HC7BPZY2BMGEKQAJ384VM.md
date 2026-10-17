@@ -58,8 +58,32 @@ comments:
     - note: the build tool printed one message: "warning: missing creator for mutated node" for the mlx-swift_Cmlx.bundle product. It comes from a third-party package build step, not from our source.
     - next: review.
   timestamp: 2026-10-17T00:57:38.913127+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m53nvj1fsgvpzqawp22jfbje
+  text: |-
+    ### commit — changed
+    - evidence: 68add6a fix(mcp): end the context URL flow of an old connect generation on a disconnect
+    - next: review
+  timestamp: 2026-10-17T00:58:10.863273+00:00
+- actor: claude-code
+  id: 01m53p2a745rd6zfrswqgdxn38
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 68add6a). The engine reviewed 6 code files. It found 0 findings: 0 confirmed, 1 refuted, 7 attempted, 0 failed. The ignore rule (.reviewignore) removed 6 .kanban files from the scope. The description has no prior Review Findings section.
+    - next: The task is in done. The problem of a question from an old client after the generation moved is on ^fcvjb8j.
+  timestamp: 2026-10-17T01:01:52.228362+00:00
+- actor: claude-code
+  id: 01m53p2wnprndgq262fe0t7tk7
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 6 files (Extras 1f586a7; endOldContextElicitations with ToolContext.endElicitation)
+    - test: green — swift test, exit 0, 2432 passed, 0 failed, 0 skipped
+    - commit: 68add6a
+    - review: clean — 0 findings
+    - note: the "BLOCKED" text in the description is history; the Extras API is pushed and green.
+  timestamp: 2026-10-17T01:02:11.126054+00:00
+position_column: done
+position_ordinal: ffffff8880
 title: 'Group A (b): end the context URL flow of an old connect generation on a disconnect'
 ---
 Split from ^zjdtdfj (group A). Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10).

@@ -36,9 +36,9 @@
 // **The restricted form schema.** eventplan.md: "Our boundary enforces the
 // restricted form schema for each elicitor." The wire schema is decoded by
 // the `ElicitationRequestedSchema` of FoundationModelsExtras, which refuses a
-// nested object and
-// every type outside the subset; a request that fails that decode answers
-// `decline`, with a log line.
+// nested object and every type outside the subset; a request that fails that
+// decode answers `decline`, with `schemaOutsideTheSubsetReason` under the
+// `reason` key of `_meta`, and a log line.
 //
 // **URL mode is a three-message flow**, and both answerers hold the accept
 // until the flow ends. Under a context, the `RunPlane` keeps the run
@@ -90,13 +90,14 @@ extension MCPServer {
     /// `[weak self]`, as `registerNotificationHandler(_:on:handler:)`
     /// captures: the client retains the closure, and this actor retains the
     /// client. A request that arrives after this actor is gone answers
-    /// `cancel`, so the server never waits on a host that no longer exists.
+    /// `cancel` with ``hostGoneReason``, so the server never waits on a host
+    /// that no longer exists.
     ///
     /// - Parameter client: The client to register the handler on.
     func registerElicitationHandler(on client: MCP.Client) async {
         await client.withElicitationHandler { [weak self] parameters in
             guard let self else {
-                return MCPServer.wireResult(of: .cancel)
+                return MCPServer.wireResult(of: .cancel(reason: MCPServer.hostGoneReason))
             }
             return await self.answerElicitation(parameters: parameters)
         }
@@ -128,7 +129,7 @@ extension MCPServer {
         switch parameters {
         case .form(let form):
             guard let requestedSchema = decodeRestrictedSchema(form.requestedSchema) else {
-                return Self.wireResult(of: .decline)
+                return Self.wireResult(of: .decline(reason: Self.schemaOutsideTheSubsetReason))
             }
             let request = ElicitationRequest(
                 message: form.message, elicitationId: ULID(), requestedSchema: requestedSchema, source: name)
@@ -140,7 +141,7 @@ extension MCPServer {
                 record(
                     .mcpElicitationURLInvalid, level: .warning,
                     metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(url.elicitationId)"])
-                return Self.wireResult(of: .decline)
+                return Self.wireResult(of: .decline(reason: Self.invalidURLReason))
             }
             let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link, source: name)
             return Self.wireResult(
@@ -307,23 +308,59 @@ extension MCPServer {
     }
 
     /// Suspends the calling run on `request` through `context` — case 1.
-    /// `ToolContext.elicit(_:)` never throws today; a throw, should one ever
-    /// come, answers `cancel` rather than an error into the transport.
     ///
     /// - Parameters:
     ///   - request: The decoded request.
     ///   - context: The context of the calling run.
     /// - Returns: The user's answer.
     private func elicit(_ request: ElicitationRequest, through context: ToolContext) async -> ElicitationResponse {
+        await answerThroughRun { try await context.elicit(request) }
+    }
+
+    /// The answer that `ask` gives, or a cancel when `ask` throws.
+    /// `ToolContext.elicit(_:)` never throws today; a throw, should one ever
+    /// come, answers `cancel` with ``runFailedReason`` rather than an error
+    /// into the transport.
+    ///
+    /// Internal, for `@testable import`: `ToolContext` is a struct whose
+    /// `elicit(_:)` has no path that throws, thus a test reaches the
+    /// cancel of a throw only through this function.
+    ///
+    /// - Parameter ask: The question to the calling run.
+    /// - Returns: The answer of `ask`, or the cancel of its throw.
+    func answerThroughRun(
+        _ ask: @Sendable () async throws -> ElicitationResponse
+    ) async -> ElicitationResponse {
         do {
-            return try await context.elicit(request)
+            return try await ask()
         } catch {
             record(
                 .mcpElicitationThroughRunFailed, level: .warning,
                 metadata: MultitoolTelemetry.errorMetadata(of: error))
-            return .cancel
+            return .cancel(reason: Self.runFailedReason)
         }
     }
+
+    // MARK: - The reasons of the refusals of this actor
+
+    /// The reason of the cancel of a request that arrives after this actor
+    /// is gone — see ``registerElicitationHandler(on:)``.
+    static let hostGoneReason = "the host side of the MCP connection no longer exists"
+
+    /// The reason of the decline of a form-mode request whose
+    /// `requestedSchema` stands outside the restricted subset. The log
+    /// record of the decline holds the decode error.
+    static let schemaOutsideTheSubsetReason =
+        "the requested schema is outside the supported subset of the form schema"
+
+    /// The reason of the decline of a URL-mode request whose `url` is not a
+    /// valid URL.
+    static let invalidURLReason = "the url of the URL-mode request is not a valid URL"
+
+    /// The reason of the cancel of a question that the calling run threw on
+    /// — see ``answerThroughRun(_:)``. The log record of the cancel holds
+    /// the error.
+    static let runFailedReason = "the calling run failed to ask the question"
 
     // MARK: - The URL flow under the handler
 
