@@ -107,6 +107,45 @@ comments:
     - tests before commit: swift test, exit 0, 2449 passed, 0 failed, 0 skipped.
     - next: review.
   timestamp: 2026-10-17T08:10:22.882215+00:00
+- actor: claude-code
+  id: 01m54f48dt7wcpdztxag8w3v36
+  text: |-
+    ### review — findings
+    - scope: review sha HEAD~1..HEAD (commit 0379b59). The review examined 14 files. The ignore rule excluded 4 .kanban files.
+    - prior: all 10 items in "Review Findings (2026-10-17 02:45)" are checked.
+    - evidence: 3 findings (confirmed 3, refuted 5). Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:511 duplication/duplication, Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:532 duplication/duplication, Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:532 reuse/reuse.
+    - cause: SurfaceRefresherTests has two copies of the step that publishes the alpha echo tool and waits for the re-list. Put the step in one private helper and call the helper from the two tests.
+    - next: fix the findings in "Review Findings (2026-10-17 03:11)". The task stays in review.
+  timestamp: 2026-10-17T08:19:50.330355+00:00
+- actor: claude-code
+  id: 01m54f58cqah40j1ggc3r2trbc
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 14 files (10 of 10 findings fixed; shared EventRace watch helpers; waitForNotifications; waitForRelist(of:after:sentBy:))
+    - test: green — swift test, exit 0, 2449 passed, 0 failed, 0 skipped
+    - commit: 0379b59
+    - review: findings — Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:511, :532, :532 (one cause: two copies of the publish-alpha-and-wait-for-relist step)
+  timestamp: 2026-10-17T08:20:23.063012+00:00
+- actor: claude-code
+  id: 01m54f9xm9jq8a579mv81gg1yv
+  text: |-
+    ### implement — changed
+    - evidence: 1 file, Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift. New private static helper publishAlphaAndWaitForRelist(of:on:) is next to publish(_:on:). It wraps MCPTestSupport.waitForRelist(of:after:sentBy:) around Self.publish of the alpha echo tool. stopEndsTheWatchTask and aSessionWithNoRefresherNeverMoves call it. The two copies are deleted. Each test keeps its own expect on the alpha tool and its other checks. No production code changed.
+    - scan of the file: no other copy of the publish-and-wait-for-relist step. The other publish calls (the burst case, the failure case, the late-server case) wait for a stage, not for the re-list, so they are a different step.
+    - findings checked 3/3 in "Review Findings (2026-10-17 03:11)".
+    - test: swift test, one full run, exit code 0: "Test run with 2449 tests in 212 suites passed after 3.044 seconds." Only warning: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path (a dependency).
+    - next: review. The task stays in doing.
+  timestamp: 2026-10-17T08:22:55.881508+00:00
+- actor: claude-code
+  id: 01m54fbgfnvqy9awj651ys1tyk
+  text: |-
+    ### test — green
+    - evidence: `swift test` ran one time. Exit code 0. Swift Testing summary: "Test run with 2449 tests in 212 suites passed after 2.561 seconds." XCTest: 0 tests, 0 failures.
+    - no test failed. No test was skipped. No source file warning.
+    - note: the build tool printed one warning: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle. It comes from the build system and the mlx bundle. It is not in the code of this repository.
+    - no file was changed in this step.
+    - next: review.
+  timestamp: 2026-10-17T08:23:47.957694+00:00
 depends_on:
 - 01M53W2TYXASHFQ2PZV6MHKP5E
 position_column: doing
@@ -138,3 +177,14 @@ Show for at least one case that the test now fails (not hangs) when the expected
 - [x] `Tests/FoundationModelsMultitoolTests/RegistryRebuildTests.swift:254` `duplication/duplication` — The three-line block that takes the catalog mark, advances the scenario, and waits for the greeter to appear is repeated in `rebuildAfterARemoveDropsTheVerb`. The same block is in `rebuildAfterAnAddGivesTheNewVerbAndKeepsTheFirstRegistry`. Extract a helper such as `advanceToGreeterAdded(scripted:server:)` that returns nothing, and call it from both tests.
 - [x] `Tests/FoundationModelsMultitoolTests/ResilienceTests.swift:728` `duplication/duplication` — `disconnectWaitsForTheFactoryOfAPendingAttempt` repeats the start-and-require step that `connectUntilOrphaned` already performs. The copy is near-verbatim, so a change to the wait rule must be made twice. Extract the start-and-require step, with the arrival gate and the failure message as parameters, and use it from both `connectUntilOrphaned` and this test.
 - [x] `Tests/FoundationModelsMultitoolTests/ResilienceTests.swift:842` `duplication/duplication` — `aLateDisconnectOfAnOldClientNeverClosesTheCurrentConnection` repeats the disconnect start-and-require block of `freshConnectIsNotBlockedByADisconnectWhoseTransportHangs`. Extract one helper, for example `startDisconnectAwaitingClose(of:gate:)`, and call it from both tests.
+
+## Review Findings (2026-10-17 03:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:511` `duplication/duplication` — The block that publishes the echo tool and waits for the re-list is copied verbatim into the same file at line 532. Both copies must change together, and they can drift apart. Extract one helper, for example `publishAlphaTool(on: scripted, server: ground.server)`, that wraps the `waitForRelist` call and the `publish` call. Call it from both tests and delete the two copies.
+- [x] `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:532` `duplication/duplication` — The publish-and-wait block at line 532 repeats the block at line 511 in the same file. Two copies of the same test step can drift apart. Replace the block at 532 with a call to the shared helper that is extracted for lines 511-513. Delete the copy.
+- [x] `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:532` `reuse/reuse` — The block that publishes the echo tool and then waits for the relist is copied from the block at line 511 in the same file. The same three-line step (`waitForRelist(of: ground.server, after: Self.oneNotification) { try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted) }`) is written out twice, so a later change must be made in both places. Move the step into one private helper in `SurfaceRefresherTests`, for example `publishAlphaAndWaitForRelist(of:on:)`, that wraps `Self.publish` and `MCPTestSupport.waitForRelist`, and call it from both tests.

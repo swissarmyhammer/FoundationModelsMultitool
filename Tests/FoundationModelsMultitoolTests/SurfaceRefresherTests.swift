@@ -317,6 +317,21 @@ struct SurfaceRefresherTests {
         try await scripted.emitToolListChangedBurst(count: oneNotification)
     }
 
+    /// Publishes the alpha echo tool on `scripted`, and waits until `server`
+    /// re-lists after the one notification of that change.
+    ///
+    /// - Parameters:
+    ///   - server: The server that re-lists.
+    ///   - scripted: The scripted server to publish on.
+    /// - Throws: What the publish throws.
+    private static func publishAlphaAndWaitForRelist(
+        of server: MCPServer, on scripted: ScriptedServer
+    ) async throws {
+        try await MCPTestSupport.waitForRelist(of: server, after: oneNotification) {
+            try await publish(ScriptedServer.echoTool(named: alphaToolName), on: scripted)
+        }
+    }
+
     /// The rendered path of the echo verb of the server named `name`.
     ///
     /// - Parameters:
@@ -508,9 +523,7 @@ struct SurfaceRefresherTests {
             await ground.refresher.stop()
 
             #expect(!ground.refresher.isWatching)
-            try await MCPTestSupport.waitForRelist(of: ground.server, after: Self.oneNotification) {
-                try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            }
+            try await Self.publishAlphaAndWaitForRelist(of: ground.server, on: scripted)
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
 
             // Only the watch task stages, and `stop()` ended that task before
@@ -529,9 +542,7 @@ struct SurfaceRefresherTests {
 
             // No refresher is started. `makeSessionToolsAndStaging` starts no task
             // of its own, so nothing watches the stream.
-            try await MCPTestSupport.waitForRelist(of: ground.server, after: Self.oneNotification) {
-                try await Self.publish(ScriptedServer.echoTool(named: Self.alphaToolName), on: scripted)
-            }
+            try await Self.publishAlphaAndWaitForRelist(of: ground.server, on: scripted)
             #expect(await ground.server.tool(named: Self.alphaToolName) != nil)
             await ground.runCode.submissionWillBegin()
 
