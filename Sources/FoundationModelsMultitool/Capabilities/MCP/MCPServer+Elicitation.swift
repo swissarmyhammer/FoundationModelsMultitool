@@ -33,6 +33,14 @@
 // three answerers are not asked. Each decline and each cancel that gives a
 // reason carries it the same way.
 //
+// **A question of an old connection asks no one.** The handler of each
+// client carries the connect generation of the attempt that made the client.
+// When a disconnect or a newer connect moved the generation, a request that
+// the old client still delivers gets `cancel` at once, with
+// `oldConnectionQuestionReason` under the `reason` key of `_meta`. The three
+// answerers are not asked: the question must not open on a run or on the
+// handler of the new connection.
+//
 // **The restricted form schema.** eventplan.md: "Our boundary enforces the
 // restricted form schema for each elicitor." The wire schema is decoded by
 // the `ElicitationRequestedSchema` of FoundationModelsExtras, which refuses a
@@ -88,7 +96,7 @@ extension MCPServer {
     // MARK: - The handler the client calls
 
     /// Registers the `elicitation/create` handler on `client`, the new client
-    /// of one connect attempt — the one registration `setupHandlers(on:)`
+    /// of one connect attempt — the one registration `setupHandlers(on:generation:)`
     /// makes for a request, beside the notification handlers.
     ///
     /// `[weak self]`, as `registerNotificationHandler(_:on:handler:)`
@@ -97,13 +105,20 @@ extension MCPServer {
     /// `cancel` with ``hostGoneReason``, so the server never waits on a host
     /// that no longer exists.
     ///
-    /// - Parameter client: The client to register the handler on.
-    func registerElicitationHandler(on client: MCP.Client) async {
+    /// Each question of `client` carries `generation`, the connect generation
+    /// of the attempt that made `client` — see
+    /// ``answerElicitation(parameters:generation:)``.
+    ///
+    /// - Parameters:
+    ///   - client: The client to register the handler on.
+    ///   - generation: The ``connectGeneration`` of the attempt that made
+    ///     `client`.
+    func registerElicitationHandler(on client: MCP.Client, generation: Int) async {
         await client.withElicitationHandler { [weak self] parameters in
             guard let self else {
                 return MCPServer.wireResult(of: .cancel(reason: MCPServer.hostGoneReason))
             }
-            return await self.answerElicitation(parameters: parameters)
+            return await self.answerElicitation(parameters: parameters, generation: generation)
         }
     }
 
@@ -116,19 +131,38 @@ extension MCPServer {
     /// at once: before the schema decode, the context and the host's
     /// handler.
     ///
+    /// A request from the client of an old connection gets a cancel with
+    /// ``oldConnectionQuestionReason`` at once, also before the schema
+    /// decode, the context and the host's handler. The connection is old when
+    /// `generation` is not the current ``connectGeneration``: a disconnect or
+    /// a newer connect moved the generation, and the old client can still
+    /// deliver a request while its teardown runs. Such a question must not
+    /// open on a run or a handler of the new connection: the completion of
+    /// its URL flow can come only on the old transport, whose relay names the
+    /// old generation.
+    ///
     /// The `source` of the request is the ``name`` of this server, the noun
     /// that its tools have in `tools.<name>`. Thus the host shows the server
     /// as the one that asks, and not the `runCode` tool whose snippet made
     /// the call. A relay keeps a `source` that is set.
     ///
-    /// - Parameter parameters: The request as the server sent it — form
-    ///   mode with a `requestedSchema`, or URL mode with a `url` and an
-    ///   `elicitationId`.
+    /// - Parameters:
+    ///   - parameters: The request as the server sent it — form mode with a
+    ///     `requestedSchema`, or URL mode with a `url` and an
+    ///     `elicitationId`.
+    ///   - generation: The ``connectGeneration`` of the attempt whose client
+    ///     got the request.
     /// - Returns: The result the server reads.
-    func answerElicitation(parameters: CreateElicitation.Parameters) async -> CreateElicitation.Result {
+    func answerElicitation(
+        parameters: CreateElicitation.Parameters, generation: Int
+    ) async -> CreateElicitation.Result {
         guard userPresence == .interactive else {
             record(.mcpElicitationCancelledNoUserPresent, level: .debug)
             return Self.wireResult(of: .cancel(reason: RunPlane.noUserPresentReason))
+        }
+        guard generation == connectGeneration else {
+            record(.mcpElicitationCancelledOldConnection, level: .debug)
+            return Self.wireResult(of: .cancel(reason: Self.oldConnectionQuestionReason))
         }
         switch parameters {
         case .form(let form):
@@ -137,7 +171,8 @@ extension MCPServer {
             }
             let request = ElicitationRequest(
                 message: form.message, elicitationId: ULID(), requestedSchema: requestedSchema, source: name)
-            return Self.wireResult(of: await resolve(request, urlElicitationId: nil, linkedBy: form._meta))
+            return Self.wireResult(
+                of: await resolve(request, urlElicitationId: nil, linkedBy: form._meta, generation: generation))
         case .url(let url):
             guard let link = URL(string: url.url) else {
                 // The url is content of the server, thus the record holds the
@@ -149,7 +184,8 @@ extension MCPServer {
             }
             let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link, source: name)
             return Self.wireResult(
-                of: await resolve(request, urlElicitationId: url.elicitationId, linkedBy: url._meta))
+                of: await resolve(
+                    request, urlElicitationId: url.elicitationId, linkedBy: url._meta, generation: generation))
         }
     }
 
@@ -166,13 +202,15 @@ extension MCPServer {
     ///     mode.
     ///   - meta: The `_meta` of the request, which can name the call of the
     ///     question by its progress token.
+    ///   - generation: The ``connectGeneration`` of the attempt whose client
+    ///     got the request.
     /// - Returns: The answer.
     private func resolve(
-        _ request: ElicitationRequest, urlElicitationId: String?, linkedBy meta: Metadata?
+        _ request: ElicitationRequest, urlElicitationId: String?, linkedBy meta: Metadata?, generation: Int
     ) async -> ElicitationResponse {
         if let context = callingContext(linkedBy: meta) {
             guard let urlElicitationId,
-                openContextElicitation(urlElicitationId, request: request, context: context)
+                openContextElicitation(urlElicitationId, request: request, context: context, generation: generation)
             else {
                 return await elicit(request, through: context)
             }
@@ -296,10 +334,13 @@ extension MCPServer {
     ///   - request: The decoded request. Its `elicitationId` is the id that
     ///     this actor chose.
     ///   - context: The context of the calling run.
+    ///   - generation: The ``connectGeneration`` of the attempt whose client
+    ///     got the request. The entry records it, thus only a completion
+    ///     that the transport of that attempt relays reaches the question.
     /// - Returns: `true` when this call added the entry, thus the caller
     ///   removes it when the question ends.
     private func openContextElicitation(
-        _ wireId: String, request: ElicitationRequest, context: ToolContext
+        _ wireId: String, request: ElicitationRequest, context: ToolContext, generation: Int
     ) -> Bool {
         guard pendingContextElicitations[wireId] == nil else {
             record(
@@ -307,7 +348,7 @@ extension MCPServer {
                 metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(wireId)"])
             return false
         }
-        pendingContextElicitations[wireId] = (context, request.elicitationId, connectGeneration)
+        pendingContextElicitations[wireId] = (context, request.elicitationId, generation)
         return true
     }
 
@@ -348,8 +389,13 @@ extension MCPServer {
     // MARK: - The reasons of the refusals of this actor
 
     /// The reason of the cancel of a request that arrives after this actor
-    /// is gone — see ``registerElicitationHandler(on:)``.
+    /// is gone — see ``registerElicitationHandler(on:generation:)``.
     static let hostGoneReason = "the host side of the MCP connection no longer exists"
+
+    /// The reason of the cancel of a request that the client of an old
+    /// connection delivers after a disconnect or a newer connect moved the
+    /// connect generation — see ``answerElicitation(parameters:generation:)``.
+    static let oldConnectionQuestionReason = "the connection to the MCP server ended before the question"
 
     /// The reason of the decline of a form-mode request whose
     /// `requestedSchema` stands outside the restricted subset. The log

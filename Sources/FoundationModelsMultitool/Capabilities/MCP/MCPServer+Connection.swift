@@ -13,7 +13,7 @@
 // itself — call the retained factory again, under the retained policy — is a
 // host operation here, `reconnect()`.
 //
-// **What `setupHandlers(on:)` registers.** Two notification handlers and one
+// **What `setupHandlers(on:generation:)` registers.** Two notification handlers and one
 // request handler, on each new client before its connect — each attempt has
 // its own client, see `MCPServer+ClientLifecycle.swift`. The
 // `tools/list_changed` handler routes to the coalesced re-list of
@@ -581,15 +581,19 @@ extension MCPServer {
     /// before the client loop reads it, thus one completion makes one
     /// record — see `makeAttemptClient(over:transportID:generation:)`.
     ///
-    /// - Parameter client: The new client of the attempt.
-    func setupHandlers(on client: MCP.Client) async {
+    /// - Parameters:
+    ///   - client: The new client of the attempt.
+    ///   - generation: The ``connectGeneration`` of the attempt. The
+    ///     `elicitation/create` handler gives it with each question of
+    ///     `client` — see `registerElicitationHandler(on:generation:)`.
+    func setupHandlers(on client: MCP.Client, generation: Int) async {
         await registerNotificationHandler(ToolListChangedNotification.self, on: client) { server, _ in
             await server.handleToolListChangedNotification()
         }
         await registerNotificationHandler(ProgressNotification.self, on: client) { server, message in
             await server.handleProgressNotification(parameters: message.params)
         }
-        await registerElicitationHandler(on: client)
+        await registerElicitationHandler(on: client, generation: generation)
     }
 
     /// Registers `client.onNotification(_:handler:)` for `type`, guarding

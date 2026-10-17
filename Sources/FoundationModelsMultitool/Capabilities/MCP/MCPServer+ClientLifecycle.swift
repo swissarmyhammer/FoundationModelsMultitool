@@ -122,7 +122,7 @@ extension MCPServer {
     /// transport that its factory gave.
     ///
     /// The client gets each handler before its connect — see
-    /// `setupHandlers(on:)` in `MCPServer+Connection.swift`. When
+    /// `setupHandlers(on:generation:)` in `MCPServer+Connection.swift`. When
     /// `generation` is already stale, no client is made: `transport` is
     /// released at once — through its `DisposableTransport` conformance when
     /// it has one, else through its `disconnect()` — and it is never
@@ -165,7 +165,7 @@ extension MCPServer {
         let client = Client(
             name: name, version: clientVersion, capabilities: Self.clientCapabilities(for: userPresence))
         openTransports[transportID]?.client = client
-        await setupHandlers(on: client)
+        await setupHandlers(on: client, generation: generation)
         return AttemptClient(client: client, transport: observed, transportID: transportID)
     }
 

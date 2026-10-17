@@ -472,6 +472,12 @@ enum MultitoolTelemetry {
         /// `cancel` with the no-user-present reason. Level: `debug`.
         case mcpElicitationCancelledNoUserPresent = "mcp elicitation cancelled: no user is present"
 
+        /// An elicitation came from the client of a connect attempt whose
+        /// generation is not current: a disconnect or a newer connect ended
+        /// that connection. The answer is `cancel` with the reason, and no
+        /// answerer is asked. Level: `debug`.
+        case mcpElicitationCancelledOldConnection = "mcp elicitation cancelled: its connection ended"
+
         /// An elicitation came while two or more calls from different runs
         /// were in flight, and its `_meta` named none of them by its progress
         /// token. The host has no handler, and the answer is `cancel` with

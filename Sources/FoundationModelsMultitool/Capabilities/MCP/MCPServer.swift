@@ -52,7 +52,7 @@
 // of `elicitation/create` stays registered in the two modes: a server that
 // sends a request it did not get the capability for still gets an answer.
 // The handlers are registered on each new client before its connect, by
-// `setupHandlers(on:)` in `MCPServer+Connection.swift`. See
+// `setupHandlers(on:generation:)` in `MCPServer+Connection.swift`. See
 // `MCPServer+ClientLifecycle.swift` for why each attempt gets its own client.
 //
 // **Logging goes through swift-log**, as `MultiTool.swift` logs. Each record

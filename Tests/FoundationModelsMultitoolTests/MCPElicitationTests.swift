@@ -164,6 +164,11 @@ struct MCPElicitationTests {
     /// flow uses the same wire id, spelled out for the same reason.
     private static let replacedByNewerFlowReason = "a newer URL flow used the same elicitation id"
 
+    /// The reason of the cancel of a question that a client of an old
+    /// connect delivers after the connect generation moved, spelled out for
+    /// the same reason.
+    private static let oldConnectionQuestionReason = "the connection to the MCP server ended before the question"
+
     /// The reason of the decline of a `requestedSchema` outside the
     /// restricted subset. The test spells it out, and does not read the
     /// constant of the product, so the test compiles on the code before the
@@ -463,7 +468,10 @@ struct MCPElicitationTests {
     /// - Returns: The task of the answer that `server` gives.
     /// - Throws: When the answer ended before `server` held the flow.
     private static func startHeldHostFlow(on server: MCPServer) async throws -> Task<CreateElicitation.Result, any Error> {
-        try await startHeldHostFlow(on: server) { await server.answerElicitation(parameters: urlElicitation) }
+        try await startHeldHostFlow(on: server) {
+            let generation = await server.connectGeneration
+            return await server.answerElicitation(parameters: urlElicitation, generation: generation)
+        }
     }
 
     /// Starts `work`, which makes `server` hold one URL-mode flow, and waits
@@ -885,7 +893,8 @@ struct MCPElicitationTests {
         let firstEvent = TestGate()
         let second = Task {
             defer { firstEvent.open() }
-            return await server.answerElicitation(parameters: Self.urlElicitation)
+            let generation = await server.connectGeneration
+            return await server.answerElicitation(parameters: Self.urlElicitation, generation: generation)
         }
         let firstEnded = Task {
             _ = await first.result
@@ -952,6 +961,68 @@ struct MCPElicitationTests {
             #expect(lateCompletion == .noPendingElicitation)
         }
         withExtendedLifetime(scripted) {}
+    }
+
+    /// A URL question that a client of an old connect delivers after a new
+    /// connect moved the generation belongs to a connection that ended. It
+    /// ends at once with a cancel and a reason, and it never opens a question
+    /// on the run of the new connection. Before the fix, the question opened
+    /// on that run under the generation of the new connection: a completion
+    /// that the old transport relays was dropped, and the end of the old
+    /// connection skipped the question.
+    ///
+    /// The order is fixed. The server connects two times. A call under the
+    /// context of a run is in flight on the second connection, thus that
+    /// run is the one run that a question can go to. Then the test delivers
+    /// the question with the generation of the first connect. The sink of
+    /// the run declines each question it gets at once, thus a question that
+    /// reaches the run ends with no step of the test, and no wait stays open.
+    @Test("a URL question of an old client gets cancel with a reason, and never reaches the run of the new connection")
+    func aQuestionOfAnOldClientDoesNotReachTheRun() async throws {
+        let reconnected = try await Self.reconnectedForTwoCalls()
+        let server = reconnected.server
+        try await Self.withConnection(of: server) {
+            let holding = AnsweringRun(
+                session: ULID(), runPlane: RunPlane(userPresence: .interactive),
+                completionToken: Self.holdingRunToken, response: .decline)
+
+            let result = try await Self.whileHolding(reconnected.held, under: holding.context, on: server) {
+                await server.answerElicitation(
+                    parameters: Self.urlElicitation, generation: reconnected.earlierGeneration)
+            }
+
+            #expect(result.action == .cancel)
+            #expect(Self.reason(of: result) == .string(Self.oldConnectionQuestionReason))
+            #expect(await holding.sink.questions.isEmpty)
+            #expect(await server.pendingContextElicitations.isEmpty)
+        }
+        withExtendedLifetime((reconnected.earlier, reconnected.scripted)) {}
+    }
+
+    /// A question that a client of an old connect delivers after a
+    /// disconnect or a new connect moved the generation gets the same answer
+    /// on the path of the host's handler: a cancel and a reason at once. The
+    /// handler is never called. Before the fix, the handler answered the
+    /// question of a connection that ended.
+    ///
+    /// The order is fixed: the connection ends, and then the test delivers
+    /// the question with the generation from before the end. The handler
+    /// declines at once, thus a question that reaches it ends with no step
+    /// of the test.
+    @Test(
+        "a question of an old client gets cancel with a reason, and never reaches the host's handler",
+        arguments: ConnectionEnd.allCases)
+    func aQuestionOfAnOldClientDoesNotReachTheHandler(end: ConnectionEnd) async throws {
+        let probe = HandlerProbe(responding: .decline)
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: probe.handler)
+        let earlierGeneration = await server.connectGeneration
+
+        await Self.endConnection(of: server, with: end)
+        let result = await server.answerElicitation(parameters: Self.urlElicitation, generation: earlierGeneration)
+
+        #expect(result.action == .cancel)
+        #expect(Self.reason(of: result) == .string(Self.oldConnectionQuestionReason))
+        #expect(await probe.requests.isEmpty)
     }
 
     /// A cancel ends a wait for the hold of a URL flow. Thus a helper that
@@ -1119,9 +1190,22 @@ struct MCPElicitationTests {
         ///   - completionToken: The completion token of the run.
         ///   - answer: The answer the sink gives.
         init(session sessionID: ULID, runPlane: RunPlane, completionToken: String, answer: String) {
-            sink = AnsweringEventSink(
-                answeringOn: runPlane,
-                with: .accept(content: [ScriptedServer.elicitEchoAnswerField: .string(answer)]))
+            self.init(
+                session: sessionID, runPlane: runPlane, completionToken: completionToken,
+                response: .accept(content: [ScriptedServer.elicitEchoAnswerField: .string(answer)]))
+        }
+
+        /// Makes a run of the session `sessionID` on `runPlane`, with the
+        /// completion token `completionToken`. Its sink answers each question
+        /// with `response`.
+        ///
+        /// - Parameters:
+        ///   - sessionID: The session of the run.
+        ///   - runPlane: The run plane of the session.
+        ///   - completionToken: The completion token of the run.
+        ///   - response: The answer the sink gives.
+        init(session sessionID: ULID, runPlane: RunPlane, completionToken: String, response: ElicitationResponse) {
+            sink = AnsweringEventSink(answeringOn: runPlane, with: response)
             context = ToolContext(
                 sessionID: sessionID, runPlane: runPlane, sink: sink, tool: answeringTool, op: answeringTool,
                 completionToken: completionToken, isCancelled: { false })
@@ -1244,6 +1328,19 @@ struct MCPElicitationTests {
     private static func connectedForTwoCalls(
         over kind: MCPTransportKind, logger: Logger = MCPServer.defaultLogger
     ) async throws -> (scripted: ScriptedServer, server: MCPServer, held: HeldScriptedTool) {
+        let (scripted, held) = await scriptedForTwoCalls()
+        let server = try await MCPTestSupport.connectedMCPServer(
+            to: scripted, over: kind, name: serverName, logger: logger)
+        return (scripted, server, held)
+    }
+
+    /// A fresh scripted server that serves the held tool, the two tools that
+    /// order calls around it, the loopback tools, the tool that echoes its
+    /// progress token, and the tool that sends a token of no call. No server
+    /// is connected against it yet.
+    ///
+    /// - Returns: The scripted server, and the held tool that it serves.
+    private static func scriptedForTwoCalls() async -> (scripted: ScriptedServer, held: HeldScriptedTool) {
         let scripted = ScriptedServer()
         let held = HeldScriptedTool(named: heldToolName)
         await scripted.addTool(held.scriptedTool)
@@ -1259,9 +1356,95 @@ struct MCPElicitationTests {
             named: unknownTokenToolName, message: ScriptedServer.elicitEchoMessage,
             requestedSchema: ScriptedServer.elicitEchoRequestedSchema,
             elicitationMeta: { _ in Metadata(progressToken: .string(unknownProgressToken)) })
-        let server = try await MCPTestSupport.connectedMCPServer(
-            to: scripted, over: kind, name: serverName, logger: logger)
-        return (scripted, server, held)
+        return (scripted, held)
+    }
+
+    /// A server that connected two times: first against an empty scripted
+    /// server, and then against the scripted server of
+    /// ``scriptedForTwoCalls()``. The second connect moved the connect
+    /// generation, thus a client of the first connect is an old client.
+    private struct ReconnectedServer {
+        /// The scripted server of the first connect, which the test keeps
+        /// alive.
+        let earlier: ScriptedServer
+
+        /// The scripted server of the second connect, which the test keeps
+        /// alive.
+        let scripted: ScriptedServer
+
+        /// The held tool that ``scripted`` serves.
+        let held: HeldScriptedTool
+
+        /// The server, connected over the second connect.
+        let server: MCPServer
+
+        /// The connect generation of the first connect: the generation that
+        /// the client of an old connection has.
+        let earlierGeneration: Int
+    }
+
+    /// Connects a server named ``serverName`` two times over the in-memory
+    /// transport — see ``ReconnectedServer``.
+    ///
+    /// - Returns: The server and the facts of its two connects.
+    /// - Throws: What a connect throws.
+    private static func reconnectedForTwoCalls() async throws -> ReconnectedServer {
+        let earlier = ScriptedServer()
+        let (scripted, held) = await scriptedForTwoCalls()
+        let server = try await MCPTestSupport.connectedMCPServer(to: earlier, over: .inMemory, name: serverName)
+        let earlierGeneration = await server.connectGeneration
+        try await server.connect(via: try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory))
+        return ReconnectedServer(
+            earlier: earlier, scripted: scripted, held: held, server: server, earlierGeneration: earlierGeneration)
+    }
+
+    /// Runs `body` while a call of `held` under `holding` is in flight on
+    /// `server`, and returns what `body` returned.
+    ///
+    /// The order is fixed. The held call starts, and the test waits for the
+    /// first of two events: the call arrived at the server, or the call
+    /// ended. Each of the two events can occur, thus the wait always ends.
+    /// When the call did not arrive, the test fails at once. Then `body`
+    /// runs. On each path, also when `body` throws, the test releases the
+    /// held call and waits until it ended, thus no call stays held.
+    ///
+    /// - Parameters:
+    ///   - held: The held tool.
+    ///   - holding: The context of the held call.
+    ///   - server: The connected server.
+    ///   - body: The work of the test while the held call is in flight.
+    /// - Returns: What `body` returned.
+    /// - Throws: When the held call ended before it arrived, what `body`
+    ///   threw, or what the held call threw.
+    private static func whileHolding<Result>(
+        _ held: HeldScriptedTool, under holding: ToolContext, on server: MCPServer,
+        _ body: () async throws -> Result
+    ) async throws -> Result {
+        let firstEvent = TestGate()
+        let holdingCall = Task {
+            defer { firstEvent.open() }
+            return try await startCall(server, tool: held.name, under: holding).value
+        }
+        let arrival = Task {
+            try? await held.waitForArrival()
+            firstEvent.open()
+        }
+        do {
+            try await firstEvent.wait()
+            arrival.cancel()
+            await arrival.value
+            try #require(held.hasArrived, "the held call ended before it arrived at the server")
+            let result = try await body()
+            await held.release()
+            _ = try await holdingCall.value
+            return result
+        } catch {
+            arrival.cancel()
+            await arrival.value
+            await held.release()
+            _ = await holdingCall.result
+            throw error
+        }
     }
 
     /// Calls `tool` on `server` under `asking`, while a call of `held` under
@@ -1577,7 +1760,7 @@ struct MCPElicitationTests {
         weak var released: MCPServer?
         do {
             let server = MCPTestSupport.makeServer(name: Self.serverName)
-            await server.registerElicitationHandler(on: client)
+            await server.registerElicitationHandler(on: client, generation: server.connectGeneration)
             released = server
         }
         try #require(released == nil, "the MCPServer stayed alive after its last reference went away")
