@@ -379,12 +379,10 @@ struct BackgroundSettleGraceTests {
             let all = prompts.all
 
             #expect(!PendingRunEnvelope.isRendered(text: result), "answer was: \(result)")
-            guard case .array(let values) = try Self.returnedValue(of: result), values.count == 2,
-                case .string(let commandID) = values[1]
-            else {
-                Issue.record("the snippet did not return [exitCode, commandID]: \(result)")
-                return
-            }
+            let values = try #require(
+                Self.returnedValue(of: result).arrayItems, "the snippet did not return an array: \(result)")
+            try #require(values.count == 2, "the snippet did not return [exitCode, commandID]: \(result)")
+            let commandID = try #require(values[1].stringText, "the snippet returned no commandID: \(result)")
             #expect(values[0] == .number(0))
             #expect(all.count == 2, "a mail submission came: \(all)")
             #expect(Self.laterPrompts(containing: commandID, in: all).isEmpty)
@@ -408,12 +406,10 @@ struct BackgroundSettleGraceTests {
             let all = prompts.all
 
             #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
-            guard case .object(let fields) = try Self.returnedValue(of: report),
-                case .string(let commandID) = fields[Execute.commandIDField]
-            else {
-                Issue.record("the answer is not a report: \(report)")
-                return
-            }
+            let fields = try #require(
+                Self.returnedValue(of: report).objectFields, "the answer is not a report: \(report)")
+            let commandID = try #require(
+                fields[Execute.commandIDField]?.stringText, "the report has no commandID: \(report)")
             #expect(fields["pending"] == nil)
             #expect(fields["exitCode"] == .number(0))
             #expect(fields["output"] == .array([.string("1: hi")]))
@@ -649,10 +645,8 @@ struct BackgroundSettleGraceTests {
             let report = try await responded.task.value
 
             #expect(!PendingRunEnvelope.isRendered(text: report), "answer was: \(report)")
-            guard case .object(let fields) = try Self.returnedValue(of: report) else {
-                Issue.record("the answer is not a report: \(report)")
-                return
-            }
+            let fields = try #require(
+                Self.returnedValue(of: report).objectFields, "the answer is not a report: \(report)")
             #expect(fields["exitCode"] == .number(0))
             #expect(fields["output"] == .array([.string("1: done")]))
         }

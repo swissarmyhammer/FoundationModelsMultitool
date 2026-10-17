@@ -772,12 +772,7 @@ struct ShellExecuteTests {
 
             #expect(PendingRunEnvelope.isRendered(text: output), "answer was: \(output)")
             let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
-            let settlement = await context.wait(
-                completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
-            guard case .settled(let terminal) = settlement else {
-                Issue.record("the run never settled: \(settlement)")
-                return
-            }
+            let terminal = try await TerminalDetail.settledEvent(of: envelope.completionToken, in: context)
             let report = try Self.report(terminal.detail)
             #expect(report["status"] as? String == CommandStatus.completed.rawValue)
             let lines = try #require(report["output"] as? [String])

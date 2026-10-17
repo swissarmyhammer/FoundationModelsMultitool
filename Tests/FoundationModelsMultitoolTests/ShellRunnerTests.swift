@@ -279,18 +279,21 @@ struct ShellRunnerTests {
     ///
     /// The wait is for an event of the run, and not for a time. The iterator
     /// stays with the caller, thus a test can wait for several markers of one
-    /// run, one after the other.
+    /// run, one after the other. When the run or the stream ends first, the
+    /// test records an issue with the result of the run.
     ///
     /// - Parameters:
     ///   - marker: The text to wait for.
     ///   - events: The iterator of the live view of the output of the run.
+    ///   - run: The task of the run, which gives the result for the issue.
     /// - Returns: `true` when the marker arrived, or `false` when the run or
     ///   the stream ended first.
     private static func waitForOutput(
-        containing marker: String, from events: inout ShellOutputChunkStream.Iterator
+        containing marker: String, from events: inout ShellOutputChunkStream.Iterator,
+        run: Task<ShellRunner.Outcome, any Error>
     ) async -> Bool {
         var output = ""
-        while let event = await events.next() {
+        reading: while let event = await events.next() {
             switch event.kind {
             case .output(_, let bytes):
                 output += String(decoding: bytes, as: UTF8.self)
@@ -300,9 +303,11 @@ struct ShellRunnerTests {
             case .gap:
                 continue
             case .completed:
-                return false
+                break reading
             }
         }
+        let result = await run.result
+        Issue.record("the output never held \(marker); the run gave \(result)")
         return false
     }
 
@@ -724,14 +729,10 @@ struct ShellRunnerTests {
         let runTask = Task { try await runner.run(.init(command: command, completionToken: token)) }
         try await endingShellRun(runTask) {
             for (step, gate) in [("out1", afterOut1), ("err1", afterErr1), ("out2", afterOut2)] {
-                guard await Self.waitForOutput(containing: step, from: &events) else {
-                    let result = await runTask.result
-                    Issue.record("the step \(step) never wrote; the run gave \(result)")
-                    return
-                }
-                guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
-                    return
-                }
+                let wrote = await Self.waitForOutput(containing: step, from: &events, run: runTask)
+                try #require(wrote, "the step \(step) never wrote")
+                let released = try await Self.release(gate, forCommandOf: token, in: state, run: runTask)
+                try #require(released, "the gate after the step \(step) did not reach the command")
             }
             _ = try await runTask.value
             let lines = try await state.getLines(commandID: token)
@@ -934,9 +935,8 @@ struct ShellRunnerTests {
         }
         try await endingShellRun(runTask) {
             await state.waitForStoredLines(commandID: token, atLeast: 1)
-            guard try await Self.release(gate, forCommandOf: token, in: state, run: runTask) else {
-                return
-            }
+            let released = try await Self.release(gate, forCommandOf: token, in: state, run: runTask)
+            try #require(released, "the gate did not reach the command")
             let outcome = try await runTask.value
 
             #expect(outcome.status == .completed)
