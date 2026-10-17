@@ -240,8 +240,9 @@ struct ResilienceTests {
 
     /// Builds a `RespawningTransport` whose first `connect()` succeeds
     /// against a real `ScriptedServer`, and whose every later `connect()` —
-    /// every reconnect attempt — hangs for good, the never-resumed
-    /// continuation idiom of `HangingTransport`.
+    /// every reconnect attempt — hangs until its task is cancelled, the hang
+    /// of `HangingTransport`. Nothing cancels the task of a connect attempt,
+    /// thus each such attempt hangs until its timeout abandons it.
     ///
     /// - Parameters:
     ///   - counter: Records every `makePair` call, so a test asserts how many
@@ -262,12 +263,10 @@ struct ResilienceTests {
                 return (client, scripted)
             }
             hangArrival.open()
-            return try await withCheckedThrowingContinuation {
-                (_: CheckedContinuation<RespawningTransport.Pair, any Error>) in
-                // Never resumed: every reconnect attempt after the first
-                // hangs, so the schedule advances only by its per-attempt
-                // `connectTimeout`, on the clock of the attempt.
-            }
+            // Every reconnect attempt after the first hangs, so the schedule
+            // advances only by its per-attempt `connectTimeout`, on the clock
+            // of the attempt.
+            try await HangingTransport.hangUntilCancelled()
         }
     }
 

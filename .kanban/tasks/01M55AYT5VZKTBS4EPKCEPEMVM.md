@@ -116,8 +116,25 @@ comments:
     - evidence: 0039c0c refactor(mcp): share one test-hook wait store and one suspend helper
     - next: review
   timestamp: 2026-10-17T17:04:41.789492+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m55db25kne86j3355zfjhdev
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 60dda71). 0 findings, 0 confirmed, 0 refuted. 9 files reviewed. 6 .kanban files not reviewed (ignore rule). Five code-hygiene tool rules did not read Sources/FoundationModelsMultitool/Capabilities/MCP/ElicitationWaiters.swift, because this commit deletes that file.
+    - prior: the 2 items in "Review Findings (2026-10-17 11:47)" are checked.
+    - next: none. The task moved to done. The two ShellState waits are on ^tg9909a. The continuation misuse lines in test helpers are on ^4vvg00p.
+  timestamp: 2026-10-17T17:07:50.579232+00:00
+- actor: claude-code
+  id: 01m55dbt0z7zrsg1tmawz3a30r
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 9 source files (2 of 2 findings fixed; TestHookWaiters store; one TestHookWait.suspend overload for 7 waits; suspendConnectionHookWait)
+    - test: green — swift test, exit 0, 2458 passed, 0 failed, 0 skipped (3 continuation misuse lines in test helpers, on card ^4vvg00p)
+    - commit: 60dda71 (the commit comment names 0039c0c, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T17:08:15.007726+00:00
+position_column: done
+position_ordinal: ffffffa180
 title: End three MCPServer test-hook and ready waits on a cancel or a connection end, and check the last T1 waits
 ---
 From the final exception list ^vg01093 (product gaps 1-3, owner decisions 2026-10-17).

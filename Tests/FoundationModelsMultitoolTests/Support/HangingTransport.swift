@@ -6,23 +6,22 @@
 import struct Foundation.Data
 import Logging
 import MCP
+import TestConcurrency
 
-/// A `Transport` whose `connect()` never returns and never checks
-/// `Task.isCancelled` — a wedged real-world transport (a stuck subprocess
-/// spawn, a stalled handshake) that never observes cooperative cancellation,
-/// so the per-attempt `BackoffPolicy.connectTimeout` of `MCPServer` is proven
-/// to bound wall-clock time for real.
+/// A `Transport` whose `connect()` never returns a result — a wedged
+/// real-world transport (a stuck subprocess spawn, a stalled handshake), so
+/// the per-attempt `BackoffPolicy.connectTimeout` of `MCPServer` is proven to
+/// bound wall-clock time for real.
 ///
-/// Deliberately not `Task.sleep(for:)`: that suspends through the
-/// cancellation-aware timer of the runtime, so a race that cancels its losing
-/// child would still return promptly against it, and mask the bug this double
-/// exists to catch. A `withCheckedContinuation` that is never resumed, with no
-/// cancellation handler, never returns once suspended, whatever cancellation
-/// the calling task later receives.
+/// Deliberately not `Task.sleep(for:)`: that sleep ends when its time is
+/// spent, and then the attempt would end without the timeout. The hang of
+/// this double ends only when the task of the attempt is cancelled. The
+/// connect attempt of `MCPServer` runs in a task that nothing cancels, thus
+/// the attempt hangs until the timeout abandons it.
 ///
-/// - Important: Every test that uses this prints a `SWIFT TASK CONTINUATION
-///   MISUSE` warning to stderr per hung attempt — expected, not a bug: the
-///   runtime notices the never-resumed continuation being deallocated.
+/// The hang keeps its continuation in a ``WaitList`` until a cancel ends it.
+/// Thus the runtime never finds a released continuation that was not
+/// resumed, and writes no `SWIFT TASK CONTINUATION MISUSE` line.
 actor HangingTransport: Transport {
     /// The logger of this double — a no-op; it never connects.
     nonisolated let logger = Logger(
@@ -30,21 +29,30 @@ actor HangingTransport: Transport {
         factory: { _ in SwiftLogNoOpLogHandler() }
     )
 
-    /// Never returns, and does not respond to cancellation.
+    /// Never returns. It ends only with a `CancellationError`, when the task
+    /// of the caller is cancelled.
+    ///
+    /// - Throws: `CancellationError` when the task of the caller is
+    ///   cancelled.
     func connect() async throws {
-        await Self.hangForever()
+        try await Self.hangUntilCancelled()
     }
 
-    /// Suspends the calling task for good — the hang of this double, shared
-    /// with a peer that must make no progress. A scripted tool whose handler
-    /// calls this is a server that never answers the request and ignores
-    /// cancellation.
+    /// Suspends the calling task until the task is cancelled — the hang of
+    /// this double, shared with a peer that must make no progress. A scripted
+    /// tool whose handler calls this is a server that never answers the
+    /// request.
     ///
-    /// - Returns: Never. The continuation is never resumed.
-    static func hangForever() async -> Never {
-        await withCheckedContinuation { (_: CheckedContinuation<Never, Never>) in
-            // Never resumed: this is the point.
-        }
+    /// No event resumes the wait, thus only a cancel ends it. The wait list
+    /// keeps the continuation, and its cancel handler resumes the
+    /// continuation exactly one time (test rule T1).
+    ///
+    /// - Throws: `CancellationError` when the task of the caller is
+    ///   cancelled, also before the call. It never returns.
+    static func hangUntilCancelled() async throws -> Never {
+        let noEvent = WaitList<Void>()
+        await noEvent.wait(for: ())
+        throw CancellationError()
     }
 
     /// This double has nothing to disconnect.

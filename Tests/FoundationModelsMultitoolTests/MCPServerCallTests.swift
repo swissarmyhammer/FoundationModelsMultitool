@@ -91,7 +91,8 @@ struct MCPServerCallTests {
     /// How many sleeps the timer of one bare call asks the clock for.
     private static let oneBareTimerSleep = 1
 
-    /// The name of the tool that never answers and ignores cancellation.
+    /// The name of the tool that never answers. Only a cancel of its task
+    /// ends its handler.
     private static let hangingToolName = "hangs"
 
     /// The inner-call bound of the context case, in seconds. The run clock of
@@ -192,10 +193,12 @@ struct MCPServerCallTests {
         }
     }
 
-    /// A scripted tool that never answers, and does not respond to
-    /// cancellation — the hang of ``HangingTransport``, on the server side of
-    /// a connected transport. The handler opens `arrival` first, thus a test
-    /// knows when the request reached the server.
+    /// A scripted tool that never answers — the hang of ``HangingTransport``,
+    /// on the server side of a connected transport. Only a cancel of the task
+    /// of the handler ends the hang, and then the handler throws
+    /// `CancellationError`. A `notifications/cancelled` from the client only
+    /// records the notice and does not cancel that task. The handler opens
+    /// `arrival` first, thus a test knows when the request reached the server.
     ///
     /// - Parameter arrival: The gate the handler opens when it runs.
     /// - Returns: The scripted tool.
@@ -206,7 +209,7 @@ struct MCPServerCallTests {
                 inputSchema: JSONSchemaBuilder.emptySchema)
         ) { _ in
             arrival.open()
-            await HangingTransport.hangForever()
+            try await HangingTransport.hangUntilCancelled()
         }
     }
 
