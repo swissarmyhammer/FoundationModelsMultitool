@@ -238,6 +238,33 @@ These are the rules of the capability:
 
 `EnvironmentCapability()` gives the same capability.
 
+### Questions from an MCP server
+
+An attached MCP server can ask the user a question with
+`elicitation/create`. `MCPServer` answers it in this order:
+
+1. The `ToolContext` of the call that the question is for. Each `tools/call`
+   sends its request id as `_meta.progressToken`. When the server sends that
+   token back in the `_meta` of `elicitation/create`, the question goes to
+   that call. When the server sends no token, or a token that names no call in
+   flight, the question goes to the one run that holds each call in flight.
+   Two inner calls of one snippet are of one run. Calls in flight from two or
+   more runs are not linked to one of them.
+2. Else the `elicitationHandler` of the host, on a bare session.
+3. Else `cancel`.
+
+In a headless session (`userPresence` is `.headless`), the client does not
+declare the elicitation capability, and each question ends at once with
+`cancel` and a reason.
+
+A decline or a cancel that has a reason sends it in `_meta.reason` of the
+result. `MCPServer` also gives a reason for each decline and each cancel that
+it makes itself: for example a headless session, a question with no answerer
+or with no link to one call, a form schema outside the supported subset, or a
+URL that is not valid. A URL flow that waits for its completion ends with
+`cancel` and a reason when the connection disconnects or reconnects, because
+its completion cannot come.
+
 ### Injected globals
 
 The only globals beyond JavaScriptCore's standard ECMAScript environment that
@@ -268,15 +295,26 @@ available: no user is present in this session". A `MultiTool` that is called
 outside each session keeps `elicit`, which then rejects with a no-session
 error.
 
+`elicit()` and each helper resolve to an object with three keys:
+`{ action, content, reason }`. `action` is `"accept"`, `"decline"` or
+`"cancel"`. Read `action` first. `content` is `null` unless the user accepted.
+`reason` is the reason of a decline or a cancel, and `null` when there is no
+reason.
+
 `elicit("question")` asks the user for a text. It sends a form with one
 required string field, `answer`. On an accept, `content` is the text itself,
 not an object. A snippet that needs a form of its own calls
 `elicit({ message, requestedSchema })`, and on an accept `content` is the object
-of the fields. The `elicit` function also holds five typed helpers:
+of the fields. `elicit({ message, url })` starts a URL flow, and on an accept
+`content` is `null`. The `url` must be an absolute `http` or `https` URL with a
+host. Another value throws an argument error before the request goes to the
+user. The `elicit` function also holds five typed helpers:
 `elicit.confirm()`, `elicit.choose()`, `elicit.chooseMany()`,
 `elicit.askText()` and `elicit.askNumber()`. Each helper sends a form with the
 one required field `answer`, and on an accept `content` is the plain value of
-that field. An accept that is not a valid answer to the form becomes a decline.
+that field: a boolean for `confirm`, a string for `choose` and `askText`, an
+array of strings for `chooseMany`, and a number for `askNumber`. An accept that
+is not a valid answer to the form becomes a decline with a reason.
 `docs("elicit")` and `docs("elicit.<name>")` give the full text. The helpers
 are properties of `elicit` and not globals of their own, thus the list above
 does not name them. A headless session has no helper, because it has no

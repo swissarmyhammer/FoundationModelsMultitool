@@ -53,18 +53,22 @@ allows:
   its own session's.
 - `elicit()` asks the user a question mid-snippet through
   `ToolContext.elicit`, the same path a wrapped `Tool` uses. The request is
-  the restricted MCP form/URL schema, decoded by Router's own
-  `ElicitationRequest`, so a snippet can neither widen the schema nor reach
+  the restricted MCP form/URL schema, decoded by the `ElicitationRequest` of
+  FoundationModelsExtras, so a snippet can neither widen the schema nor reach
   the user by any other route. `elicit("question")` sends a form with one
   required string field, `answer`, and an accept gives the text as
-  `content`. The five helpers `elicit.confirm()`, `elicit.choose()`,
-  `elicit.chooseMany()`, `elicit.askText()` and `elicit.askNumber()` are
-  properties of `elicit` that a snippet cannot write or delete. Each one
-  sends a form with the one required field `answer` on the same path, and an
-  accept gives the plain value of that field as `content`. A bad argument
-  throws before a request goes to the user. `ToolContext.elicit` checks each
+  `content`. `elicit({ message, url })` accepts only an absolute `http` or
+  `https` URL with a host. The five helpers `elicit.confirm()`,
+  `elicit.choose()`, `elicit.chooseMany()`, `elicit.askText()` and
+  `elicit.askNumber()` are properties of `elicit` that a snippet cannot
+  write or delete. Each one sends a form with the one required field
+  `answer` on the same path, and an accept gives the plain value of that
+  field as `content`. A bad argument throws before a request goes to the
+  user. `ToolContext.elicit` checks each
   accepted answer against its form, and changes an answer that is not valid
-  to a decline.
+  to a decline. Each call resolves to `{ action, content, reason }`.
+  `content` is `null` unless the user accepted, and `reason` is the reason of
+  a decline or a cancel, or `null`.
 - `notify()` and `progress()` enqueue one event apiece onto the session's
   outbox and return nothing. They cannot read anything back.
 
@@ -82,6 +86,32 @@ Every `tools.*` call is validated (`ArgumentMarshaler`, `ToolInvoker`) before
 it ever reaches the wrapped tool: a malformed call fails with a repairable
 error text fed back to the model, never a crash, and never anything beyond
 that one tool's own `call(arguments:)`.
+
+## Questions from an MCP server
+
+An attached MCP server asks the user a question with `elicitation/create`.
+`MCPServer` (`Sources/FoundationModelsMultitool/Capabilities/MCP/`) sends the
+question only to a run of this session, or to the `elicitationHandler` of
+the host:
+
+- **The link to the call.** Each `tools/call` sends its request id as
+  `_meta.progressToken`. A question whose `_meta` holds that token goes to the
+  `ToolContext` of that call. A question with no token, or with a token that
+  names no call in flight, goes to the one run that holds each call in
+  flight. When the calls in flight are of two or more runs, `MCPServer` does
+  not select one: the question goes to the handler of the host, else it ends
+  with `cancel`.
+- **The restricted schema.** The `ElicitationRequestedSchema` of
+  FoundationModelsExtras decodes the wire form schema. A schema outside the
+  subset gets `decline`, and a URL that is not valid gets `decline`.
+- **A headless session.** When no person can answer (`userPresence` is
+  `.headless`), the client does not declare the elicitation capability, and
+  each question ends at once with `cancel`. No run and no handler gets it.
+- **The reason on the wire.** Each decline or cancel that `MCPServer` makes
+  itself puts its reason in `_meta.reason` of the result.
+- **A held URL flow.** A URL flow waits for its completion on its own
+  connection. A disconnect or a reconnect ends each such flow with `cancel`
+  and a reason, thus no run and no handler waits for ever.
 
 ## The web capability
 
