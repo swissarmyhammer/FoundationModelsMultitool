@@ -34,8 +34,31 @@ comments:
     - Defect A (product, #bug): after a host disconnect, `DropObservingTransport` ended the mirror with no error, and each later `receive()` gave the same ended stream. The swift-sdk client loop then spun until its task was cancelled, on a pool thread. Fix: every end of the mirror throws (`DropObservingTransport.Disconnected` after a disconnect), a `receive()` after the end gives a stream that throws, and `endAttempts(before:)` stops the client loop (waits for the first of "the client teardown returned" and "the transport closed") before it closes the transport itself.
     - Defect B (test, #bad-test): the inner-call bound test moved the `ManualRunClock` before the request was in flight. Then no `notifications/cancelled` went out and `waitForRecordedNotifications(count: 1)` waited for ever. Fix: the hanging tool opens an arrival gate, and the test moves the clock only after the arrival.
   timestamp: 2026-10-16T08:43:19.283668+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m55amytq6ap2t8myphhmvqgp
+  text: |-
+    ### review — clean
+    - evidence: `review sha 57ab995~1..57ab995`: 0 findings (0 confirmed, 0 refuted, 21 attempted, 0 failed). 19 files reviewed. 14 .kanban files are not reviewed (.reviewignore).
+    - Hazard check (read-only, current code). Each hazard is gone:
+      - Hazard 1, waitid with no WNOHANG on a pool thread: the waitid in StdioServerProcessTests.swift (waitUntilZombie) now runs in DedicatedThread.run (Sources/FoundationModelsMultitool/Capabilities/MCP/DedicatedThread.swift). Commit 57ab995.
+      - Hazard 2, signal(SIGPIPE, SIG_DFL) for the whole process: no code calls signal(SIGPIPE. StdioServerProcess.swift sets F_SETNOSIGPIPE on the request descriptor of the child only. Commit 57ab995.
+      - Hazard 3, FileWalker.swift reads stdout before stderr, then waitUntilExit: git ls-files now uses Subprocess.run, which reads stdout and discards stderr. FileWalker.swift has no waitUntilExit. Commit 57ab995.
+      - Hazard 4, TestSupport.swift waitUntilExit with pipes that nothing reads: runGit uses Subprocess.run. TestSupport.swift has no waitUntilExit. Commit 57ab995.
+      - Hazard 5, ShellRunnerTests.swift and OutputBufferTests.swift waitUntilExit and reads: both files use Subprocess.run. They have no waitUntilExit. Commit 57ab995 and later commits (e571163, T1 groups).
+    - Since the freeze, 13 CI runs were green, with no stop in the test output.
+    - next: the card moves to done.
+  timestamp: 2026-10-17T16:20:49.111236+00:00
+- actor: claude-code
+  id: 01m55ap07p31cn4wakmww55w53
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — earlier commits: 57ab995 (child waits off the cooperative pool; no SIGPIPE change for the whole test process), e571163 and the T1 groups; each of the 5 hazards of this card is gone in the current code
+    - test: green — 13 CI runs since the freeze of CI 38843335879 with both jobs green and no stop in the test output
+    - commit: 57ab995
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T16:21:23.318395+00:00
+position_column: done
+position_ordinal: ffffffa080
 title: CI test process froze near the end of the run (CI 38843335879), and synchronous waits run on the cooperative pool
 ---
 CI run 38843335879 (head c620900): `swift test` wrote no output for 2 h after 3.4 s, and was cancelled. 5 tests were open: MCPServerCallTests.swift:447, FileChangeEventAbsenceTests.swift:168, OverBudgetSelectionOrderTests.swift:120, StdioServerProcessTests.swift:432, MCPElicitationTests.swift:535. A local run with LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 did not hang (2404 passed, 45 s). The cause is not known.
