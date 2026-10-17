@@ -55,8 +55,24 @@ comments:
     - evidence: fe4a39b fix(mcp): end a late host-handler URL accept after its connection ended
     - next: review
   timestamp: 2026-10-17T04:25:33.122922+00:00
-position_column: doing
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m541zzye9hftdmj5vss9w82w
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 28e38e7). 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. The .reviewignore rule excluded 4 .kanban files.
+    - next: The task has no prior Review Findings section. The task moved to done.
+  timestamp: 2026-10-17T04:30:19.086493+00:00
+- actor: claude-code
+  id: 01m5420p01t3ezfecty6c7h4nh
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (a late URL accept or question after the connection ended gets cancel with connectionEndedReason; no flow held, no entry opened)
+    - test: green — swift test, exit 0, 2448 passed, 0 failed, 0 skipped
+    - commit: 28e38e7 (the commit comment names fe4a39b, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T04:30:41.665542+00:00
+position_column: done
+position_ordinal: ffffff9280
 title: End a host-handler URL accept that returns after the connect generation moved
 ---
 Found during ^fcvjb8j.
