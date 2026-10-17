@@ -1606,7 +1606,8 @@ struct ElicitHelperArgumentError: Sendable, CustomTestStringConvertible {
 }
 
 /// The bad calls: a wrong type or a missing value, a value that the form
-/// cannot hold, and an option name that the helper does not know.
+/// cannot hold, an option name that the helper does not know, and limits
+/// that no answer can satisfy.
 let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
     ElicitHelperArgumentError(helper: "elicit.confirm", call: "elicit.confirm()"),
     ElicitHelperArgumentError(helper: "elicit.confirm", call: "elicit.confirm(42)"),
@@ -1614,6 +1615,9 @@ let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
     ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", \"us\")"),
     ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", [])"),
     ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", [\"us\", 2])"),
+    ElicitHelperArgumentError(helper: "elicit.choose", call: "elicit.choose(\"Pick\", [\"us\", \"us\"])"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\", \"eu\", \"us\"])"),
+    ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { min: 2 })"),
     ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { min: 2, max: 1 })"),
     ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { min: 1.5 })"),
     ElicitHelperArgumentError(helper: "elicit.chooseMany", call: "elicit.chooseMany(\"Pick\", [\"us\"], { max: -1 })"),
@@ -1624,6 +1628,10 @@ let elicitHelperArgumentErrors: [ElicitHelperArgumentError] = [
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: \"1\" })"),
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: 5, max: 1 })"),
     ElicitHelperArgumentError(helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { integer: \"yes\" })"),
+    ElicitHelperArgumentError(
+        helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: 0.2, max: 0.8, integer: true })"),
+    ElicitHelperArgumentError(
+        helper: "elicit.askNumber", call: "elicit.askNumber(\"How many?\", { min: 0.5, max: 0.5, integer: true })"),
 ]
 
 /// One `elicit({ message, url })` call with a bad `url`.

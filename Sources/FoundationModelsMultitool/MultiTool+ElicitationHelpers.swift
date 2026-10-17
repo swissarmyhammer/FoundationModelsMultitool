@@ -555,13 +555,14 @@ extension MultiTool {
 
     /// The usage text of `elicit.choose`.
     private static let chooseUsage = "\(chooseName)(message, options) asks the user to pick one of options, "
-        + "an array of one or more strings. On an accept, content is the picked string."
+        + "an array of one or more different strings. On an accept, content is the picked string."
 
     /// The usage text of `elicit.chooseMany`.
     private static let chooseManyUsage =
         "\(chooseManyName)(message, options, \(settingsShape(chooseManySettings))) asks the user to pick "
-        + "some of options, an array of one or more strings. min and max are whole numbers that limit "
-        + "the count of picks. On an accept, content is the array of picked strings."
+        + "some of options, an array of one or more different strings. min and max are whole numbers that "
+        + "limit the count of picks, and min is not more than the count of options. On an accept, content is "
+        + "the array of picked strings."
 
     /// The usage text of `elicit.askText`.
     private static let askTextUsage = "\(askTextName)(message, \(settingsShape(askTextSettings))) asks for a text. "
@@ -571,7 +572,8 @@ extension MultiTool {
     /// The usage text of `elicit.askNumber`.
     private static let askNumberUsage =
         "\(askNumberName)(message, \(settingsShape(askNumberSettings))) asks for a number. min and max "
-        + "limit the number, and integer: true asks for a whole number. On an accept, content is the number."
+        + "limit the number, and integer: true asks for a whole number. With integer: true, a whole number "
+        + "must be between min and max. On an accept, content is the number."
 
     /// The row of `elicit.confirm()`: a yes-or-no question.
     static let confirmGlobal = ElicitationGlobal(
@@ -614,7 +616,8 @@ extension MultiTool {
             let call = ElicitationHelperArguments(arguments)
             let message = try call.message()
             let options = try call.options()
-            let limits = try call.settings(at: .afterOptions, allowing: chooseManySettings).countRange()
+            let limits = try call.settings(at: .afterOptions, allowing: chooseManySettings)
+                .countRange(ofPicksFrom: options.count)
             let field = ElicitationMultiSelectSchema(values: options, minItems: limits.minimum, maxItems: limits.maximum)
             return makeHelperQuestion(message: message, field: .multiSelect(field))
         })
@@ -652,10 +655,7 @@ extension MultiTool {
         makeQuestion: { arguments throws(ElicitationArgumentError) in
             let call = ElicitationHelperArguments(arguments)
             let message = try call.message()
-            let limits = try call.settings(at: .afterMessage, allowing: askNumberSettings)
-            let range = try limits.numberRange()
-            let type: ElicitationNumberSchema.NumberType = try limits.flag(.integer) == true ? .integer : .number
-            let field = ElicitationNumberSchema(type: type, minimum: range.minimum, maximum: range.maximum)
+            let field = try call.settings(at: .afterMessage, allowing: askNumberSettings).numberSchema()
             return makeHelperQuestion(message: message, field: .number(field))
         })
 
@@ -787,12 +787,17 @@ struct ElicitationHelperArguments {
         return message
     }
 
-    /// The options: the second argument, an array of one or more strings.
+    /// The options: the second argument, an array of one or more different
+    /// strings.
+    ///
+    /// The user cannot tell two options with the same text apart, and a pick
+    /// of `chooseMany` holds each option one time only. Thus the options must
+    /// be different strings.
     ///
     /// - Returns: the options, in call order.
     /// - Throws: ``ElicitationArgumentError/malformed`` when the argument is
     ///   not an array of strings; ``ElicitationArgumentError/undecodable(reason:)``
-    ///   when the array is empty.
+    ///   when the array is empty, or when it holds the same string two times.
     func options() throws(ElicitationArgumentError) -> [String] {
         guard case .array(let items)? = value(at: Self.optionsPosition) else { throw .malformed }
         let options = items.compactMap { item -> String? in
@@ -801,6 +806,9 @@ struct ElicitationHelperArguments {
         }
         guard options.count == items.count else { throw .malformed }
         guard !options.isEmpty else { throw .undecodable(reason: "options must hold one or more strings") }
+        guard Set(options).count == options.count else {
+            throw .undecodable(reason: "options must be different strings")
+        }
         return options
     }
 
@@ -846,26 +854,40 @@ struct ElicitationHelperSettings {
     let values: [ElicitationHelperSetting: InterpreterValue]
 
     /// The ``ElicitationHelperSetting/min`` and ``ElicitationHelperSetting/max``
-    /// counts of a pick.
+    /// counts of a pick from some different options.
     ///
+    /// - Parameter optionCount: the count of options that the user picks
+    ///   from. No pick holds more options than this count.
     /// - Returns: each count, or `nil` for a count that the object does not
     ///   give.
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when a
-    ///   count is not a whole number, 0 or more, or when `min` is more than
-    ///   `max`.
-    func countRange() throws(ElicitationArgumentError) -> (minimum: Int?, maximum: Int?) {
-        try range(count)
+    ///   count is not a whole number, 0 or more, when `min` is more than
+    ///   `max`, or when `min` is more than `optionCount`.
+    func countRange(
+        ofPicksFrom optionCount: Int
+    ) throws(ElicitationArgumentError) -> (minimum: Int?, maximum: Int?) {
+        let range = try range(count)
+        try Self.checkPickable(minimum: range.minimum, from: optionCount)
+        return range
     }
 
-    /// The ``ElicitationHelperSetting/min`` and ``ElicitationHelperSetting/max``
-    /// limits of a number.
+    /// The schema of a number: the ``ElicitationHelperSetting/min`` and
+    /// ``ElicitationHelperSetting/max`` limits, and the
+    /// ``ElicitationHelperSetting/integer`` flag.
     ///
-    /// - Returns: each limit, or `nil` for a limit that the object does not
-    ///   give.
+    /// - Returns: the schema. A limit that the object does not give is `nil`
+    ///   in the schema.
     /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when a
-    ///   limit is not a finite number, or when `min` is more than `max`.
-    func numberRange() throws(ElicitationArgumentError) -> (minimum: Double?, maximum: Double?) {
-        try range(number)
+    ///   limit is not a finite number, when `min` is more than `max`, when
+    ///   `integer` is not `true` or `false`, or when `integer` is `true` and
+    ///   no whole number is between `min` and `max`.
+    func numberSchema() throws(ElicitationArgumentError) -> ElicitationNumberSchema {
+        let range = try range(number)
+        guard try flag(.integer) == true else {
+            return ElicitationNumberSchema(type: .number, minimum: range.minimum, maximum: range.maximum)
+        }
+        try Self.checkHoldsWholeNumber(range.minimum, range.maximum)
+        return ElicitationNumberSchema(type: .integer, minimum: range.minimum, maximum: range.maximum)
     }
 
     /// The value of a true-or-false setting.
@@ -1041,5 +1063,33 @@ struct ElicitationHelperSettings {
         guard let minimum, let maximum, minimum > maximum else { return }
         throw .undecodable(
             reason: "\(ElicitationHelperSetting.min.rawValue) is more than \(ElicitationHelperSetting.max.rawValue)")
+    }
+
+    /// Checks that a pick can hold the lower limit of its count.
+    ///
+    /// - Parameters:
+    ///   - minimum: the lower limit of the count of picks, or `nil`.
+    ///   - optionCount: the count of different options that the user picks
+    ///     from.
+    /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when
+    ///   `minimum` is given and is more than `optionCount`.
+    private static func checkPickable(minimum: Int?, from optionCount: Int) throws(ElicitationArgumentError) {
+        guard let minimum, minimum > optionCount else { return }
+        throw .undecodable(reason: "\(ElicitationHelperSetting.min.rawValue) is more than the count of options")
+    }
+
+    /// Checks that a whole number is between a lower limit and an upper
+    /// limit.
+    ///
+    /// - Parameters:
+    ///   - minimum: the lower limit, or `nil`.
+    ///   - maximum: the upper limit, or `nil`.
+    /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when both
+    ///   limits are given and no whole number is between them.
+    private static func checkHoldsWholeNumber(_ minimum: Double?, _ maximum: Double?) throws(ElicitationArgumentError) {
+        guard let minimum, let maximum, minimum.rounded(.up) > maximum.rounded(.down) else { return }
+        throw .undecodable(
+            reason: "no whole number is between \(ElicitationHelperSetting.min.rawValue) "
+                + "and \(ElicitationHelperSetting.max.rawValue)")
     }
 }

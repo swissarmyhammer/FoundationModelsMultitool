@@ -35,10 +35,26 @@ comments:
     - evidence: cb6b39e fix(sandbox): check the elicit url argument and give a clear error
     - next: review
   timestamp: 2026-10-17T01:37:12.962844+00:00
+- actor: claude-code
+  id: 01m53r6gby78ebt9v78cphnmj7
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 67e57a3). 0 findings, 0 confirmed, 0 refuted. 3 source files reviewed. 6 .kanban files are not reviewed because of .reviewignore. No earlier Review Findings sections are on the task.
+    - next: The task is in done. The URL gap in the MCP server URL-mode path (MCPServer+Elicitation.swift) is on a different card and is not in the scope of this review.
+  timestamp: 2026-10-17T01:39:06.750346+00:00
+- actor: claude-code
+  id: 01m53r7h2d7g08sdqpvhnzx45z
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files (decodeElicitURL with Fetch.httpURL)
+    - test: green — swift test, exit 0, 2437 passed, 0 failed, 0 skipped
+    - commit: 67e57a3 (the commit comment names cb6b39e, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T01:39:40.237404+00:00
 depends_on:
 - 01M53FG3MMBDB6DZ55TETQN9DN
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff8a80
 title: 'Group D (a): check the elicit url argument and give a clear error to the snippet'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), group D (a).
