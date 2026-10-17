@@ -462,7 +462,7 @@ struct LiveCatalogTests {
             for stage in 1...ScriptedServer.dynamicToolsetStageCount {
                 // Each stage sends one notification, and the test waits until
                 // its re-list ended.
-                await MCPTestSupport.waitForRelist(of: server, after: Self.oneStageNotification) {
+                try await MCPTestSupport.waitForRelist(of: server, after: Self.oneStageNotification) {
                     #expect(await scripted.advanceDynamicToolsetScenario())
                 }
                 _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)

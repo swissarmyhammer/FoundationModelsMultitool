@@ -270,8 +270,12 @@ public actor MCPServer {
     var activeBackoffPolicy: BackoffPolicy = .default
 
     /// Every ``waitUntilReady()`` caller suspended on a state that is still
-    /// `.connecting`, resumed by the next state change.
-    private var readinessWaiters: [CheckedContinuation<Void, Never>] = []
+    /// `.connecting`, by the id of its wait — resumed by the next state
+    /// change, and ended by a cancel of the task of the wait.
+    private var readinessWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    /// The id that the next wait of ``readinessWaiters`` gets.
+    private var nextReadinessWaiterID = 0
 
     /// The tools the most recent successful discovery round trip returned —
     /// the paginated `tools/list` of a connect, or the coalesced re-list a
@@ -330,10 +334,11 @@ public actor MCPServer {
     /// Each caller of `waitUntilToolListChangedGeneration(reaches:)` that
     /// waits for a count of `tools/list_changed` notifications, with that
     /// count, by the id of the wait — resumed by
-    /// `handleToolListChangedNotification()`, and ended by a cancel of the
-    /// task of the wait. A test hook: no product code waits here.
-    var toolListChangedGenerationWaiters: [Int: (generation: Int, continuation: CheckedContinuation<Void, Never>)] =
-        [:]
+    /// `handleToolListChangedNotification()`, ended by a transport drop or a
+    /// `disconnect()`, and ended by a cancel of the task of the wait. A test
+    /// hook: no product code waits here.
+    var toolListChangedGenerationWaiters:
+        [Int: (generation: Int, continuation: CheckedContinuation<ConnectionHookWaitEnd, Never>)] = [:]
 
     /// Whether a `coalesceAndRelist()` watcher is running, so a burst of
     /// notifications starts one watcher and not one per notification.
@@ -376,12 +381,22 @@ public actor MCPServer {
 
     /// Each caller of `waitUntilTransportDropped()` that waits for a
     /// transport drop, by the id of the wait — resumed by
-    /// `handleTransportDrop(generation:)`, and ended by a cancel of the task
-    /// of the wait. A test hook: no product code waits here.
-    var transportDropWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    /// `handleTransportDrop(generation:)`, ended by a `disconnect()` or a new
+    /// connect, and ended by a cancel of the task of the wait. A test hook:
+    /// no product code waits here.
+    var transportDropWaiters: [Int: CheckedContinuation<ConnectionHookWaitEnd, Never>] = [:]
 
-    /// The id that the next wait of `waitUntilTransportDropped()` or of
-    /// `waitUntilToolListChangedGeneration(reaches:)` gets. A test hook: no
+    /// Each caller of `waitUntilConnectionHookWaitIsRecorded()` that waits
+    /// until a wait of `waitUntilTransportDropped()` or of
+    /// `waitUntilToolListChangedGeneration(reaches:)` is recorded, by the id
+    /// of its wait — resumed by each of those hooks when it records its wait,
+    /// and ended by a cancel of the task of the wait. A test hook: no product
+    /// code waits here.
+    var connectionHookWaitRecordedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    /// The id that the next wait of `waitUntilTransportDropped()`, of
+    /// `waitUntilToolListChangedGeneration(reaches:)` or of
+    /// `waitUntilConnectionHookWaitIsRecorded()` gets. A test hook: no
     /// product code reads it.
     var nextTestHookWaiterID = 0
 
@@ -559,21 +574,38 @@ public actor MCPServer {
     /// a server that is `.faulted` or `.disconnected` throws at once, because
     /// only a new `connect(via:)` moves it.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call: a server that never leaves `.connecting` then does
+    /// not hold its caller.
+    ///
     /// - Throws: ``MCPServerError/notReady(_:)`` carrying the state that
-    ///   stopped the wait.
+    ///   stopped the wait, or `CancellationError` when the calling task is
+    ///   cancelled.
     public func waitUntilReady() async throws {
         while true {
+            try Task.checkCancellation()
             switch state {
             case .ready:
                 return
             case .faulted, .disconnected:
                 throw MCPServerError.notReady(state)
             case .connecting:
-                await withCheckedContinuation { continuation in
-                    readinessWaiters.append(continuation)
-                }
+                await suspendUntilStateChange()
             }
         }
+    }
+
+    /// Suspends until the next state change, or until a cancel of the
+    /// calling task — one step of ``waitUntilReady()``.
+    private func suspendUntilStateChange() async {
+        let waiterID = nextReadinessWaiterID
+        nextReadinessWaiterID += 1
+        await TestHookWait.suspend(
+            on: self,
+            cancelValue: (),
+            resolvedValue: { nil },
+            record: { continuation in readinessWaiters[waiterID] = continuation },
+            end: { server, _ in server.readinessWaiters.removeValue(forKey: waiterID)?.resume() })
     }
 
     /// The one funnel every state change goes through: sets ``state`` and
@@ -583,11 +615,7 @@ public actor MCPServer {
     /// - Parameter newState: The state to move to.
     func transition(to newState: MCPServerState) {
         state = newState
-        let waiters = readinessWaiters
-        readinessWaiters = []
-        for waiter in waiters {
-            waiter.resume()
-        }
+        readinessWaiters.resumeAll(returning: ())
     }
 
     /// Records ``identity`` on the first successful connect, and leaves it

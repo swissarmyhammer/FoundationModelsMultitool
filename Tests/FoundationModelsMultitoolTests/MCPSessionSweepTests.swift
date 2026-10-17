@@ -245,11 +245,21 @@ struct MCPSessionSweepTests {
         #expect(firstPosition < secondPosition, "the order was: \(ledger)")
     }
 
-    /// Asserts that the scripted server received the advisory cancel.
+    /// Asserts that the scripted server of `ground` received the advisory
+    /// cancel.
     ///
-    /// - Parameter scripted: The server to read.
-    private static func expectServerReceivedTheCancel(from scripted: ScriptedServer) async {
-        let recorded = await scripted.waitForRecordedNotifications(count: oneNotification)
+    /// The wait ends on the first of two events: the scripted server recorded
+    /// the notification, or its message loop ended because the disconnect of
+    /// the server of `ground` closed the transport — see
+    /// ``MCPTestSupport/notifications(recordedBy:afterDisconnectOf:count:)``.
+    /// The pool of each caller disconnected that server already, thus the
+    /// disconnect here does nothing more, and the second event already came
+    /// or comes.
+    ///
+    /// - Parameter ground: The ground whose scripted server to read.
+    private static func expectServerReceivedTheCancel(on ground: SweepGround) async {
+        let recorded = await MCPTestSupport.notifications(
+            recordedBy: ground.scripted, afterDisconnectOf: ground.server, count: oneNotification)
         #expect(recorded.first?.method == CancelledNotification.name, "recorded: \(recorded)")
     }
 
@@ -315,7 +325,7 @@ struct MCPSessionSweepTests {
                     #expect(terminal.correlationID == envelope.completionToken)
                     #expect(terminal.kind == .completed)
                     #expect(terminal.outcome == .cancelled)
-                    await Self.expectServerReceivedTheCancel(from: ground.scripted)
+                    await Self.expectServerReceivedTheCancel(on: ground)
                     try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
                     try await Self.expectOrder(
                         of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
@@ -356,7 +366,7 @@ struct MCPSessionSweepTests {
                     }
                     await ground.pool.shutdownAll()
 
-                    await Self.expectServerReceivedTheCancel(from: ground.scripted)
+                    await Self.expectServerReceivedTheCancel(on: ground)
                     try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
                 }
             }

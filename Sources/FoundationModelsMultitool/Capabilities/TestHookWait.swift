@@ -1,5 +1,5 @@
 // `TestHookWait` — the one cancel scaffold of the waits of the internal test
-// hooks of this package.
+// hooks of this package, and of `MCPServer.waitUntilReady()`.
 //
 // Some actors give a test an internal hook that waits for one event of the
 // actor, in place of a poll: `MCPServer` (for example
@@ -10,11 +10,14 @@
 // held its own copy of the steps that do this. This file holds the single
 // implementation, thus the copies cannot drift apart when the cancel rules
 // change.
+//
+// One product wait uses the same steps: `MCPServer.waitUntilReady()`. A cancel
+// of its caller must end it too, and a second copy of the steps would drift.
 
 /// The cancel scaffold that the waits of the internal test hooks share.
 ///
-/// No product code waits through it: each caller is an internal hook for
-/// `@testable import`.
+/// The callers are internal hooks for `@testable import`, and one product
+/// wait: `MCPServer.waitUntilReady()`.
 enum TestHookWait {
     /// Suspends until one wait of a test hook of `owner` ends, and gives the
     /// value that ended it.
@@ -55,6 +58,24 @@ enum TestHookWait {
             await withCheckedContinuation { continuation in record(continuation) }
         } onCancel: {
             Task { await end(owner, cancelValue) }
+        }
+    }
+}
+
+extension Dictionary {
+    /// Takes each recorded wait out of this store, and resumes it with
+    /// `value` — the step that ends each wait of one store at once.
+    ///
+    /// The store is empty before the first resume, thus a resume that runs
+    /// code of the owner finds no wait to end a second time.
+    ///
+    /// - Parameter value: The value each wait returns.
+    mutating func resumeAll<WaitValue: Sendable>(returning value: WaitValue)
+    where Value == CheckedContinuation<WaitValue, Never> {
+        let waiters = values
+        removeAll()
+        for waiter in waiters {
+            waiter.resume(returning: value)
         }
     }
 }

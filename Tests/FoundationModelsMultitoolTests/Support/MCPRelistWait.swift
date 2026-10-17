@@ -11,7 +11,10 @@
 //
 // The wait for the count of notifications is the internal test hook
 // `MCPServer.waitUntilToolListChangedGeneration(reaches:)`. That hook ends on
-// a cancel, and it has no second event: it stands on the T1 exception list.
+// a cancel, and it throws when a transport drop or a disconnect ends the
+// connection first. The notifications are the event under test, and no event
+// that a caller of this file makes tells that a notification does not come:
+// the call site stands on the T1 exception list.
 
 @testable import FoundationModelsMultitool
 
@@ -26,13 +29,15 @@ extension MCPTestSupport {
     ///   - server: The server that counts the notifications.
     ///   - notifications: How many notifications `action` sends.
     ///   - action: The change that sends the notifications.
-    /// - Throws: What `action` throws.
+    /// - Throws: What `action` throws, and
+    ///   `ConnectionHookWaitError.connectionEnded` when the connection of
+    ///   `server` ended before it counted the notifications.
     static func waitForNotifications(
         of server: MCPServer, count notifications: Int, sentBy action: () async throws -> Void
-    ) async rethrows {
+    ) async throws {
         let generationBefore = await server.toolListChangedGeneration
         try await action()
-        await server.waitUntilToolListChangedGeneration(reaches: generationBefore + notifications)
+        try await server.waitUntilToolListChangedGeneration(reaches: generationBefore + notifications)
     }
 
     /// Runs `action`, and waits until `server` counted the `notifications`
@@ -44,10 +49,10 @@ extension MCPTestSupport {
     ///   - server: The server that re-lists.
     ///   - notifications: How many notifications `action` sends.
     ///   - action: The change that sends the notifications.
-    /// - Throws: What `action` throws.
+    /// - Throws: What ``waitForNotifications(of:count:sentBy:)`` throws.
     static func waitForRelist(
         of server: MCPServer, after notifications: Int, sentBy action: () async throws -> Void
-    ) async rethrows {
+    ) async throws {
         try await waitForNotifications(of: server, count: notifications, sentBy: action)
         await waitForRelistEnd(of: server)
     }

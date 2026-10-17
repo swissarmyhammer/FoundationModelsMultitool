@@ -135,7 +135,7 @@ struct LostCallTests {
                     on: context, postingTo: sink)
 
                 await respawning.disconnect()
-                await server.waitUntilTransportDropped()
+                try await server.waitUntilTransportDropped()
                 let thrown = await MCPCallProbe.thrownError {
                     _ = try await engine.call(arguments: NoArguments())
                 }

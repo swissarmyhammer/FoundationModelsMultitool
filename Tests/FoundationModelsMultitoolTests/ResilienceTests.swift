@@ -1040,6 +1040,33 @@ struct ResilienceTests {
         }
         withExtendedLifetime(scripted) {}
     }
+
+    /// A cancel ends a wait of `waitUntilReady()` with `CancellationError`.
+    ///
+    /// The order is fixed. The test cancels the wait before it releases the
+    /// gated connect. Thus each event that the wait sees comes after the
+    /// cancel, and the wait must end with `CancellationError`, also when the
+    /// server reached `.ready` before the wait read the state. A wait that
+    /// does not end on the cancel ends when the connect makes the server
+    /// ready, thus the test fails and does not hang.
+    @Test func aCancelEndsWaitUntilReadyWithCancellationError() async throws {
+        let (scripted, clientTransport) = try await makeScriptedPair()
+        let gated = GatedConnectTransport(wrapping: clientTransport)
+        let server = makeServer()
+
+        try await MCPTestSupport.withConnection(of: server) {
+            let connecting = Task { try await server.connect(via: gated) }
+            let waiting = Task { try await server.waitUntilReady() }
+            waiting.cancel()
+
+            await gated.release()
+            try await connecting.value
+            let outcome = await waiting.result
+
+            #expect(throws: CancellationError.self) { try outcome.get() }
+        }
+        withExtendedLifetime(scripted) {}
+    }
 }
 
 /// A `LogHandler` that opens a gate when `MCPServer` records that it

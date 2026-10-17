@@ -273,6 +273,10 @@ extension MCPServer {
         }
         await endAttempts(before: teardownGeneration)
         transition(to: .disconnected)
+        // After the state moved: a wait of a connection test hook that
+        // started during the teardown ends here, and a later one sees the
+        // state and ends at once.
+        endConnectionHookWaits()
     }
 
     // MARK: - The retry loop

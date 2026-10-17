@@ -237,9 +237,12 @@ extension MCPServer {
     /// closed. Each connect attempt moves the generation and then calls this
     /// before it starts, thus a new connect ends the URL flows of the
     /// connection that it replaces — see `endHeldHostElicitations()` and
-    /// `endOldContextElicitations()`. Returns after the end of the URL flows
-    /// when there is no current client.
+    /// `endOldContextElicitations()`. For the same reason, a new connect ends
+    /// each wait of the test hook `waitUntilTransportDropped()`: the drop of
+    /// the connection that it replaces can no longer come. Returns after the
+    /// end of the URL flows when there is no current client.
     func retireCurrentClient() async {
+        transportDropWaiters.resumeAll(returning: .connectionEnded)
         endHeldHostElicitations()
         await endOldContextElicitations()
         guard let retired = currentClient else { return }

@@ -372,36 +372,42 @@ extension MCPServer {
             metadata: [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(inFlightCalls.count)"])
         recordEventOnInFlightCalls(.mcpTransportDropped)
         failInFlightCalls(underlying: Self.transportDroppedDescription)
-        resumeTransportDropWaiters()
+        transportDropWaiters.resumeAll(returning: .event)
+        endToolListChangedGenerationWaits()
     }
 
     /// Waits until ``isTransportDropped`` is `true` — the event a test waits
     /// on in place of a poll of the flag. Returns at once when the flag is
     /// already set.
     ///
-    /// A cancel of the calling task ends the wait, also a cancel that came
-    /// before the call. The caller reads ``isTransportDropped`` when it must
-    /// know which event came.
+    /// A `disconnect()` or a new connect ends the connection whose drop the
+    /// wait waits for, thus each of them ends the wait with a throw — also a
+    /// `disconnect()` that came before the call. A cancel of the calling task
+    /// ends the wait with no throw, also a cancel that came before the call.
+    /// The caller reads ``isTransportDropped`` when it must know if the drop
+    /// came.
     ///
     /// Internal, for `@testable import`: no product code waits here.
-    func waitUntilTransportDropped() async {
+    ///
+    /// - Throws: ``ConnectionHookWaitError/connectionEnded`` when a
+    ///   `disconnect()` or a new connect came before the drop.
+    func waitUntilTransportDropped() async throws {
+        guard !isTransportDropped else { return }
+        guard state != .disconnected else { throw ConnectionHookWaitError.connectionEnded }
         let waiterID = nextTestHookWaiterID
         nextTestHookWaiterID += 1
-        await TestHookWait.suspend(
+        let end = await TestHookWait.suspend(
             on: self,
-            cancelValue: (),
-            resolvedValue: { isTransportDropped ? () : nil },
-            record: { continuation in transportDropWaiters[waiterID] = continuation },
-            end: { server, _ in server.transportDropWaiters.removeValue(forKey: waiterID)?.resume() })
-    }
-
-    /// Resumes each wait of ``waitUntilTransportDropped()``.
-    private func resumeTransportDropWaiters() {
-        let waiters = transportDropWaiters.values
-        transportDropWaiters = [:]
-        for waiter in waiters {
-            waiter.resume()
-        }
+            cancelValue: ConnectionHookWaitEnd.cancelled,
+            resolvedValue: { nil },
+            record: { continuation in
+                transportDropWaiters[waiterID] = continuation
+                resumeConnectionHookWaitRecordedWaiters()
+            },
+            end: { server, value in
+                server.transportDropWaiters.removeValue(forKey: waiterID)?.resume(returning: value)
+            })
+        try end.throwIfConnectionEnded()
     }
 
     /// The error a call ends with, given what the client threw.

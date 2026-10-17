@@ -82,37 +82,70 @@ extension MCPServer {
     /// event a test of the coalesce window waits on in place of a poll of
     /// the count. Returns at once when the count already reached it.
     ///
-    /// A cancel of the calling task ends the wait, also a cancel that came
-    /// before the call. The caller reads ``toolListChangedGeneration`` when
-    /// it must know which event came.
+    /// A transport drop or a `disconnect()` ends the stream of notifications
+    /// that the wait counts, thus each of them ends the wait with a throw —
+    /// also one that came before the call. A cancel of the calling task ends
+    /// the wait with no throw, also a cancel that came before the call. The
+    /// caller reads ``toolListChangedGeneration`` when it must know if the
+    /// count came.
     ///
     /// Internal, for `@testable import`: no product code waits here.
     ///
     /// - Parameter generation: The count of `tools/list_changed`
     ///   notifications that ends the wait.
-    func waitUntilToolListChangedGeneration(reaches generation: Int) async {
+    /// - Throws: ``ConnectionHookWaitError/connectionEnded`` when a transport
+    ///   drop or a `disconnect()` came before the count.
+    func waitUntilToolListChangedGeneration(reaches generation: Int) async throws {
+        guard toolListChangedGeneration < generation else { return }
+        guard !isTransportDropped, state != .disconnected else { throw ConnectionHookWaitError.connectionEnded }
         let waiterID = nextTestHookWaiterID
         nextTestHookWaiterID += 1
-        await TestHookWait.suspend(
+        let end = await TestHookWait.suspend(
             on: self,
-            cancelValue: (),
-            resolvedValue: { toolListChangedGeneration >= generation ? () : nil },
-            record: { continuation in toolListChangedGenerationWaiters[waiterID] = (generation, continuation) },
-            end: { server, _ in
-                server.toolListChangedGenerationWaiters.removeValue(forKey: waiterID)?.continuation.resume()
+            cancelValue: ConnectionHookWaitEnd.cancelled,
+            resolvedValue: { nil },
+            record: { continuation in
+                toolListChangedGenerationWaiters[waiterID] = (generation, continuation)
+                resumeConnectionHookWaitRecordedWaiters()
+            },
+            end: { server, value in
+                server.toolListChangedGenerationWaiters.removeValue(forKey: waiterID)?.continuation.resume(
+                    returning: value)
             })
+        try end.throwIfConnectionEnded()
     }
 
     /// Resumes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
     /// whose count ``toolListChangedGeneration`` reached.
     private func resumeToolListChangedGenerationWaiters() {
         let current = toolListChangedGeneration
-        let reached = toolListChangedGenerationWaiters.filter { $0.value.generation <= current }
-        for waiterID in reached.keys {
+        endToolListChangedGenerationWaits(with: .event) { $0 <= current }
+    }
+
+    /// Ends each wait of ``waitUntilToolListChangedGeneration(reaches:)``
+    /// with ``ConnectionHookWaitEnd/connectionEnded`` — the step of a
+    /// transport drop and of a `disconnect()`: no more notification comes on
+    /// that connection.
+    func endToolListChangedGenerationWaits() {
+        endToolListChangedGenerationWaits(with: .connectionEnded) { _ in true }
+    }
+
+    /// Takes each wait of ``waitUntilToolListChangedGeneration(reaches:)``
+    /// whose count `isEnded` accepts out of its store, and resumes it with
+    /// `end`.
+    ///
+    /// - Parameters:
+    ///   - end: The value each ended wait returns.
+    ///   - isEnded: Whether the wait for the given count ends now.
+    private func endToolListChangedGenerationWaits(
+        with end: ConnectionHookWaitEnd, where isEnded: (Int) -> Bool
+    ) {
+        let ended = toolListChangedGenerationWaiters.filter { isEnded($0.value.generation) }
+        for waiterID in ended.keys {
             toolListChangedGenerationWaiters[waiterID] = nil
         }
-        for waiter in reached.values {
-            waiter.continuation.resume()
+        for waiter in ended.values {
+            waiter.continuation.resume(returning: end)
         }
     }
 
