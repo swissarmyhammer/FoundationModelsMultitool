@@ -293,6 +293,66 @@ struct MCPElicitationTests {
         }
     }
 
+    /// A host handler that reports each call on ``call``, waits until the
+    /// test opens the release of ``call``, and then accepts the URL question.
+    /// Thus a test can act while the handler is busy with a question.
+    private struct HeldHandler {
+        /// The arrival and the release of each call of the handler.
+        let call = HeldCall()
+
+        /// The handler an `MCPServer` is constructed with. A cancel of the
+        /// wait for the release answers cancel, and not the accept.
+        var handler: MCPServer.ElicitationHandler {
+            { [call] _ in
+                do {
+                    try await call.pass()
+                } catch {
+                    return .cancel
+                }
+                return MCPElicitationTests.urlAccept
+            }
+        }
+    }
+
+    /// A sink that records each post in ``recorded``, and holds each end of
+    /// a question on ``heldEnd`` after it recorded that end. Thus a test can
+    /// act while the run plane ends a question, and the end goes on when the
+    /// test opens the release of ``heldEnd``.
+    private struct EndHoldingEventSink: OperationEventSink {
+        /// The sink that records each post.
+        let recorded = RecordingEventSink()
+
+        /// The arrival and the release of each end post.
+        let heldEnd = HeldCall()
+
+        /// Records `event`.
+        ///
+        /// - Parameter event: The posted event.
+        func post(event: OperationEvent) async {
+            await recorded.post(event: event)
+        }
+
+        /// Records the completion of the URL flow `elicitationId`.
+        ///
+        /// - Parameter elicitationId: The id of the question that completed.
+        func post(elicitationCompleted elicitationId: ULID) async {
+            await recorded.post(elicitationCompleted: elicitationId)
+        }
+
+        /// Records the end of the question `elicitationId`, and then waits
+        /// until the test opens the release of ``heldEnd``. A cancel of that
+        /// wait lets the end go on, thus a cancelled test does not hold the
+        /// run plane.
+        ///
+        /// - Parameters:
+        ///   - elicitationId: The id of the question that ended.
+        ///   - response: The answer that the run gets.
+        func post(elicitationEnded elicitationId: ULID, response: ElicitationResponse) async {
+            await recorded.post(elicitationEnded: elicitationId, response: response)
+            try? await heldEnd.pass()
+        }
+    }
+
     /// The pieces of one run bound around a call: the session the test answers
     /// through, and the context it binds.
     ///
@@ -366,7 +426,7 @@ struct MCPElicitationTests {
     ///   - runPlane: The run plane of the context.
     ///   - sink: The sink of the context.
     /// - Returns: The context.
-    private static func relayContext(on runPlane: RunPlane, sink: RecordingEventSink) -> ToolContext {
+    private static func relayContext(on runPlane: RunPlane, sink: any OperationEventSink) -> ToolContext {
         ToolContext(
             sessionID: ULID(),
             runPlane: runPlane,
@@ -937,6 +997,55 @@ struct MCPElicitationTests {
         #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
     }
 
+    /// A URL accept of the handler that returns after a disconnect or a new
+    /// connect moved the connect generation belongs to a connection that
+    /// ended. The end of the connection ran before the accept, thus nothing
+    /// can end a flow that the server holds then. The accept ends at once
+    /// with a cancel and a reason, and the server does not hold the flow.
+    /// Before the fix, the server held the late flow under the new
+    /// generation, and it stayed held until the next end of a connection.
+    ///
+    /// The order is fixed. The question reaches the handler, and the test
+    /// waits for the first of two events: the handler was called, or the
+    /// answer ended — see ``start(_:awaiting:cleaningUpOnThrow:)``. When the
+    /// handler was not called, the test fails at once. Then the connection
+    /// ends. Then the test lets the handler return the accept, and waits for
+    /// the first of two events: the server holds the flow, or the answer
+    /// ended. The test reads the held flows before it waits for the answer,
+    /// and it completes a flow that is still held. Thus a flow that stays
+    /// held fails the test, and no wait stays open.
+    @Test(
+        "a URL accept of the handler after the end of its connection gets cancel with a reason, and is not held",
+        arguments: ConnectionEnd.allCases)
+    func aLateHandlerAcceptAfterTheEndOfItsConnectionCancels(end: ConnectionEnd) async throws {
+        let handler = HeldHandler()
+        let server = MCPTestSupport.makeServer(name: Self.serverName, elicitationHandler: handler.handler)
+        defer { handler.call.release.open() }
+        let generation = await server.connectGeneration
+        let answer = try await Self.start(
+            { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
+            awaiting: { try? await handler.call.arrival.wait() })
+        try #require(handler.call.arrival.isOpen, "the answer ended before the question reached the handler")
+
+        await Self.endConnection(of: server, with: end)
+        let lateAnswer = try await Self.start(
+            {
+                handler.call.release.open()
+                return try await answer.value
+            },
+            awaiting: {
+                await server.waitUntilHostElicitationHeld(elicitationId: ScriptedServer.elicitURLElicitationId)
+            })
+
+        let heldAfterTheAccept = await server.pendingHostElicitationIds
+        // A flow that is still held ends here, thus no continuation stays.
+        await server.complete(elicitationId: ScriptedServer.elicitURLElicitationId)
+        let result = try await lateAnswer.value
+        #expect(heldAfterTheAccept.isEmpty)
+        #expect(result.action == .cancel)
+        #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
+    }
+
     /// A second URL flow of the handler under a wire id that this actor still
     /// holds ends the earlier flow. The completion of the earlier flow never
     /// came, thus the earlier flow sends cancel with a reason to the server,
@@ -1025,6 +1134,78 @@ struct MCPElicitationTests {
                 ])
             #expect(entriesAfterTheEnd == 0)
             #expect(lateCompletion == .noPendingElicitation)
+        }
+        withExtendedLifetime(scripted) {}
+    }
+
+    /// A URL question of a context first ends an earlier question under the
+    /// same wire id, and that end suspends. When a disconnect or a new
+    /// connect moves the connect generation during that end, the question
+    /// belongs to a connection that ended: the end of the connection ran
+    /// before the question has an entry, thus nothing can end the question
+    /// then. The question ends at once with a cancel and a reason, it gets no
+    /// entry, and it never reaches the run. Before the fix, the question got
+    /// an entry of the old generation and opened on the run, and it stayed
+    /// open until the next end of a connection.
+    ///
+    /// The order is fixed. A call under the context is in flight, thus its
+    /// run is the one run that a question can go to. The earlier question
+    /// reaches the run, and the run accepts it. Then the newer question
+    /// starts, and the test waits for the first of two events: the sink
+    /// holds the end post of the earlier question, or the newer answer ended
+    /// — see ``start(_:awaiting:cleaningUpOnThrow:)``. When the end post is
+    /// not held, the test fails at once. The held call then ends, and the
+    /// connection ends. Then the test lets the end post go on, and waits for
+    /// the first of two events: the newer question reached the sink, or the
+    /// newer answer ended. The test reads the entries before it waits for the
+    /// answers, and it declines a newer question that reached the run. Thus
+    /// a question that opens fails the test, and no wait stays open.
+    @Test(
+        "a URL question of a context whose connection ends while it replaces an earlier question gets cancel",
+        arguments: ConnectionEnd.allCases)
+    func aContextQuestionWhoseConnectionEndsDuringTheReplacementCancels(end: ConnectionEnd) async throws {
+        let (scripted, server, held) = try await Self.connectedForTwoCalls(over: .inMemory)
+        try await Self.withConnection(of: server) {
+            let runPlane = RunPlane(userPresence: .interactive)
+            let sink = EndHoldingEventSink()
+            defer { sink.heldEnd.release.open() }
+            let context = Self.relayContext(on: runPlane, sink: sink)
+            let generation = await server.connectGeneration
+            let (earlier, newer) = try await Self.whileHolding(held, under: context, on: server) {
+                let earlier = try await Self.startContextURLQuestion(on: server, sink: sink.recorded, after: [])
+                let delivery = await runPlane.respond(elicitationId: earlier.request.elicitationId, Self.urlAccept)
+                try #require(delivery == .acceptedAwaitingCompletion)
+                let newer = try await Self.start(
+                    { await server.answerElicitation(parameters: Self.urlElicitation, generation: generation) },
+                    awaiting: { try? await sink.heldEnd.arrival.wait() })
+                try #require(sink.heldEnd.arrival.isOpen, "the newer answer ended before the end of the earlier question")
+                return (earlier, newer)
+            }
+
+            await Self.endConnection(of: server, with: end)
+            let earlierId = earlier.request.elicitationId
+            let isNewer: @Sendable (ElicitationRequest) -> Bool = { $0.elicitationId != earlierId }
+            let lateAnswer = try await Self.start(
+                {
+                    sink.heldEnd.release.open()
+                    return try await newer.value
+                },
+                awaiting: { await sink.recorded.waitUntilEvent { $0.elicitation.map(isNewer) ?? false } })
+
+            let newerQuestion = await sink.recorded.events.compactMap(\.elicitation).first(where: isNewer)
+            let entriesAfterTheEnd = await server.pendingContextElicitations.count
+            // A newer question that reached the run ends here, thus no answer stays open.
+            if let newerQuestion {
+                _ = await runPlane.respond(elicitationId: newerQuestion.elicitationId, .decline)
+            }
+            let newerResult = try await lateAnswer.value
+            let earlierResult = try await earlier.answer.value
+            #expect(newerQuestion?.elicitationId == nil)
+            #expect(entriesAfterTheEnd == 0)
+            #expect(newerResult.action == .cancel)
+            #expect(Self.reason(of: newerResult) == .string(Self.connectionEndedReason))
+            #expect(earlierResult.action == .cancel)
+            #expect(Self.reason(of: earlierResult) == .string(Self.replacedByNewerFlowReason))
         }
         withExtendedLifetime(scripted) {}
     }

@@ -380,8 +380,8 @@ public actor MCPServer {
     /// and this actor still holds open, keyed by the wire `elicitationId` —
     /// resumed with `nil` by `complete(elicitationId:)`, and with a cancel by
     /// `endHeldHostElicitations()` when the connection ends, or by
-    /// `replaceEarlierURLFlows(under:)` when a newer URL flow uses the same
-    /// wire id. See `MCPServer+Elicitation.swift`.
+    /// `replaceEarlierURLFlows(under:generation:)` when a newer URL flow uses
+    /// the same wire id. See `MCPServer+Elicitation.swift`.
     var pendingHostElicitations: [String: CheckedContinuation<ElicitationResponse?, Never>] = [:]
 
     /// Every URL-mode elicitation that a bound `ToolContext` answers and that
@@ -391,13 +391,13 @@ public actor MCPServer {
     /// the request. `complete(elicitationId:generation:)` relays a completion
     /// through it, and `endOldContextElicitations()` ends and takes out each
     /// entry of an older generation when the connection ends.
-    /// `replaceEarlierURLFlows(under:)` ends and takes out the entry of a
+    /// `replaceEarlierURLFlows(under:generation:)` ends and takes out the entry of a
     /// wire id that a newer URL flow uses. See `MCPServer+Elicitation.swift`.
     var pendingContextElicitations: [String: (context: ToolContext, id: ULID, generation: Int)] = [:]
 
     /// Each caller of `waitUntilHostElicitationHeld(elicitationId:)` that
     /// waits until this actor holds the URL-mode flow of that wire id, by the
-    /// id of its wait — resumed with `true` by `awaitHostCompletion(of:)`,
+    /// id of its wait — resumed with `true` by `awaitHostCompletion(of:generation:)`,
     /// or with `false` when the task of the wait is cancelled. A test hook:
     /// no product code waits here.
     var hostElicitationHeldWaiters = ElicitationWaiters<Bool>()

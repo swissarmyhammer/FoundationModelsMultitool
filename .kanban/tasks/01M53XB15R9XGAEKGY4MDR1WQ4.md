@@ -10,8 +10,53 @@ comments:
     - The answer: a late accept from an old generation must end with cancel and a reason in `_meta.reason`, not stay held. Start with a test that fails on the current code.
     - Push: this card and ^e7vbxzd go together in one push.
   timestamp: 2026-10-17T03:19:14.408147+00:00
-position_column: todo
-position_ordinal: '9680'
+- actor: claude-code
+  id: 01m5418f0tb83svznwgbfx4rfh
+  text: |-
+    ### research — implement (2026-10-17)
+    - Handler path: in resolve(...), the handler returns accept, and then awaitHostCompletion(of:) calls replaceEarlierURLFlows(under:) and holds the flow. No step compares the generation of the question with connectGeneration. A disconnect or a new connect that ran while the handler was busy already ran endHeldHostElicitations(), thus the late flow stays held.
+    - Context path: the same gap is in openContextElicitation(_:request:context:generation:). replaceEarlierURLFlows(under:) suspends while it ends an earlier open question of a context under the same wire id (the end post of the sink of that question). When a disconnect or a new connect moves the generation during that suspension, endOldContextElicitations() runs before the newer entry goes in. The newer entry then goes in with the old generation, and the question opens on the run. Only the next end of a connection can end it. A late accept of a context itself is not a gap: the run gives an accept only after a completion that complete(elicitationId:generation:) relays for the same generation.
+    - Plan: replaceEarlierURLFlows(under:generation:) stops when the generation moves, and tells if the connection of the question is still current. Both callers answer cancel with connectionEndedReason when it is not, and hold or open nothing. A new log event records the cancel. A further risk that the plan removes: the old code could also end a flow of the new connection under the same wire id, because the replacement step ran for a late question.
+    - Tests: one fixed-order RED test for each path, for a disconnect and for a new connect. The context test uses a sink that holds the end post of the earlier question on a HeldCall.
+  timestamp: 2026-10-17T04:17:28.090390+00:00
+- actor: claude-code
+  id: 01m541kbka078gn4a3907p5tzm
+  text: |-
+    ### implementation — landed (2026-10-17)
+    - RED: two new fixed-order tests in MCPElicitationTests, each for a disconnect and for a new connect. aLateHandlerAcceptAfterTheEndOfItsConnectionCancels (handler path) and aContextQuestionWhoseConnectionEndsDuringTheReplacementCancels (context path). One filtered run before the fix: 2 tests failed with 14 issues. The handler path held the late flow and sent accept. The context path opened the question on the run with an entry of the old generation.
+    - GREEN: replaceEarlierURLFlows(under:generation:) stops when connectGeneration moves, and tells if the connection of the flow is still current. awaitHostCompletion(of:generation:) and openContextElicitation(_:request:context:generation:) then hold or open nothing, and resolve answers cancel with connectionEndedReason through cancelFlowAfterConnectionEnd(of:). answerElicitation encodes it with wireResult(of:), thus the reason is in _meta.reason. A late question also does not end a flow of the new connection under the same wire id now.
+    - New log message: MultitoolTelemetry.LogMessage.mcpElicitationURLFlowAfterConnectionEnd (debug, with the wire id).
+    - Context path: the same late return could open an entry, thus it gets the same answer. A late accept that the run itself gives is not a gap: the run gives an accept only after a completion of the same generation.
+    - Test helpers added: HeldHandler (a handler that waits on a HeldCall), EndHoldingEventSink (a sink that holds each end post on a HeldCall). relayContext(on:sink:) now takes any OperationEventSink.
+    - One filtered run after the fix: 2 tests passed. One full swift test run: exit code 0, 2448 tests in 211 suites passed.
+  timestamp: 2026-10-17T04:23:25.034071+00:00
+- actor: claude-code
+  id: 01m541kn4ykwzxpzdynmmmmm92
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer.swift (doc refs), Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry.swift, Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift. RED: 2 new tests failed (14 issues). GREEN: 2 passed. Full `swift test`: exit code 0, 2448 tests in 211 suites passed.
+    - next: /review
+  timestamp: 2026-10-17T04:23:34.814983+00:00
+- actor: claude-code
+  id: 01m541p8w31vhexz5b5f67qk5r
+  text: |-
+    ### test - green
+    - command: swift test (output saved to a file; exit code of swift test itself captured)
+    - exit code: 0
+    - Swift Testing summary: Test run with 2448 tests in 211 suites passed after 6.576 seconds.
+    - failures: 0. skipped tests: 0.
+    - warnings: one build system line, "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path. It is not a compiler warning of this package source.
+    - next: review
+  timestamp: 2026-10-17T04:25:00.547944+00:00
+- actor: claude-code
+  id: 01m541q8p2310t89shh4w6t63e
+  text: |-
+    ### commit — changed
+    - evidence: fe4a39b fix(mcp): end a late host-handler URL accept after its connection ended
+    - next: review
+  timestamp: 2026-10-17T04:25:33.122922+00:00
+position_column: doing
+position_ordinal: '8280'
 title: End a host-handler URL accept that returns after the connect generation moved
 ---
 Found during ^fcvjb8j.

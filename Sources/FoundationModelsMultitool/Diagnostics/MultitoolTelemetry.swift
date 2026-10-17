@@ -475,6 +475,16 @@ enum MultitoolTelemetry {
         /// answerer is asked. Level: `debug`.
         case mcpElicitationCancelledOldConnection = "mcp elicitation cancelled: its connection ended"
 
+        /// A URL-mode elicitation came on a connection that was current, but
+        /// a disconnect or a newer connect ended that connection before the
+        /// server could hold its flow: the handler of the host accepted it
+        /// late, or the end of an earlier flow under the same wire id
+        /// suspended. The end of the connection ran already, thus nothing
+        /// could end the flow. The answer is `cancel` with the reason, and
+        /// the server does not hold the flow or open the question. The record
+        /// holds the wire id. Level: `debug`.
+        case mcpElicitationURLFlowAfterConnectionEnd = "mcp url elicitation cancelled: its connection ended before the hold"
+
         /// An elicitation came while two or more calls from different runs
         /// were in flight, and its `_meta` named none of them by its progress
         /// token. The host has no handler, and the answer is `cancel` with

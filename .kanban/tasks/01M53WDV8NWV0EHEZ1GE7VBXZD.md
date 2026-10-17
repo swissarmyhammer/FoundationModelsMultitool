@@ -160,8 +160,24 @@ comments:
     - evidence: aebbc2a refactor(mcp): end held flows and open questions in one step each
     - next: review. Working tree is clean. The stash "T1 nvxckvr" is untouched.
   timestamp: 2026-10-17T04:08:35.548992+00:00
-position_column: doing
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m540yxwck6ehddrvz2ahk5tc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 451c096). The engine reviewed 2 files and found 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). All items in "Review Findings (2026-10-16 22:38)" and "Review Findings (2026-10-16 22:57)" are checked.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-17T04:12:15.628019+00:00
+- actor: claude-code
+  id: 01m540zm8nv2g34r4f2fgkhwtn
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 2 files (3 of 3 findings fixed; endHeldHostElicitations(where:reason:), endContextElicitations(where:reason:), generic endWait, releaseHeldCall)
+    - test: green — swift test, exit 0, 2446 passed, 0 failed, 0 skipped
+    - commit: 451c096 (the commit comment names aebbc2a, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T04:12:38.549493+00:00
+position_column: done
+position_ordinal: ffffff9180
 title: A second context URL question under a wire id in use has no entry, thus no wire completion and no connection end can end it
 ---
 Found during ^179vr1r.
