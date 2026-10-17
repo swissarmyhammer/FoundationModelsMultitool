@@ -15,7 +15,7 @@ import Testing
 @testable import MultitoolTestSupport
 
 /// Behavioral tests for the host exclude patterns of the files capability.
-@Suite struct FilesExcludePatternsTests {
+@Suite(.ownsTemporaryDirectories) struct FilesExcludePatternsTests {
     // MARK: Test scaffolding
 
     /// The pattern the ACP agent gives for its own folder.

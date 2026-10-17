@@ -26,7 +26,7 @@ import Testing
 /// configuration, which reads no environment. The inline tests call each verb
 /// with a bad argument, thus the verb gives a correction before it sends a
 /// request or resolves a host.
-@Suite("WebCapabilityTests")
+@Suite("WebCapabilityTests", .ownsTemporaryDirectories)
 struct WebCapabilityTests {
 
     /// The one noun this capability owns.

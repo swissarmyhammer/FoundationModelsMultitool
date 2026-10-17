@@ -36,20 +36,37 @@ import Synchronization
 ///
 /// A reference type, and `Sendable`, because swift-testing runs the tests of
 /// one suite in parallel and thus makes the suite type `Sendable`.
+///
+/// A suite whose helpers are `static` cannot reach a stored property. Such a
+/// suite takes the `ownsTemporaryDirectories` trait (see
+/// `Support/TemporaryDirectoryScope.swift`) instead: the trait binds one
+/// `TestScratch` to ``current`` for each test, and removes its paths when the
+/// test ends.
 final class TestScratch: Sendable {
+
+    /// The scratch of the test that runs now, when the
+    /// `ownsTemporaryDirectories` trait holds the test, and `nil` when no
+    /// trait holds it.
+    static let current = TaskLocal<TestScratch?>(wrappedValue: nil)
 
     /// Each path this test owns, in the order the test received it.
     private let ownedPaths = Mutex<[String]>([])
 
-    /// Removes each directory this test received.
-    ///
-    /// Best effort. A test that already failed has no use for a second failure
-    /// about its own cleanup, and a directory that the test removed itself must
-    /// not become one.
+    /// Removes each path this test received.
     deinit {
-        for path in ownedPaths.withLock({ $0 }) {
-            try? FileManager.default.removeItem(atPath: path)
-        }
+        removeAll()
+    }
+
+    /// A unique path under the process temporary directory, which nothing
+    /// made yet.
+    ///
+    /// - Parameter prefix: A short name that states the role of the path.
+    ///   Thus a leaked path is traceable to the suite that made it, and is not
+    ///   anonymous in `$TMPDIR`.
+    /// - Returns: The path, in the `/var` spelling of the temporary directory.
+    static func uniqueTemporaryPath(prefix: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     }
 
     /// Makes a unique temporary directory that this test owns.
@@ -62,12 +79,36 @@ final class TestScratch: Sendable {
     ///   capability resolves the paths it takes.
     /// - Throws: When the directory does not create.
     func makeDirectory(prefix: String) throws -> URL {
-        let candidate = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+        let candidate = own(Self.uniqueTemporaryPath(prefix: prefix))
         try FileManager.default.createDirectory(at: candidate, withIntermediateDirectories: true)
+        return candidate.resolvingSymlinksInPath()
+    }
 
-        let resolved = candidate.resolvingSymlinksInPath()
-        ownedPaths.withLock { $0.append(resolved.path) }
-        return resolved
+    /// Makes this test the owner of `url`, a directory or a file.
+    ///
+    /// Take the ownership before the path exists. Thus there is no moment in
+    /// which the path exists with no owner.
+    ///
+    /// - Parameter url: The path that this test owns from now on.
+    /// - Returns: `url`, unchanged.
+    @discardableResult
+    func own(_ url: URL) -> URL {
+        ownedPaths.withLock { $0.append(url.path) }
+        return url
+    }
+
+    /// Removes each path this test received, and forgets it.
+    ///
+    /// Best effort. A test that already failed has no use for a second failure
+    /// about its own cleanup, and a path that the test removed itself must not
+    /// become one.
+    func removeAll() {
+        let paths = ownedPaths.withLock { owned in
+            defer { owned.removeAll() }
+            return owned
+        }
+        for path in paths {
+            try? FileManager.default.removeItem(atPath: path)
+        }
     }
 }

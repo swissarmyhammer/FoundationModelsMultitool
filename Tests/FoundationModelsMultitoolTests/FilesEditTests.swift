@@ -40,7 +40,7 @@ import Testing
 /// fields; and the write→edit anchor chain with no intervening read. From
 /// this card's own criteria: the outside-the-root correction, the
 /// read-only-context correction, and the journal recording.
-@Suite struct FilesEditTests {
+@Suite(.ownsTemporaryDirectories) struct FilesEditTests {
     // MARK: Test scaffolding
 
     /// The permissions of a file the owner cannot write.

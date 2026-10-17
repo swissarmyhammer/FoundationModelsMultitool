@@ -35,7 +35,7 @@ import Testing
 /// inner run's record takes `OperationEventSink`'s no-op default. The reading
 /// below is therefore the `op` a called verb reads out of its own
 /// `ToolContext.current` — the one stamp both records are made from.
-@Suite("RegisteredJournalOp")
+@Suite("RegisteredJournalOp", .ownsTemporaryDirectories)
 struct RegisteredJournalOpTests {
 
     /// Owns the temporary directories this test makes, so they go away when the

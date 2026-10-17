@@ -38,7 +38,7 @@ import Testing
 ///
 /// Each test roots its session in a temporary directory of its own, thus the
 /// tests are independent and they run in parallel safely.
-@Suite("FilesCrossOpFlowTests")
+@Suite("FilesCrossOpFlowTests", .ownsTemporaryDirectories)
 struct FilesCrossOpFlowTests {
 
     // MARK: - The names and contents of the fixture files

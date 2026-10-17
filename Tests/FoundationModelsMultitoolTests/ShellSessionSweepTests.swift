@@ -42,7 +42,7 @@ import Testing
 /// service. Each test kills the process group it spawned, through the sweep it
 /// is testing, and every signal this file sends goes to a group this file
 /// spawned and to no other.
-@Suite("ShellSessionSweepTests")
+@Suite("ShellSessionSweepTests", .ownsTemporaryDirectories)
 struct ShellSessionSweepTests {
 
     /// Owns the temporary directories this test makes. Thus they go away when

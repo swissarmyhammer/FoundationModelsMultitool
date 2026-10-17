@@ -11,8 +11,11 @@ import Testing
 /// opens the FIFO, or on the kqueue exit event of the child. The tests of
 /// ``ShellCommandGate/release(commandIn:orEndOf:)`` drive a `ShellState` and a
 /// ``CallEnd`` in a fixed order.
-@Suite("ShellCommandGateTests")
+@Suite("ShellCommandGateTests", .ownsTemporaryDirectories)
 struct ShellCommandGateTests {
+
+    /// The name prefix of the store folder of each `ShellState` of a test.
+    private static let storeDirectoryPrefix = "multitool-gate-call"
 
     /// The shell each test child runs under.
     private static let shellPath = "/bin/sh"
@@ -157,8 +160,7 @@ struct ShellCommandGateTests {
     func releaseEndsWhenTheCallEndsBeforeTheCommandStarts() async throws {
         let gate = try ShellCommandGate()
         let state = try ShellState(
-            preferredDirectory: FileManager.default.temporaryDirectory
-                .appendingPathComponent("multitool-gate-call-\(UUID().uuidString)"))
+            preferredDirectory: TestSupport.makeTemporaryDirectory(named: Self.storeDirectoryPrefix))
         let call = CallEnd()
 
         async let released = gate.release(commandIn: state, orEndOf: call)
@@ -177,8 +179,7 @@ struct ShellCommandGateTests {
     func releaseThatSeesTheCommandIgnoresALaterEndOfTheCall() async throws {
         let gate = try ShellCommandGate()
         let state = try ShellState(
-            preferredDirectory: FileManager.default.temporaryDirectory
-                .appendingPathComponent("multitool-gate-call-\(UUID().uuidString)"))
+            preferredDirectory: TestSupport.makeTemporaryDirectory(named: Self.storeDirectoryPrefix))
         let call = CallEnd()
         await state.startCommand(gate.waitCommand, commandID: Self.laterCommandID)
         await state.completeCommand(commandID: Self.laterCommandID)

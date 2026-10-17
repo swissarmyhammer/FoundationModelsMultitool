@@ -91,10 +91,33 @@ comments:
     - note: the build printed one SwiftPM build-system message, "missing creator for mutated node" for the mlx-swift_Cmlx.bundle dependency. It is not a compiler warning in this package source.
     - next: review step.
   timestamp: 2026-10-17T10:03:06.729150+00:00
+- actor: claude-code
+  id: 01m54n24wf4aq3e3j1sc4pn5x6
+  text: |-
+    ### commit — changed
+    - evidence: 5287c36 test: share one run-start wrapper between hardening tests
+    - next: review
+  timestamp: 2026-10-17T10:03:32.623139+00:00
+- actor: claude-code
+  id: 01m54n73rstcygfsnawx1gvzcq
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 5287c36). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. The engine reviewed 1 code file (HardeningTests.swift). The ignore rule excluded 2 .kanban files. The prior finding at HardeningTests.swift:141 is checked.
+    - next: The task is in done. No more work on this task.
+  timestamp: 2026-10-17T10:06:15.321571+00:00
+- actor: claude-code
+  id: 01m54n7may5gag3feb61q6qnv4
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (1 of 1 finding fixed; one startRun helper in HardeningTests)
+    - test: green — swift test, exit 0, 2450 passed, 0 failed, 0 skipped
+    - commit: 5287c36
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T10:06:32.286801+00:00
 depends_on:
 - 01M53W31F0R9FSZW7FV8Y8HTQX
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff9b80
 title: 'T1 group 5: JSC and runCode test waits with no second event'
 ---
 Split from ^nvxckvr (test rule T1). The list (the JavaScriptCore sandbox and runCode waits in the unit tests) is in the comments of ^nvxckvr.

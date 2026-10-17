@@ -36,7 +36,7 @@ import Testing
 /// pinning the envelope syntax it must carry. From this card's own criteria:
 /// the outside-the-root correction, the read-only-context correction, and
 /// the journal recording.
-@Suite struct FilesPatchTests {
+@Suite(.ownsTemporaryDirectories) struct FilesPatchTests {
     // MARK: Test scaffolding
 
     /// The number of files the multi-file envelope touches: one add, one

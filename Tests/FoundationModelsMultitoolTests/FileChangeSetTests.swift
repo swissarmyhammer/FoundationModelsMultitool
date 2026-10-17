@@ -30,7 +30,7 @@ import Testing
 /// change kind and an absolute path, with move distinguishable from an
 /// add-plus-delete pair), the opt-in recording seam on ``FileContext``, and
 /// the rendered git patch.
-@Suite struct FileChangeSetTests {
+@Suite(.ownsTemporaryDirectories) struct FileChangeSetTests {
     // MARK: Test scaffolding
 
     /// The number of files the multi-file envelope touches: one add, one

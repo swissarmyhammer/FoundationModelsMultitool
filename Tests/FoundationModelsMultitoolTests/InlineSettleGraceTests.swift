@@ -15,7 +15,7 @@ import Testing
 /// FoundationModelsExtras, and this package owns the value that drives it:
 /// ``MultiToolConfiguration/inlineSettleGrace``. So each test here goes
 /// through the session mount, which is where the two meet.
-@Suite("runCode answers a short snippet with its own result")
+@Suite("runCode answers a short snippet with its own result", .ownsTemporaryDirectories)
 struct InlineSettleGraceTests {
     /// The snippet every test runs: one `tools.*` call, over at once.
     private static let quickSnippet = "const r = await tools.getCities({}); return r.cities.length;"

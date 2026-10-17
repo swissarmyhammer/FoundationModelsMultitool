@@ -45,7 +45,7 @@ private let renderedRecorderResult = "\"\(recorderResult)\""
 /// regress is the casting a host does to reach that value: the conformance
 /// staying visible off an `any Tool` existential, and the erased `forked()`
 /// return still downcasting to the `runCode` tool type a host mounts and runs.
-@Suite("HostAndEmitter")
+@Suite("HostAndEmitter", .ownsTemporaryDirectories)
 struct HostAndEmitterTests {
     // MARK: - The emitter half: events from a background run
 

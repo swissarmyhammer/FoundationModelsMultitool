@@ -15,7 +15,7 @@ import Testing
 /// inheritance. Every test here drives a real `runCode` snippet (or the
 /// binding's own mount) under an ambient `ToolContext` a session controls, and
 /// asserts what the inner calls actually saw.
-@Suite("RunBinding")
+@Suite("RunBinding", .ownsTemporaryDirectories)
 struct RunBindingTests {
     // MARK: - The code-mode mount: run to completion
 

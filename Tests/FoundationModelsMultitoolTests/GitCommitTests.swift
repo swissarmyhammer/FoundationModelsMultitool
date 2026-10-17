@@ -17,7 +17,7 @@ import Testing
 /// an unknown ref, and a file outside the root. A rename across the root, the
 /// cap of the files list, a ref that names no commit, and a root in no
 /// repository are here too.
-@Suite("GitCommitTests")
+@Suite("GitCommitTests", .ownsTemporaryDirectories)
 struct GitCommitTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

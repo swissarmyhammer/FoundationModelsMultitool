@@ -29,7 +29,7 @@ import os
 /// context, which is why most tests here bind one. With no context — a bare
 /// `LanguageModelSession` — the verb mints the string itself and runs the
 /// command to completion; one test here binds nothing for that reason.
-@Suite("ShellExecuteTests")
+@Suite("ShellExecuteTests", .ownsTemporaryDirectories)
 struct ShellExecuteTests {
 
     /// Owns the temporary directories this test makes. Thus they go away when

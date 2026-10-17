@@ -20,7 +20,7 @@ import Testing
 /// factory to the task of the case. Each case gives the capture the content of
 /// the fixture (an argument, a result, JS text) as forbidden strings, thus a
 /// metric dimension that carries that content fails the case.
-@Suite("Metrics")
+@Suite("Metrics", .ownsTemporaryDirectories)
 struct MetricsTests {
     // MARK: - Fixture content
 

@@ -27,7 +27,7 @@ import Testing
 /// `tools.files.write` result is visible to a following `tools.files.read` —
 /// and the `FilesReadTests` through `FilesGrepTests` suites prove the behavior
 /// of each verb.
-@Suite("FilesCapabilityTests")
+@Suite("FilesCapabilityTests", .ownsTemporaryDirectories)
 struct FilesCapabilityTests {
 
     /// The name of the temporary directory of one test. Thus a leaked

@@ -10,7 +10,7 @@ import Testing
 ///
 /// Each test makes its own temporary repository or folder, thus the tests are
 /// independent and they run in parallel safely.
-@Suite("LibGit2RepositoryTests")
+@Suite("LibGit2RepositoryTests", .ownsTemporaryDirectories)
 struct LibGit2RepositoryTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

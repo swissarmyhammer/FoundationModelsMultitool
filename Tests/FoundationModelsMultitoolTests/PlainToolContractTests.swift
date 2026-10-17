@@ -31,7 +31,7 @@ import Testing
 /// capability and fails when a file in it spells the ambient-context read in
 /// any form but the one-time capture at the top of a mutating verb's `call`;
 /// that is the cheap guard, and it fails before a verb is called.
-@Suite struct PlainToolContractTests {
+@Suite(.ownsTemporaryDirectories) struct PlainToolContractTests {
     // MARK: Test scaffolding
 
     /// The directory the reflective case scans, from the repository root.

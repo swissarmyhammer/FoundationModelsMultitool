@@ -37,7 +37,7 @@ import ULID
 /// stream and a process-wide registry entry of `LoopbackHTTPServer` open for
 /// the whole test, and one test at a time keeps each of them owned by exactly
 /// one test.
-@Suite("MCPElicitationTests", .serialized)
+@Suite("MCPElicitationTests", .serialized, .ownsTemporaryDirectories)
 struct MCPElicitationTests {
 
     // MARK: - Shared test constants

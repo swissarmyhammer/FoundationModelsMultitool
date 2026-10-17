@@ -19,7 +19,7 @@ import Testing
 /// Each test mounts `runCode` the way a Router session mounts it, with a sink
 /// that records each event, and compares the terminal events on that sink for
 /// the `runCode` completion token with the terminal event of the run plane.
-@Suite("an inner tools.* terminal never takes the place of the runCode terminal")
+@Suite("an inner tools.* terminal never takes the place of the runCode terminal", .ownsTemporaryDirectories)
 struct InnerTerminalEventTests {
     @Test("a mounted runCode whose snippet catches an inner failure gives one succeeded terminal")
     func caughtInnerFailureGivesOneSucceededTerminal() async throws {

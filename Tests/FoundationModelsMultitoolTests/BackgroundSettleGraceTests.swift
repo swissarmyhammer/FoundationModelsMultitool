@@ -38,7 +38,7 @@ import ULID
 /// command while the clock stands still. A test that needs "runs longer than
 /// the settle period" moves the clock past the period first, and releases the
 /// command after the call answered with its pending envelope.
-@Suite("a background call that ends inside the settle period answers with its own result")
+@Suite("a background call that ends inside the settle period answers with its own result", .ownsTemporaryDirectories)
 struct BackgroundSettleGraceTests {
 
     // MARK: - Fixtures
@@ -149,8 +149,7 @@ struct BackgroundSettleGraceTests {
     /// - Returns: The two verbs, and the store that records each command.
     /// - Throws: When the store does not prepare.
     private static func shellVerbs() throws -> (execute: Execute, getLines: GetLines, state: ShellState) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("multitool-settle-\(ULID.generate())")
+        let directory = TestSupport.makeTemporaryDirectory(named: "multitool-settle")
         let state = try ShellState(preferredDirectory: directory)
         return (
             Execute(runner: ShellRunner(state: state, registry: ProcessRegistry())), GetLines(state: state), state
@@ -430,8 +429,8 @@ struct BackgroundSettleGraceTests {
         let prompts = MailProbePrompts()
         let gate = try ShellCommandGate()
         let clock = ManualRunClock()
-        let logPath = FileManager.default.temporaryDirectory
-            .appendingPathComponent("multitool-await-\(ULID.generate()).log").path
+        let logPath = TestSupport.makeTemporaryDirectory(named: "multitool-await")
+            .appendingPathComponent("output.log").path
         let snippet = """
             await tools.shell.execute({command: "\(gate.waitCommand); echo \(Self.fullOutputLine) > \(logPath)"});
             const read = await tools.shell.execute({command: "cat \(logPath); rm \(logPath)"});

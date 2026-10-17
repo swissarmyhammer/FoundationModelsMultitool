@@ -28,7 +28,7 @@ import Testing
 /// clamp, the null-byte binary skip, the single-file short-circuit, the
 /// nonexistent-path correction, and the git-aware walk that never descends
 /// into a gitignored directory.
-@Suite struct FilesGrepTests {
+@Suite(.ownsTemporaryDirectories) struct FilesGrepTests {
     // MARK: Test scaffolding
 
     /// Create a fresh temporary directory for one test.

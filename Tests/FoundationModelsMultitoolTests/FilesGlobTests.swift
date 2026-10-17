@@ -25,7 +25,7 @@ import Testing
 /// `maxResults`, the nonexistent-directory correction, the
 /// outside-the-root path correction, the pattern-too-long correction, and
 /// the invalid-glob-syntax correction.
-@Suite struct FilesGlobTests {
+@Suite(.ownsTemporaryDirectories) struct FilesGlobTests {
     // MARK: Test scaffolding
 
     /// The pattern-length cap the engine enforces, as the corrective message

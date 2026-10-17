@@ -16,7 +16,7 @@ import Testing
 /// The card names each case: the current branch, a second branch, a detached
 /// HEAD, `main` against `master`, and a root in no repository. A repository
 /// with no commit is here too.
-@Suite("GitBranchesTests")
+@Suite("GitBranchesTests", .ownsTemporaryDirectories)
 struct GitBranchesTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

@@ -18,7 +18,7 @@ import Testing
 /// on the same path gives `created: false` and no correction; and a path
 /// where a file is, a path outside the root, and a read-only session each
 /// give a correction, change nothing on the disk, and do not throw.
-@Suite struct FilesMakeDirectoryTests {
+@Suite(.ownsTemporaryDirectories) struct FilesMakeDirectoryTests {
     // MARK: Test scaffolding
 
     /// The name of the temporary directory of one test, thus a leaked

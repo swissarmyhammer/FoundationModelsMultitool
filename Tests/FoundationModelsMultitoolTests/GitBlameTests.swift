@@ -19,7 +19,7 @@ import Testing
 /// in no repository, and a binary file are here too. Task `^t9rh6bn` adds the
 /// `rev` argument: one test for each of its acceptance criteria, and a file
 /// that a later commit removed.
-@Suite("GitBlameTests")
+@Suite("GitBlameTests", .ownsTemporaryDirectories)
 struct GitBlameTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

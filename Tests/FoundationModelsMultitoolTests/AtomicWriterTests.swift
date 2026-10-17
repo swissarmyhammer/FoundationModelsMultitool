@@ -12,7 +12,7 @@ import Testing
 /// consumes. The operation-level behaviors arrive with the write verb of task
 /// ^p238zzp and the edit verb of task ^v5xap97, which commits
 /// ``EditEngine``'s content through this writer.
-@Suite struct AtomicWriterTests {
+@Suite(.ownsTemporaryDirectories) struct AtomicWriterTests {
     // MARK: Mode and byte constants
 
     /// The permission bits of an executable script (`rwxr-xr-x`).

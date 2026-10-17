@@ -17,7 +17,7 @@ import Testing
 /// `../swissarmyhammer/crates/swissarmyhammer-tools/src/mcp/tools/git/changes/mod.rs`
 /// that apply to a verb with no `op` field, and the cases that the card adds:
 /// a bad range, an unknown branch, a detached HEAD, and a root in a subfolder.
-@Suite("GitChangesTests")
+@Suite("GitChangesTests", .ownsTemporaryDirectories)
 struct GitChangesTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

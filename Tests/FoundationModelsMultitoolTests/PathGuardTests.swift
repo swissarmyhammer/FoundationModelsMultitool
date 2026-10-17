@@ -14,7 +14,7 @@ import Testing
 /// security tests, and the `check_file_permissions` expectations. Thus the
 /// port rejects and accepts the same inputs the sibling does — this is
 /// security-sensitive code, and the parity is the point.
-@Suite struct PathGuardTests {
+@Suite(.ownsTemporaryDirectories) struct PathGuardTests {
     // MARK: Temp-directory helpers
 
     /// The unique final directory-name component of a temporary directory.

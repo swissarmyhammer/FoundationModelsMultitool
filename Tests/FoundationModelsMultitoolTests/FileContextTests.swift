@@ -13,7 +13,7 @@ import Testing
 /// in one suite. The journal cases are new to this port: the sibling proves
 /// the journal wiring through its mutating operations, which are not in this
 /// package yet, thus these cases drive the journal directly.
-@Suite struct FileContextTests {
+@Suite(.ownsTemporaryDirectories) struct FileContextTests {
     // MARK: Guard and read-only wiring
 
     /// A `FileContext` exposes its root, its guard, and its read-only flag,

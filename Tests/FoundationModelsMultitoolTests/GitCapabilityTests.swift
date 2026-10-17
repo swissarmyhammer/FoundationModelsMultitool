@@ -18,7 +18,7 @@ import Testing
 ///    fails loudly at `buildRegistry()`.
 /// 3. The capability acquires no resource that can fail at construction: a
 ///    root in no repository does not throw at build time.
-@Suite("GitCapabilityTests")
+@Suite("GitCapabilityTests", .ownsTemporaryDirectories)
 struct GitCapabilityTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

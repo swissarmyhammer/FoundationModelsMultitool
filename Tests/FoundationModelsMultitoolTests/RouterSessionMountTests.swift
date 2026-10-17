@@ -16,7 +16,7 @@ import ULID
 /// `RunToCompletionRunner` before the model sees it. These tests exist to keep
 /// that suspicion answered: the wrapper is transparent, so a future regression
 /// there is caught here rather than in a twenty-minute integration run.
-@Suite("Router session mount")
+@Suite("Router session mount", .ownsTemporaryDirectories)
 struct RouterSessionMountTests {
     @Test("searchTools returns the same text through Router's session mount as it does direct")
     func searchToolsIsTransparentThroughTheMount() async throws {

@@ -18,7 +18,7 @@ import Testing
 /// content over the cap. A root in a subfolder, a folder path, and a root in no
 /// repository are here too. Task `^5a8vaqk` adds a file in a folder that a
 /// later commit removed, and such a path outside the root.
-@Suite("GitShowTests")
+@Suite("GitShowTests", .ownsTemporaryDirectories)
 struct GitShowTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

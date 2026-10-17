@@ -31,7 +31,7 @@ private let removedWaitCatchingSnippet = """
 /// background run, a real settlement, a real elicitation reply — under an ambient
 /// `ToolContext` the test owns, so what is exercised is the actual Router
 /// surface rather than a stand-in for it.
-@Suite("Sandbox globals")
+@Suite("Sandbox globals", .ownsTemporaryDirectories)
 struct SandboxGlobalsTests {
     // MARK: - Reachability and the promise-vs-sync contract
 

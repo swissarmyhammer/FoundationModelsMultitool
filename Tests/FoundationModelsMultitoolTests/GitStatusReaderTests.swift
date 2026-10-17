@@ -13,7 +13,7 @@ import Testing
 /// contract that the verbs share. Each test makes its own temporary
 /// repository, thus the tests are independent and they run in parallel
 /// safely.
-@Suite("GitStatusReaderTests")
+@Suite("GitStatusReaderTests", .ownsTemporaryDirectories)
 struct GitStatusReaderTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

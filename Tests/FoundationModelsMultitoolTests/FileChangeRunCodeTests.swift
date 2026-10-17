@@ -28,7 +28,7 @@ import Testing
 /// One test for each acceptance criterion of the card: the write, the read
 /// with no wait, the three-file patch, the two concurrent calls, and the
 /// rendered text a recording and a non-recording capability answer.
-@Suite("FileChangeRunCodeTests")
+@Suite("FileChangeRunCodeTests", .ownsTemporaryDirectories)
 struct FileChangeRunCodeTests {
 
     // MARK: - The names and contents of the fixture files

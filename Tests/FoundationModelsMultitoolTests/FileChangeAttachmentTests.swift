@@ -47,7 +47,7 @@ private struct SnippetRunningTool: Tool {
 }
 
 /// Behavioral tests for the attachment a mutating verb call makes.
-@Suite("FileChangeAttachmentTests")
+@Suite("FileChangeAttachmentTests", .ownsTemporaryDirectories)
 struct FileChangeAttachmentTests {
 
     /// The name of the temporary directory of one test. Thus a leaked

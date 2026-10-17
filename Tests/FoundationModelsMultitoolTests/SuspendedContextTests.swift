@@ -22,7 +22,7 @@ import Testing
 /// Every test mounts `MultiTool` exactly as Router's native session does —
 /// `ToolMounting.makeWrapped` under `synchronous` — so what is exercised
 /// is the real composition, not a stand-in for it.
-@Suite("SuspendedContext")
+@Suite("SuspendedContext", .ownsTemporaryDirectories)
 struct SuspendedContextTests {
     // MARK: - The declared mount and the work bound
 

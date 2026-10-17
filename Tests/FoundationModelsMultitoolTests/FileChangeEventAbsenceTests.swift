@@ -31,7 +31,7 @@ import Testing
 /// One test for each acceptance criterion of the card: the read-only snippet,
 /// the non-recording capability, the mutation that does not land, the run
 /// with no ambient context, and the `notify()` notice beside a write.
-@Suite("FileChangeEventAbsenceTests")
+@Suite("FileChangeEventAbsenceTests", .ownsTemporaryDirectories)
 struct FileChangeEventAbsenceTests {
 
     // MARK: - The names and contents of the fixture files

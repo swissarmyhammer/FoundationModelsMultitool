@@ -26,7 +26,7 @@ import Testing
 /// both formats, the empty file, unicode content, the missing-path
 /// correction, and — from this card's acceptance criteria — the
 /// outside-the-root correction.
-@Suite struct FilesReadTests {
+@Suite(.ownsTemporaryDirectories) struct FilesReadTests {
     // MARK: Test scaffolding
 
     /// The largest accepted `offset`, as the verb's bound and its corrective

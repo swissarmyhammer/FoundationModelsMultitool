@@ -21,7 +21,7 @@ import Testing
 /// a correction and change nothing on the disk; a symlink to a directory is
 /// removed and its target stays; and a recording session records one delete
 /// change for each removed file.
-@Suite struct FilesRemoveDirectoryTests {
+@Suite(.ownsTemporaryDirectories) struct FilesRemoveDirectoryTests {
     // MARK: Test scaffolding
 
     /// The name of the temporary directory of one test, thus a leaked

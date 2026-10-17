@@ -14,7 +14,7 @@ import Testing
 /// against `SearchToolsTool.call(arguments:)`'s native `Tool` shape, plus new
 /// coverage for `.auto` mode's retrieval-only fallback when no selection
 /// tier is configured.
-@Suite("SearchToolsTool")
+@Suite("SearchToolsTool", .ownsTemporaryDirectories)
 struct SearchToolsToolTests {
     /// The error a host's selection factory throws in
     /// ``throwingSelectionFactoryStopsTheBuild()``.

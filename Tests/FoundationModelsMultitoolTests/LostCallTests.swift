@@ -35,7 +35,7 @@ import Testing
 ///
 /// The other terminal outcomes are covered by `MCPServerCallTests`; this suite
 /// covers only what is new here.
-@Suite("LostCallTests")
+@Suite("LostCallTests", .ownsTemporaryDirectories)
 struct LostCallTests {
 
     // MARK: - Shared test constants

@@ -17,7 +17,7 @@ import Testing
 /// rename that moves byte-identical content; and the cross-file conflict rules
 /// (move-destination collisions and same-final-path duplicates abort, while
 /// legal swaps and rotations pass).
-@Suite struct PatchEngineTests {
+@Suite(.ownsTemporaryDirectories) struct PatchEngineTests {
     // MARK: Constants
 
     /// The permissions of a directory that the owner cannot write.

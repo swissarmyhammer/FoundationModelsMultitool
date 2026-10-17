@@ -13,13 +13,13 @@ import Testing
 /// the behavior each suite depends on. Each suite calls into this namespace
 /// with its own arguments, and no suite carries a near-identical copy.
 ///
-/// `TestScratch` (see `Fixtures/ShellStoreFixtures.swift`) also makes
-/// temporary directories, and it removes them when the test ends. The file
-/// suites use `makeTemporaryDirectory` instead, for two reasons. First, the
-/// operating system reclaims the temporary tree, thus per-test cleanup is not
-/// necessary. Second, the returned URL keeps the unresolved `/var` spelling,
-/// which is the form the canonicalization checks through
-/// `canonicalDirectory` start from.
+/// `TestScratch` (see `Fixtures/ShellStoreFixtures.swift`) owns each
+/// temporary directory, and removes it when the test ends. A suite that holds
+/// a `TestScratch` as a stored property calls it directly. A suite whose
+/// helpers are `static` calls `makeTemporaryDirectory` instead, under the
+/// `ownsTemporaryDirectories` trait. The URL that `makeTemporaryDirectory`
+/// returns keeps the unresolved `/var` spelling, which is the form the
+/// canonicalization checks through `canonicalDirectory` start from.
 enum TestSupport {
     /// The name infix an atomic writer gives to its staging files.
     ///
@@ -27,11 +27,20 @@ enum TestSupport {
     /// the staging pattern changes one constant and no scan.
     private static let stagingFileInfix = ".tmp."
 
+    /// The owner of each directory that a test makes with no
+    /// `ownsTemporaryDirectories` trait. That test fails (see
+    /// `makeTemporaryDirectory(named:)`), and its directories stay on disk:
+    /// this owner is never released.
+    private static let unscopedScratch = TestScratch()
+
     /// Create a fresh, empty temporary directory and return its URL.
     ///
     /// The directory is created under the process temporary directory with a
-    /// unique name, thus concurrent tests never collide. The operating system
-    /// reclaims the temporary tree regardless of per-test cleanup. The
+    /// unique name, thus concurrent tests never collide. The
+    /// `TestScratch.current` of the test owns the directory, thus the
+    /// `ownsTemporaryDirectories` trait removes it when the test ends, also
+    /// when the test throws. A call from a test that no such trait holds
+    /// records an issue, because nothing would remove its directory. The
     /// `named` prefix makes the directory identifiable on disk as belonging
     /// to a particular suite.
     ///
@@ -39,10 +48,22 @@ enum TestSupport {
     ///   calling suite, prepended to the unique directory name.
     /// - Returns: the URL of the freshly created temporary directory.
     static func makeTemporaryDirectory(named name: String) -> URL {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
+        let base = currentScratch().own(TestScratch.uniqueTemporaryPath(prefix: name))
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
+    }
+
+    /// The `TestScratch` of the test that runs now.
+    ///
+    /// - Returns: `TestScratch.current`, or ``unscopedScratch`` after an
+    ///   issue when no `ownsTemporaryDirectories` trait holds the test.
+    private static func currentScratch() -> TestScratch {
+        guard let scratch = TestScratch.current.get() else {
+            Issue.record(
+                "a test made a temporary directory with no owner: put the ownsTemporaryDirectories trait on its suite")
+            return unscopedScratch
+        }
+        return scratch
     }
 
     /// The `realpath`-canonicalized form of an existing directory URL.

@@ -19,7 +19,7 @@ import Testing
 /// too. Most tests read the history of `GitTestHistory.makeThreeCommits()`.
 /// Task `^5a8vaqk` adds a path in a folder that a later commit removed, and
 /// such a path outside the root.
-@Suite("GitLogTests")
+@Suite("GitLogTests", .ownsTemporaryDirectories)
 struct GitLogTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

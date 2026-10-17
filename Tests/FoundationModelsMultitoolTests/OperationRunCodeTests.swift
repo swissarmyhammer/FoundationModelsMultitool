@@ -18,7 +18,7 @@ import Testing
 /// its five verbs render under `tools.notes`. The fixture records each payload
 /// `perform(_:)` receives beside the `op` of the ambient `ToolContext`, and a
 /// case reads that record after the snippet returns.
-@Suite("OperationRunCodeTests")
+@Suite("OperationRunCodeTests", .ownsTemporaryDirectories)
 struct OperationRunCodeTests {
     // MARK: - Shared test constants
 

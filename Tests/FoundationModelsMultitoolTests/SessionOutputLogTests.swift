@@ -8,7 +8,7 @@ import Testing
 /// A wait of the log ends also when the event stream of the session
 /// finishes. The caller must then know that the event did not come, and not
 /// read a partial log as if the event came.
-@Suite("a wait of SessionOutputLog tells when its event did not come")
+@Suite("a wait of SessionOutputLog tells when its event did not come", .ownsTemporaryDirectories)
 struct SessionOutputLogTests {
     /// The session closes before the test waits. A close finishes each event
     /// stream of the session, thus the log gets the end of its stream, and

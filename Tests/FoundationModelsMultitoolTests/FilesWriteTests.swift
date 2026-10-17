@@ -34,7 +34,7 @@ import Testing
 /// hashline tagging. From this card's own criteria: the outside-the-root
 /// correction, the read-only-context correction, and the journal recording
 /// an add and a modify.
-@Suite struct FilesWriteTests {
+@Suite(.ownsTemporaryDirectories) struct FilesWriteTests {
     // MARK: Test scaffolding
 
     /// The content-size cap in bytes, matching the verb's cap (10 MiB).

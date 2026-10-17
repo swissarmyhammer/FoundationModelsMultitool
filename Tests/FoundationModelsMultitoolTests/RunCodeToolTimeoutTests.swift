@@ -27,7 +27,7 @@ import os
 /// (``TerminalDetail/runEnd(of:in:)``). A run that ends before its step thus
 /// does not make the test hang: the test fails at once, or its checks of the
 /// terminal event fail.
-@Suite("runCode ends at its tool-level timeout")
+@Suite("runCode ends at its tool-level timeout", .ownsTemporaryDirectories)
 struct RunCodeToolTimeoutTests {
     // MARK: - A run with no progress
 

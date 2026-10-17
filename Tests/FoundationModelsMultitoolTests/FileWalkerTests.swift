@@ -11,7 +11,7 @@ import Testing
 /// the relative-path arithmetic, the canonicalization and directory probes,
 /// the plain and git-aware enumeration, the shared collect-filter-assemble
 /// loop, and the search-root resolution both engines share.
-@Suite struct FileWalkerTests {
+@Suite(.ownsTemporaryDirectories) struct FileWalkerTests {
     // MARK: Fixtures
 
     /// Creates a directory tree with one root file and one nested file.

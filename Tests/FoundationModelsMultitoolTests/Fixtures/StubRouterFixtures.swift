@@ -226,6 +226,14 @@ let stubStandardModel: ModelRef = "stub/standard"
 /// The model reference of the `embedding` slot of the stub profile.
 let stubEmbeddingModel: ModelRef = "stub/embedding"
 
+/// The name prefix of the folder in which a stub router caches and records,
+/// when a test gives no folder of its own.
+///
+/// `TestSupport.makeTemporaryDirectory(named:)` makes the folder, thus the
+/// `ownsTemporaryDirectories` trait of the suite removes it when the test
+/// ends, also when the test throws.
+let stubRouterDirectoryPrefix = "multitool-stub"
+
 /// A loader that downloads nothing and loads the stub containers.
 struct StubModelLoader: ModelLoader {
     /// The generation container every `loadLLM` call hands out. The default
@@ -411,8 +419,7 @@ func makeStubSession(
     mounting tools: [any Tool],
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
-    in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    in directory: URL = TestSupport.makeTemporaryDirectory(named: stubRouterDirectoryPrefix),
     runClock: (any RunClock)? = nil
 ) async throws -> (session: any RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
@@ -438,7 +445,9 @@ func makeStubSession(
 ///     reference no other test loads. Otherwise the pool hands it the
 ///     container another test loaded first.
 ///   - directory: Where the router caches. A fresh temporary directory per
-///     call keeps runs of one suite apart.
+///     call keeps runs of one suite apart. The default folder belongs to the
+///     test that runs now, thus its suite needs the
+///     `ownsTemporaryDirectories` trait (see ``stubRouterDirectoryPrefix``).
 ///   - runClock: The run clock of each session of the profile: the timeout
 ///     of each run, the settle period of each background call, and
 ///     `ToolContext.wait(completionToken:seconds:)`. `nil` keeps the real
@@ -450,8 +459,7 @@ func makeStubProfile(
     recorder: CollectingTranscriptRecorder = CollectingTranscriptRecorder(),
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
-    in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    in directory: URL = TestSupport.makeTemporaryDirectory(named: stubRouterDirectoryPrefix),
     runClock: (any RunClock)? = nil
 ) async throws -> LanguageModelProfile {
     let router = Router(
@@ -490,8 +498,7 @@ func makeStubProfile(
 ///   ``StubRunFailure/noContextCaptured``. Before this function throws after
 ///   it made the session, it closes the session.
 func makeStubRun(
-    in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    in directory: URL = TestSupport.makeTemporaryDirectory(named: stubRouterDirectoryPrefix),
     runClock: (any RunClock)? = nil
 ) async throws -> StubRun {
     let box = CapturedContextBox()
@@ -573,8 +580,7 @@ func ensuring<Result>(
 /// - Returns: What `body` returned.
 /// - Throws: What making the run throws, or what `body` threw.
 func withStubRun<Result>(
-    in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    in directory: URL = TestSupport.makeTemporaryDirectory(named: stubRouterDirectoryPrefix),
     runClock: (any RunClock)? = nil,
     _ body: (StubRun) async throws -> Result
 ) async throws -> Result {
@@ -599,8 +605,7 @@ func withStubSession<Result>(
     mounting tools: [any Tool],
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
-    in directory: URL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("multitool-stub-\(ULID.generate())"),
+    in directory: URL = TestSupport.makeTemporaryDirectory(named: stubRouterDirectoryPrefix),
     runClock: (any RunClock)? = nil,
     _ body: (any RoutedSession, CollectingTranscriptRecorder) async throws -> Result
 ) async throws -> Result {

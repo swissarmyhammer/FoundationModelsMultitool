@@ -50,7 +50,7 @@ import ULID
 /// Each test binds a real `ToolContext` from a stub session around the call, the
 /// way `ShellExecuteTests` does, and the `.lost` settlement case runs the call
 /// inside a mounted `MultiTool` over that session's own run plane.
-@Suite("MCPServerCallTests")
+@Suite("MCPServerCallTests", .ownsTemporaryDirectories)
 struct MCPServerCallTests {
 
     // MARK: - Shared test constants

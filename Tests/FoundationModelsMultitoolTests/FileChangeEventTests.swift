@@ -24,7 +24,7 @@ import Testing
 ///
 /// One test for each acceptance criterion of the card: the write verb, the
 /// patch verb, the edit verb, the emptied journal, and the bare-session path.
-@Suite("FileChangeEventTests")
+@Suite("FileChangeEventTests", .ownsTemporaryDirectories)
 struct FileChangeEventTests {
 
     /// The name of the temporary directory of one test. Thus a leaked

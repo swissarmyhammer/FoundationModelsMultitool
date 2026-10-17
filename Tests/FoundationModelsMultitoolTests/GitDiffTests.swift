@@ -23,7 +23,7 @@ import Testing
 /// mode with a clean tree and with one staged and one unstaged file. The
 /// staged-rename cases of the automatic mode come from task `^wvmh7vf`, and
 /// the rename to a path outside the root comes from task `^pt6fyf0`.
-@Suite("GitDiffTests")
+@Suite("GitDiffTests", .ownsTemporaryDirectories)
 struct GitDiffTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is

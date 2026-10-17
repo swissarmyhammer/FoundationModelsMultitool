@@ -11,7 +11,7 @@ import Testing
 /// members. Thus these tests pin the shared vocabulary itself directly. They
 /// guard the exact wording and the `<description>: <path>` shape, which both
 /// operations depend on staying byte identical.
-@Suite struct PathCorrectiveTests {
+@Suite(.ownsTemporaryDirectories) struct PathCorrectiveTests {
     @Test func unreadableDescriptionIsPinned() {
         #expect(PathCorrective.unreadableDescription == "The file could not be read")
     }

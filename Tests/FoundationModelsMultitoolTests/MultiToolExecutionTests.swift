@@ -16,7 +16,7 @@ import os
 /// installed in a fresh sandbox per call, dispatching into real wrapped
 /// `Tool`s. No model is needed for any of this; `RunCodeArguments` is built
 /// directly, standing in for what a real agent loop (M4b) would decode.
-@Suite("MultiToolExecution")
+@Suite("MultiToolExecution", .ownsTemporaryDirectories)
 struct MultiToolExecutionTests {
     // MARK: - The runCode envelope (eventplan.md § "The constraint boundary")
 

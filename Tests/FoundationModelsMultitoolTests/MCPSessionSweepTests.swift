@@ -59,7 +59,7 @@ import Testing
 /// The subprocess case spawns the `mcp-test-server` executable through the
 /// public initializer of `StdioServerProcess`, thus through
 /// `ProcessRegistry.global`, and it reads that registry for its own pid alone.
-@Suite("MCPSessionSweepTests")
+@Suite("MCPSessionSweepTests", .ownsTemporaryDirectories)
 struct MCPSessionSweepTests {
 
     /// The name of the server of the two in-memory cases — the noun the

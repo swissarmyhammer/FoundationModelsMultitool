@@ -2,7 +2,6 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import Testing
-import ULID
 
 @testable import FoundationModelsMultitool
 
@@ -15,7 +14,7 @@ import ULID
 /// suite finds each conformer in the source of this package, and fails when
 /// one has no row in ``coveredConformers`` or when a row reads a grace that
 /// is not the hosting default.
-@Suite("each background tool of this package waits for the settle period")
+@Suite("each background tool of this package waits for the settle period", .ownsTemporaryDirectories)
 struct BackgroundToolGraceCoverageTests {
 
     /// The directory of the source of this package.
@@ -58,8 +57,7 @@ struct BackgroundToolGraceCoverageTests {
     /// - Throws: When a tool does not build.
     private static func coveredConformers() throws -> [String: any BackgroundTool] {
         let state = try ShellState(
-            preferredDirectory: FileManager.default.temporaryDirectory
-                .appendingPathComponent("multitool-grace-\(ULID.generate())"))
+            preferredDirectory: TestSupport.makeTemporaryDirectory(named: "multitool-grace"))
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         return [
             "MultiTool": MultiTool(registry: registry),

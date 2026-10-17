@@ -15,7 +15,7 @@ import Testing
 ///
 /// The card names each case: a clean repository, one file of each kind, a
 /// root in a subfolder, and a root in no repository.
-@Suite("GitStatusTests")
+@Suite("GitStatusTests", .ownsTemporaryDirectories)
 struct GitStatusTests {
 
     /// The name of the temporary folder of one test. Thus a leaked folder is
