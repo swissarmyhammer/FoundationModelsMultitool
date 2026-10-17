@@ -388,7 +388,9 @@ public actor MCPServer {
     /// context, the `ToolContext` elicitation id that this actor chose for
     /// the question, and the ``connectGeneration`` of the attempt that got
     /// the request. `complete(elicitationId:generation:)` relays a completion
-    /// through it. See `MCPServer+Elicitation.swift`.
+    /// through it, and `endOldContextElicitations()` ends and takes out each
+    /// entry of an older generation when the connection ends. See
+    /// `MCPServer+Elicitation.swift`.
     var pendingContextElicitations: [String: (context: ToolContext, id: ULID, generation: Int)] = [:]
 
     /// Each caller of `waitUntilHostElicitationHeld(elicitationId:)` that

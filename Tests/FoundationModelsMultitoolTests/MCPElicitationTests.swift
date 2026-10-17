@@ -477,6 +477,86 @@ struct MCPElicitationTests {
         return flow
     }
 
+    /// The two events that end the connection of a URL flow.
+    enum ConnectionEnd: CaseIterable, Sendable {
+        /// `disconnect()`.
+        case disconnect
+
+        /// A new connect, whose factory makes no transport.
+        case newConnect
+    }
+
+    /// Ends the connection of `server` with `end`.
+    ///
+    /// - Parameters:
+    ///   - server: The connected server.
+    ///   - end: The event that ends the connection.
+    private static func endConnection(of server: MCPServer, with end: ConnectionEnd) async {
+        switch end {
+        case .disconnect:
+            await server.disconnect()
+        case .newConnect:
+            await #expect(throws: RefusedTransport.self) {
+                try await server.connect(via: { throw RefusedTransport() })
+            }
+        }
+    }
+
+    /// One URL flow that a bound context accepted, and that waits for its
+    /// completion.
+    private struct ContextURLFlow {
+        /// The task of the call that asked the question.
+        let call: Task<CallTool.Result, any Error>
+
+        /// The question, with the `ToolContext` id that the server chose.
+        let request: ElicitationRequest
+    }
+
+    /// Starts one call of the URL tool on `server` under a context over
+    /// `runPlane`, waits until the question reaches `sink`, and accepts it.
+    /// Then the flow waits for its completion.
+    ///
+    /// The wait ends on the first of two events: the question reached
+    /// `sink`, or the call ended with no question. Each of the two events can
+    /// occur, thus the wait always ends. Then this function cancels the wait
+    /// for the question and waits until that wait ended, thus no wait stays
+    /// open after it returns. When no question came, the test fails at once.
+    ///
+    /// - Parameters:
+    ///   - server: The connected server.
+    ///   - runPlane: The run plane of the context.
+    ///   - sink: The sink of the context.
+    /// - Returns: The flow.
+    /// - Throws: When the call ended before the question came, or when the
+    ///   task is cancelled first.
+    private static func startContextURLFlow(
+        on server: MCPServer, runPlane: RunPlane, sink: RecordingEventSink
+    ) async throws -> ContextURLFlow {
+        let context = relayContext(on: runPlane, sink: sink)
+        let firstEvent = TestGate()
+        let call = Task {
+            defer { firstEvent.open() }
+            return try await startCall(server, tool: ScriptedServer.elicitURLToolName, under: context).value
+        }
+        let asked = Task {
+            await sink.waitUntilEvent { $0.kind == .elicitation }
+            firstEvent.open()
+        }
+        do {
+            try await firstEvent.wait()
+        } catch {
+            await endWait(asked)
+            throw error
+        }
+        await endWait(asked)
+        let request = try #require(
+            await sink.events.first(where: { $0.kind == .elicitation })?.elicitation,
+            "the call ended before the question reached the sink")
+        let delivery = await runPlane.respond(elicitationId: request.elicitationId, urlAccept)
+        try #require(delivery == .acceptedAwaitingCompletion)
+        return ContextURLFlow(call: call, request: request)
+    }
+
     /// Cancels `wait`, and waits until it ended. A cancel ends a wait for
     /// the hold of a URL flow, thus this call always returns.
     ///
@@ -716,6 +796,48 @@ struct MCPElicitationTests {
         let result = try await answer.value
         #expect(result.action == .cancel)
         #expect(Self.reason(of: result) == .string(Self.connectionEndedReason))
+    }
+
+    /// An accepted URL flow of a bound context waits for a completion that
+    /// only its connection can carry: a completion that an old connection
+    /// relays is dropped. A disconnect and a new connect end that
+    /// connection, thus each ends the open question of the flow with a
+    /// cancel and a reason. Before the fix, the question stayed open after
+    /// the end of its connection, and nothing could end it.
+    ///
+    /// The order is fixed: the context accepts the flow, the connection
+    /// ends, and then the test reads the ended questions and the open
+    /// entries before it waits for the call. Then the test completes a
+    /// question that is still open, and a disconnect ends the call that a
+    /// new connect left in flight. Thus a question that stays open fails the
+    /// test, and no wait stays open.
+    @Test(
+        "the end of a connection ends the open URL flow of a context with cancel and a reason",
+        arguments: ConnectionEnd.allCases)
+    func theEndOfAConnectionEndsTheContextURLFlow(end: ConnectionEnd) async throws {
+        let (scripted, server) = try await Self.connected(over: .inMemory)
+        defer { Task { await server.disconnect() } }
+        let runPlane = RunPlane(userPresence: .interactive)
+        let sink = RecordingEventSink()
+        let flow = try await Self.startContextURLFlow(on: server, runPlane: runPlane, sink: sink)
+
+        await Self.endConnection(of: server, with: end)
+
+        let endedAfterTheEnd = await sink.endedElicitations
+        let entriesAfterTheEnd = await server.pendingContextElicitations.count
+        // A question that is still open ends here, thus no wait stays.
+        let lateCompletion = await runPlane.complete(elicitationId: flow.request.elicitationId)
+        await server.disconnect()
+        _ = await flow.call.result
+        #expect(
+            endedAfterTheEnd == [
+                RecordingEventSink.EndedElicitation(
+                    elicitationId: flow.request.elicitationId,
+                    response: .cancel(reason: Self.connectionEndedReason))
+            ])
+        #expect(entriesAfterTheEnd == 0)
+        #expect(lateCompletion == .noPendingElicitation)
+        withExtendedLifetime(scripted) {}
     }
 
     /// A cancel ends a wait for the hold of a URL flow. Thus a helper that

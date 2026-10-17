@@ -231,14 +231,17 @@ extension MCPServer {
         }
     }
 
-    /// Ends each held URL-mode accept of the host's handler, takes the current
-    /// client out, tears it down, and waits until its transport closed. Each
-    /// connect attempt calls this before it starts, thus a new connect ends
-    /// the held flows of the connection that it replaces — see
-    /// `endHeldHostElicitations()`. Returns after the end of the held flows
+    /// Ends each held URL-mode accept of the host's handler and each open
+    /// URL-mode question of a bound context of an older generation, takes the
+    /// current client out, tears it down, and waits until its transport
+    /// closed. Each connect attempt moves the generation and then calls this
+    /// before it starts, thus a new connect ends the URL flows of the
+    /// connection that it replaces — see `endHeldHostElicitations()` and
+    /// `endOldContextElicitations()`. Returns after the end of the URL flows
     /// when there is no current client.
     func retireCurrentClient() async {
         endHeldHostElicitations()
+        await endOldContextElicitations()
         guard let retired = currentClient else { return }
         dropAttemptClient(retired)
         await waitUntilTransportClosed(retired.transportID)

@@ -59,6 +59,25 @@ struct AmbientObservation: Sendable, Equatable {
 /// `async`: the protocol's own shape makes actor isolation the cheaper
 /// synchronization.
 actor RecordingEventSink: OperationEventSink {
+    /// One question that the run plane ended with a decline or a cancel, as
+    /// `post(elicitationEnded:response:)` gave it.
+    struct EndedElicitation: Equatable {
+        /// The id of the question.
+        let elicitationId: ULID
+
+        /// The decline or the cancel that ended the question.
+        let response: ElicitationResponse
+    }
+
+    /// One wait of ``waitUntilEvent(where:)`` that did not end yet.
+    private struct EventWaiter {
+        /// The test of one event.
+        let isMet: @Sendable (OperationEvent) -> Bool
+
+        /// The continuation that an event that `isMet` accepts resumes.
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     /// Every event posted to this sink, in arrival order.
     private(set) var events: [OperationEvent] = []
 
@@ -66,19 +85,32 @@ actor RecordingEventSink: OperationEventSink {
     /// order.
     private(set) var completedElicitationIds: [ULID] = []
 
-    /// Each wait of ``waitUntilEvent(where:)`` that did not end yet.
-    private var eventWaiters: [(isMet: @Sendable (OperationEvent) -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
+    /// Each question that the run plane ended, in arrival order.
+    private(set) var endedElicitations: [EndedElicitation] = []
+
+    /// Each wait of ``waitUntilEvent(where:)`` that did not end yet, by the
+    /// id of the wait.
+    private var eventWaiters: [Int: EventWaiter] = [:]
+
+    /// The id that the next wait of ``waitUntilEvent(where:)`` gets.
+    private var nextEventWaiterID = 0
 
     /// Each wait of ``waitUntilElicitationCompleted()`` that did not end yet.
     private var completionWaiters: [CheckedContinuation<Void, Never>] = []
 
     func post(event: OperationEvent) async {
         events.append(event)
-        let met = eventWaiters.filter { $0.isMet(event) }
-        eventWaiters.removeAll { $0.isMet(event) }
-        for waiter in met {
+        let met = eventWaiters.filter { $0.value.isMet(event) }
+        for waiterID in met.keys {
+            eventWaiters.removeValue(forKey: waiterID)
+        }
+        for waiter in met.values {
             waiter.continuation.resume()
         }
+    }
+
+    func post(elicitationEnded elicitationId: ULID, response: ElicitationResponse) async {
+        endedElicitations.append(EndedElicitation(elicitationId: elicitationId, response: response))
     }
 
     func post(elicitationCompleted elicitationId: ULID) async {
@@ -94,12 +126,30 @@ actor RecordingEventSink: OperationEventSink {
     /// at once when it recorded one before. The wait is an event: no clock
     /// and no poll.
     ///
+    /// A cancel of the calling task ends the wait, also a cancel that came
+    /// before the call. Thus a test that cancels this wait when the event
+    /// cannot come any more leaves no continuation open.
+    ///
     /// - Parameter isMet: The test of one event.
     func waitUntilEvent(where isMet: @escaping @Sendable (OperationEvent) -> Bool) async {
-        guard !events.contains(where: isMet) else { return }
-        await withCheckedContinuation { continuation in
-            eventWaiters.append((isMet, continuation))
+        guard !events.contains(where: isMet), !Task.isCancelled else { return }
+        let waiterID = nextEventWaiterID
+        nextEventWaiterID += 1
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                eventWaiters[waiterID] = EventWaiter(isMet: isMet, continuation: continuation)
+            }
+        } onCancel: {
+            Task { await self.endEventWait(waiterID) }
         }
+    }
+
+    /// Ends the wait `waiterID` of ``waitUntilEvent(where:)`` — the cancel of
+    /// that wait. A no-op when the wait ended before.
+    ///
+    /// - Parameter waiterID: The id of the wait.
+    private func endEventWait(_ waiterID: Int) {
+        eventWaiters.removeValue(forKey: waiterID)?.continuation.resume()
     }
 
     /// Waits until this sink recorded one completed URL flow. Returns at once

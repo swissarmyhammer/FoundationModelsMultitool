@@ -248,10 +248,26 @@ comments:
     - evidence: 3663ee7 refactor(mcp): share the test hook wait code in ElicitationWaiters
     - next: none. Local commit only. Not pushed.
   timestamp: 2026-10-17T00:33:44.704771+00:00
+- actor: claude-code
+  id: 01m53mn0x5k1th6qmjk1hfk673
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 059d2ac). 0 findings (confirmed 0, refuted 0, attempted 7, failed 0). 3 files reviewed. 4 .kanban files were not reviewed (ignore rule). All 6 items in "Review Findings (2026-10-16 19:16)" are checked. All prior items are checked.
+    - next: The task is in done. Part (b) is on card ^aj384vm. The same wait pattern in waitUntilTransportCloseIsAwaited() is on card ^1td5bsf.
+  timestamp: 2026-10-17T00:37:08.133394+00:00
+- actor: claude-code
+  id: 01m53mnjty32284186f2gah7r4
+  text: |-
+    ### finish iteration 4 — clean
+    - implement: changed — 3 files (6 of 6 findings fixed; generic ElicitationWaiters)
+    - test: green — swift test, exit 0, 2431 passed, 0 failed, 0 skipped
+    - commit: 059d2ac (the commit comment names 3663ee7, the sha before the amend)
+    - review: clean — 0 findings
+  timestamp: 2026-10-17T00:37:26.494305+00:00
 depends_on:
 - 01M53FFH3GERR2DZ8938SAQKGT
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffff8780
 title: 'Group A: end the pending URL flows on a server disconnect or reconnect'
 ---
 Elicitation fixes from the 2026-10-16 check (elicitation-plan.md section 10), group A.

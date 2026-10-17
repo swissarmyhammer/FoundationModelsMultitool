@@ -45,7 +45,8 @@
 // suspended after the accept until the flow completes, so the accept reaches
 // the wire only after the flow closed. Under the handler, this actor holds
 // the accept the same way until `complete(elicitationId:)`. A disconnect and
-// each new connect end the held accepts of the handler: each such flow
+// each new connect end the held accepts of the handler, and the open
+// questions of a context of an older connect generation: each such flow
 // answers `cancel`, with `connectionEndedReason` under the `reason` key of
 // `_meta`, because its completion can no longer arrive.
 //
@@ -170,7 +171,14 @@ extension MCPServer {
             else {
                 return await elicit(request, through: context)
             }
-            defer { pendingContextElicitations.removeValue(forKey: urlElicitationId) }
+            // The end of an old connection can take the entry out first, and
+            // a newer question can then use the same wire id. Thus only the
+            // entry of this question leaves the map here.
+            defer {
+                if pendingContextElicitations[urlElicitationId]?.id == request.elicitationId {
+                    pendingContextElicitations.removeValue(forKey: urlElicitationId)
+                }
+            }
             return await elicit(request, through: context)
         }
         guard let elicitationHandler else {
@@ -319,8 +327,9 @@ extension MCPServer {
 
     // MARK: - The URL flow under the handler
 
-    /// The reason of the cancel that ends a held URL flow of the handler when
-    /// its connection ends — see ``endHeldHostElicitations()``.
+    /// The reason of the cancel that ends a held URL flow of the handler, or
+    /// an open URL flow of a context, when its connection ends — see
+    /// ``endHeldHostElicitations()`` and ``endOldContextElicitations()``.
     static let connectionEndedReason = "the connection to the MCP server ended before the URL flow completed"
 
     /// Holds a URL-mode accept the handler gave until ``complete(elicitationId:)``
@@ -487,6 +496,29 @@ extension MCPServer {
         pendingHostElicitations = [:]
         for continuation in held.values {
             continuation.resume(returning: .cancel(reason: Self.connectionEndedReason))
+        }
+    }
+
+    /// Ends each open URL-mode question of a bound context whose connect
+    /// generation is older than ``connectGeneration``, with a cancel that
+    /// gives ``connectionEndedReason``, and takes its entry out of
+    /// ``pendingContextElicitations``.
+    ///
+    /// `complete(elicitationId:generation:)` drops a completion of an old
+    /// generation, thus the flow of such a question can never complete.
+    /// `disconnect()` and each new connect move the generation first, and
+    /// then each calls this, after ``endHeldHostElicitations()``. The end goes
+    /// through `ToolContext.endElicitation(_:with:)`: the sink of the
+    /// question gets the end, and the run then gets the cancel with its
+    /// reason. Thus the handler of the question returns that cancel to the
+    /// server. The entries leave the map before the first end, thus no
+    /// completion can reach them during the ends.
+    func endOldContextElicitations() async {
+        let generation = connectGeneration
+        let old = pendingContextElicitations.filter { $0.value.generation < generation }
+        pendingContextElicitations = pendingContextElicitations.filter { $0.value.generation >= generation }
+        for open in old.values {
+            await open.context.endElicitation(open.id, with: .cancel(reason: Self.connectionEndedReason))
         }
     }
 

@@ -230,8 +230,9 @@ extension MCPServer {
     /// its coalesce window, so it re-lists nothing against the disconnected
     /// client. Every call still in flight ends as `MCPServerError.lost`: the
     /// answer it waited for can no longer arrive. For the same reason, each
-    /// URL-mode accept that the host's handler gave and this actor holds ends
-    /// with a cancel that gives `connectionEndedReason`. A later
+    /// URL-mode accept that the host's handler gave and this actor holds, and
+    /// each open URL-mode question of a bound context of an older generation,
+    /// ends with a cancel that gives `connectionEndedReason`. A later
     /// `connect(via:)` is what drives the next transition.
     ///
     /// This method returns when the transport that the client used is
@@ -263,6 +264,7 @@ extension MCPServer {
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)
         endHeldHostElicitations()
+        await endOldContextElicitations()
         // The teardown of the current client starts here. `endAttempts`
         // waits until that teardown stopped the message loop of the client,
         // and only then closes the transport of the client itself.
