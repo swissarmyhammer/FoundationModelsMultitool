@@ -175,6 +175,79 @@ comments:
     - evidence: baff8f0 test(mcp): add a fixed-order test for a cancel during a held URL flow wait
     - next: review
   timestamp: 2026-10-17T00:16:15.569406+00:00
+- actor: claude-code
+  id: 01m53kqseg98jxnftx9m0bknjn
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 10b7d64). 6 findings (6 confirmed, 1 refuted). Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390 (duplication/duplication), :390 (reuse/reuse), :404 (reuse/reuse), :405 (duplication/duplication), :414 (reuse/reuse), :415 (duplication/duplication). All items of the 18:43 and 19:01 sections are checked.
+    - next: Do the 6 items in "Review Findings (2026-10-16 19:16)". The new test-support wait functions copy the existing wait, end and resume functions. Put the shared logic in generic helpers. The task stays in review.
+  timestamp: 2026-10-17T00:21:10.224440+00:00
+- actor: claude-code
+  id: 01m53krv4922c0236093zhyh35
+  text: |-
+    ### finish iteration 3 — findings
+    - implement: changed — 3 files (1 of 1 finding fixed; test seam waitUntilHostElicitationHeldWaitIsRecorded, test aCancelDuringTheWaitEndsIt)
+    - test: green — swift test, exit 0, 2431 passed, 0 failed, 0 skipped
+    - commit: 10b7d64 (the commit comment names baff8f0, the sha before the amend)
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390, :390, :404, :405, :414, :415
+    - note: the "existing" wait, end and resume functions came in d6c66f6 on this card, so this card changes them (not a separate task).
+  timestamp: 2026-10-17T00:21:44.713585+00:00
+- actor: claude-code
+  id: 01m53m10zv1h4g18rerr0g1vje
+  text: |-
+    Research (implement step, findings of 19:16).
+
+    The two test hooks in MCPServer+Elicitation.swift have the same three parts: (1) a wait that records a continuation under a wait id in a dictionary of (elicitationId, continuation), inside withTaskCancellationHandler + withCheckedContinuation, with a Task on cancel; (2) an end of one wait by id; (3) a resume of each wait of an elicitationId. Only the value type (Bool, Void) and the resume values differ.
+
+    Plan: a new generic value type `ElicitationWaiters<Value: Sendable>` (own file, as SingleResume.swift) holds the dictionary and the next wait id. It gives `makeWaiterID()`, `record(_:as:for:)`, `end(_:with:)`, `resume(of:with:)`, `contains(elicitationId:)`, `isEmpty`, `count` (the tests read `isEmpty` and `count`, so they do not change). One generic actor function `suspendElicitationWaiter` holds the scaffold: the already-cancelled check, the check for a wait that is resolved already, withTaskCancellationHandler + withCheckedContinuation, and the cancel. The cancel step is an `@Sendable (isolated MCPServer, Value) -> Void` closure, so the onCancel Task captures no state that is not Sendable. The four private end and resume functions are deleted.
+
+    Order kept: the held wait checks the cancel before the held flow, as before (aCancelEndsTheWaitForTheHold needs this). For the record wait the cancel check now comes first; the result is Void in each case, so no caller sees a change.
+
+    Not in this file: `waitUntilTransportCloseIsAwaited()` in MCPServer+ClientLifecycle.swift has the same scaffold with no elicitation id. It is outside the findings file, so it goes on a new card.
+
+    Tests: no new test. This is a refactor with no change of behaviour. The current tests cover all four paths (held resume, held end by cancel, record resume, record end by cancel).
+  timestamp: 2026-10-17T00:26:12.859970+00:00
+- actor: claude-code
+  id: 01m53mbsxff4fptpyphkvb5k2w
+  text: |-
+    The 6 findings of "Review Findings (2026-10-16 19:16)" are fixed: MCPServer+Elicitation.swift :390 duplication, :390 reuse, :404 reuse, :405 duplication, :414 reuse, :415 duplication.
+
+    Change:
+    - New file Sources/FoundationModelsMultitool/Capabilities/MCP/ElicitationWaiters.swift: the generic value type `ElicitationWaiters<Value: Sendable>`. It holds the open waits (wait id → elicitationId and CheckedContinuation<Value, Never>) and the next wait id. It gives `makeWaiterID()`, `record(_:as:for:)`, `end(_:with:)`, `resume(of:with:)` (which calls `end` for each wait of the id), `contains(elicitationId:)`, `isEmpty`, `count`.
+    - MCPServer.swift: `hostElicitationHeldWaiters` is `ElicitationWaiters<Bool>`, `hostElicitationHeldWaitRecordedWaiters` is `ElicitationWaiters<Void>`. The two `next...WaiterID` counters are deleted (the type holds them).
+    - MCPServer+Elicitation.swift: one private generic scaffold `suspendTestHookWait(cancelValue:resolvedValue:record:end:)`: the already-cancelled check, the check for a wait that has nothing to wait for, withTaskCancellationHandler + withCheckedContinuation, and the cancel. The cancel step is an `@Sendable (isolated MCPServer, WaitValue) -> Void` closure, thus the onCancel Task captures only Sendable values and calls it on the actor. Both waits call the scaffold with their own waiter instance and values (false / Void on cancel). The four copies `endHostElicitationHeldWait`, `resumeHostElicitationHeldWaiters`, `endHostElicitationHeldWaitRecordedWait`, `resumeHostElicitationHeldWaitRecordedWaiters` are deleted. `awaitHostCompletion(of:)` calls `hostElicitationHeldWaiters.resume(of:with: true)`.
+    - The order of the held wait stays: cancel check first, then the held check (aCancelEndsTheWaitForTheHold needs this). The generic parameter is `WaitValue`, not `Value`, because this file uses the `Value` type of MCP.
+
+    Tests: no test changed and no test added. This is a refactor with no change of behaviour; the current tests cover the four paths (held resume, held end by cancel, record resume, record end by cancel).
+
+    Build: `swift build --build-tests`, no compiler warning.
+    Full run: `swift test`, exit 0, "Test run with 2431 tests in 211 suites passed after 5.463 seconds". XCTest: "Executed 0 tests, with 0 failures". The one warning line is the SwiftPM line "missing creator for mutated node" for mlx-swift_Cmlx.bundle, there before this change.
+
+    New card ^1td5bsf: `waitUntilTransportCloseIsAwaited()` in MCPServer+ClientLifecycle.swift has the same scaffold with no elicitation id. It is outside the findings file.
+  timestamp: 2026-10-17T00:32:06.063480+00:00
+- actor: claude-code
+  id: 01m53mbwqzx7mrrp0cxhy4v84b
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/MCP/ElicitationWaiters.swift (new), Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer.swift. Findings checked 6/6. `swift test` exit 0, "Test run with 2431 tests in 211 suites passed after 5.463 seconds", 0 failed, 0 skipped.
+    - next: test, commit, review. Part (b) stays on ^aj384vm. New card ^1td5bsf for the same scaffold in MCPServer+ClientLifecycle.swift. Task stays in doing.
+  timestamp: 2026-10-17T00:32:08.959160+00:00
+- actor: claude-code
+  id: 01m53me2gvhctxg0h5ew8hwdb2
+  text: |-
+    ### test - green
+    - evidence: swift test, exit code 0. Swift Testing summary: Test run with 2431 tests in 211 suites passed after 8.352 seconds.
+    - The run had zero failures and zero skipped tests. The only warning is a linker note from the mlx-swift_Cmlx dependency bundle: "missing creator for mutated node". It is not from the project source.
+    - I ran the full suite one time. I made no code change.
+    - next: review.
+  timestamp: 2026-10-17T00:33:20.411502+00:00
+- actor: claude-code
+  id: 01m53met809229jhxdjg9q98h5
+  text: |-
+    ### commit — changed
+    - evidence: 3663ee7 refactor(mcp): share the test hook wait code in ElicitationWaiters
+    - next: none. Local commit only. Not pushed.
+  timestamp: 2026-10-17T00:33:44.704771+00:00
 depends_on:
 - 01M53FFH3GERR2DZ8938SAQKGT
 position_column: doing
@@ -206,3 +279,17 @@ Each fix starts with a fixed-order test that fails before the fix (RED), then pa
 > - `.kanban/ (from .reviewignore)` — 4 file(s)
 
 - [x] `Tests/FoundationModelsMultitoolTests/MCPElicitationTests.swift:731` `completeness/inverse-operation-coverage` — The new test aCancelEndsTheWaitForTheHold only covers a cancel that comes before the wait starts. The main new behaviour of the change is a cancel that comes during the wait, which resumes the continuation with false through the cancellation handler. No test asserts that a mid-wait cancel returns false. The helper startHeldHostFlow reaches that branch only as a side effect, and it does not check the return value. Add one case in which the wait starts on a live task, no hold arrives, the task is cancelled, and the test asserts that waitUntilHostElicitationHeld returns false and that hostElicitationHeldWaiters is empty afterwards.
+
+## Review Findings (2026-10-16 19:16)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390` `duplication/duplication` — waitUntilHostElicitationHeldWaitIsRecorded copies the structure of waitUntilHostElicitationHeld. Both register a waiter in a dictionary, suspend in withCheckedContinuation, and cancel through withTaskCancellationHandler with a Task that calls an end function. They differ only in the continuation value type and the registration hook. Fixes to the cancel or registration logic would have to be made twice. Extract one generic suspend-and-register helper that takes the waiter dictionary, the waiter id, and the end function as parameters. Use it from both waits. The existing wait is outside this change, so change it as a separate task.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:390` `reuse/reuse` — waitUntilHostElicitationHeldWaitIsRecorded copies the withTaskCancellationHandler and withCheckedContinuation scaffold of waitUntilHostElicitationHeld. It stores a continuation under a waiter id and ends it through a Task on cancel. Each new wait helper repeats this structure. Move the cancellation-and-continuation scaffold into one generic helper that takes the registration step and the cancel step as closures. Both wait functions then pass their own dictionary operations to it.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:404` `reuse/reuse` — endHostElicitationHeldWaitRecordedWait repeats endHostElicitationHeldWait: it removes one waiter by id from a dictionary and resumes its continuation. Only the resume value and the dictionary differ. A parallel copy can drift from the original. Share one generic end helper over the waiter dictionary and the resume value, the same helper proposed for the resume loop. Or take the dictionary access as a parameter so both end functions call one body.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:405` `duplication/duplication` — endHostElicitationHeldWaitRecordedWait repeats the body of the existing endHostElicitationHeldWait. Both remove the waiter for an id and resume its continuation. They differ only in the resume value, which is Void here and false there. Copies like this drift apart when one is fixed and the other is not. Extract one generic helper that takes the waiter dictionary and the id, and resumes with a parameterized value. Call it from both the new Void wait and the existing Bool wait, and delete the copy this change added. Editing the existing endHostElicitationHeldWait is a separate task.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:414` `reuse/reuse` — resumeHostElicitationHeldWaitRecordedWaiters repeats the body of the existing resumeHostElicitationHeldWaiters. Both filter the waiter dictionary by elicitationId, remove each match, and resume its continuation. Only the continuation's value type differs (Void here, Bool there). A copy means two places must be fixed if the waiter logic changes. Generalize the existing resume loop over the continuation type, for example a generic helper over CheckedContinuation<T, Never> that takes the resume value. Both resume functions then call that helper with Bool or Void. Keep the two dictionaries separate, since their tuple types differ.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Elicitation.swift:415` `duplication/duplication` — resumeHostElicitationHeldWaitRecordedWaiters repeats the filter, remove, and resume loop of the existing resumeHostElicitationHeldWaiters. The only difference is that this copy resumes with Void instead of true. Two copies of this loop must be kept in step by hand. Extract one generic helper that filters a waiter dictionary by elicitation id, removes each entry, and resumes it through a parameterized closure. Use it from both the new function and the existing resumeHostElicitationHeldWaiters. Editing the existing function is a separate task.
