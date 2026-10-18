@@ -15,7 +15,9 @@ import Synchronization
 ///
 /// `MultiTool` sets the mark from a small wrapper around the snippet code
 /// (see `MultiTool.wrappingSnippet(_:after:)`). The wrapper calls a host
-/// function when the body of the snippet settles.
+/// function when the body of the snippet settles, and that host function
+/// calls `InFlightInnerCalls.markSnippetEnded()`. Thus each call still in
+/// flight begins its `innerCall` lease at the same moment.
 ///
 /// A reference type, because the host function that sets the mark and the
 /// `tools.*` bindings that read it run in different tasks, and all of them

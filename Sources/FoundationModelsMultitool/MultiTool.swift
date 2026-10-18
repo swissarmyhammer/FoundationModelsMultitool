@@ -573,10 +573,6 @@ public struct MultiTool: Tool {
         // below reads it back once the snippet has finished (see
         // ``LostRunRecord``).
         let lostRuns = LostRunRecord()
-        // One record per invocation, once more: it holds the inner `tools.*`
-        // calls of *this* run that are in flight, so the cancellation of this
-        // run reaches each of them at once (see ``InFlightInnerCalls``).
-        let inFlight = InFlightInnerCalls()
         // One record per invocation, once more: it names the inner `tools.*`
         // calls of *this* run that ended after the snippet code ended, so the
         // result of this run tells the model not to run them again (see
@@ -587,6 +583,12 @@ public struct MultiTool: Tool {
         // One mark per invocation, also for a nested run: it records when the
         // code of *this* snippet ended (see ``SnippetEndMark``).
         let snippetEnd = SnippetEndMark()
+        // One record per invocation, once more: it holds the inner `tools.*`
+        // calls of *this* run that are in flight, so the cancellation of this
+        // run reaches each of them at once, and each call that outlives the
+        // code of *this* snippet holds a lease in the registry of the session
+        // of the binding (see ``InFlightInnerCalls``).
+        let inFlight = InFlightInnerCalls(leasingIn: binding?.context, after: snippetEnd)
         let records = InnerCallRecords(
             ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls,
             snippetEnd: snippetEnd)
@@ -594,7 +596,7 @@ public struct MultiTool: Tool {
             code: Self.wrappingSnippet(arguments.code, after: bundle.preamble),
             installing: Self.makeHelpDocsHostFunctions(for: bundle.registry, asksUser: asksUser)
                 + Self.makeNoticeHostFunctions(outbox: notices)
-                + Self.makeRemovedGlobalHostFunctions() + [Self.makeSnippetEndHostFunction(marking: snippetEnd)],
+                + Self.makeRemovedGlobalHostFunctions() + [Self.makeSnippetEndHostFunction(marking: inFlight)],
             installingAsync: makeAsyncHostFunctions(over: bundle, binding: binding, reportingTo: records)
                 + Self.makeBackgroundRunHostFunctions(binding: binding, asksUser: asksUser),
             using: interpreter,
@@ -991,7 +993,7 @@ public struct MultiTool: Tool {
         _ function: AsyncHostFunction, named callName: InnerCallName, into records: InnerCallRecords
     ) -> AsyncHostFunction {
         AsyncHostFunction(name: function.name) { arguments in
-            try await records.inFlight.running {
+            try await records.inFlight.running(callName) {
                 try await records.lostRuns.noting {
                     let value = try await function.call(arguments)
                     records.account(for: value, of: callName)
@@ -1016,14 +1018,15 @@ public struct MultiTool: Tool {
     /// code runs.
     private static let snippetEndLocalName = "__snippetEnd"
 
-    /// The host function that records the end of the snippet code in
-    /// `snippetEnd`.
+    /// The host function that records the end of the snippet code through
+    /// `inFlight`: it sets the mark of this run, and each inner call still in
+    /// flight begins its lease (see ``InFlightInnerCalls/markSnippetEnded()``).
     ///
-    /// - Parameter snippetEnd: the mark of this run.
+    /// - Parameter inFlight: the inner calls of this run.
     /// - Returns: the host function, named ``snippetEndHostName``.
-    private static func makeSnippetEndHostFunction(marking snippetEnd: SnippetEndMark) -> HostFunction {
+    private static func makeSnippetEndHostFunction(marking inFlight: InFlightInnerCalls) -> HostFunction {
         HostFunction(name: snippetEndHostName) { _ in
-            snippetEnd.markEnded()
+            inFlight.markSnippetEnded()
             return .null
         }
     }
