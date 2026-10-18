@@ -396,6 +396,10 @@ extension Execute {
     private func report(
         of request: ShellRunner.Request, in context: ToolContext?
     ) async throws -> String {
+        // The lease opens before the spawn, and it ends after the terminal
+        // event, on each path. See ``shellCommandLease(of:in:)``.
+        let lease = Self.shellCommandLease(of: request, in: context)
+        defer { lease?.end() }
         let stream = ShellOutputChunkStream()
         var running = runner
         running.callerOutputChunkStream = stream
@@ -417,6 +421,35 @@ extension Execute {
         await Self.postTerminal(
             rendered, of: request.completionToken, in: runner.state, to: context)
         return rendered
+    }
+
+    /// Begins the ``FoundationModelsExtras/WorkKind/shellCommand`` lease of
+    /// one command in the work registry of the session of `context`, under
+    /// the `commandID` of the command.
+    ///
+    /// A command can live past the call that started it: a mounted call goes
+    /// to the background after its settle period, and the model reads the
+    /// output later with `tools.shell.getLines`. The session has work until
+    /// the process exited and the report settled: the caller ends the lease
+    /// after the terminal event. A cancel or a time limit kills the process
+    /// group, and the run body then ends, thus the lease also ends on those
+    /// paths. The run-plane lease of a background run ends at its settle,
+    /// and a cancel settles the run before the process is reaped. This lease
+    /// stays until the reap.
+    ///
+    /// The lease goes into the registry of the session of `context`. In a
+    /// child session, for example a subagent, that is the registry of the
+    /// child.
+    ///
+    /// - Parameters:
+    ///   - request: The command to run.
+    ///   - context: The session context captured at the start of the call,
+    ///     or `nil` on a bare session, which has no registry.
+    /// - Returns: The lease, or `nil` on a bare session.
+    private static func shellCommandLease(
+        of request: ShellRunner.Request, in context: ToolContext?
+    ) -> BackgroundWork? {
+        context?.beginBackgroundWork(.shellCommand, id: request.completionToken)
     }
 
     /// Drains the live view of one run, and posts its output as `progress`
