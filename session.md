@@ -133,7 +133,7 @@ Four facts make the dependency direction hard:
 - Router implements the protocol with `RouterSessionDirectory` (ROUTER-3).
 - Router declares a second port, `SessionLauncher`, for the composition of a new root session (ROUTER-8). ACPAgent implements it with code that has no ACP concept (ACPA-9).
 - Multitool uses only the Extras protocol (MT-2).
-- A new target in the Router package, `FoundationModelsSessionsGraph`, implements the `sessions` GraphQL endpoint over the Extras protocol (ROUTER-10). Section 5.7 tells why it goes there.
+- `SessionsGraph`, in the existing Router library target, implements the `sessions` GraphQL endpoint over the Extras protocol (ROUTER-10). Section 5.7 tells why it goes there.
 - The server registers the endpoint in its endpoint registry (APP-16). ACPAgent only carries the tunnel.
 
 Advantages:
@@ -142,7 +142,7 @@ Advantages:
 - It obeys the Router boundary of Multitool (`PackageManifestTests`).
 - It follows the existing pattern: `Mail`, `MailSink`, `ToolContext`, `RunPlane` and `GraphQLEndpoint` are contracts in Extras.
 - Agents (AG-1), the kanban trigger handler (APP-10, D60), the graph and the app use the same protocol. The model and the UI get the same rules.
-- A test can use a fake directory. A Multitool test or a graph test needs no model and no Router.
+- A test can use a fake directory. A Multitool test needs no model and no Router. A graph test needs no model and no `RouterSessionDirectory`.
 
 Disadvantages:
 
@@ -167,7 +167,7 @@ Rejected. It is against D23, and it puts session operations in the ACP package (
 
 ### 5.6 Recommendation
 
-Use Option A. The port and the values go in Extras. The implementation goes in Router. The composition of a new session comes in through a Router port that ACPAgent fills. The GraphQL endpoint is a separate target in the Router package, over the Extras port.
+Use Option A. The port and the values go in Extras. The implementation goes in Router. The composition of a new session comes in through a Router port that ACPAgent fills. The GraphQL endpoint goes in the existing Router library target, over the Extras port (D73).
 
 ### 5.7 Where the GraphQL endpoint goes
 
@@ -175,13 +175,13 @@ The endpoint needs three things: the `SessionDirectory` protocol (Extras), the `
 
 | Place | Result |
 |-------|--------|
-| In the Router library target | Router links GraphQL. Each user of Router (Agents, ACPAgent, the CLI) pulls GraphQL. The model runtime gets a UI concern. Not chosen. |
+| **In the Router library target** | `SessionsGraph` goes next to `RouterSessionDirectory`, and one package owns the rules. The resolvers still use only the Extras `SessionDirectory` protocol. The cost: Router links GraphQL, so each user of Router (Agents, ACPAgent, the CLI) pulls GraphQL. **Chosen**, because the user does not want more targets in a package: "we already have enough division of labor with the package lines" (D73). |
 | In Extras | Extras links GraphQL. Each package of the family pulls GraphQL, also Multitool and ACPClient. Not chosen. |
 | In ACPAgent | Against constraint 3: the resolver would be part of the ACP package. Not chosen. |
 | In the app (APP-16) | It works for the app. But the CLI server `acp-agent` and the tests of other packages cannot use it, and the graph is then far from the directory. Not chosen. |
-| **A new target `FoundationModelsSessionsGraph` in the Router package** | It links only the `FoundationModelsExtras` product, `GraphQL` and `Graphiti`. It does not link the Router target. The Router library stays free of GraphQL. The graph is next to the directory implementation, and one package owns the rules. **Chosen.** |
+| A new target `FoundationModelsSessionsGraph` in the Router package | The Router library would stay free of GraphQL. But it adds a target and a product to a package. Not chosen (D73). |
 
-The GraphQL pins of the new target must be the same as the pins of FoundationModelsKanban, so that the app resolves one copy.
+The GraphQL pins of the Router target must be the same as the pins of FoundationModelsKanban, so that the app resolves one copy.
 
 The owner client rules (D11) need facts that only ACPAgent has. The tunnel gives them to the resolver as a neutral `GraphQLViewer` value of Extras (EXTRAS-5). Thus the resolver applies the rules with no ACP type.
 
@@ -220,7 +220,7 @@ FoundationModelsKanban       → Extras, MetadataRegistry, Multitool   (+ GraphQ
 FoundationModelsAgents       → Router, Extras (+ Operations, Marketplace), Skills
 FoundationModelsACPClient    → ACP, Extras
 FoundationModelsACPAgent     → ACP, Router, Extras, Multitool, Skills, Agents, CodeContext, Ranker
-SwissArmyHammerApp           → ACPAgent, ACPClient, Kanban, ...
+TestudoApp                   → ACPAgent, ACPClient, Kanban, ...
 ```
 
 ### 5.10 Module graph after
@@ -230,14 +230,12 @@ New edges have the mark `(new)`.
 ```
 FoundationModelsACP          → (none of the family)
 FoundationModelsExtras       → (none of the family)       [Sessions/ port: EXTRAS-3; GraphQLViewer: EXTRAS-5]
-FoundationModelsRouter       → Extras                     [implements SessionDirectory: ROUTER-3]
-FoundationModelsSessionsGraph (new target, Router package)
-                             → Extras (new), GraphQL (new), Graphiti (new)   [no edge to the Router target]
+FoundationModelsRouter       → Extras, GraphQL (new), Graphiti (new)   [implements SessionDirectory: ROUTER-3; SessionsGraph: ROUTER-10]
 FoundationModelsMultitool    → Extras (core + Operations (new)), MetadataRegistry, CodeContext
 FoundationModelsAgents       → Router, Extras (+ Operations, Marketplace), Skills   [no new edge]
 FoundationModelsACPClient    → ACP, Extras                [no new edge]
 FoundationModelsACPAgent     → ACP, Router, Extras, Multitool, Skills, Agents, ...  [no new edge]
-SwissArmyHammerApp           → ACPAgent, ACPClient, Kanban, SessionsGraph (new), ...
+TestudoApp                   → ACPAgent, ACPClient, Kanban, Router, ...   [no new edge: the app has Router through ACPAgent]
 ```
 
 ### 5.11 Proof: no cycle and no forbidden edge
@@ -247,7 +245,7 @@ Give each target a level. An edge must go from a higher level to a lower level.
 | Level | Targets |
 |------:|---------|
 | 0 | ACP, Extras |
-| 1 | Ranker, Router, SessionsGraph |
+| 1 | Ranker, Router |
 | 2 | MetadataRegistry, CodeContext |
 | 3 | Skills, Multitool |
 | 4 | Kanban, Agents |
@@ -258,7 +256,7 @@ Give each target a level. An edge must go from a higher level to a lower level.
 - Each edge of section 5.10 goes to a lower level. Thus the graph has no cycle.
 - Multitool → Router: no edge. Rule of `PackageManifestTests`: kept.
 - Multitool → ACP, ACPAgent or Agents: no edge. Constraint 1: kept.
-- Router, SessionsGraph or Extras → ACP or ACPAgent: no edge. Constraint 2: kept.
+- Router or Extras → ACP or ACPAgent: no edge. Constraint 2: kept. GraphQL and Graphiti are outside the family.
 - The `SessionLauncher` port is in Router. ACPAgent implements it. This is a dependency inversion. The type edge goes from ACPAgent to Router, as today.
 - The `GraphQLViewer` is in Extras. ACPAgent (or the app server, APP-16) fills it from the owner registry. The edge goes from ACPAgent to Extras, as today.
 - At run time, the directory holds the launcher, and the launcher makes surfaces that hold the directory. This is a reference loop at run time, not a module cycle. The host gives the launcher to the directory after it makes both (`directory.useLauncher(_:)`), and it releases it at shutdown. See ROUTER-8.
@@ -695,7 +693,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 |------|---------|------|
 | Directory and events | Router (through the Extras port) | Holds the sessions, tags and messages, and the record of past sessions. Applies the loop guards. Archives sessions. Sends events. |
 | Launcher | ACPAgent, in a file with no ACP import (ACPA-9) | Resolves the agent in the catalog of Agents. Composes the tools of a new root session for the agent and the folder. |
-| `sessions` endpoint | `FoundationModelsSessionsGraph` (ROUTER-10) | Schema, resolvers, visibility and owner rules, the subscription. |
+| `sessions` endpoint | `SessionsGraph` in the Router library target (ROUTER-10) | Schema, resolvers, visibility and owner rules, the subscription. |
 | Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`. |
 | Owner registry and viewer | ACPAgent (ACPA-5, ACPA-13) | Knows the owner connection of each session (D11). Gives a `GraphQLViewer` to each tunnel call. |
 | Tunnel | ACP-3, ACPC-4, APP-16 | Carries `_sah/graphql/*`. |
@@ -943,7 +941,7 @@ All tests are automated. No test needs a person.
 
 ### 13.1 Extras (EXTRAS-4)
 
-- A public fake: `InMemorySessionDirectory`, in a test-support product of Extras. It holds sessions, tags and messages in memory, applies the loop guards of section 10.3 and the archive rules (ROUTER-11), and sends events. A fake launcher option gives it a list of known agent ids.
+- A public fake: `InMemorySessionDirectory`, a public test double in the existing Extras library target (no test-support product, D73). Its doc comment marks it as a test double. It holds sessions, tags and messages in memory, applies the loop guards of section 10.3 and the archive rules (ROUTER-11), and sends events. A fake launcher option gives it a list of known agent ids.
 - Tests: `Codable` round trip of each value type. The event order rule. The buffer rule of the stream.
 
 ### 13.2 Multitool (MT-2)
@@ -976,7 +974,7 @@ Use the test support of Router (scripted models, no real model).
 
 ### 13.4 The `sessions` graph (ROUTER-10)
 
-Use the fake directory and fake viewers. No ACP and no model.
+In the existing `FoundationModelsRouterTests` target. Use the fake directory and fake viewers. No ACP and no model.
 
 - The SDL of the endpoint matches a golden file.
 - Each query, each mutation and the subscription, with a `userDevice` viewer.
@@ -988,7 +986,7 @@ Use the fake directory and fake viewers. No ACP and no model.
 
 ### 13.5 ACPAgent (ACPA-9, ACPA-11, ACPA-13)
 
-Use the in-memory transport of FoundationModelsACP and the ACPClient test product. ACPAgent tests already link FoundationModelsACPClient.
+Use the in-memory transport of FoundationModelsACP and the existing `FoundationModelsACPClient` product. ACPAgent tests already link it. There is no new test product (D73).
 
 - The launcher resolves an agent id from a fixture catalog, with and without a folder. With no folder, the cwd is the folder of `startedBy`. The `default` id gives the root agent folder.
 - With no agent id, the launcher uses the `AGENT.md` of the folder (the summary has the id `folder:<path>` when the folder is not in the catalog), and the default agent when the folder has no `AGENT.md` (D71). With an agent id, an `AGENT.md` in the folder is project instructions.
@@ -1017,7 +1015,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### EXTRAS-4 In-memory session directory for tests
 
-- **Spec:** A test-support product with `InMemorySessionDirectory`, which conforms to `SessionDirectory` and applies the loop guards of section 10.3 and the archive rules.
+- **Spec:** `InMemorySessionDirectory`, a public test double in the existing `FoundationModelsExtras` library target (no test-support product, D73), which conforms to `SessionDirectory` and applies the loop guards of section 10.3 and the archive rules.
 - **Why:** Multitool, Agents, the graph and ACPAgent tests need a directory with no Router and no model.
 - **Depends on:** EXTRAS-3
 
@@ -1073,8 +1071,8 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ROUTER-10 The `sessions` GraphQL endpoint
 
-- **Spec:** A new target and product `FoundationModelsSessionsGraph` in the Router package. It links the `FoundationModelsExtras` product, `GraphQL` and `Graphiti`, with the pins of FoundationModelsKanban. It does not link the Router target. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. `sessionChanges` reads `directory.events()`.
-- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). Section 5.7 tells why the target goes here.
+- **Spec:** `SessionsGraph` in the existing `FoundationModelsRouter` library target, next to `RouterSessionDirectory`. No new target and no new product (D73). The Router target links `GraphQL` and `Graphiti`, with the pins of FoundationModelsKanban. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. `sessionChanges` reads `directory.events()`.
+- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. Section 5.7 tells why the graph goes in the Router library target.
 - **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, ROUTER-3
 
 #### ROUTER-11 Archive a session
