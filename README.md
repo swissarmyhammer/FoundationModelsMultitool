@@ -365,6 +365,29 @@ model for every session on it.
 On a bare `LanguageModelSession` there is no background: the snippet runs to
 its end inside the call, and no mail comes.
 
+### Background work leases
+
+Each piece of work that can live past the call that started it holds a
+`BackgroundWork` lease in the `WorkRegistry` of the session of that call
+(FoundationModelsExtras), from its start until it really ends. Thus
+`WorkRegistry.hasWork`, `transitions(includingCurrent:)` and
+`awaitNoWork()` tell a host when the session has no work. In a child
+session, for example a subagent, the lease goes into the registry of the
+child.
+
+| Kind | Id | Start | End |
+| --- | --- | --- | --- |
+| `.backgroundRun` | completion token | a background run starts (run plane) | the run settles |
+| `.shellCommand` | `commandID` | `tools.shell.execute` starts the command | the process ended and the report settled, also on a failure, a cancel and a time limit |
+| `.innerCall` | `<runCode token>/tools.<path>` | the snippet code ended while the inner call runs | the inner call ended, also after a cancel |
+| `.noticeDelivery` | completion token of the run | `notify()` or `progress()` | the notice reached the session |
+| `.mcpCall` | request id | `MCPServer.call` starts | the call ended, also on an error or a cancel |
+
+While an MCP server waits only for the answer of the user, the lease of
+its call is suspended, thus the session has no work. A read of the store,
+for example `tools.shell.getLines`, takes no lease. Housekeeping (an index,
+a watcher, a reconnect of an MCP server) takes no lease.
+
 ## Discovery and the librarian model
 
 `registry.makeSessionTools(selection:embedder:sampleModel:)` mounts
