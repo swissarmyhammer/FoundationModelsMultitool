@@ -72,6 +72,18 @@ enum SandboxNotice: Sendable {
 /// notice reached the session — and the session would see the terminal event
 /// first.
 ///
+/// ## Why a lease
+///
+/// A notice waits in the chain for its delivery, and a host must not read
+/// the session as idle while a notice is still on its way to it. Thus each
+/// enqueue begins one `FoundationModelsExtras/WorkKind/noticeDelivery`
+/// lease, under the completion token of the run, in the work registry of the
+/// session of the captured context, and the delivery ends it. The begin is
+/// synchronous, thus the lease is open when the snippet goes on. A notice of
+/// a child session leases in the registry of the child, because the context
+/// is the context of that session. When the registry closed, the lease is not
+/// work.
+///
 /// `final class … Sendable` with an `OSAllocatedUnfairLock` (not an `actor`):
 /// ``enqueue(_:)`` is called from the JS thread, which has no `await` to give.
 final class SandboxNoticeOutbox: Sendable {
@@ -90,14 +102,17 @@ final class SandboxNoticeOutbox: Sendable {
     }
 
     /// Enqueues `notice` behind every notice already enqueued, and returns
-    /// immediately.
+    /// immediately. The notice holds a `noticeDelivery` lease from this call
+    /// until its delivery ended.
     ///
     /// - Parameter notice: the notice to deliver.
     func enqueue(_ notice: SandboxNotice) {
         let context = self.context
+        let lease = context.beginBackgroundWork(.noticeDelivery, id: context.completionToken)
         latestDelivery.withLock { tail in
             let previous = tail
             tail = Task {
+                defer { lease.end() }
                 await previous?.value
                 await notice.deliver(through: context)
             }
