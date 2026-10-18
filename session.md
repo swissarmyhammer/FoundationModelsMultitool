@@ -195,7 +195,7 @@ Effects:
 
 - `start session` takes an agent id. The tool description and its correctives tell the model to use `tools.agents.findAgents` or `tools.agents.listAgents` to get an id. (These are the verb names when the `agents` tool is in the registry. Today it is a standalone tool, so the model calls `agents` with the op `find agents`.)
 - The launcher (ACPAgent, which links Agents) checks the agent id against the catalog. An unknown id gives a corrective with the near names.
-- The UI gets the agent list from `_sah/agents/list` (category 17). The `sessions` graph has no agent query.
+- The UI gets the agent list from the `agents` GraphQL endpoint (D67). The `sessions` graph has no agent query.
 - Q5 is answered: the agents that an agent can find are the agent catalog of FoundationModelsAgents.
 
 ### 5.9 Module graph before
@@ -302,7 +302,8 @@ public enum SessionOrigin: String, Sendable, Codable {
 public struct SessionSummary: Sendable, Codable, Equatable, Identifiable {
     public let id: ULID
     /// The id of the agent in the agent catalog (D61). `default` for the
-    /// root `Agents/AGENT.md`.
+    /// root `Agents/AGENT.md`. For a folder agent that is not in the catalog
+    /// (D71), `folder:` plus the absolute path of its folder.
     public var agentID: String
     /// The display name of the agent, from the `name` key of its `AGENT.md`.
     public var agentName: String?
@@ -402,7 +403,9 @@ public struct SessionSendReceipt: Sendable, Codable, Equatable {
 
 /// A request to start a new root session: an agent plus a working folder.
 public struct SessionStartRequest: Sendable, Codable, Equatable {
-    public var agentID: String
+    /// Nil: the `AGENT.md` of the working folder, else the default agent
+    /// (D71). The launcher resolves it.
+    public var agentID: String?
     /// Nil: the folder of `startedBy` (AG-5). The launcher resolves it.
     public var workingDirectory: URL?
     public var firstMessage: String
@@ -553,8 +556,8 @@ Result: each unread message to the caller: the message id, the sender (a session
 
 | Parameter | Type | Note |
 |-----------|------|------|
-| `agent` | `String` | An agent id from the agent catalog. `default` is the default agent. Use `find agents` of the `agents` tool to get an id. |
-| `cwd` | `String?` | An absolute path to an existing folder. With no `cwd`, the session works in the folder of the session that started it (AG-5). A start from the UI gives a folder: the app gives the folder of the agent when the user picks no folder (APP-5). |
+| `agent` | `String?` | An agent id from the agent catalog. `default` is the default agent. Use `find agents` of the `agents` tool to get an id. With no `agent`, the agent is the `AGENT.md` of the working folder, else the default agent (D71). |
+| `cwd` | `String?` | An absolute path to an existing folder. With no `cwd`, the session works in the folder of the session that started it (AG-5). A start from the UI always gives a folder (APP-5, D70). |
 | `message` | `String` | The first message. The new agent sees only this text. |
 | `tags` | `[String]?` | |
 | `title` | `String?` | |
@@ -852,7 +855,7 @@ Mutation rules:
 2. Before the snippet runs, `MultiTool.runSnippet` checks it one time (MT-1). The checker reads the code, the scanned call `sessions.startSession` with its literal arguments, session P and the risk facts. No rule denies it, so the snippet runs. A denial would be the `runCode` error result with `sah/ruleDenial` (section 8.3).
 3. The tool calls `directory.start(SessionStartRequest(agentID: "api", workingDirectory: ~/code/api, firstMessage: …, startedBy: P, origin: .tool))`.
 4. `RouterSessionDirectory` checks the limits. It calls `launcher.launchRootSession(…)`.
-5. The ACPAgent launcher (ACPA-9) finds `api` in the agent catalog. An unknown id throws `unknownAgent` with the near names. It resolves the folder (with no `cwd`, the folder of `startedBy`, AG-5), loads the configuration of the folder, and composes the surface. The surface includes the `sessions` tool over the same directory. It makes the Router session.
+5. The ACPAgent launcher (ACPA-9) resolves the folder (with no `cwd`, the folder of `startedBy`, AG-5). Then it resolves the agent (D71): an `agent` id is found in the agent catalog, and an unknown id throws `unknownAgent` with the near names. With no `agent`, the agent is the `AGENT.md` of the folder, else the default agent. Here it finds `api` in the catalog. The launcher loads the configuration of the folder, and composes the surface. The surface includes the `sessions` tool over the same directory. It makes the Router session.
 6. Router vends the session. The directory registers it, writes its facts (agent, `startedBy`, `origin`, tags), and sends `started(summary, requestedByClient: nil)`.
 7. The directory puts the first message in the queue as a mail. The new session starts its first turn with no owner client. It works in the background.
 8. The tool answers the model with the new session id.
@@ -957,6 +960,7 @@ Use the fake directory and fake viewers. No ACP and no model.
 Use the in-memory transport of FoundationModelsACP and the ACPClient test product. ACPAgent tests already link FoundationModelsACPClient.
 
 - The launcher resolves an agent id from a fixture catalog, with and without a folder. With no folder, the cwd is the folder of `startedBy`. The `default` id gives the root agent folder.
+- With no agent id, the launcher uses the `AGENT.md` of the folder (the summary has the id `folder:<path>` when the folder is not in the catalog), and the default agent when the folder has no `AGENT.md` (D71). With an agent id, an `AGENT.md` in the folder is project instructions.
 - The launcher file imports no FoundationModelsACP symbol.
 - `session/resume` of a live session that works now attaches it. The turn does not stop. The replay holds the first message. The client becomes the owner.
 - The viewer of a tunnel call holds the owned sessions of its connection, and the trust of the connection.
@@ -1116,7 +1120,7 @@ No new ACPC change. The client reaches the endpoint with `ACPGraphQLEndpoint(nam
 - **ACPA-12 Session list metadata**: removed. The graph gives the tags, the kind and the state.
 - **ACPC-5 Session directory model**: removed. The client model is over the `sessions` endpoint (APP-16).
 
-## 15. Changes to the SwissArmyHammer design
+## 15. Changes to the Testudo design
 
 These are differences between the design documents and this plan. The plan does not edit those documents. A person must decide each item.
 
@@ -1129,7 +1133,7 @@ These are differences between the design documents and this plan. The plan does 
 7. **D60 and APP-10 say "the parent is the coordinator session" for a root task session.** The kinds table of category 15 says a root session has `agentSpawn == nil`. This plan uses a new fact, `startedBy`. D60, APP-10 and the kinds table must use `startedBy`.
 8. **Rule 4 of "Rules for agents that work together" names the session "that started the work".** This plan defines the chain: `startedBy` first, then `parentID`.
 9. **The glossary says a subagent "is not a session".** Category 15 (kinds table) and ACPA-4 treat a subagent as a session. This plan follows category 15 and ACPA-4.
-10. **Category 17 lists `_sah/sessions/*` for "Sessions and messages (D23)".** With the decision of Q-S1, this row must change to "the GraphQL tunnel with the endpoint `sessions`". APP-16 must register `SessionsGraph` and give a client model over `ACPGraphQLEndpoint(name: "sessions")`.
+10. **Done (D67).** Category 17 and APP-16 now name the GraphQL tunnel with the endpoint `sessions`, and the session context is in that endpoint.
 11. **EXTRAS-2 has no caller context.** The `sessions` endpoint needs the viewer (EXTRAS-5). KANBAN-5 must accept the new parameter.
 12. **`session/resume` must attach a live session (ACPA-11).** The design does not say this today.
 13. **Q5 is answered.** The agents that an agent can find are the agent catalog of FoundationModelsAgents (AG-4, card `^jcnw05g`).
