@@ -6,6 +6,8 @@ Language: ASD-STE100 Simplified Technical English.
 
 Revision 2. The user answered Q-S1: UIs use the session directory through a GraphQL endpoint with the name `sessions`. There are no `_sah/sessions/*` ACP methods or notifications. This revision also applies D61: a session is an agent plus a working folder.
 
+Revision 3. The user answered Q-S3 to Q-S7 (D72). `read inbox` consumes the messages. A message to a recorded session restores it, but an archived session refuses it. The tool and the graph can archive any session that the caller can see. Router owns the record of past sessions (`SessionIndex`, `ProjectRegistry`), and the `RecordedSessionCatalog` port is gone. There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay.
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
@@ -21,7 +23,8 @@ With the tool, an agent can:
 - send a message to a session id, to an agent, to a folder, or to a tag,
 - reply to a message,
 - read the messages that it did not read yet (its inbox),
-- get the state and the last summary of a session.
+- get the state and the last summary of a session,
+- archive a session.
 
 The UI can do the same through queries, mutations and a subscription of the `sessions` endpoint. A new root session comes to the UI on the subscription, and the app opens a tab.
 
@@ -33,7 +36,7 @@ Out of scope:
 
 - Messages between servers (Q1, D17).
 - The views of the app (the Sessions window, the tab bar).
-- A `close session` or `delete session` operation. See the open questions.
+- A `delete session` operation. `archive session` ends a session, and its transcript stays on disk (D68, D72).
 
 ## 2. Constraints
 
@@ -81,6 +84,7 @@ These facts show a pattern: Extras holds the small shared contracts. Other packa
 - `SessionSidecar` records `workingDirectory` (`Recording/SessionSidecar.swift:86`) and `agentSpawn` (`:43-54, 90`). **The sidecar is write-once** (`:225-235`, `.withoutOverwriting`).
 - `SessionEvent` has `elicitationRequested`, `mailDelivered`, `submissionStarted`, `submissionEnded` and `answered` (`Session/SessionEvent.swift:184-339`).
 - Router has no GraphQL dependency.
+- Router has no record of past sessions. ACPAgent keeps it (section 3.6).
 
 ### 3.4 FoundationModelsKanban
 
@@ -102,6 +106,7 @@ These facts show a pattern: Extras holds the small shared contracts. Other packa
 - `session/new` composes the tools for the `cwd` and makes the Router session (`Agent/SessionSetup.swift:528-600`). The composition is `composeSession` (`:837, 870`). `activateSession` adds the table entry and the projector (`:621-728`).
 - The composition mounts the Multitool registry and, after it, the standalone `skills` and `agents` tools (`Tools/ToolCatalog.swift:312-372`). The standalone tools are not in a snippet, so the risk check does not see them.
 - `session/resume` closes a live entry first and restores the session from disk (`Agent/SessionResume.swift:130-137`). Thus a resume of a session that works now stops its work.
+- ACPAgent keeps the record of past sessions: `SessionIndex` (`Transcripts/SessionIndex.swift`, the file `sessions.jsonl`) and `ProjectRegistry` (`Transcripts/ProjectRegistry.swift`, the file `projects.jsonl`). `TranscriptStore` (`Transcripts/TranscriptStore.swift`) uses them for `session/list` and `session/resume`. These types have no ACP type.
 - There is no `_sah` code and no GraphQL tunnel yet.
 
 ### 3.7 FoundationModelsACP and FoundationModelsACPClient
@@ -285,8 +290,9 @@ public enum SessionState: String, Sendable, Codable, CaseIterable {
     /// The session waits for an answer: an elicitation or a permission request.
     case needsInput
     case idle
-    /// The session is closed. Its transcript stays on disk.
-    case ended
+    /// Session > Archive or `archive session` ended the session (D68, D72).
+    /// Its transcript stays on disk. It takes no message.
+    case archived
 }
 
 /// How a root session started. The graph uses it for the tab rule.
@@ -393,7 +399,7 @@ public struct SessionSendReceipt: Sendable, Codable, Equatable {
         case delivered      // the target was idle: the message starts a turn
         case queued         // the target works: the message waits for the turn end
         case started        // an agent address started a new root session
-        case refused        // a limit, a closed target or no match refused it
+        case refused        // a loop guard, an archived target or no match refused it
     }
     public let messageID: MailID?
     public let target: ULID?
@@ -425,7 +431,8 @@ public enum SessionDirectoryEvent: Sendable, Codable, Equatable {
     case factsChanged(SessionSummary)
     case stateChanged(id: ULID, state: SessionState, lastSummary: String?)
     case messageDelivered(SessionMessage)
-    case ended(id: ULID)
+    /// The session is archived (ROUTER-11).
+    case archived(id: ULID)
 }
 
 /// The session directory: find, start, tag and message sessions.
@@ -442,6 +449,10 @@ public protocol SessionDirectory: Sendable {
     /// The messages to `id` that are not read. With `markRead`, they become
     /// read, and a queued message does not start a turn later.
     func inbox(of id: ULID, markRead: Bool) async throws -> [SessionMessage]
+    /// Ends the session `id` (D68): stops a running turn, removes it from the
+    /// live list, marks it archived in its facts, and sends `archived`.
+    /// `by` is the session or the user that archives it, for the audit.
+    func archive(_ id: ULID, by: SessionMessageSender) async throws -> SessionSummary
     /// A new stream for each call. Each stream gets each event after the call.
     func events() -> AsyncStream<SessionDirectoryEvent>
 }
@@ -453,7 +464,6 @@ public enum SessionDirectoryError: Error, Sendable, Equatable {
     case unknownAgent(String, nearNames: [String])
     case notADirectory(URL)
     case chainTooDeep(limit: Int)
-    case tooManyWorkingSessions(limit: Int)
     case messageTooLong(limit: Int)
     case invalidTag(String)
     case noLauncher
@@ -474,9 +484,9 @@ The directory sends one event for each change. The sources in Router:
 |-------|------------------|
 | `started` | A session is vended (new, restored or forked) and registered in the directory. A start through the launcher also gives it. |
 | `factsChanged` | `addTags`, `removeTags`, a title change. |
-| `stateChanged` | `SessionEvent.submissionStarted` (working), `elicitationRequested` and the permission event of ROUTER-7 (needsInput), `submissionEnded` and `answered` (idle, plus the last summary). |
+| `stateChanged` | `SessionEvent.submissionStarted` (working), `elicitationRequested` (needsInput), `submissionEnded` and `answered` (idle, plus the last summary). A rule never asks (D64), so a rule denial does not give `needsInput`. |
 | `messageDelivered` | The directory put a mail in the queue of the target, and the target recorded it. |
-| `ended` | The session closed. |
+| `archived` | `archive(_:by:)` ended the session (ROUTER-11). |
 
 Rules:
 
@@ -506,6 +516,7 @@ Each op becomes one verb under `tools.sessions` (`OperationVerbTool.verbName(for
 | `untag session` | `tools.sessions.untagSession` | changes facts | new |
 | `send message` | `tools.sessions.sendMessage` | sends to another agent | `send` |
 | `reply message` | `tools.sessions.replyMessage` | sends to another agent | `reply` |
+| `archive session` | `tools.sessions.archiveSession` | changes, ends a session | new |
 
 There is no `find agents` op here. See section 5.8.
 
@@ -515,10 +526,11 @@ Why these names:
 - `tag` and `untag` are the verbs that the kanban tool uses for tasks.
 - `check session` mirrors `check agent`: it gives the state at once and never waits.
 - The noun of `send` and `reply` is `message`, because the target can be an agent, a folder or a tag.
+- `archive` is the name of the Session > Archive command of the app (D68).
 
 ### 8.2 Parameters and results
 
-The caller session is `ToolContext.current?.sessionID`. A call with no `ToolContext` (outside a Router session) can only read. `start`, `send`, `reply`, `tag`, `untag` and `read inbox` then give a corrective text.
+The caller session is `ToolContext.current?.sessionID`. A call with no `ToolContext` (outside a Router session) can only read. `start`, `send`, `reply`, `tag`, `untag`, `archive` and `read inbox` then give a corrective text.
 
 **`list sessions`**
 
@@ -528,7 +540,7 @@ The caller session is `ToolContext.current?.sessionID`. A call with no `ToolCont
 | `agent` | `String?` | An agent id. |
 | `tag` | `String?` | |
 | `kind` | `String?` | `root`, `subagent` or `fork` (`allowedValues`). |
-| `state` | `String?` | `working`, `needsInput` or `idle`. |
+| `state` | `String?` | `working`, `needsInput`, `idle` or `archived`. An archived session is not live, so `archived` needs `includeRecorded`. |
 | `parent` | `String?` | A session id. Matches `parentID`. |
 | `startedBy` | `String?` | A session id. |
 | `includeRecorded` | `Bool?` | Default `false`: only live sessions. |
@@ -591,6 +603,14 @@ Result: one line for each receipt: delivered, queued, started (with the new id) 
 
 Result: as `send message`. The target is the sender of the original message. A reply to a message from a user gives a corrective: the session answers a user in its own transcript.
 
+**`archive session`**
+
+| Parameter | Type | Note |
+|-----------|------|------|
+| `id` | `String` | The id of the session to archive. The caller can archive any session that it can see. |
+
+Result: the session id, the agent, the folder, and the sentence "The session is archived. Its work stopped, and it takes no more messages." The call stops a running turn of the session. There is no built-in limit. Only a deny rule can stop the call (section 8.3).
+
 ### 8.3 Risk facts and risk descriptions (MT-1, MT-7)
 
 Each operation declares its risk facts (MT-7). The judge (MT-6) reads them and a plain description of the call. Only model calls go through this check. A UI mutation is an action of the user (section 11.4).
@@ -605,13 +625,14 @@ Each operation declares its risk facts (MT-7). The judge (MT-6) reads them and a
 | `start session` | changes, delegates work to another agent | "Start agent A in folder F (or in the folder of this session) with this first message: …" |
 | `send message` | sends to another agent | "Send this message to S (or to agent A, which can start a new session, or to each session with tag T): …" |
 | `reply message` | sends to another agent | "Reply to message M from S: …" |
+| `archive session` | changes, ends the work of a session | "Archive session S: stop its turn and end the session." |
 
 The risk check (D64, MT-1):
 
-- The check can only deny. A `start session` or a `send message` runs unless a rule denies it. There are no built-in rules for the `sessions` tool, and there are no prompts.
+- The check can only deny. A `start session`, a `send message` or an `archive session` runs unless a rule denies it. There are no built-in rules for the `sessions` tool, and there are no prompts.
 - A denial is the error result of `runCode`, with `sah/ruleDenial` metadata. The model reads the reason and can change its plan.
 - A call that a message from another session caused gets the same check (rule 1 of "Rules for messages"). The subject of the check names the sender of the message that started the turn.
-- The user can write deny rules for the tool, for example "Never start a session in `~/Documents`" with `tools: [sessions]`.
+- The user can write deny rules for the tool, for example "Never start a session in `~/Documents`" or "Never archive a session that the user started", with `tools: [sessions]`.
 
 The check sees a call of the tool only when the call is in a `runCode` snippet. Thus the tool must be in the Multitool registry, and it must not be a standalone tool like `agents` (`ToolCatalog.swift:363-372`). See MT-9.
 
@@ -619,7 +640,7 @@ The check sees a call of the tool only when the call is in a `runCode` snippet. 
 
 | Address | Form in the tool | Rule |
 |---------|------------------|------|
-| Session id | a ULID | The session must exist (live or recorded). A recorded session that is not live: the directory restores it through the launcher, then delivers. |
+| Session id | a ULID | The session must exist (live or recorded). A recorded session that is not live: the directory restores it through the launcher, then delivers. An archived session: the receipt is `refused` with the reason "archived". |
 | Agent | `@id` or `@id:/path` | The newest live root session of the agent, in the given folder, else in the folder of the sender. If there is none, the directory starts one with origin `message`, and the message is the first message. |
 | Folder | `/path` or `~/path` | The newest live root session with that working folder, of any agent (no subagent, no fork). If there is none, the receipt is `refused` with the hint "Name an agent: @agent:/path." A folder alone does not name an agent (D61). |
 | Tag | `#tag` | Each live session with the tag, except the sender. No match gives one `refused` receipt. The directory does not start a session for a tag. |
@@ -646,18 +667,20 @@ This follows ROUTER-5 and the mail of the Router today.
 
 - Target idle: the mail starts a new turn. Receipt `delivered`.
 - Target working or needs input: the mail waits in the queue until the current turn ends. Receipt `queued`.
-- Target ended: the directory restores it through the launcher, then delivers. If it cannot, the receipt is `refused`.
-- `read inbox` marks the queued messages read. A message that is read does not start a turn.
+- Target recorded and not live: the directory restores it through the launcher (ROUTER-8), and the message starts a turn. If the restore fails, the receipt is `refused`.
+- Target archived: the receipt is `refused` with the reason "archived". Only Session > Archive and `archive session` end a session (D68, D72).
+- `read inbox` marks the messages read. A read message never starts a turn. Only the unread messages start a turn when the current turn ends (D72).
 - A message to a session that has no owner client starts work in the background (rule 3 of "Rules for messages").
 
-### 10.3 Limits and loops
+### 10.3 Loop guards
 
-These come from ROUTER-5 and from rule 5 of "Rules for agents that work together". The tool and the graph get the same limits, because the directory applies them.
+These come from ROUTER-5 and from rule 5 of "Rules for agents that work together". The tool and the graph get the same guards, because the directory applies them.
 
-| Limit | Default | Where |
+There is no limit on the number of sessions or subagents that work at the same time (D72). The model pool (D7) controls the use of the models, and the KV cache on disk lets many sessions wait. A start and a delivery never wait for a free slot.
+
+| Guard | Default | Where |
 |-------|---------|-------|
 | Chain depth | 3 | A turn that a message of depth d started gives depth d + 1 to each message it sends. A user turn and a UI message give depth 1. A send above the limit gives `refused`. |
-| Sessions that work at the same time, started by messages, tools and UI starts | 4 | `start`, and a delivery that starts a turn, check it. Above the limit, the receipt is `queued`, and the turn starts when a slot is free. |
 | Message length | 16 KB | A longer text gives a corrective or a GraphQL error. |
 | Targets of one tag send | 8 | More targets give `refused` for the rest. |
 | Sends from one turn | 16 | Stops a loop inside one turn. |
@@ -670,7 +693,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 
 | Part | Package | Does |
 |------|---------|------|
-| Directory and events | Router (through the Extras port) | Holds the sessions, tags and messages. Applies the limits. Sends events. |
+| Directory and events | Router (through the Extras port) | Holds the sessions, tags and messages, and the record of past sessions. Applies the loop guards. Archives sessions. Sends events. |
 | Launcher | ACPAgent, in a file with no ACP import (ACPA-9) | Resolves the agent in the catalog of Agents. Composes the tools of a new root session for the agent and the folder. |
 | `sessions` endpoint | `FoundationModelsSessionsGraph` (ROUTER-10) | Schema, resolvers, visibility and owner rules, the subscription. |
 | Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`. |
@@ -688,10 +711,10 @@ scalar DateTime
 scalar ID            # a session id (ULID) or a message id (MailID)
 
 enum SessionKind { ROOT SUBAGENT FORK }
-enum SessionState { WORKING NEEDS_INPUT IDLE ENDED }
+enum SessionState { WORKING NEEDS_INPUT IDLE ARCHIVED }
 enum SessionOrigin { CLIENT TOOL MESSAGE TRIGGER FORK }
 enum SendOutcome { DELIVERED QUEUED STARTED REFUSED }
-enum SessionChangeKind { STARTED FACTS_CHANGED STATE_CHANGED MESSAGE_DELIVERED ENDED }
+enum SessionChangeKind { STARTED FACTS_CHANGED STATE_CHANGED MESSAGE_DELIVERED ARCHIVED }
 
 type Session {
   id: ID!
@@ -791,6 +814,7 @@ type Mutation {
   untag(sessionId: ID!, tags: [String!]!): Session!
   send(input: SendMessageInput!): [SendReceipt!]!
   reply(inReplyTo: ID!, text: String!): [SendReceipt!]!
+  archive(sessionId: ID!): Session!   # Session > Archive (D68)
 }
 
 type Subscription {
@@ -801,6 +825,7 @@ type Subscription {
 Notes:
 
 - The `inbox` query does not mark messages read. Only the `read inbox` op of the model marks them read, because only the target session reads its inbox to act on it.
+- `archive` is the UI path of Session > Archive. It calls `SessionDirectory.archive(_:by:)` with the sender `user(clientID)`.
 - `start` is the UI path to start a session with an agent and a folder. The ACP `session/new` path stays for clients that do not use the graph. Both end in the same launcher.
 - The resolvers call only the `SessionDirectory` protocol. They do not call Router types.
 
@@ -840,13 +865,14 @@ Mutation rules:
 - `start`: `userDevice` only. The new session has `origin = client` and `requestedByClient = clientID`. The tab rule (11.5) opens it on this client.
 - `tag`, `untag`: `userDevice`, or `external` on a session that it owns.
 - `send`, `reply`: the sender is `user(clientID)`. The target must be visible. An `external` client can send only to sessions that it owns.
-- The directory applies the same limits as for the tool (section 10.3). The MT-1 risk check does not apply: this is an action of the user, not of a model. The audit records the client id.
+- `archive`: any session that the viewer can see. There is no built-in limit (D72).
+- The directory applies the same loop guards as for the tool (section 10.3). The MT-1 risk check does not apply: this is an action of the user, not of a model. The audit records the client id.
 - A mutation does not change the owner of a session. Ownership changes only with `session/new`, `session/resume` and `session/close` (D11).
 
 ### 11.4 The model and the UI share one directory
 
 - The tool and the graph call the same `SessionDirectory` instance (`router.sessionDirectory`). A tag that the model adds shows in the UI at once, through `FACTS_CHANGED`. A message that a user sends shows in the inbox of the session.
-- The rules that are in the directory (address resolution, limits, untrusted marking, delivery) are the same for both.
+- The rules that are in the directory (address resolution, loop guards, untrusted marking, delivery, archive) are the same for both.
 - The rules that differ: the model goes through MT-1, and the UI goes through the visibility and owner rules of 11.3.
 
 ### 11.5 The flow of a start, end to end
@@ -854,7 +880,7 @@ Mutation rules:
 1. The model in session P (owner client C, agent `app`, folder `~/code/app`) runs `tools.sessions.startSession({agent: "api", cwd: "~/code/api", message: "Add the orders endpoint"})`.
 2. Before the snippet runs, `MultiTool.runSnippet` checks it one time (MT-1). The checker reads the code, the scanned call `sessions.startSession` with its literal arguments, session P and the risk facts. No rule denies it, so the snippet runs. A denial would be the `runCode` error result with `sah/ruleDenial` (section 8.3).
 3. The tool calls `directory.start(SessionStartRequest(agentID: "api", workingDirectory: ~/code/api, firstMessage: …, startedBy: P, origin: .tool))`.
-4. `RouterSessionDirectory` checks the limits. It calls `launcher.launchRootSession(…)`.
+4. `RouterSessionDirectory` checks the loop guards of the first message. It calls `launcher.launchRootSession(…)`. No limit on the number of working sessions applies (D72).
 5. The ACPAgent launcher (ACPA-9) resolves the folder (with no `cwd`, the folder of `startedBy`, AG-5). Then it resolves the agent (D71): an `agent` id is found in the agent catalog, and an unknown id throws `unknownAgent` with the near names. With no `agent`, the agent is the `AGENT.md` of the folder, else the default agent. Here it finds `api` in the catalog. The launcher loads the configuration of the folder, and composes the surface. The surface includes the `sessions` tool over the same directory. It makes the Router session.
 6. Router vends the session. The directory registers it, writes its facts (agent, `startedBy`, `origin`, tags), and sends `started(summary, requestedByClient: nil)`.
 7. The directory puts the first message in the queue as a mail. The new session starts its first turn with no owner client. It works in the background.
@@ -879,6 +905,7 @@ A start from the UI is the same from step 3, with `origin: .client` and `request
 - Only the owner gets the `session/update` stream and the requests for input of the session.
 - While no client owns the session, its requests for input go to the owner of the first session with an owner in the `startedBy` chain, then in the `parentID` chain (rule 4). The request names the session that needs the input. If no session has an owner, the request waits, and the session state is `needsInput`. The Sessions window shows it.
 - A second client that resumes the session takes the ownership. ACPA-5 defines the hand-over. The first client sees `ownedByViewer: false` on the next change and closes its tab.
+- An archive ends the session (ROUTER-11). ACPAgent removes it from the table of its owner connection. The owner client gets the `ARCHIVED` change and closes its tab.
 
 ### 11.7 Subagent sessions
 
@@ -916,7 +943,7 @@ All tests are automated. No test needs a person.
 
 ### 13.1 Extras (EXTRAS-4)
 
-- A public fake: `InMemorySessionDirectory`, in a test-support product of Extras. It holds sessions, tags and messages in memory, applies the limits of section 10.3, and sends events. A fake launcher option gives it a list of known agent ids.
+- A public fake: `InMemorySessionDirectory`, in a test-support product of Extras. It holds sessions, tags and messages in memory, applies the loop guards of section 10.3 and the archive rules (ROUTER-11), and sends events. A fake launcher option gives it a list of known agent ids.
 - Tests: `Codable` round trip of each value type. The event order rule. The buffer rule of the stream.
 
 ### 13.2 Multitool (MT-2)
@@ -926,11 +953,12 @@ Use the fake directory. No model and no Router.
 - Each op: a good call, and each corrective text (unknown session, unknown agent with near names, relative path, missing folder, empty message, invalid tag, no `ToolContext`).
 - `start session` with no `cwd` sends a request with a nil folder.
 - `send message` parses each address form (ULID, `@agent`, `@agent:/path`, `/path`, `~/path`, `#tag`).
-- The registry mounts `tools.sessions.*` with the eight verb names of section 8.1. A golden file pins the rendered surface.
+- `archive session`: a good call, and an unknown id.
+- The registry mounts `tools.sessions.*` with the nine verb names of section 8.1. A golden file pins the rendered surface.
 - A risk check fake records each snippet subject. A snippet that calls a mutating op of `sessions` gives the scanned call and its risk facts, and a denial stops the snippet before the directory sees a call.
 - `PackageManifestTests` still passes: the library target links no Router.
 
-### 13.3 Router (ROUTER-3, ROUTER-4, ROUTER-5, ROUTER-8, ROUTER-9)
+### 13.3 Router (ROUTER-3, ROUTER-4, ROUTER-5, ROUTER-8, ROUTER-9, ROUTER-11)
 
 Use the test support of Router (scripted models, no real model).
 
@@ -940,9 +968,11 @@ Use the test support of Router (scripted models, no real model).
 - `send` to an idle session starts a turn. `send` to a working session waits until the turn ends. `read inbox` with `markRead` stops a later turn.
 - Agent address: newest live root session of the agent; a new session when there is none. Folder address: refused when there is no session.
 - Tag address: all but the sender; the target limit.
-- Limits: the chain depth, the working session limit, the length limit, the sends of one turn. A UI sender and a session sender get the same limits.
-- State events: working, needsInput (elicitation), idle with the last summary, ended.
-- Recorded sessions: `includesRecorded` finds sessions on disk after a new process.
+- Loop guards: the chain depth, the length limit, the sends of one turn, the targets of one tag send. A UI sender and a session sender get the same guards.
+- No cap: many sessions start and work at the same time, and no start or delivery waits for a slot.
+- State events: working, needsInput (elicitation), idle with the last summary, archived. A rule denial does not give needsInput.
+- Recorded sessions: `includesRecorded` finds sessions on disk after a new process, through `SessionIndex`. A send to a recorded session restores it, and the message starts a turn.
+- Archive: a working session stops its turn, leaves the live list, sends `archived`, and has `archivedAt` in its facts after a restart. A send to it gives `refused` with the reason "archived". The launcher does not restore it.
 
 ### 13.4 The `sessions` graph (ROUTER-10)
 
@@ -952,6 +982,7 @@ Use the fake directory and fake viewers. No ACP and no model.
 - Each query, each mutation and the subscription, with a `userDevice` viewer.
 - Visibility: an `external` viewer sees only its own sessions, their subagents and the sessions that they started. `parent` of a hidden session is `null`.
 - Mutation rules: an `external` viewer cannot `start`, and cannot send to a session that it does not own.
+- `archive`: each viewer can archive each session that it can see, and no other session.
 - `openInTab`: true only for the requesting client (UI start); true only for the owner of the first owned session in the chain (tool start); false for a trigger and a subagent.
 - A mutation does not change the owner.
 
@@ -964,6 +995,8 @@ Use the in-memory transport of FoundationModelsACP and the ACPClient test produc
 - The launcher file imports no FoundationModelsACP symbol.
 - `session/resume` of a live session that works now attaches it. The turn does not stop. The replay holds the first message. The client becomes the owner.
 - The viewer of a tunnel call holds the owned sessions of its connection, and the trust of the connection.
+- `session/list` and `session/resume` read the record of past sessions from Router (ACPA-14). ACPAgent has no `SessionIndex` and no `ProjectRegistry`.
+- An `archived` event removes the session from the table of its connection.
 - No `_sah/sessions/*` method or notification exists. A test checks the list of methods that `initialize` advertises.
 
 ### 13.6 One end-to-end test
@@ -984,7 +1017,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### EXTRAS-4 In-memory session directory for tests
 
-- **Spec:** A test-support product with `InMemorySessionDirectory`, which conforms to `SessionDirectory` and applies the limits of section 10.3.
+- **Spec:** A test-support product with `InMemorySessionDirectory`, which conforms to `SessionDirectory` and applies the loop guards of section 10.3 and the archive rules.
 - **Why:** Multitool, Agents, the graph and ACPAgent tests need a directory with no Router and no model.
 - **Depends on:** EXTRAS-3
 
@@ -998,7 +1031,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ROUTER-1 Session facts (refines)
 
-- **Spec:** `workingDirectory` and `agentSpawn` are already in the sidecar (`SessionSidecar.swift:86, 90`). Add a second, mutable file `facts.json` in the recording directory of each session, with `agentID`, `agentName`, `tags`, `title`, `startedBy` and `origin`. Write it atomically. The sidecar stays write-once. `SessionConfiguration` gets the same fields.
+- **Spec:** `workingDirectory` and `agentSpawn` are already in the sidecar (`SessionSidecar.swift:86, 90`). Add a second, mutable file `facts.json` in the recording directory of each session, with `agentID`, `agentName`, `tags`, `title`, `startedBy`, `origin` and `archivedAt` (nil until an archive). Write it atomically. The sidecar stays write-once. `SessionConfiguration` gets the same fields.
 - **Why:** D23, D61. The sidecar is write-once (`SessionSidecar.swift:225-235`), and tags change later. A session is an agent plus a folder, so the agent id is a fact of the session.
 - **Depends on:** —
 
@@ -1010,8 +1043,8 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ROUTER-3 Session directory (refines)
 
-- **Spec:** `RouterSessionDirectory`, an actor that conforms to the Extras `SessionDirectory`. The `Router` actor holds one (`router.sessionDirectory`). Each session that a profile of this router vends (new, restored, forked, subagent) registers itself. The directory holds weak references to live sessions, reads `SessionEvent` for the state, and reads recorded sessions through a `RecordedSessionCatalog` port that the host gives.
-- **Why:** D23. Router has no live list today (`Router.swift:36-219`). The live list is per connection in ACPAgent (`RoutedACPAgent.swift:84-88`).
+- **Spec:** `RouterSessionDirectory`, an actor that conforms to the Extras `SessionDirectory`. The `Router` actor holds one (`router.sessionDirectory`). Each session that a profile of this router vends (new, restored, forked, subagent) registers itself. The directory holds weak references to live sessions and reads `SessionEvent` for the state. Router owns the record of past sessions: `SessionIndex` and `ProjectRegistry` move from ACPAgent `Transcripts/` into Router `Recording/`, and the directory reads recorded sessions through them. There is no `RecordedSessionCatalog` port.
+- **Why:** D23, D72. Router has no live list today (`Router.swift:36-219`). The live list is per connection in ACPAgent (`RoutedACPAgent.swift:84-88`). `SessionIndex` and `ProjectRegistry` have no ACP concept, so one package owns the live list and the record.
 - **Depends on:** EXTRAS-3, ROUTER-1
 
 #### ROUTER-4 Messages between sessions (refines)
@@ -1020,11 +1053,11 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 - **Why:** D22, D23. The mail types already exist in Extras (`MailBody.swift:22`, `MailSender.swift:17`).
 - **Depends on:** ROUTER-3
 
-#### ROUTER-5 Message delivery and limits (refines)
+#### ROUTER-5 Message delivery and loop guards (refines)
 
-- **Spec:** The delivery rules of section 10.2 and the limits of section 10.3, for each sender. The depth comes from the mail ids of the current submission.
-- **Why:** D22, rule 5 of "Rules for agents that work together".
-- **Depends on:** ROUTER-4
+- **Spec:** The delivery rules of section 10.2 (an idle target starts a turn, a working target queues, a recorded target restores, an archived target refuses, a read message never starts a turn) and the loop guards of section 10.3, for each sender. The depth comes from the mail ids of the current submission. There is no limit on the number of sessions that work at the same time.
+- **Why:** D22, D72, rule 5 of "Rules for agents that work together". The model pool (D7) controls the load.
+- **Depends on:** ROUTER-4, ROUTER-8
 
 #### ROUTER-8 Session launcher port
 
@@ -1036,7 +1069,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 - **Spec:** The directory maps `SessionEvent` to `SessionState` (section 7) and keeps the last final message, cut to 500 characters, as `lastSummary`.
 - **Why:** `check session`, the `Session.state` field and the Sessions window (D32) need the state and the summary.
-- **Depends on:** ROUTER-3, ROUTER-7 (for the permission case of `needsInput`)
+- **Depends on:** ROUTER-3
 
 #### ROUTER-10 The `sessions` GraphQL endpoint
 
@@ -1044,12 +1077,18 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 - **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). Section 5.7 tells why the target goes here.
 - **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, ROUTER-3
 
+#### ROUTER-11 Archive a session
+
+- **Spec:** `RouterSessionDirectory.archive(_:by:)`. It stops a running turn of the session, removes the session from the live list, writes `archivedAt` to `facts.json`, and sends `archived(id:)`. A later send to the session gives `refused` with the reason "archived", and the directory does not restore it. The tool (`archive session`) and the graph (`archive`) call it for any session that the caller can see. There is no built-in limit. Only a deny rule (D64) stops a model call, through the risk check of the `runCode` snippet.
+- **Why:** D68 (only Session > Archive ends a session), D72.
+- **Depends on:** ROUTER-1, ROUTER-3
+
 ### MT
 
 #### MT-2 `sessions` tool (refines)
 
-- **Spec:** `SessionsTool`, an `OperationTool<SessionsToolContext>` with the name `sessions` and the eight operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8).
-- **Why:** D35, D21, D22, D61.
+- **Spec:** `SessionsTool`, an `OperationTool<SessionsToolContext>` with the name `sessions` and the nine operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8).
+- **Why:** D35, D21, D22, D61, D72.
 - **Depends on:** EXTRAS-3, MT-9, MT-1, MT-7
 
 #### MT-9 Mount operation tools in the library, and `withSessions`
@@ -1098,6 +1137,12 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 - **Why:** D11 and the visibility rules of section 11.3. The resolver cannot read ACP state (constraint 2).
 - **Depends on:** ACPA-5, EXTRAS-5, ACP-3
 
+#### ACPA-14 Read past sessions from Router
+
+- **Spec:** Remove `Transcripts/SessionIndex.swift` and `Transcripts/ProjectRegistry.swift` from ACPAgent. `session/list` and `session/resume` read the record of past sessions from Router (ROUTER-3). `TranscriptStore` uses the Router types.
+- **Why:** D72. Router owns the record of past sessions. ACPAgent only carries it over ACP.
+- **Depends on:** ROUTER-3
+
 #### ACPA-6 Messages from other sessions (refines)
 
 - **Spec:** A delivered message shows in the transcript of the target as a standard `session/update` (a user message chunk) to the owner of the target, with `_meta.sah.message = { from, fromTitle, fromAgent, fromCwd, messageId, inReplyTo }`. This is the transcript, not a directory projection.
@@ -1124,8 +1169,8 @@ No new ACPC change. The client reaches the endpoint with `ACPGraphQLEndpoint(nam
 
 These are differences between the design documents and this plan. The plan does not edit those documents. A person must decide each item.
 
-1. **ROUTER-1 says the sidecar has no `cwd`.** The code has `workingDirectory` in the sidecar (`SessionSidecar.swift:86`). The sidecar is write-once (`:225-235`), so tags, the title and the agent id need a separate mutable file.
-2. **ROUTER-3 names `Router.sessions(matching:) -> [SessionSummary]`.** This plan puts the API on a `SessionDirectory` protocol in Extras, implemented by a Router actor. A method on the `Router` actor alone cannot be used by Multitool.
+1. **Done (D72). ROUTER-1 said the sidecar has no `cwd`.** The code has `workingDirectory` in the sidecar (`SessionSidecar.swift:86`). The sidecar is write-once (`:225-235`), so tags, the title and the agent id need a separate mutable file.
+2. **Done (D72). ROUTER-3 named `Router.sessions(matching:) -> [SessionSummary]`.** This plan puts the API on a `SessionDirectory` protocol in Extras, implemented by a Router actor. A method on the `Router` actor alone cannot be used by Multitool.
 3. **Category 15, Addressing, says "the Router finds the newest root session in that folder, or the server starts a new root session there".** With D61, a folder does not name an agent. This plan adds the agent address and refuses a folder address with no live session. The start needs the `SessionLauncher` port of the host (ROUTER-8, ACPA-9).
 4. **MT-2 lists `list`, `start`, `send`, `reply`, `inbox` and `status`.** This plan uses the op strings of section 8.1, adds `tag session` and `untag session`, and gives `start session` an agent and an optional folder. MT-2 must also say that the tool is in the Multitool registry, so MT-1 sees it.
 5. **MT-2 needs MT-9.** The library target does not link `Operations` today, and `Read.swift:3-8` says the package has no operation machinery.
@@ -1137,16 +1182,17 @@ These are differences between the design documents and this plan. The plan does 
 11. **EXTRAS-2 has no caller context.** The `sessions` endpoint needs the viewer (EXTRAS-5). KANBAN-5 must accept the new parameter.
 12. **`session/resume` must attach a live session (ACPA-11).** The design does not say this today.
 13. **Q5 is answered.** The agents that an agent can find are the agent catalog of FoundationModelsAgents (AG-4, card `^jcnw05g`).
+14. **Done (D72).** The design has no cap on the sessions and subagents that work at the same time. ROUTER-5, category 15, category 09 and the glossary keep only the loop guards. AG-7 removes the subagent cap of FoundationModelsAgents. Q31 is closed. ROUTER-8 to ROUTER-11 and EXTRAS-3 to EXTRAS-5 are in the design.
 
 ## 16. Open questions
 
 - **Q-S1. Answered.** UIs use the `sessions` GraphQL endpoint through the `_sah/graphql/*` tunnel (section 11).
 - **Q-S2. The tab rule.** Does each `start session` of a model open a tab? A coordinator can start many sessions. Proposal: `openInTab` is true for the first 3 starts of one turn, and false after that. The app can also have a setting.
-- **Q-S3. `read inbox` and delivery.** Is "read" the correct effect of `read inbox`, so that a queued message does not start a turn? Or does each message always start a turn?
-- **Q-S4. Recorded sessions as message targets.** Does a message to a recorded session that is not live restore it (this plan), or does it give `refused`?
-- **Q-S5. Close and delete.** Does the tool need `close session`? Does the graph need a `close` mutation?
-- **Q-S6. The recorded-session catalog.** ROUTER-3 reads recorded sessions through a port that ACPAgent fills with its `TranscriptStore`. Should `SessionIndex` and `ProjectRegistry` (`Transcripts/`) move into Router, because they have no ACP concept?
-- **Q-S7. The working session limit.** The limit of 4 counts sessions that tools, messages and UI starts started. Does it also count sessions that kanban triggers started (D60 rule 5, Q31)?
+- **Q-S3. Answered (D72).** `read inbox` marks the messages read, and a read message never starts a turn. Only unread messages start a turn when the current turn ends (section 10.2).
+- **Q-S4. Answered (D72).** A message to a recorded session that is not live restores it through the launcher, and the message starts a turn. A message to an archived session gives `refused` with the reason "archived" (section 10.2).
+- **Q-S5. Answered (D72).** The tool has `archive session`, and the graph has the `archive` mutation. Both archive any session that the caller can see. Only a deny rule can stop it (ROUTER-11).
+- **Q-S6. Answered (D72).** `SessionIndex` and `ProjectRegistry` move into Router, and the `RecordedSessionCatalog` port goes away (ROUTER-3, ACPA-14).
+- **Q-S7. Answered (D72).** There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay (section 10.3). This also answers Q31.
 - **Q-S8. Trust of an external client.** Is the visibility of section 11.3 correct for an `external` client? Can it see sessions that the user started on the Mac?
 - **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
 - **Q12 (existing).** Is a `session/update` with `_meta` the correct way to show a message from another session in the transcript? ACPA-6 here assumes yes.
