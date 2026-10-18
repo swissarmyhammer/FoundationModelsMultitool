@@ -1115,9 +1115,9 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ACPA-9 Session launcher with no ACP concept
 
-- **Spec:** Move the composition of `session/new` (`SessionSetup.swift:546-600`, `composeSession` at `:837-918`) into a `SessionComposer` that has no connection and imports no FoundationModelsACP. `RoutedACPAgent.newSession` and the new `ComposedSessionLauncher` (which conforms to the Router `SessionLauncher`) both use it. The launcher resolves the agent id in the catalog of FoundationModelsAgents (with the agent folders of AG-4), and uses the own folder of the agent when the request has no folder. It adds the `sessions` tool through `withSessions(directory:)` in `ToolCatalog.makeRegistry` (`ToolCatalog.swift:403-470`).
+- **Spec:** Move the composition of `session/new` (`SessionSetup.swift:546-600`, `composeSession` at `:837-918`) into a `SessionComposer` that has no connection and imports no FoundationModelsACP. `RoutedACPAgent.newSession` and the new `ComposedSessionLauncher` (which conforms to the Router `SessionLauncher`) both use it. The launcher resolves the folder first: with no folder, the folder of `startedBy` (AG-5). Then it resolves the agent (D71): an agent id in the catalog of FoundationModelsAgents (with the agent folders of AG-4), else the `AGENT.md` of the folder, else the default agent. It adds the `sessions` tool through `withSessions(directory:)` in `ToolCatalog.makeRegistry` (`ToolCatalog.swift:403-470`).
 - **Why:** The directory must start a session with the full surface of its agent and folder (D19, D21, D61) and with no client.
-- **Depends on:** ROUTER-8, ACPA-1, MT-9, AG-4
+- **Depends on:** ROUTER-8, ACPA-1, MT-9, AG-4, AG-5
 
 #### ACPA-5 One `RoutedACPAgent` for each connection (dependency)
 
