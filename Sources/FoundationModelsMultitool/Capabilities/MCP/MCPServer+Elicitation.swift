@@ -225,6 +225,11 @@ extension MCPServer {
         _ request: ElicitationRequest, urlElicitationId: String?, linkedBy meta: Metadata?, generation: Int
     ) async -> ElicitationResponse {
         if let context = callingContext(linkedBy: meta) {
+            // The call waits only for the answer of the user from here: its
+            // lease is not work until the answer came.
+            let lease = waitingCallLease(linkedBy: meta, of: context)
+            lease?.suspend()
+            defer { lease?.resume() }
             guard let urlElicitationId else {
                 return await elicit(request, through: context)
             }
@@ -290,6 +295,35 @@ extension MCPServer {
             return context
         }
         return contextOfTheOneRunInFlight()
+    }
+
+    /// The `mcpCall` lease of the call in flight that waits for the answer
+    /// to a question of `context`, or `nil` when no one call can be named.
+    /// The rules, in order:
+    ///
+    /// 1. When `meta` has the standard `progressToken` key and the token
+    ///    names a call in flight of `context`, the lease of that call.
+    /// 2. Else, when one call in flight of the run of `context` holds a
+    ///    lease, the lease of that call.
+    /// 3. Else `nil`. Two or more calls of the run are in flight, and the
+    ///    question does not tell which one waits for the user. Each call
+    ///    then stays work, because a call that does not wait for the user
+    ///    must not leave the session idle.
+    ///
+    /// - Parameters:
+    ///   - meta: The `_meta` of the `elicitation/create`, or `nil`.
+    ///   - context: The context that answers the question.
+    /// - Returns: The lease, or `nil`.
+    private func waitingCallLease(linkedBy meta: Metadata?, of context: ToolContext) -> BackgroundWork? {
+        if let token = meta?.progressToken, let call = inFlightCalls[Self.requestID(of: token)],
+            call.context?.holdingRunToken == context.holdingRunToken
+        {
+            return call.lease
+        }
+        let leases = inFlightCalls.values
+            .filter { $0.context?.holdingRunToken == context.holdingRunToken }
+            .compactMap(\.lease)
+        return leases.count == 1 ? leases.first : nil
     }
 
     /// The context of the one run that made each call in flight, or `nil`

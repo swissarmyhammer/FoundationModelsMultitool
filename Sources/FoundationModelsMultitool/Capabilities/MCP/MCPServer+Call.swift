@@ -82,6 +82,12 @@ extension MCPServer {
         /// transport drop and a reconnect record an event on it.
         let span: any Span
 
+        /// The `mcpCall` lease of the call in the work registry of the
+        /// session of ``context``, or `nil` on the bare-session path. The
+        /// call ends it. `MCPServer+Elicitation.swift` suspends it while the
+        /// server waits only for the answer of the user.
+        let lease: BackgroundWork?
+
         /// The client the call read at its start: the request goes out on
         /// it, and its `notifications/cancelled` goes out on it too. A new
         /// connect makes a new client, thus a call that started on an old
@@ -152,9 +158,28 @@ extension MCPServer {
     public func call(name: String, arguments: [String: Value]? = nil) async throws -> CallTool.Result {
         let context = ToolContext.current
         let requestID = ID.random
+        // The session has work from the start of the call to its end, on
+        // each path: a result, an error, a cancel and a drop.
+        let lease = context?.beginBackgroundWork(.mcpCall, id: Self.leaseID(of: requestID))
+        defer { lease?.end() }
         return try await withCallSpan(toolName: name, requestID: requestID) { span in
             try await self.callInSpan(
-                name: name, arguments: arguments, requestID: requestID, context: context, span: span)
+                name: name, arguments: arguments, requestID: requestID, context: context, lease: lease,
+                span: span)
+        }
+    }
+
+    /// The id of the `mcpCall` lease of the request `requestID`: the text of
+    /// the id, which is also the progress token of the request.
+    ///
+    /// - Parameter requestID: The id of the request.
+    /// - Returns: The id of the lease.
+    static func leaseID(of requestID: ID) -> String {
+        switch requestID {
+        case .string(let text):
+            return text
+        case .number(let number):
+            return String(number)
         }
     }
 
@@ -168,11 +193,14 @@ extension MCPServer {
     ///   - arguments: The arguments of the call.
     ///   - requestID: The id of the request, and so its progress token.
     ///   - context: The captured ambient context, or `nil` on the bare path.
+    ///   - lease: The `mcpCall` lease of the call, or `nil` on the bare
+    ///     path.
     ///   - span: The client span of the call.
     /// - Returns: What ``call(name:arguments:)`` returns.
     /// - Throws: What ``call(name:arguments:)`` throws.
     private func callInSpan(
-        name: String, arguments: [String: Value]?, requestID: ID, context: ToolContext?, span: any Span
+        name: String, arguments: [String: Value]?, requestID: ID, context: ToolContext?, lease: BackgroundWork?,
+        span: any Span
     ) async throws -> CallTool.Result {
         try Task.checkCancellation()
         guard case .ready = state else {
@@ -183,7 +211,8 @@ extension MCPServer {
         guard let client else {
             throw lostError(toolName: name, underlying: Self.noClientDescription)
         }
-        inFlightCalls[requestID] = InFlightCall(toolName: name, context: context, span: span, client: client)
+        inFlightCalls[requestID] = InFlightCall(
+            toolName: name, context: context, span: span, lease: lease, client: client)
         let meta = Self.requestMetadata(requestID: requestID, span: span)
         return try await withTaskCancellationHandler {
             try await dispatch(
