@@ -1051,7 +1051,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 - **Spec:** `send` resolves the address (section 9) and delivers each message as a `Mail` with `MailBody.agentMessage(from:content:)` through `MailSink.mail(_:)`. The sender is a session or a user. The record keeps `inReplyTo`, the chain depth and, for a user, the client id. `inbox(of:markRead:)` reads the queue. A `messageDelivered` event follows each delivery.
 - **Why:** D22, D23. The mail types already exist in Extras (`MailBody.swift:22`, `MailSender.swift:17`).
-- **Depends on:** ROUTER-3
+- **Depends on:** ROUTER-3, ROUTER-8 (an agent address can start a session)
 
 #### ROUTER-5 Message delivery and loop guards (refines)
 
@@ -1081,7 +1081,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 - **Spec:** `RouterSessionDirectory.archive(_:by:)`. It stops a running turn of the session, removes the session from the live list, writes `archivedAt` to `facts.json`, and sends `archived(id:)`. A later send to the session gives `refused` with the reason "archived", and the directory does not restore it. The tool (`archive session`) and the graph (`archive`) call it for any session that the caller can see. There is no built-in limit. Only a deny rule (D64) stops a model call, through the risk check of the `runCode` snippet.
 - **Why:** D68 (only Session > Archive ends a session), D72.
-- **Depends on:** ROUTER-1, ROUTER-3
+- **Depends on:** ROUTER-1, ROUTER-3, ROUTER-5 (the archived refusal is a delivery rule)
 
 ### MT
 
