@@ -455,6 +455,8 @@ public protocol SessionDirectory: Sendable {
     func start(_ request: SessionStartRequest) async throws -> SessionSummary
     func addTags(_ tags: Set<String>, to id: ULID) async throws -> SessionSummary
     func removeTags(_ tags: Set<String>, from id: ULID) async throws -> SessionSummary
+    /// Sets the title of `id` (Rename, a control action: TestudoApp D84).
+    func setTitle(_ title: String, of id: ULID) async throws -> SessionSummary
     func send(_ message: OutgoingSessionMessage) async throws -> [SessionSendReceipt]
     /// The messages to `id` that are not read. With `markRead`, they become
     /// read, and a queued message does not start a turn later.
@@ -493,7 +495,7 @@ The directory sends one event for each change. The sources in Router:
 | Event | Source in Router |
 |-------|------------------|
 | `started` | A session is vended (new, restored or forked) and registered in the directory. A start through the launcher also gives it. |
-| `factsChanged` | `addTags`, `removeTags`, a title change. |
+| `factsChanged` | `addTags`, `removeTags`, `setTitle`. |
 | `stateChanged` | `SessionEvent.submissionStarted` (working), `elicitationRequested` (needsInput), `submissionEnded` and `answered` (idle, plus the last summary). A rule never asks (D64), so a rule denial does not give `needsInput`. |
 | `messageDelivered` | The directory put a mail in the queue of the target, and the target recorded it. |
 | `archived` | `archive(_:by:)` ended the session (ROUTER-11). |
@@ -822,6 +824,7 @@ type Mutation {
   start(input: StartSessionInput!): Session!
   tag(sessionId: ID!, tags: [String!]!): Session!
   untag(sessionId: ID!, tags: [String!]!): Session!
+  rename(sessionId: ID!, title: String!): Session!   # Session > Rename (D84)
   send(input: SendMessageInput!): [SendReceipt!]!
   reply(inReplyTo: ID!, text: String!): [SendReceipt!]!
   archive(sessionId: ID!): Session!   # Session > Archive (D68)
@@ -873,7 +876,7 @@ A field or a list never shows a session that the viewer cannot see. `parent` or 
 Mutation rules:
 
 - `start`: `userDevice` only. The new session has `origin = client` and `requestedByClient = clientID`. The tab rule (11.5) opens it on this client.
-- `tag`, `untag`: `userDevice`, or `external` on a session that it owns.
+- `tag`, `untag`, `rename`: `userDevice`, or `external` on a session that it owns. These are control actions (TestudoApp D84): a title and tags are labels on the work. `rename` calls `SessionDirectory.setTitle`.
 - `send`, `reply`: the sender is `user(clientID)`. The target must be visible. An `external` client can send only to sessions that it owns.
 - `archive`: any session that the viewer can see. There is no built-in limit (D72).
 - The directory applies the same loop guards as for the tool (section 10.3). The MT-1 risk check does not apply: this is an action of the user, not of a model. The audit records the client id.
@@ -1105,7 +1108,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### MT-10 The `sessions` GraphQL endpoint
 
-- **Spec:** `SessionsGraph` in the existing `FoundationModelsMultitool` library target, next to `SessionsTool`. No new target and no new product (D73). GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6). Multitool adds no pin of its own. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. Queries: `sessions`, `session` and `inbox`. Mutations: `start`, `tag`, `untag`, `send`, `reply` and `archive`. Subscription: `sessionChanges`, which reads `directory.events()`. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. The errors, the warnings and the rewrites use the conventions of the toolkit (`extensions.code`, `extensions.warnings`, `extensions.rewrites`). The tool and the graph share the visibility rules, the limits and the correctives. The `sessions` tool gives the graph in its `graphQLEndpoints` (EXTRAS-7), and the app registers the endpoint that it gets from the tool. Thus MT-10 comes after MT-2.
+- **Spec:** `SessionsGraph` in the existing `FoundationModelsMultitool` library target, next to `SessionsTool`. No new target and no new product (D73). GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6). Multitool adds no pin of its own. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. Queries: `sessions`, `session` and `inbox`. Mutations: `start`, `tag`, `untag`, `rename`, `send`, `reply` and `archive`. Subscription: `sessionChanges`, which reads `directory.events()`. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. The errors, the warnings and the rewrites use the conventions of the toolkit (`extensions.code`, `extensions.warnings`, `extensions.rewrites`). The tool and the graph share the visibility rules, the limits and the correctives. The `sessions` tool gives the graph in its `graphQLEndpoints` (EXTRAS-7), and the app registers the endpoint that it gets from the tool. Thus MT-10 comes after MT-2.
 - **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. D74: each package owns its endpoint, and the tool and the graph are two front ends over one port. D75: the tool gives its endpoint. Section 5.7 tells why the graph goes in the Multitool library target.
 - **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, EXTRAS-6, EXTRAS-7, MT-2 (the tool and the shared rules). At run time it uses the behavior of ROUTER-3 to ROUTER-11.
 
