@@ -29,8 +29,24 @@ comments:
     - evidence: a668f32 feat(shell): the execute result's lines is the output lines, an alias of output, and the count moved to lineCount
     - next: review
   timestamp: 2026-10-19T12:12:57.279743+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5a1dp0yrezk196qkx3a1ft8
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (60f36ce) — 0 findings, 0 confirmed, 0 refuted; 2 files reviewed; README.md had no matching validator; .kanban/ excluded by .reviewignore
+    - next: none — task moved to done
+  timestamp: 2026-10-19T12:15:45.694735+00:00
+- actor: claude-code
+  id: 01m5a1e8e31k8q2xg8hh29kawd
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Execute.swift, ShellExecuteTests.swift, README.md
+    - test: green — swift test, 2477 passed in 218 suites
+    - commit: 60f36ce (supersedes a668f32, amended before push)
+    - review: clean — 0 findings, task moved to done
+  timestamp: 2026-10-19T12:16:04.547563+00:00
+position_column: done
+position_ordinal: ffffffa580
 title: 'Execute result: `lines` is the output lines (alias of `output`), the count is `lineCount`'
 ---
 In the result of `tools.shell.execute`, the field `lines` is a number: how many lines the store holds for the command (Execute.swift:585, `"lines": .number(Double(stored.count))`). The output text is in `output` (the last lines, each "N: text").
