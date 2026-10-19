@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
@@ -33,8 +34,33 @@ enum TerminalDetail {
     static func settledEvent(
         of completionToken: String, in context: ToolContext
     ) async throws -> OperationEvent {
-        let settlement = await context.wait(
-            completionToken: completionToken, seconds: scriptedRunSettlementSeconds)
+        try terminalEvent(
+            of: await context.wait(completionToken: completionToken, seconds: scriptedRunSettlementSeconds))
+    }
+
+    /// Waits for the terminal event of one background run, on the run plane
+    /// itself — for a test that mounts on a `MountSite` and holds no
+    /// `ToolContext`.
+    ///
+    /// - Parameters:
+    ///   - completionToken: The token of the run.
+    ///   - runPlane: The run plane that tracks the run.
+    /// - Returns: The terminal event of the run.
+    /// - Throws: When the run does not settle in
+    ///   `scriptedRunSettlementSeconds`.
+    static func settledEvent(
+        of completionToken: String, on runPlane: RunPlane
+    ) async throws -> OperationEvent {
+        try terminalEvent(
+            of: await runPlane.wait(completionToken: completionToken, seconds: scriptedRunSettlementSeconds))
+    }
+
+    /// The terminal event of one wait for a run.
+    ///
+    /// - Parameter settlement: The outcome of the wait.
+    /// - Returns: The terminal event of the run.
+    /// - Throws: When the wait ended before the run settled.
+    private static func terminalEvent(of settlement: WaitOutcome) throws -> OperationEvent {
         guard case .settled(let terminal) = settlement else {
             throw TerminalDetailFailure.neverSettled(String(describing: settlement))
         }
