@@ -51,6 +51,26 @@ struct SnapshotsContext: Sendable {
         }
     }
 
+    /// Moves one checkpoint of the session key of the bound session with
+    /// `operation`, and gives the moved checkpoint as the result of the
+    /// `undo` or the `redo` verb.
+    ///
+    /// The `undo` and the `redo` verbs differ only in the store operation,
+    /// thus each verb gives its operation to this one body.
+    ///
+    /// - Parameter operation: The store operation that moves the checkpoint:
+    ///   `SnapshotStore.undo(sessionKey:)` or `SnapshotStore.redo(sessionKey:)`.
+    ///   It gets the store and the session key.
+    /// - Returns: The moved checkpoint, whose files are the restored files, or
+    ///   the correction.
+    /// - Throws: `CancellationError` when the calling task is cancelled.
+    func restore(
+        _ operation: @Sendable (SnapshotStore, String) async throws -> Checkpoint
+    ) async throws -> SnapshotRestoreResult {
+        try await perform(operation).resolve(
+            corrective: SnapshotRestoreResult.corrective, then: SnapshotRestoreResult.restored)
+    }
+
     /// The correction for an error of libgit2 or of the file system.
     ///
     /// - Parameter error: The error that the store threw.

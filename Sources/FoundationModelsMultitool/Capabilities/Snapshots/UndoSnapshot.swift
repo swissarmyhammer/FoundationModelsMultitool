@@ -33,9 +33,7 @@ extension UndoSnapshot {
     ///   or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: UndoSnapshotArguments) async throws -> SnapshotRestoreResult {
-        try await context.perform { store, sessionKey in
-            try await store.undo(sessionKey: sessionKey)
-        }.resolve(corrective: SnapshotRestoreResult.corrective, then: SnapshotRestoreResult.restored)
+        try await context.restore { try await $0.undo(sessionKey: $1) }
     }
 }
 

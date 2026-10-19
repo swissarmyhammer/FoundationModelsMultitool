@@ -28,9 +28,7 @@ extension RedoSnapshot {
     ///   or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: RedoSnapshotArguments) async throws -> SnapshotRestoreResult {
-        try await context.perform { store, sessionKey in
-            try await store.redo(sessionKey: sessionKey)
-        }.resolve(corrective: SnapshotRestoreResult.corrective, then: SnapshotRestoreResult.restored)
+        try await context.restore { try await $0.redo(sessionKey: $1) }
     }
 }
 

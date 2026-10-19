@@ -53,6 +53,36 @@ comments:
     - evidence: swift test, 2502 tests in 219 suites passed, no warnings in project files; 13 tests in SnapshotsCapabilityTests. Files: Package.swift, Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift, Sources/FoundationModelsMultitool/Capabilities/Snapshots (SnapshotsCapability.swift, SnapshotsContext.swift, SnapshotCheckpoint.swift, ListSnapshots.swift, TakeSnapshot.swift, UndoSnapshot.swift, RedoSnapshot.swift), Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift.
     - next: review.
   timestamp: 2026-10-19T21:10:38.485473+00:00
+- actor: claude-code
+  id: 01m5b07habkxd1xxyatfqbgpqh
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 0790531). 1 finding (1 confirmed, 2 refuted). Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift:30 (duplication/duplication).
+    - next: Do the open item in the "Review Findings (2026-10-19 16:11)" section. Put the shared undo and redo call body in one helper in SnapshotsContext. Then do the review again.
+  timestamp: 2026-10-19T21:14:10.123236+00:00
+- actor: claude-code
+  id: 01m5b07zdpgyp3gx23pvhps6tv
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — isRedoAvailable field and tests; Hooks pin at 2e29e38
+    - test: green — swift test, 2502 tests in 219 suites passed, no warnings (from the implement run; no code change after it)
+    - commit: 0790531 (pushed to origin/main)
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift:30
+  timestamp: 2026-10-19T21:14:24.566530+00:00
+- actor: claude-code
+  id: 01m5b0bjwcgsmtkw323mf6xg2q
+  text: |-
+    Review finding done: duplication of the undo and redo call bodies.
+    - SnapshotsContext has a new helper, restore(_:). It takes the store operation (a closure that gets the store and the session key and gives a Checkpoint), runs it through perform(_:), and resolves the result to SnapshotRestoreResult. The undo and the redo verbs now share this one body.
+    - UndoSnapshot.call is now one line: context.restore { try await $0.undo(sessionKey: $1) }. RedoSnapshot.call is the same with redo. The two old copies are deleted.
+    - A method reference such as store.undo cannot be the argument: SnapshotStore is an actor, and Swift does not let you partially apply an actor-isolated method. Thus each verb gives a one-line closure.
+    - Check of the Snapshots folder: TakeSnapshot and ListSnapshots also call perform(_:) and then resolve, but each one has a different result type and different steps. They are not copies.
+    - All acceptance criteria and test items are satisfied by SnapshotsCapabilityTests, and they are now checked.
+
+    ### implement — changed
+    - evidence: swift test, 2502 tests in 219 suites passed. The run shows no compiler warning. It shows one SwiftPM build-system line that is not from the project source: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle. Files: Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsContext.swift, UndoSnapshot.swift, RedoSnapshot.swift.
+    - next: review.
+  timestamp: 2026-10-19T21:16:22.796839+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'snapshots capability: list, take, undo and redo over a shared SnapshotStore'
@@ -77,19 +107,28 @@ Add a `snapshots` capability that lets the model list and act on the workspace s
 - Doc comment: an undo inside a `runCode` snippet sets the store's `last` to the restored tree, so the `PostToolUse` snapshot of that `runCode` call finds no change and makes no checkpoint. An undo can also run before the snapshot of the tool call before it; the store then records that change as `.pending`.
 
 ## Acceptance Criteria
-- [ ] `list snapshots` over a store with two checkpoints gives both, oldest first.
-- [ ] `take snapshot` with a label after a file write gives a checkpoint with that label.
-- [ ] `undo snapshot` then `redo snapshot` gives the work tree before the undo.
-- [ ] `undo snapshot` with nothing to undo and `redo snapshot` with nothing to redo give the corrective results, not errors.
-- [ ] A call with no bound `HookSession.current`, or for a key whose session is not in a git work tree, gives the `unavailable` corrective result.
-- [ ] One capability value, called under two bound `HookSession` values with different keys and work trees, acts on the correct store state for each key.
-- [ ] The capability is in the discovery surface (`searchTools`) with its four ops.
+- [x] `list snapshots` over a store with two checkpoints gives both, oldest first.
+- [x] `take snapshot` with a label after a file write gives a checkpoint with that label.
+- [x] `undo snapshot` then `redo snapshot` gives the work tree before the undo.
+- [x] `undo snapshot` with nothing to undo and `redo snapshot` with nothing to redo give the corrective results, not errors.
+- [x] A call with no bound `HookSession.current`, or for a key whose session is not in a git work tree, gives the `unavailable` corrective result.
+- [x] One capability value, called under two bound `HookSession` values with different keys and work trees, acts on the correct store state for each key.
+- [x] The capability is in the discovery surface (`searchTools`) with its four ops.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift` (Swift Testing): each criterion above, with `TemporaryGitRepository` from the test support target, and `HookSession.$current.withValue` to bind the session.
-- [ ] Run `swift test` in `/Users/wballard/github/swissarmyhammer/FoundationModelsMultitool`. All tests pass.
+- [x] `Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift` (Swift Testing): each criterion above, with `TemporaryGitRepository` from the test support target, and `HookSession.$current.withValue` to bind the session.
+- [x] Run `swift test` in `/Users/wballard/github/swissarmyhammer/FoundationModelsMultitool`. All tests pass.
 
 ## Workflow
 - Use `/tdd`. Write the failing tests first, then implement.
 
 #hooks #snapshots
+
+## Review Findings (2026-10-19 16:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 10 not reviewed.
+
+> 10 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 10 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift:30` `duplication/duplication` — The call body of RedoSnapshot is a near-verbatim copy of the call body of UndoSnapshot. Only the store method differs (redo instead of undo). The two copies must stay in step, and a change to one must be repeated in the other. Extract one shared helper in SnapshotsContext that takes the store operation, as described for UndoSnapshot.swift. Make RedoSnapshot.call pass store.redo to that helper and delete this copy.
