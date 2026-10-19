@@ -12,6 +12,8 @@ Revision 4. D74: `SessionsGraph` is in the Multitool library target, next to the
 
 Revision 5. D75: the `sessions` tool stays an op tool for the model, and it also gives `SessionsGraph` for use in code. It conforms to `GraphQLEndpointTool` of the core Extras library target (EXTRAS-7). The app asks each tool of its composition for its endpoint and registers what it finds, so the app does not register the `sessions` endpoint by hand. Q35 is answered.
 
+Revision 6. D76: `SessionsTool` is its own public struct that holds an `OperationTool<SessionsToolContext>` and conforms to `GraphQLEndpointTool`, the same shape as `AgentsTool` and `SkillsCatalogTool` (Q-S10 is answered). It is a top-level tool of the session, like `skills` and `agents`. The same instance is also in the Multitool registry, so a snippet calls `tools.sessions.*`. The rules and the risk check apply only in `runCode`: a direct call of the top-level tool does not go through them. The app finds the endpoints in the top-level tool list of the session, not in the Multitool registry.
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
@@ -506,7 +508,7 @@ The `sessionChanges` subscription of the graph reads this stream (section 11).
 
 ### 8.1 Names
 
-The tool is an `OperationTool<SessionsToolContext>` with the name `sessions`. It follows the style of the `agents` tool (`AgentsToolOperations.swift`) and of the code context tools: `@Generable` plus `@Operation(verb:noun:description:)`, an `execute(in:)` that gives a `CorrectiveOutcome<String>`, and no thrown error for a model error.
+The tool is `SessionsTool`, a public struct that holds an `OperationTool<SessionsToolContext>`, with the name `sessions` (D76). It has the same shape as `AgentsTool` and `SkillsCatalogTool`. It follows the style of the `agents` tool (`AgentsToolOperations.swift`) and of the code context tools: `@Generable` plus `@Operation(verb:noun:description:)`, an `execute(in:)` that gives a `CorrectiveOutcome<String>`, and no thrown error for a model error.
 
 Each op becomes one verb under `tools.sessions` (`OperationVerbTool.verbName(for:)`).
 
@@ -1087,14 +1089,14 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### MT-2 `sessions` tool (refines)
 
-- **Spec:** `SessionsTool`, an `OperationTool<SessionsToolContext>` with the name `sessions` and the nine operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8). The tool is an op tool, and the model does not send GraphQL text to it. It conforms to `GraphQLEndpointTool` (EXTRAS-7), and its `graphQLEndpoint` is `SessionsGraph` over the same directory (MT-10, D75). How an `OperationTool<SessionsToolContext>` conforms is Q-S10.
-- **Why:** D35, D21, D22, D61, D72, D75.
+- **Spec:** `SessionsTool`, a public struct that holds an `OperationTool<SessionsToolContext>`, with the name `sessions` and the nine operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8). The tool is an op tool, and the model does not send GraphQL text to it. It conforms to `GraphQLEndpointTool` (EXTRAS-7), and its `graphQLEndpoint` is `SessionsGraph` over the same directory (MT-10, D75). The struct conforms, and `OperationTool` does not change (D76). The tool is a top-level tool of the session, like `skills` and `agents`. The same instance is also in the registry (MT-9). The rules apply only in `runCode`, so a direct call of the top-level tool does not go through them.
+- **Why:** D35, D21, D22, D61, D72, D75, D76.
 - **Depends on:** EXTRAS-3, MT-9, MT-1, MT-7
 
 #### MT-9 Mount operation tools in the library, and `withSessions`
 
-- **Spec:** The library target links the `Operations` product of Extras. `MultiTool.Builder.withSessions(directory: any SessionDirectory)` registers the tool under the noun `sessions`, so a snippet calls each verb as `tools.sessions.*`, and the snippet check sees it. Update the header comment of `Capabilities/Files/Read.swift:3-8`, which says the package has no operation machinery. `PackageManifestTests` stays as it is.
-- **Why:** The tool uses `@Operation` (the style of the existing operation tools). The risk check (MT-1) sees only the tools in the registry.
+- **Spec:** The library target links the `Operations` product of Extras. `MultiTool.Builder.withSessions(_ tool: SessionsTool)` registers the `SessionsTool` instance of the session under the noun `sessions`, so a snippet calls each verb as `tools.sessions.*`, and the snippet check sees it. It is the same instance that is also a top-level tool of the session (D76). Update the header comment of `Capabilities/Files/Read.swift:3-8`, which says the package has no operation machinery. `PackageManifestTests` stays as it is.
+- **Why:** The tool uses `@Operation` (the style of the existing operation tools). The risk check (MT-1) sees only the tools in the registry. The rules apply only in `runCode` (D76).
 - **Depends on:** —
 
 #### MT-10 The `sessions` GraphQL endpoint
@@ -1121,7 +1123,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ACPA-9 Session launcher with no ACP concept
 
-- **Spec:** Move the composition of `session/new` (`SessionSetup.swift:546-600`, `composeSession` at `:837-918`) into a `SessionComposer` that has no connection and imports no FoundationModelsACP. `RoutedACPAgent.newSession` and the new `ComposedSessionLauncher` (which conforms to the Router `SessionLauncher`) both use it. The launcher resolves the folder first: with no folder, the folder of `startedBy` (AG-5). Then it resolves the agent (D71): an agent id in the catalog of FoundationModelsAgents (with the agent folders of AG-4), else the `AGENT.md` of the folder, else the default agent. It adds the `sessions` tool through `withSessions(directory:)` in `ToolCatalog.makeRegistry` (`ToolCatalog.swift:403-470`).
+- **Spec:** Move the composition of `session/new` (`SessionSetup.swift:546-600`, `composeSession` at `:837-918`) into a `SessionComposer` that has no connection and imports no FoundationModelsACP. `RoutedACPAgent.newSession` and the new `ComposedSessionLauncher` (which conforms to the Router `SessionLauncher`) both use it. The launcher resolves the folder first: with no folder, the folder of `startedBy` (AG-5). Then it resolves the agent (D71): an agent id in the catalog of FoundationModelsAgents (with the agent folders of AG-4), else the `AGENT.md` of the folder, else the default agent. It makes one `SessionsTool` for each session. It adds that instance as a top-level tool in `ToolCatalog.makeStandaloneTools` (`ToolCatalog.swift:363`), next to `skills` and `agents`, and it gives the same instance to `withSessions(_:)` in `ToolCatalog.makeRegistry` (`ToolCatalog.swift:403-470`) (D76).
 - **Why:** The directory must start a session with the full surface of its agent and folder (D19, D21, D61) and with no client.
 - **Depends on:** ROUTER-8, ACPA-1, MT-9, AG-4, AG-5
 
@@ -1204,5 +1206,5 @@ These are differences between the design documents and this plan. The plan does 
 - **Q-S8. Trust of an external client.** Is the visibility of section 11.3 correct for an `external` client? Can it see sessions that the user started on the Mac?
 - **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
 - **Q35 (design). Answered (D75).** The `sessions` tool stays an op tool (MT-2). It also gives `SessionsGraph` through `GraphQLEndpointTool` (EXTRAS-7). The tool and the graph are two front ends over one port, and they share the rules in Multitool.
-- **Q-S10. How the op tool conforms.** `SessionsTool` is an `OperationTool<SessionsToolContext>`, a generic type of the Extras `Operations` target. `GraphQLEndpointTool` is in the core Extras target. Does `SessionsTool` become its own type that wraps the `OperationTool`, or does `OperationTool` get a conditional conformance? Not decided.
+- **Q-S10. Answered (D76).** `SessionsTool` is its own public struct that holds an `OperationTool<SessionsToolContext>` and conforms to `GraphQLEndpointTool`. `OperationTool` does not change.
 - **Q12 (existing).** Is a `session/update` with `_meta` the correct way to show a message from another session in the transcript? ACPA-6 here assumes yes.
