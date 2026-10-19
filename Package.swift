@@ -65,18 +65,30 @@ private let extrasDependencyName = "FoundationModelsExtras"
 /// § "Decisions", item 15). See `codeContextProducts`.
 private let codeContextDependencyName = "FoundationModelsCodeContext"
 
+/// The name of the FoundationModelsHooks dependency package.
+///
+/// It is wired as a remote dependency (`main` branch) the same way
+/// `routerDependencyName` is. It carries the `SnapshotStore` that the
+/// snapshots capability lists, takes, undoes and redoes snapshots with, and
+/// the task-local `HookSession.current` that gives each call its session key.
+/// The host gives the same store to the `SnapshotHook` of the package, thus
+/// the capability does not know about hooks. The package declares the same
+/// exact `libgit2Package` version, thus SwiftPM resolves one copy. The
+/// library target and the unit test target below both link the product.
+private let hooksDependencyName = "FoundationModelsHooks"
+
 /// Base URL for packages published under the swissarmyhammer GitHub
 /// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
-/// `extrasDependencyName` and `codeContextDependencyName` are fetched from
-/// here.
+/// `extrasDependencyName`, `codeContextDependencyName` and
+/// `hooksDependencyName` are fetched from here.
 private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerPackageOrgURL`, tracking `mainBranch`.
 ///
 /// This is used for `routerDependencyName`,
-/// `metadataRegistryDependencyName`, `extrasDependencyName` and
-/// `codeContextDependencyName`.
+/// `metadataRegistryDependencyName`, `extrasDependencyName`,
+/// `codeContextDependencyName` and `hooksDependencyName`.
 private func swissArmyHammerPackage(name: String) -> Package.Dependency {
     .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: mainBranch)
 }
@@ -123,7 +135,7 @@ private let shellProducts: [Target.Dependency] = [
 /// goes back must change that suite too.
 ///
 /// The helper above does not fit it. `swissArmyHammerPackage(name:)`
-/// builds the `git@github.com:` URL of the four packages this organization
+/// builds the `git@github.com:` URL of the five packages this organization
 /// develops. This one is a public fork, and it keeps the HTTPS URL it always
 /// had, thus a machine with no SSH key resolves it. The organization name is
 /// the whole change from the upstream URL.
@@ -487,6 +499,7 @@ let package = Package(
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         swissArmyHammerPackage(name: extrasDependencyName),
         swissArmyHammerPackage(name: codeContextDependencyName),
+        swissArmyHammerPackage(name: hooksDependencyName),
         // The package of `shellProducts`. It stands under an organization of
         // its own, so the helper above does not fit it.
         //
@@ -548,7 +561,8 @@ let package = Package(
         // `gitProducts` for the libgit2 C API of the git capability, and
         // `codeContextProducts` for the code entities and the content hash of
         // its semantic diff, and `dataFormatProducts` for the YAML and TOML
-        // parse of that diff.
+        // parse of that diff, and the `hooksDependencyName` product for the
+        // snapshot store and the session of the snapshots capability.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -561,6 +575,7 @@ let package = Package(
             dependencies: [
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
+                .product(name: hooksDependencyName, package: hooksDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts
                 + codeContextProducts + dataFormatProducts,
             path: "\(sourcesPath)\(packageName)"
@@ -638,6 +653,8 @@ let package = Package(
         // `telemetryTestProducts` gives the log read-back of the suites — see
         // its documentation. `codeContextProducts` again: `CodeParserPluginTests`
         // and the plugin suites import `FoundationModelsCodeContext` directly.
+        // The `hooksDependencyName` product again: `SnapshotsCapabilityTests`
+        // imports `FoundationModelsHooks` to make a store and bind a session.
         // `testServerTargetName` is the scripted server the MCP suites run
         // against; the executable over it is not a dependency, because a
         // test target cannot depend on an executable, and `swift test`
@@ -653,6 +670,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
+                .product(name: hooksDependencyName, package: hooksDependencyName),
             ] + shellProducts + mcpProducts + telemetryTestProducts + codeContextProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [

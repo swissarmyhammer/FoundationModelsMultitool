@@ -1,0 +1,1 @@
+{"id":"01M5AT6528G3ENA07NMMBGF363","timestamp":"2026-10-19T19:28:33.352349Z","op":"create","item_id":"01M5AT65277XZK6R2ZAGVKCEDZ","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 7057ff\n+tag_name: snapshots\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 7057ff\n-tag_name: snapshots\n","transaction_id":null}

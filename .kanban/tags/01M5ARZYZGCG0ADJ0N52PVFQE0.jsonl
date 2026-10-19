@@ -1,0 +1,1 @@
+{"id":"01M5ARZYZGKQSWJ64YMTXCJADB","timestamp":"2026-10-19T19:07:41.936601Z","op":"create","item_id":"01M5ARZYZGCG0ADJ0N52PVFQE0","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: '008672'\n+tag_name: hooks\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: '008672'\n-tag_name: hooks\n","transaction_id":null}

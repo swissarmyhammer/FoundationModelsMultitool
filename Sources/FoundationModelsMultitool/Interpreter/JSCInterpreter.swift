@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsHooks
 import JavaScriptCore
 import Logging
 import Metrics
@@ -643,6 +644,16 @@ public final class JSCInterpreter: Interpreter {
         /// The telemetry of the calling task.
         private let telemetry: RunTelemetry
 
+        /// The hook session of the calling task, or `nil` when no session is
+        /// bound.
+        ///
+        /// The job queue has no task-local value, thus the run binds this
+        /// value again around each job, as it binds ``telemetry``. A host
+        /// function that a job calls, and a `Task` that a job starts, then
+        /// read the session of the `runCode` call that started the run. The
+        /// `tools.snapshots` verbs read the session key from it.
+        private let hookSession: HookSession?
+
         /// The serial job queue of this run. A private queue with no
         /// constrained target: see the event-loop documentation of
         /// `JSCInterpreter` for why. Each job drains its own autorelease
@@ -665,12 +676,16 @@ public final class JSCInterpreter: Interpreter {
         /// Creates a run in the `queued` state. No job runs until
         /// ``start(resuming:)``.
         ///
+        /// The initializer runs in the calling task, thus it reads the
+        /// ``hookSession`` of that task here.
+        ///
         /// - Parameters:
         ///   - snippet: what the start job installs and evaluates.
         ///   - telemetry: the telemetry of the calling task.
         init(snippet: Snippet, telemetry: RunTelemetry) {
             self.state = .queued(snippet)
             self.telemetry = telemetry
+            self.hookSession = HookSession.current
         }
 
         /// Puts the start job on the job queue.
@@ -690,13 +705,15 @@ public final class JSCInterpreter: Interpreter {
             enqueue { $0.cancelJob() }
         }
 
-        /// Puts `job` on the job queue, with the telemetry of the calling task
-        /// bound around it.
+        /// Puts `job` on the job queue, with the telemetry and the hook
+        /// session of the calling task bound around it.
         ///
         /// - Parameter job: the job to run on this run.
         private func enqueue(_ job: @escaping @Sendable (Run) -> Void) {
             queue.async { [self] in
-                telemetry.bound { job(self) }
+                HookSession.$current.withValue(hookSession) {
+                    telemetry.bound { job(self) }
+                }
             }
         }
 
