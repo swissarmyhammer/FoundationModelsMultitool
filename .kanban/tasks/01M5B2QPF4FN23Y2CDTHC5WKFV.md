@@ -39,8 +39,25 @@ comments:
     - evidence: test(runcode): pin the (tool, op) pairs a ToolCallWitness records for inner runCode calls (InnerCallWitnessOpTests.swift, TerminalDetailFixtures.swift, .kanban/)
     - next: review
   timestamp: 2026-10-19T22:23:46.678939+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5b4aync6vhmrg6a76an99e3
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (d41203e): 0 findings, 0 confirmed, 0 refuted; 7 validator passes attempted, 0 failed; .kanban/ files excluded by .reviewignore
+    - next: task moved to done; the acceptance item "task comment records the commit sha and the mismatches for the Router session" is still unchecked and needs the Router hand-off once d41203e is on origin/main
+  timestamp: 2026-10-19T22:25:56.396176+00:00
+- actor: claude-code
+  id: 01m5b4bdkpbjrpqh4pdd75q0k6
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — InnerCallWitnessOpTests.swift (new), TerminalDetailFixtures.swift; deps updated (Package.resolved, gitignored)
+    - test: green — swift test, 2490 passed in 219 suites
+    - commit: d41203e
+    - review: clean — 0 findings, task moved to done
+    - tested pairs: ("read","read files"), ("edit","edit files"), ("getSymbol","getSymbol code_context"); no difference from the prediction. Router hand-off is pending the push.
+  timestamp: 2026-10-19T22:26:11.702951+00:00
+position_column: done
+position_ordinal: ffffffa780
 title: Pin the (tool, op) pairs a ToolCallWitness sees for inner runCode calls
 ---
 ## What
