@@ -327,19 +327,27 @@ enum Hashline {
         guard lines.count >= minimumBlockLineCount else { return nil }
         var entries: [BlockEntry] = []
         for line in lines {
-            guard let delimiter = line.firstIndex(of: anchorTextDelimiter),
-                let anchor = parseAnchor(line)
-            else { return nil }
-            if let previous = entries.last, anchor.line != previous.line + 1 { return nil }
-            entries.append(
-                BlockEntry(
-                    line: anchor.line,
-                    hash: anchor.hash,
-                    text: String(line[line.index(after: delimiter)...])
-                )
-            )
+            guard let entry = blockEntry(of: line) else { return nil }
+            if let previous = entries.last, entry.line != previous.line + 1 { return nil }
+            entries.append(entry)
         }
         return entries
+    }
+
+    /// Split one tagged line at its prefix: the anchor it carries and the text after `N:HH|`.
+    ///
+    /// The single reading of one `N:HH|text` line, shared by ``parseBlock(_:)``
+    /// and by any caller that removes the prefixes a read pasted back into text.
+    /// Unlike ``parseAnchor(_:)``, the `|` delimiter is required: a bare `N:HH`
+    /// tags no text.
+    ///
+    /// - Parameter line: one physical line, terminator excluded.
+    /// - Returns: the entry, or `nil` when the line carries no well-formed `N:HH|` prefix.
+    static func blockEntry(of line: String) -> BlockEntry? {
+        guard let delimiter = line.firstIndex(of: anchorTextDelimiter),
+            let anchor = parseAnchor(line)
+        else { return nil }
+        return BlockEntry(line: anchor.line, hash: anchor.hash, text: String(line[line.index(after: delimiter)...]))
     }
 
     /// The untagged text a block describes: each entry's line text, joined by a line feed.

@@ -385,7 +385,53 @@ import Testing
         let result = try await Self.edit(path: path, find: ["same"], replace: ["same"], in: context)
         let message = try #require(result.correction)
 
-        #expect(!message.isEmpty)
+        #expect(message.contains("\"same\""))
+        #expect(try TestSupport.readBytes(at: path) == Data("same\n".utf8))
+    }
+
+    /// The django__django-13710 call (seq 660): four tagged pairs, the first
+    /// three identical. The fourth applies with its `N:HH|` tag removed, and
+    /// the result names the three it skipped.
+    @Test func seq660CallAppliesTheChangingPairAndReportsTheSkippedOnes() async throws {
+        let (context, _, path) = try Self.makeContext(seeding: Data(EditEngineTests.seq660Fixture.utf8))
+
+        let result = try await Self.edit(
+            path: path, find: EditEngineTests.seq660Finds, replace: EditEngineTests.seq660Replaces, in: context)
+
+        #expect(result.correction == nil)
+        #expect(result.status == "applied")
+        #expect(result.applied == 1)
+        #expect(result.skipped == EditEngineTests.seq660SkippedPairs)
+        let note = try #require(result.note)
+        #expect(note.contains(EditEngineTests.seq660SkippedPairsText))
+        #expect(note.contains("no change"))
+        #expect(try TestSupport.readBytes(at: path) == Data(EditEngineTests.seq660Edited.utf8))
+    }
+
+    /// When every pair is identical, nothing is written and the correction
+    /// shows the one-block form.
+    @Test func everyPairIdenticalIsCorrectiveAndLeavesTheFileUnchanged() async throws {
+        let original = Data(EditEngineTests.seq660Fixture.utf8)
+        let (context, _, path) = try Self.makeContext(seeding: original)
+        let finds = Array(EditEngineTests.seq660Finds.prefix(EditEngineTests.seq660IdenticalPairCount))
+
+        let result = try await Self.edit(path: path, find: finds, replace: finds, in: context)
+        let message = try #require(result.correction)
+
+        #expect(result.applied == 0)
+        #expect(message.contains("separate"))
+        #expect(message.contains(EditEngineTests.seq660SkippedPairsText))
+        #expect(try TestSupport.readBytes(at: path) == original)
+    }
+
+    /// A batch with nothing to skip carries neither `skipped` nor `note`.
+    @Test func aBatchWithNoIdenticalPairReportsNoSkippedPair() async throws {
+        let (context, _, path) = try Self.makeContext(seeding: Data("alpha\n".utf8))
+
+        let result = try await Self.edit(path: path, find: ["alpha"], replace: ["ALPHA"], in: context)
+
+        #expect(result.skipped == nil)
+        #expect(result.note == nil)
     }
 
     /// A `find`/`replace` count mismatch comes back as a correction naming

@@ -25,8 +25,10 @@ import Foundation
 /// 1. ``normalize(_:)`` turns the operation's argument shapes — a scalar
 ///    `find`/`replace`, parallel `find`/`replace` arrays (`N` finds zipped with
 ///    `N` replaces, or `N` finds broadcast against a single replace), or an
-///    explicit `edits` array — into a flat list of ``Pair`` values, or a
-///    corrective message for a count mismatch or a `find == replace` no-op.
+///    explicit `edits` array — into a flat list of ``Pair`` values, skipping
+///    (and numbering) each pair whose `find` and `replace` are identical once
+///    `N:HH|` prefixes are removed, or a corrective message for a count
+///    mismatch or a batch whose every pair is such a no-op.
 /// 2. ``resolve(_:in:)`` locates a single ``Pair`` in a working copy by
 ///    climbing a fixed cascade — a hashline **anchor** (via ``Hashline``), then a
 ///    literal **substring**, then the **recovery ladder** (via ``EditMatch``) —
@@ -36,7 +38,9 @@ import Foundation
 ///    working copy, reclassifies a bare no-match into ``Resolution/alreadyApplied``
 ///    or ``Resolution/consumedTarget`` using batch and idempotency context, and
 ///    short-circuits before mutating on any unresolved pair — leaving the
-///    original content unchanged and reporting which pair failed.
+///    original content unchanged and reporting which pair failed. A replace
+///    whose every line carries an `N:HH|` prefix pasted from a read is
+///    written without those prefixes.
 ///
 /// The anchor rung and the recovery ladder are **not** reimplemented here: the
 /// engine composes ``Hashline/resolveAnchor(_:in:)`` (with its ±``Hashline/proximityWindow``
@@ -151,13 +155,18 @@ enum EditEngine {
 
     /// The outcome of ``normalize(_:)``: the shaped pairs, or a corrective message.
     ///
-    /// A count mismatch (unequal `find`/`replace` counts with no single-replace
-    /// broadcast), an empty `find` set, or a `find == replace` no-op is surfaced
-    /// as a ``corrective(_:)`` message the model reads and acts on within the
-    /// same answer. This follows the upstream *return-don't-throw* convention.
+    /// A pair whose `find` and `replace` are identical once `N:HH|` prefixes are
+    /// removed makes no change. It is skipped rather than refused: the other
+    /// pairs still apply, and ``pairs(_:skipped:)`` names the skipped ones. A
+    /// count mismatch (unequal `find`/`replace` counts with no single-replace
+    /// broadcast), an empty `find` set, or a batch whose every pair is
+    /// identical is surfaced as a ``corrective(_:)`` message the model reads
+    /// and acts on within the same answer. This follows the upstream
+    /// *return-don't-throw* convention.
     enum Normalization: Equatable, Sendable {
-        /// The successfully shaped find/replace pairs, in order.
-        case pairs([Pair])
+        /// The shaped find/replace pairs that change something, in order, and
+        /// the 1-based numbers of the pairs skipped because they change nothing.
+        case pairs([Pair], skipped: [Int] = [])
 
         /// A recoverable failure carrying a corrective message for the model.
         case corrective(String)
@@ -370,11 +379,15 @@ enum EditEngine {
     /// one pair per entry. Otherwise the ``EditArguments/finds`` and
     /// ``EditArguments/replaces`` arrays are paired: equal counts zip pairwise; a
     /// single replace broadcasts across every find; any other count is a
-    /// corrective listing the unpaired remainder. An empty find set and any
-    /// `find == replace` no-op are likewise corrective.
+    /// corrective listing the unpaired remainder. An empty find set is likewise
+    /// corrective. A pair that makes no change — its `find` and `replace` are
+    /// identical once `N:HH|` prefixes are removed from both — is skipped and
+    /// named by its 1-based number; only a batch whose every pair is such a
+    /// no-op is corrective.
     ///
     /// - Parameter arguments: the resolver-normalized `edit file` arguments.
-    /// - Returns: ``Normalization/pairs(_:)`` with the shaped pairs, or
+    /// - Returns: ``Normalization/pairs(_:skipped:)`` with the pairs that change
+    ///   something and the numbers of those skipped, or
     ///   ``Normalization/corrective(_:)`` with a message the model can act on.
     static func normalize(_ arguments: EditArguments) -> Normalization {
         let pairs: [Pair]
@@ -384,20 +397,37 @@ enum EditEngine {
             }
         } else {
             switch pairsFromArrays(arguments) {
-            case .pairs(let shaped): pairs = shaped
+            case .pairs(let shaped, _): pairs = shaped
             case .corrective(let message): return .corrective(message)
             }
         }
-        if let noOp = pairs.first(where: { $0.find == $0.replace }) {
-            return .corrective(noOpMessage(find: noOp.find))
-        }
-        return .pairs(pairs)
+        return skippingNoOps(pairs)
+    }
+
+    /// Drop every pair that makes no change, or answer a correction when no pair is left.
+    ///
+    /// - Parameter pairs: the shaped pairs, in the caller's order.
+    /// - Returns: ``Normalization/pairs(_:skipped:)`` with the pairs that change
+    ///   something and the 1-based numbers of the rest, or
+    ///   ``Normalization/corrective(_:)`` when every pair is a no-op.
+    private static func skippingNoOps(_ pairs: [Pair]) -> Normalization {
+        let skipped = pairs.indices.filter { isNoOp(pairs[$0]) }.map { $0 + firstPairNumber }
+        guard skipped.count < pairs.count else { return .corrective(noOpMessage(for: pairs)) }
+        return .pairs(pairs.filter { !isNoOp($0) }, skipped: skipped)
+    }
+
+    /// Whether a pair makes no change: its find and replace are identical once `N:HH|` prefixes are removed.
+    ///
+    /// - Parameter pair: the pair to test.
+    /// - Returns: `true` when applying the pair would leave the text as it stands.
+    private static func isNoOp(_ pair: Pair) -> Bool {
+        withoutTags(pair.find) == withoutTags(pair.replace)
     }
 
     /// Pair the scalar/parallel `finds` and `replaces` arrays, or return a count-mismatch corrective.
     ///
     /// - Parameter arguments: the resolver-normalized `edit file` arguments.
-    /// - Returns: ``Normalization/pairs(_:)`` when the arrays pair up, or
+    /// - Returns: ``Normalization/pairs(_:skipped:)`` when the arrays pair up, or
     ///   ``Normalization/corrective(_:)`` for an empty find set or a count mismatch.
     private static func pairsFromArrays(_ arguments: EditArguments) -> Normalization {
         let finds = arguments.finds
@@ -570,6 +600,50 @@ enum EditEngine {
         return entries
     }
 
+    // MARK: Tagged replacements
+
+    /// The pair as it is written, with the `N:HH|` prefixes a read pasted into its replace removed.
+    ///
+    /// A caller that copies lines out of a read and edits them in place sends
+    /// the replacement still tagged. The prefixes are never meant for the
+    /// file, so a replace whose every line carries one is written without
+    /// them. The rule follows ``taggedBlock(of:in:)``: a replace the working
+    /// copy already holds verbatim is taken at face value, so a file of tagged
+    /// sample lines keeps its tags.
+    ///
+    /// - Parameters:
+    ///   - pair: the pair as the caller sent it.
+    ///   - working: the working copy the pair applies to.
+    /// - Returns: the pair with its replace untagged, or the pair unchanged.
+    private static func writable(_ pair: Pair, in working: String) -> Pair {
+        guard let untagged = strippedTags(of: pair.replace), !working.contains(pair.replace) else { return pair }
+        return Pair(find: pair.find, replace: untagged, replaceAll: pair.replaceAll, occurrence: pair.occurrence)
+    }
+
+    /// A text with the `N:HH|` prefix of each line removed, or the text unchanged when some line carries none.
+    ///
+    /// - Parameter text: a find or replace value.
+    /// - Returns: the untagged text, or `text` itself.
+    private static func withoutTags(_ text: String) -> String {
+        strippedTags(of: text) ?? text
+    }
+
+    /// A text with the `N:HH|` prefix of each line removed, or `nil` when it is empty or some line carries none.
+    ///
+    /// Each line keeps its own terminator, so the untagged text has the line
+    /// endings the caller sent.
+    ///
+    /// - Parameter text: a find or replace value.
+    /// - Returns: the untagged text, or `nil` when `text` is not tagged on every line.
+    private static func strippedTags(of text: String) -> String? {
+        let lines = Hashline.splitLines(text)
+        let untagged = lines.compactMap { line in
+            Hashline.blockEntry(of: line.text).map { $0.text + line.terminator }
+        }
+        guard !lines.isEmpty, untagged.count == lines.count else { return nil }
+        return untagged.joined()
+    }
+
     /// Resolve the literal rung from a pair's literal occurrence ranges.
     ///
     /// - Parameters:
@@ -641,7 +715,8 @@ enum EditEngine {
     static func apply(_ pairs: [Pair], to original: String) -> BatchOutcome {
         var working = original
         var applied: [AppliedEdit] = []
-        for (index, pair) in pairs.enumerated() {
+        for (index, sent) in pairs.enumerated() {
+            let pair = writable(sent, in: working)
             let resolution = batchResolution(for: pair, working: working, original: original)
             switch resolution {
             case .anchor(let line):
@@ -1140,12 +1215,64 @@ enum EditEngine {
             + " \(remainders.joined(separator: "; "))."
     }
 
-    /// The corrective message for an identical `find` and `replace`.
+    /// The corrective message for a batch whose every pair makes no change.
     ///
-    /// - Parameter find: the identical find/replace text.
-    /// - Returns: a message naming the no-op.
-    private static func noOpMessage(find: String) -> String {
-        "The `find` and `replace` values are identical (\"\(find)\"), so the edit would make no change."
+    /// One pair names its identical text. Several pairs are the shape of a
+    /// caller that meant one block and sent its lines as parallel arrays, so
+    /// the message says the arrays are separate pairs and shows the one-block
+    /// form built from the caller's own values: the finds joined as one value,
+    /// the replaces joined as one value without `N:HH|` prefixes.
+    ///
+    /// - Parameter pairs: every pair of the batch, each a no-op.
+    /// - Returns: a message naming the no-op and, for several pairs, the block form.
+    private static func noOpMessage(for pairs: [Pair]) -> String {
+        guard pairs.count > 1 else {
+            let find = pairs.first?.find ?? ""
+            return "The `find` and `replace` values are identical (\"\(find)\"), so the edit would make no change."
+        }
+        let blockFind = pairs.map(\.find).joined(separator: "\n")
+        let blockReplace = pairs.map { withoutTags($0.replace) }.joined(separator: "\n")
+        return "The find and replace of every pair (\(pairList(pairs.indices.map { $0 + firstPairNumber }))) are identical once N:HH|"
+            + " prefixes are removed, so the edit would make no change. \(separatePairsSentence)"
+            + " To rewrite a block of lines, send one find value with the lines joined by \\n and one replace"
+            + " value with the new lines joined by \\n, without N:HH| prefixes: find: \(jsonArray([blockFind])),"
+            + " replace: \(jsonArray([blockReplace]))."
+    }
+
+    /// The note an applied or unresolved result carries for the pairs skipped as no-ops.
+    ///
+    /// - Parameter skipped: the 1-based numbers of the skipped pairs.
+    /// - Returns: a sentence naming the skipped pairs and saying they made no
+    ///   change, or `nil` when no pair was skipped.
+    static func skippedNote(for skipped: [Int]) -> String? {
+        guard !skipped.isEmpty else { return nil }
+        let outcome = skipped.count == 1 ? "it made no change and was skipped" : "they made no change and were skipped"
+        return "The find and replace of \(pairList(skipped)) are identical once N:HH| prefixes are removed,"
+            + " so \(outcome). \(separatePairsSentence)"
+    }
+
+    /// The sentence that states how the parallel `find`/`replace` arrays pair up.
+    private static let separatePairsSentence =
+        "The find and replace arrays are separate pairs, matched by position, not one block."
+
+    /// The 1-based pair numbers as prose: `pair 2`, or `pairs 1, 2, 3`.
+    ///
+    /// - Parameter numbers: the 1-based pair numbers, in order.
+    /// - Returns: the numbers after `pair` or `pairs`.
+    private static func pairList(_ numbers: [Int]) -> String {
+        let label = numbers.count == 1 ? "pair" : "pairs"
+        return "\(label) \(numbers.map(String.init).joined(separator: ", "))"
+    }
+
+    /// A JSON array literal of strings, the way the caller writes the edit arguments.
+    ///
+    /// - Parameter values: the strings to render.
+    /// - Returns: the JSON text, with `\n` and quotes escaped.
+    private static func jsonArray(_ values: [String]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        guard let data = try? encoder.encode(values) else { return "[\(quotedList(values))]" }
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// A comma-separated list of double-quoted values.
@@ -1163,6 +1290,9 @@ enum EditEngine {
 
     /// The 1-based number of the first occurrence, used as the base for occurrence numbering and selection.
     private static let firstOccurrence = 1
+
+    /// The 1-based number of the first pair of a batch, the base the skipped-pair numbers count from.
+    private static let firstPairNumber = 1
 
     /// The delimiter separating a hashline anchor's `N:HH` head from its optional `|text` suffix.
     ///

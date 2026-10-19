@@ -52,16 +52,20 @@ struct EditArguments {
             + "find: [\"old text\"], replace: [\"new text\"]. One string is also accepted as one "
             + "value. Each value is a literal text, one N:HH|text hashline anchor from a prior "
             + "read or write, or a run of tagged lines pasted back as one value, which names that "
-            + "whole span.")
+            + "whole span. The find and replace arrays are separate pairs, matched by position: to "
+            + "rewrite a block of lines, send the lines as one find value joined by \\n.")
     var find: [String]?
 
     /// The `replace` values: one per `find`, or a single value broadcast
     /// across every `find`. One string is also accepted: `ToolInvoker`
-    /// wraps it in an array of one item.
+    /// wraps it in an array of one item. Each value is written without
+    /// the `N:HH|` prefixes a read pasted into it.
     @Guide(
         description:
             "The replace values: one per find, or a single value applied to every find, for "
-            + "example replace: [\"new text\"]. One string is also accepted as one value.")
+            + "example replace: [\"new text\"]. One string is also accepted as one value. Replace "
+            + "values are written as given, without N:HH| prefixes: a prefix pasted from a read is "
+            + "removed.")
     var replace: [String]?
 
     /// Whether every occurrence of each `find` is rewritten rather than a
@@ -116,6 +120,15 @@ struct EditResult {
     /// result, or the single unresolved pair otherwise. Empty on a
     /// correction.
     var outcomes: [String]
+
+    /// The 1-based numbers of the pairs skipped because their find and
+    /// replace are identical once `N:HH|` prefixes are removed, so they made
+    /// no change; `nil` when no pair was skipped and on a correction.
+    var skipped: [Int]?
+
+    /// The sentence that names the ``skipped`` pairs and says they made no
+    /// change; `nil` when no pair was skipped and on a correction.
+    var note: String?
 
     /// The number of bytes committed, or `nil` when nothing was committed.
     var bytesWritten: Int?
@@ -244,24 +257,46 @@ extension Edit {
                         let lineEnding = AtomicWriter.detectLineEnding(in: decoded.text)
 
                         let pairs: [EditEngine.Pair]
+                        let skipped: [Int]
                         switch EditEngine.normalize(Self.engineArguments(for: arguments)) {
-                        case .pairs(let shaped):
+                        case .pairs(let shaped, let skippedPairs):
                             pairs = shaped
+                            skipped = skippedPairs
                         case .corrective(let message):
                             return Self.corrective(message)
                         }
 
+                        let result: EditResult
                         switch EditEngine.apply(pairs, to: decoded.text) {
                         case .applied(let content, let edits):
-                            return await Self.commit(
+                            result = await Self.commit(
                                 content: content, edits: edits, to: url, decoded: decoded,
                                 lineEnding: lineEnding, path: arguments.path, context: context,
                                 through: toolContext)
                         case .failed(_, let pair, let resolution):
-                            return Self.unresolvedResult(path: url.path, pair: pair, resolution: resolution)
+                            result = Self.unresolvedResult(path: url.path, pair: pair, resolution: resolution)
                         }
+                        return Self.reporting(skipped: skipped, in: result)
                     }
             }
+    }
+
+    /// Adds the pairs skipped as no-ops to a batch result.
+    ///
+    /// A correction carries no batch field, so a commit that failed after the
+    /// batch resolved keeps its correction alone.
+    ///
+    /// - Parameters:
+    ///   - skipped: the 1-based numbers of the pairs skipped because they make no change.
+    ///   - result: the applied or unresolved result, or the commit-failure correction.
+    /// - Returns: the result naming the skipped pairs, or `result` unchanged
+    ///   when none was skipped or it is a correction.
+    private static func reporting(skipped: [Int], in result: EditResult) -> EditResult {
+        guard result.correction == nil, let note = EditEngine.skippedNote(for: skipped) else { return result }
+        var reported = result
+        reported.skipped = skipped
+        reported.note = note
+        return reported
     }
 
     /// Builds the ``EditEngine/EditArguments`` for the verb's parameters.
@@ -403,9 +438,15 @@ extension Edit {
 /// `alreadyApplied`, `consumedTarget`) with its JSON `outcomes` says how
 /// to retry. The path is bounded through the session's ``PathGuard``, and
 /// the session's ``FileChangeJournal`` delivers a landed commit to the
-/// session when it is recording. A payload that cannot normalize, a path outside the root, a
-/// missing or binary file, a read-only target, a read-only session, and a
-/// failed commit each come back as a `correction` rather than as an error.
+/// session when it is recording. A pair whose `find` and `replace` are
+/// identical once `N:HH|` prefixes are removed makes no change: it is
+/// skipped, the other pairs still apply, and the result's `skipped` and
+/// `note` name it. A `replace` whose every line carries a pasted `N:HH|`
+/// prefix is written without the prefixes. A payload that cannot normalize
+/// (a batch whose every pair is such a no-op among them), a path outside the
+/// root, a missing or binary file, a read-only target, a read-only session,
+/// and a failed commit each come back as a `correction` rather than as an
+/// error.
 ///
 /// The context it edits against is the context the files capability owns,
 /// thus each verb of one capability answers for the same session.
@@ -422,8 +463,11 @@ struct Edit: Tool {
         of find/replace pairs, committed in one atomic write that preserves the file's encoding, \
         line endings, and permission bits. Each find is a literal text, one N:HH|text hashline \
         anchor from a prior read or write, or a run of tagged lines pasted back as one find, \
-        which names that whole span; thus a chained edit needs no intervening read. \
-        replacesAll rewrites every occurrence and occurrence \
+        which names that whole span; thus a chained edit needs no intervening read. The find \
+        and replace arrays are separate pairs, matched by position; to rewrite a block, send it \
+        as one find and one replace. A replace is written without N:HH| prefixes. A pair whose \
+        find and replace are identical makes no change: it is skipped, the other pairs apply, \
+        and skipped and note name it. replacesAll rewrites every occurrence and occurrence \
         selects one site among several matches. An unresolved find commits nothing: the status \
         (ambiguous, nearMiss, alreadyApplied, consumedTarget) and the JSON outcomes say how to \
         retry, and the file stays byte-identical. A payload that cannot resolve, a path outside \

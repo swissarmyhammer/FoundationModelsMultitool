@@ -35,6 +35,64 @@ import Testing
     /// A 1-based occurrence selector beyond every occurrence of the triple-`x` fixture.
     private static let outOfRangeOccurrence = 5
 
+    // MARK: The django__django-13710 call (seq 660)
+
+    /// The `find` values the model sent at seq 660: four tagged lines, meant as one block.
+    static let seq660Finds = [
+        "2040:55|        if self.verbose_name is None:",
+        "2041:42|            self.verbose_name = self.model._meta.verbose_name",
+        "2042:78|        if self.verbose_name_plural is None:",
+        "2043:69|            self.verbose_name_plural = self.model._meta.verbose_name_plural",
+    ]
+
+    /// The `replace` values the model sent at seq 660: the first three repeat their finds.
+    static let seq660Replaces = [
+        "2040:55|        if self.verbose_name is None:",
+        "2041:42|            self.verbose_name = self.model._meta.verbose_name",
+        "2042:78|        if self.verbose_name_plural is None:",
+        "2043:69|            if ...",
+    ]
+
+    /// The number of seq-660 pairs whose find and replace are identical.
+    static let seq660IdenticalPairCount = 3
+
+    /// The 1-based numbers of the seq-660 pairs that make no change.
+    static let seq660SkippedPairs = Array(1...seq660IdenticalPairCount)
+
+    /// The 0-based index of the one seq-660 pair that changes its line.
+    static let seq660ChangingIndex = seq660IdenticalPairCount
+
+    /// The number of seq-660 `find` values.
+    static var seq660FindCount: Int { seq660Finds.count }
+
+    /// The 1-based line the first seq-660 find names.
+    static let seq660FirstLine = 2040
+
+    /// The fixture's lines: filler up to the first named line, then the four named lines' text.
+    static var seq660FixtureLines: [String] {
+        Array(repeating: "    pass", count: seq660FirstLine - 1)
+            + seq660Finds.map { String($0.drop { $0 != "|" }.dropFirst()) }
+    }
+
+    /// A file that holds the seq-660 lines at the line numbers the model read them at.
+    static var seq660Fixture: String { seq660FixtureLines.joined(separator: "\n") + "\n" }
+
+    /// The message fragment that lists the seq-660 identical pairs by number.
+    static var seq660SkippedPairsText: String {
+        "pairs " + seq660SkippedPairs.map(String.init).joined(separator: ", ")
+    }
+
+    /// The text the changing seq-660 pair writes, its `N:HH|` tag removed.
+    static let seq660ChangedLineText = "            if ..."
+
+    /// The seq-660 fixture after the one changing pair applied.
+    static var seq660Edited: String {
+        (seq660FixtureLines.dropLast() + [seq660ChangedLineText]).joined(separator: "\n") + "\n"
+    }
+
+    /// The 1-based number of the second pair of a batch.
+    private static let secondPairNumber = 2
+
     // MARK: Helpers
 
     /// The hashline anchor string (`N:HH|text`) for the 1-based `line` of `content`.
@@ -122,12 +180,103 @@ import Testing
         )
     }
 
-    @Test func identicalFindAndReplaceIsRejectedAsNoOp() {
+    @Test func identicalFindAndReplaceIsRejectedAsNoOp() throws {
         let result = EditEngine.normalize(.init(finds: ["same"], replaces: ["same"]))
-        guard case .corrective = result else {
-            Issue.record("expected corrective no-op, got \(result)")
-            return
-        }
+        let message = try #require(result.correctiveMessage, "expected corrective no-op, got \(result)")
+        #expect(message.contains("\"same\""))
+    }
+
+    // MARK: normalize — pairs that make no change
+
+    @Test func arrayPairsWithIdenticalLeadingPairsSkipEveryNoOp() {
+        // django__django-13710, seq 660: the model meant one block, the engine
+        // reads four pairs, and pairs 1-3 change nothing. Only pair 4 is kept.
+        let result = EditEngine.normalize(.init(finds: Self.seq660Finds, replaces: Self.seq660Replaces))
+        let changing = EditEngine.Pair(
+            find: Self.seq660Finds[Self.seq660ChangingIndex], replace: Self.seq660Replaces[Self.seq660ChangingIndex])
+        #expect(result == .pairs([changing], skipped: Self.seq660SkippedPairs))
+    }
+
+    @Test func seq660BatchWritesOnlyTheChangingPairWithoutItsTag() throws {
+        let pairs = try #require(
+            EditEngine.normalize(.init(finds: Self.seq660Finds, replaces: Self.seq660Replaces)).shapedPairs)
+        let edited = try #require(
+            EditEngine.apply(pairs, to: Self.seq660Fixture).appliedContent, "expected applied")
+        #expect(edited == Self.seq660Edited)
+    }
+
+    @Test func aPairThatDiffersOnlyByItsTagsIsSkipped() {
+        let content = "alpha\nbeta\n"
+        let result = EditEngine.normalize(
+            .init(finds: ["alpha", anchor(forLine: Self.betaLine, in: content)], replaces: ["ALPHA", "beta"]))
+        #expect(
+            result == .pairs([EditEngine.Pair(find: "alpha", replace: "ALPHA")], skipped: [Self.secondPairNumber]))
+    }
+
+    @Test func editsArrayIdenticalEntryIsSkippedByItsNumber() {
+        let result = EditEngine.normalize(
+            .init(edits: [
+                EditEngine.EditSpec(find: "a", replace: "b"),
+                EditEngine.EditSpec(find: "c", replace: "c"),
+            ])
+        )
+        #expect(
+            result == .pairs([EditEngine.Pair(find: "a", replace: "b")], skipped: [Self.secondPairNumber]))
+    }
+
+    @Test func everyPairIdenticalIsCorrectiveShowingTheBlockForm() throws {
+        let finds = Array(Self.seq660Finds.prefix(Self.seq660IdenticalPairCount))
+        let result = EditEngine.normalize(.init(finds: finds, replaces: finds))
+        let message = try #require(result.correctiveMessage, "expected corrective, got \(result)")
+        #expect(message.contains("separate"))
+        #expect(message.contains(Self.seq660SkippedPairsText))
+        // The block form: the tagged lines as one find, the untagged lines as one replace.
+        let blockFind = finds.joined(separator: #"\n"#)
+        let blockReplace = Self.seq660FixtureLines.suffix(Self.seq660FindCount)
+            .prefix(Self.seq660IdenticalPairCount).joined(separator: #"\n"#)
+        #expect(message.contains("find: [\"\(blockFind)\"]"))
+        #expect(message.contains("replace: [\"\(blockReplace)\"]"))
+    }
+
+    @Test func everyEditsEntryIdenticalIsCorrectiveNamingEachNumber() throws {
+        let result = EditEngine.normalize(
+            .init(edits: [
+                EditEngine.EditSpec(find: "a", replace: "a"),
+                EditEngine.EditSpec(find: "b", replace: "b"),
+            ])
+        )
+        let message = try #require(result.correctiveMessage, "expected corrective, got \(result)")
+        #expect(message.contains("pairs 1, \(Self.secondPairNumber)"))
+    }
+
+    // MARK: apply — `N:HH|` tags in a replace
+
+    @Test func taggedReplaceOnAnAnchorFindIsWrittenWithoutItsTag() throws {
+        let content = "alpha\nbeta\ngamma\n"
+        let pair = EditEngine.Pair(
+            find: anchor(forLine: Self.betaLine, in: content), replace: "\(Self.betaLine):00|BETA")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
+        #expect(edited == "alpha\nBETA\ngamma\n")
+    }
+
+    @Test func taggedReplaceOnATaggedBlockFindIsWrittenWithoutItsTags() throws {
+        let content = "alpha\nbeta\ngamma\n"
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: content), replace: "1:00|ONE\n2:00|TWO")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
+        #expect(edited == "ONE\nTWO\ngamma\n")
+    }
+
+    @Test func taggedReplaceTheFileHoldsVerbatimIsWrittenAsGiven() throws {
+        // A file of tagged sample lines keeps its tags: the replace is text the
+        // file already holds, so its prefixes are content, not a pasted read.
+        let content = "1:a3|one\nplain\n"
+        let pair = EditEngine.Pair(find: "plain", replace: "1:a3|one")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
+        #expect(edited == "1:a3|one\n1:a3|one\n")
     }
 
     @Test func emptyFindsAreCorrective() {
@@ -593,5 +742,18 @@ extension EditEngine.Resolution {
     /// The near misses a no-match resolution carries, and `nil` in each other case.
     fileprivate var nearMisses: [EditEngine.NearMiss]? {
         if case .noMatch(let nearMisses) = self { nearMisses } else { nil }
+    }
+}
+
+/// Optional readers of a normalization, for the reason the readers above state.
+extension EditEngine.Normalization {
+    /// The pairs left to apply, and `nil` when normalization answered a correction.
+    fileprivate var shapedPairs: [EditEngine.Pair]? {
+        if case .pairs(let pairs, _) = self { pairs } else { nil }
+    }
+
+    /// The correction, and `nil` when normalization shaped pairs.
+    fileprivate var correctiveMessage: String? {
+        if case .corrective(let message) = self { message } else { nil }
     }
 }
