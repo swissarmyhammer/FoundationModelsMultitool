@@ -83,8 +83,24 @@ comments:
     - evidence: swift test, 2502 tests in 219 suites passed. The run shows no compiler warning. It shows one SwiftPM build-system line that is not from the project source: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle. Files: Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsContext.swift, UndoSnapshot.swift, RedoSnapshot.swift.
     - next: review.
   timestamp: 2026-10-19T21:16:22.796839+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5b0e30pvdvwpyp7m1tddd06
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 9db1c0a). 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 3 files reviewed. The prior finding (RedoSnapshot duplication) is checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-19T21:17:44.854760+00:00
+- actor: claude-code
+  id: 01m5b0ehem2d3h6yddfcdcb909
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — shared restore helper in SnapshotsContext; 3 files
+    - test: green — swift test, 2502 tests in 219 suites passed, no compiler warnings
+    - commit: 9db1c0a (pushed to origin/main)
+    - review: clean — 0 findings; task is in done
+  timestamp: 2026-10-19T21:17:59.636276+00:00
+position_column: done
+position_ordinal: ffffffa780
 title: 'snapshots capability: list, take, undo and redo over a shared SnapshotStore'
 ---
 ## Context
