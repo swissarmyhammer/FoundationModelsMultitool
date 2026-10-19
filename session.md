@@ -18,6 +18,8 @@ Revision 7. D81: the client side of the tunnel is `SAHGraphQLClient` of Foundati
 
 Revision 8. D82: a tool gives a list of endpoints. The requirement of `GraphQLEndpointTool` (EXTRAS-7) is `var graphQLEndpoints: [any GraphQLEndpoint] { get }`, and the `sessions` tool gives a list of one, `SessionsGraph`. The top-level `MultiTool` tool (`runCode`) also conforms and gives the endpoints of its capabilities. The first one is `FilesGraph`, the `files` endpoint (TestudoApp MT-11), next to `FilesCapability`, over the same root set and `PathGuard`. The app registers no endpoint by hand.
 
+Revision 9. TestudoApp D90: a start by a model never opens a tab (Q-S2 is answered). Only a start that the user asks for on a client opens a tab on that client. `StartSessionInput` has no `openInTab`. The visibility of an `external` client in section 11.3 stays (Q-S8 is answered). A session cannot turn off the tools that give an endpoint (`agents`, `skills`, `sessions`, `kanban`, `rules` and `runCode`), so Q-S9 does not occur.
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
@@ -36,7 +38,7 @@ With the tool, an agent can:
 - get the state and the last summary of a session,
 - archive a session.
 
-The UI can do the same through queries, mutations and a subscription of the `sessions` endpoint. A new root session comes to the UI on the subscription, and the app opens a tab.
+The UI can do the same through queries, mutations and a subscription of the `sessions` endpoint. A new root session comes to the UI on the subscription. The app opens a tab only for a start that the user asked for on that client (D90).
 
 The tool and the endpoint use the same directory and the same rules. Only the model calls also go through the AI risk check (MT-1).
 
@@ -712,7 +714,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 | Owner registry and viewer | ACPAgent (ACPA-5, ACPA-13) | Knows the owner connection of each session (D11). Gives a `GraphQLViewer` to each tunnel call. |
 | Tunnel | ACP-3, ACPC-4, APP-16 | Carries `_sah/graphql/*`. |
 | Client | `SAHGraphQLClient` with the endpoint `sessions` (ACPC-6, APP-16) | Sends queries and the subscription through the tunnel. |
-| Tab rule | App | Opens a tab. Tabs are client state (D54). |
+| Tab rule | App | Opens a tab only for a start that the user asked for on this client. A start by a model opens no tab (D90). Tabs are client state (D54). |
 
 ### 11.2 Schema sketch
 
@@ -791,7 +793,6 @@ input StartSessionInput {
   message: String!
   tags: [String!]
   title: String
-  openInTab: Boolean = true
 }
 
 input SendMessageInput {
@@ -811,7 +812,7 @@ type SessionChange {
   kind: SessionChangeKind!
   session: Session           # null for MESSAGE_DELIVERED on a hidden target
   message: Message           # only for MESSAGE_DELIVERED
-  openInTab: Boolean!        # only true for STARTED, see 11.5
+  openInTab: Boolean!        # true only on STARTED, for the client that asked for a UI start (11.5, D90)
 }
 
 type Query {
@@ -875,7 +876,7 @@ A field or a list never shows a session that the viewer cannot see. `parent` or 
 
 Mutation rules:
 
-- `start`: `userDevice` only. The new session has `origin = client` and `requestedByClient = clientID`. The tab rule (11.5) opens it on this client.
+- `start`: `userDevice` only. The new session has `origin = client` and `requestedByClient = clientID`. This client opens a tab for it (11.5).
 - `tag`, `untag`, `rename`: `userDevice`, or `external` on a session that it owns. These are control actions (TestudoApp D84): a title and tags are labels on the work. `rename` calls `SessionDirectory.setTitle`.
 - `send`, `reply`: the sender is `user(clientID)`. The target must be visible. An `external` client can send only to sessions that it owns.
 - `archive`: any session that the viewer can see. There is no built-in limit (D72).
@@ -898,19 +899,13 @@ Mutation rules:
 6. Router vends the session. The directory registers it, writes its facts (agent, `startedBy`, `origin`, tags), and sends `started(summary, requestedByClient: nil)`.
 7. The directory puts the first message in the queue as a mail. The new session starts its first turn with no owner client. It works in the background.
 8. The tool answers the model with the new session id.
-9. Each client that has a `sessionChanges` subscription gets the change through `_sah/graphql/next`. The resolver of the subscription computes `openInTab` for each viewer:
-   - `requestedByClient` is set: `true` only for that client.
-   - Else, for the origins `tool` and `message`: the resolver follows `startedBy`, then `parentID`, to the first session with an owner (rule 4 of "Rules for agents that work together"). `true` only for the client that owns that session (here C).
-   - For the origin `trigger`: `false` (11.8).
-   - For a subagent: `false` (11.7).
-10. The app on C gets `STARTED` with `openInTab: true`. It calls `connection.resumeSession(ResumeSessionRequest(sessionId:, cwd:))`.
-11. ACPAgent handles `session/resume`. The session is live in the directory, so it attaches the live session to this connection (ACPA-11). It does not close the session and does not restore it from disk. It replays the history so far, and C becomes the owner (D11).
-12. `ConnectionModel.register` adds the `SessionModel` to `openSessions` (`ConnectionModel.swift:33-41`). The app opens a tab for it. The tab does not take the focus.
+9. Each client that has a `sessionChanges` subscription gets the change through `_sah/graphql/next`. The resolver of the subscription computes `openInTab` for each viewer: `true` only for the client in `requestedByClient` (a start that the user asked for on that client). For each other origin (`tool`, `message`, `trigger`, a subagent), `openInTab` is `false` for all clients (D90).
+10. The app on C gets `STARTED` with `openInTab: false`. It opens no tab. The new session shows in the Sessions window, and on the board when it works on a task. The start shows as a tool call card in session P, with an "Open" button.
+11. When the user clicks "Open", the app calls `connection.resumeSession(ResumeSessionRequest(sessionId:, cwd:))`. ACPAgent handles `session/resume`. The session is live in the directory, so it attaches the live session to this connection (ACPA-11). It does not close the session and does not restore it from disk. It replays the history so far, and C becomes the owner (D11).
+12. `ConnectionModel.register` adds the `SessionModel` to `openSessions` (`ConnectionModel.swift:33-41`). The app opens a tab for it.
 13. The next `STATE_CHANGED` and `FACTS_CHANGED` changes show `ownedByViewer: true` on C.
 
-The start also shows as a tool call card in session P (the normal tool call path).
-
-A start from the UI is the same from step 3, with `origin: .client` and `requestedByClient: C`. The UI does not need a separate `session/new`.
+A start from the UI is the same from step 3, with `origin: .client` and `requestedByClient: C`. Then C gets `STARTED` with `openInTab: true`, and it does steps 11 to 13 at once, with no click. The UI does not need a separate `session/new`.
 
 ### 11.6 Owner client rules (D11)
 
@@ -923,7 +918,7 @@ A start from the UI is the same from step 3, with `origin: .client` and `request
 ### 11.7 Subagent sessions
 
 - The `agents` tool starts subagents. Router vends them with `agentSpawn`. The directory registers them with `kind = subagent` and `parentID = agentSpawn.parentSessionId`.
-- They come on the subscription with `openInTab: false`. The app shows them in the subagent tree of the tab of the parent (D32) through `Session.children`, and as tool call cards (ACPA-4). It does not open a tab.
+- They come on the subscription with `openInTab: false`. The app shows them in the subagent tree of the tab of the parent (D32) through `Session.children`, and as tool call cards (ACPA-4). It does not open a tab by itself. The user can open a subagent in a tab with a full chat (TestudoApp D88).
 - A message to a subagent and from a subagent uses the same directory. `send caller` becomes `send message` to the parent (AG-1).
 
 ### 11.8 Sessions that kanban triggers start (D60)
@@ -936,7 +931,7 @@ A start from the UI is the same from step 3, with `origin: .client` and `request
 ### 11.9 Remote clients
 
 - A remote client (iPad, D16) uses the same endpoint through the tunnel over HTTP (D10, D54, D55).
-- If the owner of P is the iPad, the iPad gets `openInTab: true` and opens the tab. The Mac UI gets `openInTab: false`. It shows the new session in the Sessions window, but it does not open a tab.
+- A start by a model opens no tab on any client (D90). Each client shows the new session in the Sessions window. A start that the user asks for on the iPad gets `openInTab: true` only on the iPad.
 - A client that connects later runs the `sessions` query to get the full list, and then subscribes.
 - An `external` client sees only the sessions of 11.3.
 
@@ -996,7 +991,7 @@ In the existing `FoundationModelsMultitoolTests` target. Use the fake directory 
 - Visibility: an `external` viewer sees only its own sessions, their subagents and the sessions that they started. `parent` of a hidden session is `null`.
 - Mutation rules: an `external` viewer cannot `start`, and cannot send to a session that it does not own.
 - `archive`: each viewer can archive each session that it can see, and no other session.
-- `openInTab`: true only for the requesting client (UI start); true only for the owner of the first owned session in the chain (tool start); false for a trigger and a subagent.
+- `openInTab`: true only for the requesting client (UI start); false for a tool start, a message start, a trigger and a subagent (D90).
 - A mutation does not change the owner.
 - The endpoint conformance tests of the Extras test kit (EXTRAS-6) pass.
 - A source scan checks that the files of `SessionsGraph` use only the Extras `SessionDirectory` protocol. `PackageManifestTests` still passes: the library target links no Router.
@@ -1016,7 +1011,7 @@ Use the in-memory transport of FoundationModelsACP and the existing `FoundationM
 
 ### 13.6 One end-to-end test
 
-In the ACPAgent test target, with the tunnel and the `sessions` endpoint registered: a scripted model in session P calls `tools.sessions.startSession`. The test client has a `sessionChanges` subscription. It gets `STARTED` with `openInTab: true`, calls `resumeSession`, and `openSessions` has two models. This test covers section 11.5 steps 1 to 13 with no real model.
+In the ACPAgent test target, with the tunnel and the `sessions` endpoint registered: a scripted model in session P calls `tools.sessions.startSession`. The test client has a `sessionChanges` subscription. It gets `STARTED` with `openInTab: false`. Then the test client calls `resumeSession` (the "Open" button), and `openSessions` has two models. This test covers section 11.5 steps 1 to 13 with no real model.
 
 ## 14. Planned changes
 
@@ -1143,7 +1138,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 #### ACPA-11 Attach a live session on `session/resume`
 
 - **Spec:** When the session id of `session/resume` names a live session in the directory that this connection does not hold, attach it: add the table entry and the projector, replay the history, and take the ownership. Do not close it and do not restore it from disk. Keep today's teardown and restore (`SessionResume.swift:130-137`) only for a session that is not live.
-- **Why:** The app opens a tab with `session/resume` (section 11.5 step 10). Today a resume stops the work of a live session.
+- **Why:** The app opens a tab with `session/resume` (section 11.5 step 11). Today a resume stops the work of a live session.
 - **Depends on:** ROUTER-3, ACPA-5
 
 #### ACPA-13 Viewer for the GraphQL tunnel
@@ -1204,14 +1199,14 @@ These are differences between the design documents and this plan. The plan does 
 ## 16. Open questions
 
 - **Q-S1. Answered.** UIs use the `sessions` GraphQL endpoint through the `_sah/graphql/*` tunnel (section 11).
-- **Q-S2. The tab rule.** Does each `start session` of a model open a tab? A coordinator can start many sessions. Proposal: `openInTab` is true for the first 3 starts of one turn, and false after that. The app can also have a setting.
+- **Q-S2. Answered (TestudoApp D90).** A start by a model never opens a tab. The start shows as a tool call card with an "Open" button, and the new session shows in the Sessions window. Only a start that the user asks for on a client opens a tab on that client.
 - **Q-S3. Answered (D72).** `read inbox` marks the messages read, and a read message never starts a turn. Only unread messages start a turn when the current turn ends (section 10.2).
 - **Q-S4. Answered (D72).** A message to a recorded session that is not live restores it through the launcher, and the message starts a turn. A message to an archived session gives `refused` with the reason "archived" (section 10.2).
 - **Q-S5. Answered (D72).** The tool has `archive session`, and the graph has the `archive` mutation. Both archive any session that the caller can see. Only a deny rule can stop it (ROUTER-11).
 - **Q-S6. Answered (D72).** `SessionIndex` and `ProjectRegistry` move into Router, and the `RecordedSessionCatalog` port goes away (ROUTER-3, ACPA-14).
 - **Q-S7. Answered (D72).** There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay (section 10.3). This also answers Q31.
-- **Q-S8. Trust of an external client.** Is the visibility of section 11.3 correct for an `external` client? Can it see sessions that the user started on the Mac?
-- **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
+- **Q-S8. Answered (TestudoApp D90).** The visibility of section 11.3 stays. An `external` client sees only the sessions that it owns, their subagents and the sessions that they started. It does not see the sessions that the user started in Testudo.
+- **Q-S9. Does not occur (TestudoApp D90).** A session cannot turn off the tools that give an endpoint: `agents`, `skills`, `sessions`, `kanban`, `rules` and `runCode`. Thus each session has `find agents`.
 - **Q35 (design). Answered (D75).** The `sessions` tool stays an op tool (MT-2). It also gives `SessionsGraph` through `GraphQLEndpointTool` (EXTRAS-7). The tool and the graph are two front ends over one port, and they share the rules in Multitool.
 - **Q-S10. Answered (D76).** `SessionsTool` is its own public struct that holds an `OperationTool<SessionsToolContext>` and conforms to `GraphQLEndpointTool`. `OperationTool` does not change.
 - **Q12 (closed, TestudoApp D88).** A `session/update` with `_meta` shows a message from another session in the transcript. This is an implementation detail: the build confirms it against the ACP spec.
