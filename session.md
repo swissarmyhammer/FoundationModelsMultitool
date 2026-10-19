@@ -140,7 +140,7 @@ Four facts make the dependency direction hard:
 - Router declares a second port, `SessionLauncher`, for the composition of a new root session (ROUTER-8). ACPAgent implements it with code that has no ACP concept (ACPA-9).
 - Multitool uses only the Extras protocol (MT-2).
 - `SessionsGraph`, in the existing Multitool library target next to the `sessions` tool, implements the `sessions` GraphQL endpoint over the Extras protocol (MT-10). Section 5.7 tells why it goes there.
-- The `sessions` tool gives `SessionsGraph` as its `graphQLEndpoint` (`GraphQLEndpointTool`, EXTRAS-7, D75). The server finds it in the tool list of the composition and registers it in its endpoint registry (APP-16). ACPAgent only carries the tunnel.
+- The `sessions` tool gives `SessionsGraph` as its `graphQLEndpoint` (`GraphQLEndpointTool`, EXTRAS-7, D75). The server finds it in the tool list of the composition and registers it in its endpoint registry (APP-16). The registry is a named GraphQL service locator (TestudoApp D77). `sessions` has server scope, so it registers one time by name: the first session that gives it wins, and the registry ignores the endpoints of the subsequent sessions. All instances use one `SessionDirectory`, so the endpoint stays when that first session ends. ACPAgent only carries the tunnel.
 
 Advantages:
 
@@ -702,7 +702,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 | Directory and events | Router (through the Extras port) | Holds the sessions, tags and messages, and the record of past sessions. Applies the loop guards. Archives sessions. Sends events. |
 | Launcher | ACPAgent, in a file with no ACP import (ACPA-9) | Resolves the agent in the catalog of Agents. Composes the tools of a new root session for the agent and the folder. |
 | `sessions` endpoint | `SessionsGraph` in the Multitool library target (MT-10) | Schema, resolvers, visibility and owner rules, the subscription. |
-| Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`. |
+| Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`: one time by name for server scope, one time for each `(name, cwd)` for folder scope (D77). |
 | Owner registry and viewer | ACPAgent (ACPA-5, ACPA-13) | Knows the owner connection of each session (D11). Gives a `GraphQLViewer` to each tunnel call. |
 | Tunnel | ACP-3, ACPC-4, APP-16 | Carries `_sah/graphql/*`. |
 | Client endpoint | `ACPGraphQLEndpoint(name: "sessions")` (APP-16) | Sends queries and the subscription through the tunnel. |
