@@ -8,12 +8,14 @@ Revision 2. The user answered Q-S1: UIs use the session directory through a Grap
 
 Revision 3. The user answered Q-S3 to Q-S7 (D72). `read inbox` consumes the messages. A message to a recorded session restores it, but an archived session refuses it. The tool and the graph can archive any session that the caller can see. Router owns the record of past sessions (`SessionIndex`, `ProjectRegistry`), and the `RecordedSessionCatalog` port is gone. There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay.
 
+Revision 4. D74: `SessionsGraph` is in the Multitool library target, next to the `sessions` tool (MT-10). It replaces ROUTER-10. Router does not link GraphQL. GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6), and the pins are only in Extras.
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
 
 1. A `sessions` operation tool in FoundationModelsMultitool, for the model.
-2. A `sessions` GraphQL endpoint, for the UIs. It uses the same pattern as the `kanban` endpoint (D55).
+2. A `sessions` GraphQL endpoint in FoundationModelsMultitool, for the UIs. It uses the same pattern as the `kanban` endpoint (D55, D74).
 
 With the tool, an agent can:
 
@@ -133,7 +135,7 @@ Four facts make the dependency direction hard:
 - Router implements the protocol with `RouterSessionDirectory` (ROUTER-3).
 - Router declares a second port, `SessionLauncher`, for the composition of a new root session (ROUTER-8). ACPAgent implements it with code that has no ACP concept (ACPA-9).
 - Multitool uses only the Extras protocol (MT-2).
-- `SessionsGraph`, in the existing Router library target, implements the `sessions` GraphQL endpoint over the Extras protocol (ROUTER-10). Section 5.7 tells why it goes there.
+- `SessionsGraph`, in the existing Multitool library target next to the `sessions` tool, implements the `sessions` GraphQL endpoint over the Extras protocol (MT-10). Section 5.7 tells why it goes there.
 - The server registers the endpoint in its endpoint registry (APP-16). ACPAgent only carries the tunnel.
 
 Advantages:
@@ -167,21 +169,22 @@ Rejected. It is against D23, and it puts session operations in the ACP package (
 
 ### 5.6 Recommendation
 
-Use Option A. The port and the values go in Extras. The implementation goes in Router. The composition of a new session comes in through a Router port that ACPAgent fills. The GraphQL endpoint goes in the existing Router library target, over the Extras port (D73).
+Use Option A. The port and the values go in Extras. The implementation goes in Router. The composition of a new session comes in through a Router port that ACPAgent fills. The GraphQL endpoint goes in the existing Multitool library target, next to the tool, over the Extras port (D73, D74).
 
 ### 5.7 Where the GraphQL endpoint goes
 
-The endpoint needs three things: the `SessionDirectory` protocol (Extras), the `GraphQLEndpoint` protocol (Extras, EXTRAS-2), and a GraphQL engine (GraphQLSwift and Graphiti, as in Kanban). It does not need a Router type.
+The endpoint needs three things: the `SessionDirectory` protocol (Extras), the `GraphQLEndpoint` protocol (Extras, EXTRAS-2), and a GraphQL engine (GraphQLSwift and Graphiti, through the GraphQL toolkit of Extras, EXTRAS-6). It does not need a Router type.
 
 | Place | Result |
 |-------|--------|
-| **In the Router library target** | `SessionsGraph` goes next to `RouterSessionDirectory`, and one package owns the rules. The resolvers still use only the Extras `SessionDirectory` protocol. The cost: Router links GraphQL, so each user of Router (Agents, ACPAgent, the CLI) pulls GraphQL. **Chosen**, because the user does not want more targets in a package: "we already have enough division of labor with the package lines" (D73). |
-| In Extras | Extras links GraphQL. Each package of the family pulls GraphQL, also Multitool and ACPClient. Not chosen. |
+| **In the Multitool library target, next to the `sessions` tool** | The model front end (the tool) and the UI front end (the graph) are in one package over one port, as `KanbanTool` and `KanbanGraph` are in Kanban. They share the visibility rules, the limits and the correctives. Multitool already links Extras, so there is no new edge. **Chosen** (D74). |
+| In the Router library target | The resolvers would still use only the Extras protocol. But Router is the model runtime, and the graph is a UI concern. Not chosen (D74). |
+| In Extras | Extras holds the contracts and the GraphQL toolkit (EXTRAS-6), not the endpoint of a package. Not chosen. |
 | In ACPAgent | Against constraint 3: the resolver would be part of the ACP package. Not chosen. |
 | In the app (APP-16) | It works for the app. But the CLI server `acp-agent` and the tests of other packages cannot use it, and the graph is then far from the directory. Not chosen. |
-| A new target `FoundationModelsSessionsGraph` in the Router package | The Router library would stay free of GraphQL. But it adds a target and a product to a package. Not chosen (D73). |
+| A new target `FoundationModelsSessionsGraph` | It adds a target and a product to a package. Not chosen (D73). |
 
-The GraphQL pins of the Router target must be the same as the pins of FoundationModelsKanban, so that the app resolves one copy.
+The pins of GraphQL and Graphiti are only in Extras (EXTRAS-6, D74). Multitool gets them through Extras, so the app resolves one copy.
 
 The owner client rules (D11) need facts that only ACPAgent has. The tunnel gives them to the resolver as a neutral `GraphQLViewer` value of Extras (EXTRAS-5). Thus the resolver applies the rules with no ACP type.
 
@@ -229,9 +232,10 @@ New edges have the mark `(new)`.
 
 ```
 FoundationModelsACP          → (none of the family)
-FoundationModelsExtras       → (none of the family)       [Sessions/ port: EXTRAS-3; GraphQLViewer: EXTRAS-5]
-FoundationModelsRouter       → Extras, GraphQL (new), Graphiti (new)   [implements SessionDirectory: ROUTER-3; SessionsGraph: ROUTER-10]
-FoundationModelsMultitool    → Extras (core + Operations (new)), MetadataRegistry, CodeContext
+FoundationModelsExtras       → (none of the family), GraphQL (new), Graphiti (new)   [Sessions/ port: EXTRAS-3; GraphQLViewer: EXTRAS-5; GraphQL toolkit: EXTRAS-6]
+FoundationModelsRouter       → Extras                     [implements SessionDirectory: ROUTER-3; no GraphQL]
+FoundationModelsMultitool    → Extras (core + Operations (new)), MetadataRegistry, CodeContext   [SessionsGraph: MT-10]
+FoundationModelsKanban       → Extras, MetadataRegistry, Multitool   [GraphQL and Graphiti through Extras: KANBAN-5]
 FoundationModelsAgents       → Router, Extras (+ Operations, Marketplace), Skills   [no new edge]
 FoundationModelsACPClient    → ACP, Extras                [no new edge]
 FoundationModelsACPAgent     → ACP, Router, Extras, Multitool, Skills, Agents, ...  [no new edge]
@@ -693,7 +697,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 |------|---------|------|
 | Directory and events | Router (through the Extras port) | Holds the sessions, tags and messages, and the record of past sessions. Applies the loop guards. Archives sessions. Sends events. |
 | Launcher | ACPAgent, in a file with no ACP import (ACPA-9) | Resolves the agent in the catalog of Agents. Composes the tools of a new root session for the agent and the folder. |
-| `sessions` endpoint | `SessionsGraph` in the Router library target (ROUTER-10) | Schema, resolvers, visibility and owner rules, the subscription. |
+| `sessions` endpoint | `SessionsGraph` in the Multitool library target (MT-10) | Schema, resolvers, visibility and owner rules, the subscription. |
 | Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`. |
 | Owner registry and viewer | ACPAgent (ACPA-5, ACPA-13) | Knows the owner connection of each session (D11). Gives a `GraphQLViewer` to each tunnel call. |
 | Tunnel | ACP-3, ACPC-4, APP-16 | Carries `_sah/graphql/*`. |
@@ -972,9 +976,9 @@ Use the test support of Router (scripted models, no real model).
 - Recorded sessions: `includesRecorded` finds sessions on disk after a new process, through `SessionIndex`. A send to a recorded session restores it, and the message starts a turn.
 - Archive: a working session stops its turn, leaves the live list, sends `archived`, and has `archivedAt` in its facts after a restart. A send to it gives `refused` with the reason "archived". The launcher does not restore it.
 
-### 13.4 The `sessions` graph (ROUTER-10)
+### 13.4 The `sessions` graph (MT-10)
 
-In the existing `FoundationModelsRouterTests` target. Use the fake directory and fake viewers. No ACP and no model.
+In the existing `FoundationModelsMultitoolTests` target. Use the fake directory and fake viewers. No ACP, no model and no Router.
 
 - The SDL of the endpoint matches a golden file.
 - Each query, each mutation and the subscription, with a `userDevice` viewer.
@@ -983,6 +987,8 @@ In the existing `FoundationModelsRouterTests` target. Use the fake directory and
 - `archive`: each viewer can archive each session that it can see, and no other session.
 - `openInTab`: true only for the requesting client (UI start); true only for the owner of the first owned session in the chain (tool start); false for a trigger and a subagent.
 - A mutation does not change the owner.
+- The endpoint conformance tests of the Extras test kit (EXTRAS-6) pass.
+- A source scan checks that the files of `SessionsGraph` use only the Extras `SessionDirectory` protocol. `PackageManifestTests` still passes: the library target links no Router.
 
 ### 13.5 ACPAgent (ACPA-9, ACPA-11, ACPA-13)
 
@@ -1069,12 +1075,6 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 - **Why:** `check session`, the `Session.state` field and the Sessions window (D32) need the state and the summary.
 - **Depends on:** ROUTER-3
 
-#### ROUTER-10 The `sessions` GraphQL endpoint
-
-- **Spec:** `SessionsGraph` in the existing `FoundationModelsRouter` library target, next to `RouterSessionDirectory`. No new target and no new product (D73). The Router target links `GraphQL` and `Graphiti`, with the pins of FoundationModelsKanban. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. `sessionChanges` reads `directory.events()`.
-- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. Section 5.7 tells why the graph goes in the Router library target.
-- **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, ROUTER-3
-
 #### ROUTER-11 Archive a session
 
 - **Spec:** `RouterSessionDirectory.archive(_:by:)`. It stops a running turn of the session, removes the session from the live list, writes `archivedAt` to `facts.json`, and sends `archived(id:)`. A later send to the session gives `refused` with the reason "archived", and the directory does not restore it. The tool (`archive session`) and the graph (`archive`) call it for any session that the caller can see. There is no built-in limit. Only a deny rule (D64) stops a model call, through the risk check of the `runCode` snippet.
@@ -1094,6 +1094,12 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 - **Spec:** The library target links the `Operations` product of Extras. `MultiTool.Builder.withSessions(directory: any SessionDirectory)` registers the tool under the noun `sessions`, so a snippet calls each verb as `tools.sessions.*`, and the snippet check sees it. Update the header comment of `Capabilities/Files/Read.swift:3-8`, which says the package has no operation machinery. `PackageManifestTests` stays as it is.
 - **Why:** The tool uses `@Operation` (the style of the existing operation tools). The risk check (MT-1) sees only the tools in the registry.
 - **Depends on:** —
+
+#### MT-10 The `sessions` GraphQL endpoint
+
+- **Spec:** `SessionsGraph` in the existing `FoundationModelsMultitool` library target, next to `SessionsTool`. No new target and no new product (D73). GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6). Multitool adds no pin of its own. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. Queries: `sessions`, `session` and `inbox`. Mutations: `start`, `tag`, `untag`, `send`, `reply` and `archive`. Subscription: `sessionChanges`, which reads `directory.events()`. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. The errors, the warnings and the rewrites use the conventions of the toolkit (`extensions.code`, `extensions.warnings`, `extensions.rewrites`). The tool and the graph share the visibility rules, the limits and the correctives.
+- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. D74: each package owns its endpoint, and the tool and the graph are two front ends over one port. Section 5.7 tells why the graph goes in the Multitool library target.
+- **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, EXTRAS-6, MT-2 (the shared rules). At run time it uses the behavior of ROUTER-3 to ROUTER-11.
 
 ### AG
 
@@ -1155,7 +1161,7 @@ No new ACPC change. The client reaches the endpoint with `ACPGraphQLEndpoint(nam
 
 - **Spec:** Read the subagent tree from `Session.children` of the `sessions` endpoint, not from a second source. Show `_meta.sah.message` as "From: <title> (<agent>, <folder>)".
 - **Why:** One source of truth for the session tree.
-- **Depends on:** ROUTER-10, ACPA-6, ACPC-4
+- **Depends on:** MT-10, ACPA-6, ACPC-4
 
 ### Changes that this revision removes
 
@@ -1181,6 +1187,7 @@ These are differences between the design documents and this plan. The plan does 
 12. **`session/resume` must attach a live session (ACPA-11).** The design does not say this today.
 13. **Q5 is answered.** The agents that an agent can find are the agent catalog of FoundationModelsAgents (AG-4, card `^jcnw05g`).
 14. **Done (D72).** The design has no cap on the sessions and subagents that work at the same time. ROUTER-5, category 15, category 09 and the glossary keep only the loop guards. AG-7 removes the subagent cap of FoundationModelsAgents. Q31 is closed. ROUTER-8 to ROUTER-11 and EXTRAS-3 to EXTRAS-5 are in the design.
+15. **Done (D74).** `SessionsGraph` is in the Multitool library target (MT-10), not in Router (ROUTER-10 is removed). The GraphQL toolkit is in Extras (EXTRAS-6), and the pins are only in Extras.
 
 ## 16. Open questions
 
@@ -1193,4 +1200,5 @@ These are differences between the design documents and this plan. The plan does 
 - **Q-S7. Answered (D72).** There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay (section 10.3). This also answers Q31.
 - **Q-S8. Trust of an external client.** Is the visibility of section 11.3 correct for an `external` client? Can it see sessions that the user started on the Mac?
 - **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
+- **Q35 (design). An op tool or a GraphQL tool.** Does the `sessions` tool stay an op tool (MT-2), or does it change to the GraphQL style of the `kanban` tool? Recommendation: keep the op tool for now. Then the tool and the graph are two front ends over one port, and they share the rules in Multitool.
 - **Q12 (existing).** Is a `session/update` with `_meta` the correct way to show a message from another session in the transcript? ACPA-6 here assumes yes.
