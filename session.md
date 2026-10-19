@@ -14,6 +14,8 @@ Revision 5. D75: the `sessions` tool stays an op tool for the model, and it also
 
 Revision 6. D76: `SessionsTool` is its own public struct that holds an `OperationTool<SessionsToolContext>` and conforms to `GraphQLEndpointTool`, the same shape as `AgentsTool` and `SkillsCatalogTool` (Q-S10 is answered). It is a top-level tool of the session, like `skills` and `agents`. The same instance is also in the Multitool registry, so a snippet calls `tools.sessions.*`. The rules and the risk check apply only in `runCode`: a direct call of the top-level tool does not go through them. The app finds the endpoints in the top-level tool list of the session, not in the Multitool registry.
 
+Revision 7. D81: the client side of the tunnel is `SAHGraphQLClient` of FoundationModelsACPClient (ACPC-6), over the `SAH` wire types of FoundationModelsACP (ACP-5). It replaces `ACPGraphQLEndpoint` and is not a `GraphQLEndpoint`. The client does not link GraphQL (D79).
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
@@ -120,7 +122,7 @@ These facts show a pattern: Extras holds the small shared contracts. Other packa
 - `Connection.notify(method:params:)` sends a notification with any method name (`FoundationModelsACP/Sources/FoundationModelsACP/Connection/Connection.swift:718`). The dispatch of `_` methods on the receive side is ACP-3 (agreed, not built).
 - `ConnectionModel` is `@MainActor @Observable` (`FoundationModelsACPClient/Sources/FoundationModelsACPClient/Model/ConnectionModel.swift:27-28`). `openSessions` holds one `SessionModel` for each open session, and a view can "open one window for each new model" (`:33-41`).
 - `resumeSession(_:)` makes and registers a `SessionModel` (`Model/ConnectionModel+Sessions.swift:129`).
-- The client side of the tunnel is `ACPGraphQLEndpoint(name:)` (APP-16, ACPC-4). It is not built yet.
+- The client side of the tunnel is `SAHGraphQLClient` (ACPC-6, APP-16, D81). It is not a `GraphQLEndpoint`. It is not built yet.
 
 ## 4. Summary of the problem
 
@@ -705,7 +707,7 @@ The Router computes the depth from the mail ids of the current submission (`Orig
 | Endpoint registry | Server (APP-16) | Registers `sessions` next to `kanban`: one time by name for server scope, one time for each `(name, cwd)` for folder scope (D77). |
 | Owner registry and viewer | ACPAgent (ACPA-5, ACPA-13) | Knows the owner connection of each session (D11). Gives a `GraphQLViewer` to each tunnel call. |
 | Tunnel | ACP-3, ACPC-4, APP-16 | Carries `_sah/graphql/*`. |
-| Client endpoint | `ACPGraphQLEndpoint(name: "sessions")` (APP-16) | Sends queries and the subscription through the tunnel. |
+| Client | `SAHGraphQLClient` with the endpoint `sessions` (ACPC-6, APP-16) | Sends queries and the subscription through the tunnel. |
 | Tab rule | App | Opens a tab. Tabs are client state (D54). |
 
 ### 11.2 Schema sketch
@@ -1159,7 +1161,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 ### ACPC
 
-No new ACPC change. The client reaches the endpoint with `ACPGraphQLEndpoint(name: "sessions")` over the extension point of ACPC-4 (APP-16). The observable model of the sessions is a client model of APP-16 over that endpoint, the same as for the board.
+No new ACPC change for sessions. The client reaches the endpoint with `SAHGraphQLClient` (ACPC-6) and the endpoint name `sessions`, over the extension point of ACPC-4 (APP-16). The observable model of the sessions is a client model of APP-16 over that endpoint, the same as for the board.
 
 #### ACPC-2 Subagent sessions and messages in the client model (refines)
 
