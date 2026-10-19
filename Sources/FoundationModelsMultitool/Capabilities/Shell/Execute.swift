@@ -54,7 +54,8 @@
 // through `ResultRenderer`, exactly as `runCode` renders its own, thus the model
 // reads one format for both. A snippet does not read that text: the verb is a
 // `SnippetOutputShaping` tool, so an inner `tools.shell.execute` call gives the
-// snippet an object (`commandID`, `exitCode`, `durationMs`, `lines`, `output`).
+// snippet an object (`commandID`, `exitCode`, `durationMs`, `lineCount`, and the
+// output tail as both `output` and `lines`).
 // An inner call runs to completion and never gives the snippet a pending
 // object, whatever the settle period (`RunToCompletionInnerTool`, task
 // `^6nnykct`).
@@ -563,6 +564,12 @@ extension Execute {
     /// `tools.shell.getLines` reads it from there too. Thus the tail this verb
     /// answers and the lines that verb answers can never disagree.
     ///
+    /// `output` and `lines` hold the same tail, each line as "N: text". In
+    /// `tools.shell.getLines` and `tools.files.read`, `lines` is an array of
+    /// line texts too, so a model that reads `r.lines` gets the lines and not
+    /// a number (task `^pnqab9e`). `lineCount` is the count of lines the store
+    /// holds for the run, beside `exitCode` and `durationMs`.
+    ///
     /// `exitCode` is absent while a run has none to report, and `outputNote` is
     /// absent unless the stored output ran past the tail. An absent field is
     /// left out of the object rather than written as null, which is what makes
@@ -577,14 +584,16 @@ extension Execute {
     ) async -> [String: InterpreterValue] {
         let record = await state.record(commandID: completionToken)
         let stored = (try? await state.getLines(commandID: completionToken)) ?? []
-        let tail = stored.suffix(tailLineCount).map { "\($0.lineNumber): \($0.text)" }
+        let tail = InterpreterValue.array(
+            stored.suffix(tailLineCount).map { .string("\($0.lineNumber): \($0.text)") })
 
         var fields: [String: InterpreterValue] = [
             commandIDField: .string(completionToken),
             "status": .string((record?.status ?? .running).rawValue),
-            "lines": .number(Double(stored.count)),
+            "lineCount": .number(Double(stored.count)),
             "durationMs": .number(Double(record?.durationMs ?? 0)),
-            "output": .array(tail.map { .string($0) }),
+            "output": tail,
+            "lines": tail,
         ]
         if let exitCode = record?.exitCode {
             fields["exitCode"] = .number(Double(exitCode))
@@ -884,7 +893,9 @@ struct Execute: Tool {
         the tail of its output, its status and its exit code. A command that runs longer \
         continues in the background, and the answer is pending. \(PendingRunEnvelope.pendingWorkInstruction) \
         In a snippet the report is an object, so read \
-        r.exitCode, r.output and r.commandID; a pending result is {pending: true, commandID}. \
+        r.exitCode, r.output and r.commandID. r.lines is the same array of output lines as \
+        r.output, each "N: text", and r.lineCount is how many lines the command printed in all; \
+        a pending result is {pending: true, commandID}. \
         commandID is the run's completion token: \
         pass it to tools.shell.getLines to read everything the command printed so far, and to \
         tools.shell.grepHistory to search it. Give timeout to bound the command, \

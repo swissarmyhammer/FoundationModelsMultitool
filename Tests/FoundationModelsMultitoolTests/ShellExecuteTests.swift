@@ -1002,6 +1002,36 @@ struct ShellExecuteTests {
             "getLines read: \(stored.lines)")
     }
 
+    // MARK: - The fields of the report
+
+    /// How many lines the command of the field test writes. More than the
+    /// tail of a report holds, thus the count of stored lines and the count
+    /// of lines the report carries differ.
+    private static let reportFieldLineCount = 40
+
+    /// Task `^pnqab9e`: `lines` of an execute result is an array of line
+    /// texts, as in `tools.shell.getLines` and `tools.files.read`, and not a
+    /// count. It is the same tail as `output`, and `lineCount` holds the count
+    /// of stored lines.
+    @Test("lines of the report is the output tail and lineCount is the count of stored lines")
+    func linesIsTheOutputTailAndLineCountIsTheStoredCount() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state)
+
+        let output = try await verb.call(
+            arguments: ExecuteArguments(command: "seq \(Self.reportFieldLineCount)"))
+        let report = try Self.report(output)
+
+        let tail = try #require(report["output"] as? [String])
+        let lines = try #require(report["lines"] as? [String], "lines was: \(report["lines"] ?? "absent")")
+        #expect(lines == tail)
+        #expect(lines.last == "\(Self.reportFieldLineCount): \(Self.reportFieldLineCount)")
+        #expect(report["lineCount"] as? Int == Self.reportFieldLineCount)
+        let commandID = try #require(report["commandID"] as? String)
+        let stored = try await Self.storedLines(of: commandID, in: state)
+        #expect(stored.count == Self.reportFieldLineCount)
+    }
+
     // MARK: - The default working directory
 
     /// UPSTREAM_ASKS.md Ask 6: a call that omits `workingDirectory` runs in

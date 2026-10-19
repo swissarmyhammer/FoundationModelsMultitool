@@ -1,0 +1,1 @@
+{"id":"01M5A0C6BSBZFXV8C5QZA4EWK3","timestamp":"2026-10-19T11:57:28.313291Z","op":"create","item_id":"01M5A0C6BRDTXJ8K24DAWQPQXF","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: e4e669\n+tag_name: tools\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: e4e669\n-tag_name: tools\n","transaction_id":null}

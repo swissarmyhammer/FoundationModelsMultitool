@@ -342,7 +342,10 @@ Each other background tool of the session, for example
 inner `tools.*` call of a snippet does not wait for a period: it always runs
 to completion, so an `await` in a snippet always gives the real result. In a
 snippet, `tools.shell.execute` gives an object, so `r.exitCode`, `r.output`
-and `r.commandID` are values. A call that the snippet started and did not
+and `r.commandID` are values. `r.lines` is the same array as `r.output` (the
+last lines of the output, each `N: text`), as `lines` is in
+`tools.shell.getLines` and `tools.files.read`. `r.lineCount` is the count of
+lines the command printed. A call that the snippet started and did not
 await is named in the result, and the result tells the model not to run it
 again.
 
