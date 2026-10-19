@@ -10,6 +10,8 @@ Revision 3. The user answered Q-S3 to Q-S7 (D72). `read inbox` consumes the mess
 
 Revision 4. D74: `SessionsGraph` is in the Multitool library target, next to the `sessions` tool (MT-10). It replaces ROUTER-10. Router does not link GraphQL. GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6), and the pins are only in Extras.
 
+Revision 5. D75: the `sessions` tool stays an op tool for the model, and it also gives `SessionsGraph` for use in code. It conforms to `GraphQLEndpointTool` of the core Extras library target (EXTRAS-7). The app asks each tool of its composition for its endpoint and registers what it finds, so the app does not register the `sessions` endpoint by hand. Q35 is answered.
+
 ## 1. Purpose and scope
 
 This plan adds two front ends to one session directory:
@@ -136,7 +138,7 @@ Four facts make the dependency direction hard:
 - Router declares a second port, `SessionLauncher`, for the composition of a new root session (ROUTER-8). ACPAgent implements it with code that has no ACP concept (ACPA-9).
 - Multitool uses only the Extras protocol (MT-2).
 - `SessionsGraph`, in the existing Multitool library target next to the `sessions` tool, implements the `sessions` GraphQL endpoint over the Extras protocol (MT-10). Section 5.7 tells why it goes there.
-- The server registers the endpoint in its endpoint registry (APP-16). ACPAgent only carries the tunnel.
+- The `sessions` tool gives `SessionsGraph` as its `graphQLEndpoint` (`GraphQLEndpointTool`, EXTRAS-7, D75). The server finds it in the tool list of the composition and registers it in its endpoint registry (APP-16). ACPAgent only carries the tunnel.
 
 Advantages:
 
@@ -1085,8 +1087,8 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### MT-2 `sessions` tool (refines)
 
-- **Spec:** `SessionsTool`, an `OperationTool<SessionsToolContext>` with the name `sessions` and the nine operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8).
-- **Why:** D35, D21, D22, D61, D72.
+- **Spec:** `SessionsTool`, an `OperationTool<SessionsToolContext>` with the name `sessions` and the nine operations of section 8. `start session` takes `agent` and an optional `cwd`. `SessionsToolContext` holds `any SessionDirectory`. Correctives, never thrown model errors. Risk facts of section 8.3 (MT-7). No `find agents` op (section 5.8). The tool is an op tool, and the model does not send GraphQL text to it. It conforms to `GraphQLEndpointTool` (EXTRAS-7), and its `graphQLEndpoint` is `SessionsGraph` over the same directory (MT-10, D75). How an `OperationTool<SessionsToolContext>` conforms is Q-S10.
+- **Why:** D35, D21, D22, D61, D72, D75.
 - **Depends on:** EXTRAS-3, MT-9, MT-1, MT-7
 
 #### MT-9 Mount operation tools in the library, and `withSessions`
@@ -1097,9 +1099,9 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### MT-10 The `sessions` GraphQL endpoint
 
-- **Spec:** `SessionsGraph` in the existing `FoundationModelsMultitool` library target, next to `SessionsTool`. No new target and no new product (D73). GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6). Multitool adds no pin of its own. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. Queries: `sessions`, `session` and `inbox`. Mutations: `start`, `tag`, `untag`, `send`, `reply` and `archive`. Subscription: `sessionChanges`, which reads `directory.events()`. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. The errors, the warnings and the rewrites use the conventions of the toolkit (`extensions.code`, `extensions.warnings`, `extensions.rewrites`). The tool and the graph share the visibility rules, the limits and the correctives.
-- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. D74: each package owns its endpoint, and the tool and the graph are two front ends over one port. Section 5.7 tells why the graph goes in the Multitool library target.
-- **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, EXTRAS-6, MT-2 (the shared rules). At run time it uses the behavior of ROUTER-3 to ROUTER-11.
+- **Spec:** `SessionsGraph` in the existing `FoundationModelsMultitool` library target, next to `SessionsTool`. No new target and no new product (D73). GraphQL and Graphiti come through the GraphQL toolkit of Extras (EXTRAS-6). Multitool adds no pin of its own. The resolvers use only the Extras `SessionDirectory` protocol. `SessionsGraph(directory: any SessionDirectory)` conforms to `GraphQLEndpoint`: name `sessions`, version 1, scope server, the SDL of section 11.2. Queries: `sessions`, `session` and `inbox`. Mutations: `start`, `tag`, `untag`, `send`, `reply` and `archive`. Subscription: `sessionChanges`, which reads `directory.events()`. The resolvers apply the visibility and mutation rules of section 11.3, and the `openInTab` rule of section 11.5 step 9. The errors, the warnings and the rewrites use the conventions of the toolkit (`extensions.code`, `extensions.warnings`, `extensions.rewrites`). The tool and the graph share the visibility rules, the limits and the correctives. The `sessions` tool gives the graph as its `graphQLEndpoint` (EXTRAS-7), and the app registers the endpoint that it gets from the tool. Thus MT-10 comes after MT-2.
+- **Why:** Q-S1 (the user decision): UIs use the directory through a GraphQL endpoint, the same pattern as `kanban` (D55). D73: no new target in a package. D74: each package owns its endpoint, and the tool and the graph are two front ends over one port. D75: the tool gives its endpoint. Section 5.7 tells why the graph goes in the Multitool library target.
+- **Depends on:** EXTRAS-2, EXTRAS-3, EXTRAS-5, EXTRAS-6, EXTRAS-7, MT-2 (the tool and the shared rules). At run time it uses the behavior of ROUTER-3 to ROUTER-11.
 
 ### AG
 
@@ -1188,6 +1190,7 @@ These are differences between the design documents and this plan. The plan does 
 13. **Q5 is answered.** The agents that an agent can find are the agent catalog of FoundationModelsAgents (AG-4, card `^jcnw05g`).
 14. **Done (D72).** The design has no cap on the sessions and subagents that work at the same time. ROUTER-5, category 15, category 09 and the glossary keep only the loop guards. AG-7 removes the subagent cap of FoundationModelsAgents. Q31 is closed. ROUTER-8 to ROUTER-11 and EXTRAS-3 to EXTRAS-5 are in the design.
 15. **Done (D74).** `SessionsGraph` is in the Multitool library target (MT-10), not in Router (ROUTER-10 is removed). The GraphQL toolkit is in Extras (EXTRAS-6), and the pins are only in Extras.
+16. **Done (D75).** The `sessions` tool stays an op tool and gives `SessionsGraph` through `GraphQLEndpointTool` (EXTRAS-7). The app gets the endpoint from the tool. Q35 is answered.
 
 ## 16. Open questions
 
@@ -1200,5 +1203,6 @@ These are differences between the design documents and this plan. The plan does 
 - **Q-S7. Answered (D72).** There is no limit on the number of sessions or subagents that work at the same time. Only the loop guards stay (section 10.3). This also answers Q31.
 - **Q-S8. Trust of an external client.** Is the visibility of section 11.3 correct for an `external` client? Can it see sessions that the user started on the Mac?
 - **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
-- **Q35 (design). An op tool or a GraphQL tool.** Does the `sessions` tool stay an op tool (MT-2), or does it change to the GraphQL style of the `kanban` tool? Recommendation: keep the op tool for now. Then the tool and the graph are two front ends over one port, and they share the rules in Multitool.
+- **Q35 (design). Answered (D75).** The `sessions` tool stays an op tool (MT-2). It also gives `SessionsGraph` through `GraphQLEndpointTool` (EXTRAS-7). The tool and the graph are two front ends over one port, and they share the rules in Multitool.
+- **Q-S10. How the op tool conforms.** `SessionsTool` is an `OperationTool<SessionsToolContext>`, a generic type of the Extras `Operations` target. `GraphQLEndpointTool` is in the core Extras target. Does `SessionsTool` become its own type that wraps the `OperationTool`, or does `OperationTool` get a conditional conformance? Not decided.
 - **Q12 (existing).** Is a `session/update` with `_meta` the correct way to show a message from another session in the transcript? ACPA-6 here assumes yes.
