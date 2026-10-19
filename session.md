@@ -1214,4 +1214,4 @@ These are differences between the design documents and this plan. The plan does 
 - **Q-S9. `find agents` when the `agents` tool is off.** A session whose configuration turns off the `agents` tool cannot find agents. Must `start session` then accept only `default` and the ids in its `AGENT.md`, or must the launcher accept any id of the catalog?
 - **Q35 (design). Answered (D75).** The `sessions` tool stays an op tool (MT-2). It also gives `SessionsGraph` through `GraphQLEndpointTool` (EXTRAS-7). The tool and the graph are two front ends over one port, and they share the rules in Multitool.
 - **Q-S10. Answered (D76).** `SessionsTool` is its own public struct that holds an `OperationTool<SessionsToolContext>` and conforms to `GraphQLEndpointTool`. `OperationTool` does not change.
-- **Q12 (existing).** Is a `session/update` with `_meta` the correct way to show a message from another session in the transcript? ACPA-6 here assumes yes.
+- **Q12 (closed, TestudoApp D88).** A `session/update` with `_meta` shows a message from another session in the transcript. This is an implementation detail: the build confirms it against the ACP spec.
