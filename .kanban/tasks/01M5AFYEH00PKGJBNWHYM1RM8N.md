@@ -64,8 +64,25 @@ comments:
     - evidence: local commit of tools.files.edit skip-no-op pairs change (Edit.swift, EditEngine.swift, Hashline.swift, tests, .kanban)
     - next: none
   timestamp: 2026-10-19T16:47:52.770610+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5ahh2mnzwhzcf13ydazmtcj
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (0ce3438) — 0 findings, 0 confirmed, 2 refuted, 14 attempted, 0 failed; 5 files reviewed, 2 .kanban files excluded by .reviewignore. Judged against the revised owner decision (fix (a): skip no-op pairs and report them, strip N:HH| from replace). The original fix-(b) subtasks were replaced by that decision.
+    - next: push 0ce3438 to origin/main and send the sha to the FoundationModelsACPAgent session so it can re-run django__django-13710
+  timestamp: 2026-10-19T16:57:14.133650+00:00
+- actor: claude-code
+  id: 01m5ahhr7y8de6ymwq1tjgecfb
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — EditEngine.swift, Edit.swift, Hashline.swift, EditEngineTests.swift, FilesEditTests.swift
+    - test: green — swift test, 2489 passed in 218 suites
+    - commit: 0ce3438
+    - review: clean — 0 findings, task moved to done
+    - note: the unchecked description subtasks are the superseded fix-(b) plan; see "Owner decision, revised"
+  timestamp: 2026-10-19T16:57:36.254376+00:00
+position_column: done
+position_ordinal: ffffffa680
 title: 'files.edit: an array find/replace with one identical pair is refused with a correction that hides the pair semantics (django__django-13710)'
 ---
 ## Problem (evidence)
