@@ -2,9 +2,11 @@
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
 // Operations/ReadFile.swift`. The sibling is an `@Operation` that takes a
-// `FileContext` through its `execute(in:)`; this package has no operation
-// machinery, thus the verb is a plain `FoundationModels.Tool` that holds
-// the context it reads against, in the pattern of `Capabilities/Files/
+// `FileContext` through its `execute(in:)`. This package mounts an
+// `OperationDescribing` tool of a host (`Surface/OperationVerbTool.swift`),
+// but it does not declare `@Operation` types of its own. Thus the verb is a
+// plain `FoundationModels.Tool` that holds the context it reads against, in
+// the pattern of `Capabilities/Files/
 // Glob.swift`. The sibling's `@OperationParam` aliases (`file_path`,
 // `absolute_path`) do not port: plain `@Generable` arguments keep only the
 // canonical names. The sibling's `ReadOutput` enum does not port either:

@@ -34,6 +34,10 @@ struct OperationMountTests {
     /// the case shows that the noun wins.
     private static let memoNoun = "memo"
 
+    /// The noun the host gives in the `withOperationTool(noun:tool:)` cases.
+    /// It differs from the tool name, so the cases show that the host noun wins.
+    private static let hostNoun = "settings"
+
     /// A tool name that is not a legal TypeScript identifier.
     private static let illegalToolName = "bad-name"
 
@@ -134,6 +138,35 @@ struct OperationMountTests {
 
         #expect(Self.paths(of: registry) == Self.verbPaths(under: Self.memoNoun))
         #expect(registry.surface.entries.allSatisfy { $0.group == Self.memoNoun })
+    }
+
+    // MARK: - The host mount
+
+    @Test("withOperationTool(noun:tool:) mounts the verbs under the host noun, with no tool-name level")
+    func hostMountsTheVerbsUnderTheHostNoun() throws {
+        let registry = try MultiTool.Builder()
+            .withOperationTool(noun: Self.hostNoun, tool: NotesOperationTool())
+            .buildRegistry()
+
+        #expect(Self.paths(of: registry) == Self.verbPaths(under: Self.hostNoun))
+        #expect(registry.surface.entries.allSatisfy { $0.group == Self.hostNoun })
+        #expect(registry.tools["\(Self.hostNoun).\(Self.addNoteVerbName)"] is OperationVerbTool)
+    }
+
+    @Test("withOperationTool(noun:tool:) owns the noun: a plain tool registered under it fails with duplicateNoun")
+    func hostNounIsOwned() throws {
+        let error = try #require(
+            Self.builderError {
+                try MultiTool.Builder()
+                    .withOperationTool(noun: Self.hostNoun, tool: NotesOperationTool())
+                    .register(
+                        noun: Self.hostNoun,
+                        tool: CatalogEntryTool(name: "other", description: "A plain tool under the host noun."))
+                    .buildRegistry()
+            })
+
+        #expect(error.kind == .duplicateNoun)
+        #expect(error.name == Self.hostNoun)
     }
 
     // MARK: - Collisions

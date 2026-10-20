@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsExtras
 
 /// The short forms of `MultiTool.Builder` for the built-in capabilities.
 ///
@@ -260,5 +261,38 @@ extension MultiTool.Builder {
             await serverPool.add(server: server)
         }
         return self
+    }
+
+    /// Queues an operation tool of the host under the noun that the host
+    /// gives. Each operation of `tool` becomes one verb,
+    /// `tools.<noun>.<verb>`, and the verb name is the camelCase form of the
+    /// op string: the op `get setting` under the noun `settings` is
+    /// `tools.settings.getSetting`.
+    ///
+    /// Multitool does not know the type of `tool`. The host keeps its own
+    /// type; for example ACPAgent gives its `settings` tool under the noun
+    /// `settings`. A call of a verb goes through the same registry and the
+    /// same `runCode` path as a call of a verb of Multitool, so a check of
+    /// the snippet sees it.
+    ///
+    /// The noun is owned, as for `withCapability(_:)`. A second
+    /// registration under the noun — another call of this method, a
+    /// capability, an `addGroup(named:_:)` call, a `register(noun:tool:)`
+    /// call, or a standalone tool of that name — makes `buildRegistry()`
+    /// fail. When a verb of the second registration has the name of a verb
+    /// already under the noun, the failure is `.duplicateName`. Otherwise the
+    /// failure is `.duplicateNoun`.
+    ///
+    /// The host can give the same instance as a top-level tool of the
+    /// session too. Then a direct call of the top-level tool does not go
+    /// through `runCode`.
+    ///
+    /// - Parameters:
+    ///   - noun: the namespace the verbs render under. Must be a legal
+    ///     TypeScript identifier; examined at `buildRegistry()`.
+    ///   - tool: the operation tool of the host.
+    @discardableResult
+    public func withOperationTool(noun: String, tool: any OperationDescribing) -> Self {
+        withCapability(OperationToolCapability(noun: noun, tool: tool))
     }
 }

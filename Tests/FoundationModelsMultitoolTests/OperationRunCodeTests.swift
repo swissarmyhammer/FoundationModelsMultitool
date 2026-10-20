@@ -181,6 +181,25 @@ struct OperationRunCodeTests {
         #expect(recorded.string(NotesOperationTool.bodyParameter) == Self.noteBody)
     }
 
+    @Test("a host tool mounted with withOperationTool(noun:tool:) is called as tools.<noun>.addNote in a snippet")
+    func hostToolIsCalledUnderTheHostNoun() async throws {
+        let parent = NotesOperationTool()
+        let multiTool = MultiTool(
+            registry: try MultiTool.Builder().withOperationTool(noun: "settings", tool: parent).buildRegistry())
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(
+                code: """
+                    const n = await tools.settings.addNote({ title: "\(Self.noteTitle)", body: "\(Self.noteBody)" });
+                    return n.id;
+                    """))
+
+        let stored = try #require(parent.notes.first)
+        #expect(try RunOutput.decoded(String.self, from: output) == stored.id)
+        #expect(parent.recordedCalls.count == 1)
+        #expect(parent.recordedCalls.first?.string(NotesOperationTool.opParameter) == NotesOperationTool.addNoteOp)
+    }
+
     // MARK: - Snippet 2: listNote
 
     @Test("tools.notes.listNote gives the snippet an array, and its length is a number")
