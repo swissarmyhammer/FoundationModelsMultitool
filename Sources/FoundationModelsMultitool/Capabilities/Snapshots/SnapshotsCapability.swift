@@ -2,11 +2,11 @@
 // under it.
 //
 // The model lists and acts on the workspace snapshots of its session: `list`
-// (`ListSnapshots.swift`), `take` (`TakeSnapshot.swift`), `undo`
-// (`UndoSnapshot.swift`) and `redo` (`RedoSnapshot.swift`). The type holds no
-// logic of its own, in the pattern of `GitCapability`. It names the noun one
-// time, it makes the one `SnapshotsContext` over the store, and it composes
-// the verbs over that context.
+// (`ListSnapshots.swift`), `take` (`TakeSnapshot.swift`) and `rollback`
+// (`RollbackSnapshot.swift`). The type holds no logic of its own, in the
+// pattern of `GitCapability`. It names the noun one time, it makes the one
+// `SnapshotsContext` over the store, and it composes the verbs over that
+// context.
 //
 // **The capability does not know about hooks.** The host makes one
 // `SnapshotStore` and gives it to this capability and to `SnapshotHook` of
@@ -17,8 +17,8 @@ import Foundation
 import FoundationModels
 import FoundationModelsHooks
 
-/// The snapshots capability: one noun, and the verbs that list, take, undo
-/// and redo the workspace snapshots of the session.
+/// The snapshots capability: one noun, and the verbs that list, take and
+/// roll back the workspace snapshots of the session.
 ///
 /// ```swift
 /// let store = SnapshotStore(directory: snapshotsURL)
@@ -26,6 +26,12 @@ import FoundationModelsHooks
 ///     .withCapability(SnapshotsCapability(store: store))   // tools.snapshots.*
 ///     .build()
 /// ```
+///
+/// The model calls `list` first to find the index of a checkpoint, and then
+/// `rollback` with that index. A rollback is a revert to a point in time, as
+/// in git: it becomes a new checkpoint at the end of the list, and the later
+/// checkpoints stay. Thus a rollback can roll forward, and a rollback can
+/// itself be rolled back.
 ///
 /// **The session key is read at call time.** The capability gets no session
 /// key when it is built: the registry is built before the session exists, and
@@ -35,11 +41,12 @@ import FoundationModelsHooks
 /// working directory acts on its own key. A call with no bound session gives
 /// the correction of `SnapshotError.unavailable`.
 ///
-/// **An undo inside a `runCode` snippet** sets the `last` tree of the store to
-/// the restored tree. Thus the `PostToolUse` snapshot of that `runCode` call
-/// finds no change and makes no checkpoint. An undo can also run before the
-/// snapshot of the tool call before it; the store then records that change as
-/// `SnapshotTrigger.pending`.
+/// **A rollback inside a `runCode` snippet** makes no second checkpoint. The
+/// store sets its `last` tree to the restored tree, thus the `PostToolUse`
+/// snapshot of that `runCode` call finds no change from the rollback. A change
+/// in the snippet before the rollback goes into a `SnapshotTrigger.pending`
+/// checkpoint. A change in the snippet after the rollback goes into the
+/// `PostToolUse` checkpoint.
 public struct SnapshotsCapability: Capability {
 
     /// The one namespace each verb of this capability renders under — the
@@ -67,9 +74,6 @@ public struct SnapshotsCapability: Capability {
     ///   `SnapshotHook`, which takes the snapshots on the tool events.
     public init(store: SnapshotStore) {
         let context = SnapshotsContext(store: store)
-        tools = [
-            ListSnapshots(context: context), TakeSnapshot(context: context), UndoSnapshot(context: context),
-            RedoSnapshot(context: context),
-        ]
+        tools = [ListSnapshots(context: context), TakeSnapshot(context: context), RollbackSnapshot(context: context)]
     }
 }

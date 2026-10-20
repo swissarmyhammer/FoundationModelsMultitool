@@ -249,6 +249,10 @@ enum UnknownToolHint {
     /// The `files.makeDirectory` and `files.removeDirectory` rows have no run
     /// as evidence. Their source is the same intent in the words of a shell:
     /// `mkdir` and `rmdir`, and the spelled-out forms of those two commands.
+    ///
+    /// The `snapshots.rollback` row has no run as evidence. The user named
+    /// `reset` and `rewind` as the other names of a rollback (task
+    /// `^f4d43vr`).
     private static let verbAliases = [
         VerbAlias(path: "files.glob", verbs: ["find", "findfiles", "listfiles", "ls"]),
         VerbAlias(path: "shell.execute", verbs: ["run", "exec", "runcommand"]),
@@ -256,6 +260,7 @@ enum UnknownToolHint {
             path: "files.makeDirectory",
             verbs: ["mkdir", "makedir", "createdirectory", "createdir", "newdirectory"]),
         VerbAlias(path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"]),
+        VerbAlias(path: "snapshots.rollback", verbs: ["reset", "rewind"]),
     ]
 
     /// Resolves one failed snippet's unknown `tools.*` path, or nil when the

@@ -1,6 +1,5 @@
 // `SnapshotCheckpoint` — one checkpoint of the store, as each verb of the
-// snapshots capability writes it, and `SnapshotRestoreResult`, the result of
-// the `undo` and `redo` verbs.
+// snapshots capability writes it.
 //
 // A `Checkpoint` of FoundationModelsHooks carries two tree IDs that the model
 // cannot use. This value carries what the model reads: the index, the
@@ -23,7 +22,8 @@ struct SnapshotCheckpoint: Equatable {
     @Guide(
         description:
             "What took the snapshot: 'tool <name> (call <id>)' for a tool call, 'label <text>' or 'manual' for "
-            + "tools.snapshots.take, or 'pending' for a change that an undo or a redo recorded first.")
+            + "tools.snapshots.take, 'rollback to <index>' for tools.snapshots.rollback, or 'pending' for a "
+            + "change that a rollback recorded first.")
     var trigger: String
 
     /// The files that the checkpoint changed.
@@ -63,47 +63,8 @@ extension SnapshotCheckpoint {
             "manual"
         case .pending:
             "pending"
+        case .rollback(let index):
+            "rollback to \(index)"
         }
-    }
-}
-
-/// The result of `tools.snapshots.undo` and `tools.snapshots.redo`: the
-/// checkpoint that the verb moved, or the correction that says why no
-/// checkpoint moved.
-///
-/// `correction` and `checkpoint` are exclusive.
-@Generable(
-    description: "the checkpoint that the undo or the redo moved, with the files it restored, or the correction "
-        + "that says why no checkpoint moved.")
-struct SnapshotRestoreResult {
-
-    /// The moved checkpoint. Its files are the restored files.
-    @Guide(
-        description:
-            "The checkpoint that the undo or the redo moved. Its files are the files that were restored. null "
-            + "when no checkpoint moved.")
-    var checkpoint: SnapshotCheckpoint?
-
-    /// Why no checkpoint moved, or `nil` when one moved.
-    @Guide(description: "Why no checkpoint moved; null when one moved.")
-    var correction: String?
-}
-
-extension SnapshotRestoreResult {
-
-    /// The result of a checkpoint that moved.
-    ///
-    /// - Parameter checkpoint: The moved checkpoint of the store.
-    /// - Returns: The result.
-    static func restored(_ checkpoint: Checkpoint) -> SnapshotRestoreResult {
-        SnapshotRestoreResult(checkpoint: SnapshotCheckpoint(checkpoint), correction: nil)
-    }
-
-    /// A result that carries only a correction.
-    ///
-    /// - Parameter message: The correction the model reads and acts on.
-    /// - Returns: The corrective result.
-    static func corrective(_ message: String) -> SnapshotRestoreResult {
-        SnapshotRestoreResult(checkpoint: nil, correction: message)
     }
 }

@@ -1,7 +1,8 @@
 // `ListSnapshots` — the `tools.snapshots.list` verb.
 //
 // The verb takes no argument, and gives each checkpoint of the session key of
-// the bound session, oldest first. An undone checkpoint is not in the list.
+// the bound session, oldest first. A rollback is a checkpoint too, thus the
+// list keeps each checkpoint after a rollback.
 //
 // The verb is a plain `FoundationModels.Tool` that holds the context of the
 // snapshots capability, in the pattern of `Capabilities/Git/Status.swift`. The
@@ -26,12 +27,11 @@ struct ListSnapshotsArguments {}
 struct ListSnapshotsResult {
 
     /// The checkpoints, oldest first.
-    @Guide(description: "The checkpoints of the session, oldest first. An undone checkpoint is not in the list.")
+    @Guide(
+        description:
+            "The checkpoints of the session, oldest first. The index of each one is the index that "
+            + "tools.snapshots.rollback takes.")
     var checkpoints: [SnapshotCheckpoint]
-
-    /// Whether an undone checkpoint is available to redo.
-    @Guide(description: "True when tools.snapshots.redo has an undone checkpoint to put back.")
-    var isRedoAvailable: Bool
 
     /// Why there is no list, or `nil` when the list stands.
     @Guide(description: "Why there is no list; null when the list stands.")
@@ -42,44 +42,25 @@ extension ListSnapshots {
 
     // MARK: Execution
 
-    /// Reads the checkpoints of the session key of the bound session, and
-    /// whether a redo is available.
+    /// Reads the checkpoints of the session key of the bound session.
     ///
     /// - Parameter arguments: None.
-    /// - Returns: The checkpoints and the redo state, or the correction.
+    /// - Returns: The checkpoints, or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: ListSnapshotsArguments) async throws -> ListSnapshotsResult {
         try await context.perform { store, sessionKey in
-            let checkpoints = try await store.checkpoints(sessionKey: sessionKey)
-            let isRedoAvailable = try await Self.isRedoAvailable(in: store, sessionKey: sessionKey)
-            return ListSnapshotsResult(
-                checkpoints: checkpoints.map(SnapshotCheckpoint.init), isRedoAvailable: isRedoAvailable,
-                correction: nil)
-        }.resolve(corrective: Self.corrective, then: { $0 })
+            try await store.checkpoints(sessionKey: sessionKey)
+        }.resolve(corrective: Self.corrective, then: Self.result(of:))
     }
 
     // MARK: Steps
 
-    /// Whether the redo stack of `sessionKey` holds a checkpoint.
+    /// The result of a list.
     ///
-    /// The list reads the checkpoints first, and the redo stack in a second
-    /// call. The key can close between the two calls. The checkpoints that
-    /// the first call gave still stand, thus ``SnapshotError/unavailable``
-    /// from the second call means that no redo is available, and not that
-    /// there is no list.
-    ///
-    /// - Parameters:
-    ///   - store: The store to read.
-    ///   - sessionKey: The session key.
-    /// - Returns: `true` when a redo is available.
-    /// - Throws: Each error of the store other than
-    ///   ``SnapshotError/unavailable``.
-    private static func isRedoAvailable(in store: SnapshotStore, sessionKey: String) async throws -> Bool {
-        do {
-            return try await !store.undoneCheckpoints(sessionKey: sessionKey).isEmpty
-        } catch SnapshotError.unavailable {
-            return false
-        }
+    /// - Parameter checkpoints: The checkpoints of the store, oldest first.
+    /// - Returns: The result.
+    private static func result(of checkpoints: [Checkpoint]) -> ListSnapshotsResult {
+        ListSnapshotsResult(checkpoints: checkpoints.map(SnapshotCheckpoint.init), correction: nil)
     }
 
     /// A result that carries only a correction.
@@ -87,7 +68,7 @@ extension ListSnapshots {
     /// - Parameter message: The correction the model reads and acts on.
     /// - Returns: The corrective ``ListSnapshotsResult``.
     private static func corrective(_ message: String) -> ListSnapshotsResult {
-        ListSnapshotsResult(checkpoints: [], isRedoAvailable: false, correction: message)
+        ListSnapshotsResult(checkpoints: [], correction: message)
     }
 }
 
@@ -106,10 +87,10 @@ struct ListSnapshots: Tool {
     /// The usage instructions, as the model reads them.
     let description = """
         list gives the checkpoints of this session, oldest first. A checkpoint is a recorded change of the \
-        work tree: its index (from 1), its trigger (the tool call, the label of tools.snapshots.take, or \
-        pending), the changed files, and the date. An undone checkpoint is not in the list; isRedoAvailable \
-        is true when tools.snapshots.redo can put an undone checkpoint back. A session with no \
-        snapshots comes back as a correction rather than as an error — read it and act on it.
+        work tree: its index (from 1), its trigger (the tool call, the label of tools.snapshots.take, a \
+        rollback, or pending), the changed files, and the date. Call list first to find the index for \
+        tools.snapshots.rollback. A session with no snapshots comes back as a correction rather than as an \
+        error — read it and act on it.
         """
 
     /// The session context this verb reads against, which the snapshots

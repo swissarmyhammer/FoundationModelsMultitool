@@ -51,26 +51,6 @@ struct SnapshotsContext: Sendable {
         }
     }
 
-    /// Moves one checkpoint of the session key of the bound session with
-    /// `operation`, and gives the moved checkpoint as the result of the
-    /// `undo` or the `redo` verb.
-    ///
-    /// The `undo` and the `redo` verbs differ only in the store operation,
-    /// thus each verb gives its operation to this one body.
-    ///
-    /// - Parameter operation: The store operation that moves the checkpoint:
-    ///   `SnapshotStore.undo(sessionKey:)` or `SnapshotStore.redo(sessionKey:)`.
-    ///   It gets the store and the session key.
-    /// - Returns: The moved checkpoint, whose files are the restored files, or
-    ///   the correction.
-    /// - Throws: `CancellationError` when the calling task is cancelled.
-    func restore(
-        _ operation: @Sendable (SnapshotStore, String) async throws -> Checkpoint
-    ) async throws -> SnapshotRestoreResult {
-        try await perform(operation).resolve(
-            corrective: SnapshotRestoreResult.corrective, then: SnapshotRestoreResult.restored)
-    }
-
     /// The correction for an error of libgit2 or of the file system.
     ///
     /// - Parameter error: The error that the store threw.
@@ -84,19 +64,23 @@ extension SnapshotError: CorrectiveFailure {
 
     /// The correction that tells the model why the operation gave no value,
     /// and what to do next.
+    ///
+    /// The verbs of this capability do not call a store operation that
+    /// throws one of the two "no checkpoint" cases. The switch must cover
+    /// those cases, thus they share one generic text.
     var correctiveMessage: String {
         switch self {
         case .unavailable:
             "No snapshots are available for this session: no session is bound to the call, or the working "
                 + "folder of the session is not in a git work tree. Do not call tools.snapshots again in this "
                 + "session."
-        case .nothingToUndo:
-            "There is no checkpoint to undo. Call tools.snapshots.list to see the checkpoints."
-        case .nothingToRedo:
-            "There is no undone checkpoint to redo. A change of the work tree after an undo clears the redo "
-                + "list. Call tools.snapshots.list to see the checkpoints."
+        case .nothingToUndo, .nothingToRedo:
+            "The snapshot operation found no checkpoint to act on. Call tools.snapshots.list to see the "
+                + "checkpoints."
         case .invalidCheckpoint(let index):
-            "There is no checkpoint \(index). Call tools.snapshots.list to see the checkpoints."
+            "There is no checkpoint \(index). A valid index is from 0 (the baseline, the state when the "
+                + "session opened) to the count of checkpoints. Call tools.snapshots.list to see the checkpoints "
+                + "and their indexes."
         case .workingDirectoryMismatch:
             "The snapshots of this session key belong to a different working folder, thus no snapshot is "
                 + "available for this working folder."

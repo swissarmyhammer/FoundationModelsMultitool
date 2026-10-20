@@ -69,7 +69,7 @@ private let codeContextDependencyName = "FoundationModelsCodeContext"
 ///
 /// It is wired as a remote dependency (`main` branch) the same way
 /// `routerDependencyName` is. It carries the `SnapshotStore` that the
-/// snapshots capability lists, takes, undoes and redoes snapshots with, and
+/// snapshots capability lists, takes and rolls back snapshots with, and
 /// the task-local `HookSession.current` that gives each call its session key.
 /// The host gives the same store to the `SnapshotHook` of the package, thus
 /// the capability does not know about hooks. The package declares the same
