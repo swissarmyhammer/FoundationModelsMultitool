@@ -464,6 +464,44 @@ struct SnapshotsCapabilityTests {
         let correction: String?
     }
 
+    // MARK: - Shared result builders
+
+    /// The correction that the tests of the shared result builders give.
+    private static let sharedCorrection = "Call tools.snapshots.list to see the checkpoints."
+
+    /// Each result type of the capability gets its correction-only value from
+    /// the one shared `corrective(_:)` of `SnapshotsVerbResult`.
+    @Test("each result type builds a correction-only result through the shared builder")
+    func eachResultTypeBuildsACorrectionOnlyResult() {
+        let list = ListSnapshotsResult.corrective(Self.sharedCorrection)
+        let take = TakeSnapshotResult.corrective(Self.sharedCorrection)
+        let rollback = RollbackSnapshotResult.corrective(Self.sharedCorrection)
+
+        #expect(list.correction == Self.sharedCorrection)
+        #expect(list.checkpoints.isEmpty)
+        #expect(take.correction == Self.sharedCorrection)
+        #expect(take.checkpoint == nil)
+        #expect(!take.isUnchanged)
+        #expect(rollback.correction == Self.sharedCorrection)
+        #expect(rollback.checkpoint == nil)
+        #expect(!rollback.isUnchanged)
+    }
+
+    /// A take and a rollback that made no checkpoint each give "no change"
+    /// through the one shared `result(of:)` of `SnapshotCheckpointResult`.
+    @Test("each checkpoint result type builds a no-change result through the shared builder")
+    func eachCheckpointResultTypeBuildsANoChangeResult() {
+        let take = TakeSnapshotResult.result(of: nil)
+        let rollback = RollbackSnapshotResult.result(of: nil)
+
+        #expect(take.isUnchanged)
+        #expect(take.checkpoint == nil)
+        #expect(take.correction == nil)
+        #expect(rollback.isUnchanged)
+        #expect(rollback.checkpoint == nil)
+        #expect(rollback.correction == nil)
+    }
+
     // MARK: - Unavailable
 
     /// Each verb gives the `unavailable` correction when no session is bound.

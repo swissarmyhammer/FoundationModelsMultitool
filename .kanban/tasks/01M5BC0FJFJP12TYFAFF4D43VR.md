@@ -33,6 +33,39 @@ comments:
     - evidence: 9 files. New: Sources/FoundationModelsMultitool/Capabilities/Snapshots/RollbackSnapshot.swift. Deleted: UndoSnapshot.swift, RedoSnapshot.swift. Changed: SnapshotsCapability.swift, SnapshotsContext.swift, SnapshotCheckpoint.swift, ListSnapshots.swift, Discovery/UnknownToolHint.swift, Package.swift (doc comment), Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift. swift test --filter SnapshotsCapabilityTests: 21 tests pass. Full swift test: 2511 tests in 220 suites pass, no compiler warnings.
     - next: a human decides the reset and rewind item (hint through verbAliases, or a real call). All other items are checked. Then /review.
   timestamp: 2026-10-20T01:02:03.393103+00:00
+- actor: claude-code
+  id: 01m5bdfmjvgvz74efdg4emr2yk
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (5b7cb69); 1 finding (1 confirmed, 1 refuted) — Sources/FoundationModelsMultitool/Capabilities/Snapshots/RollbackSnapshot.swift:94 duplication/duplication
+    - next: implement the open item in the Review Findings section dated 2026-10-19 20:03; the task stays in review
+  timestamp: 2026-10-20T01:05:47.099580+00:00
+- actor: claude-code
+  id: 01m5bdg3mw6fd8m88ztjfj1nzb
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed (after an alias decision) — 10 files; rollback added, undo and redo removed; Hooks pin 0994b14
+    - test: green — swift test, 2511 tests in 220 suites passed, no warnings (from the implement run; no code change after it)
+    - commit: 5b7cb69 (pushed to origin/main)
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Snapshots/RollbackSnapshot.swift:94
+  timestamp: 2026-10-20T01:06:02.524097+00:00
+- actor: claude-code
+  id: 01m5bdr4t8t7jsv01qb0rj8t32
+  text: |-
+    Review finding (duplication, RollbackSnapshot corrective step) is done. Not committed.
+    - New file Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsVerbResult.swift. Protocol SnapshotsVerbResult: requirements init() and a settable correction; one default corrective(_:). Sub-protocol SnapshotCheckpointResult: requirement init(checkpoint:isUnchanged:correction:) (the memberwise init satisfies it); one default result(of:).
+    - ListSnapshotsResult, TakeSnapshotResult and RollbackSnapshotResult conform. To get init(), checkpoints has the default [] and isUnchanged has the default false. The Generable macro accepts these defaults, and the build has no warning. The schema that the model reads does not change.
+    - The three private corrective(_:) steps are gone. The result(of:) steps of take and rollback were the same copy, thus they are gone too. ListSnapshots keeps its own result(of:), because its shape is different.
+    - RED: the two new tests in SnapshotsCapabilityTests did not compile (no member corrective or result on the result types). GREEN: 23 tests in the suite pass.
+    - Swift can share this code, thus no trade-off is recorded.
+  timestamp: 2026-10-20T01:10:25.864698+00:00
+- actor: claude-code
+  id: 01m5bdr78s52d8hybama10w7zy
+  text: |-
+    ### implement — changed
+    - evidence: 5 files. New: Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsVerbResult.swift. Changed: ListSnapshots.swift, TakeSnapshot.swift, RollbackSnapshot.swift, Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift. swift test (one full run): 2513 tests in 220 suites pass, no compiler warning. The only build-system line is the known SwiftPM note "missing creator for mutated node" for the mlx-swift_Cmlx bundle, which is not from this change.
+    - next: /review. The finding in Review Findings (2026-10-19 20:03) is checked.
+  timestamp: 2026-10-20T01:10:28.377917+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'snapshots capability: replace undo and redo with rollback to a point in time'
@@ -92,3 +125,43 @@ Met: Hooks origin/main 0994b14 has the API. The local Package.resolved pins 0994
 
 ## Workflow
 - Use `/tdd`. Write the failing tests first, then implement. #hooks #snapshots
+
+## Review Findings (2026-10-19 20:03)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> ⚠️ tool rule 'code-hygiene/disallowed-constructs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> disallowed-constructs-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift, so its constructs are unread
+
+> ⚠️ tool rule 'code-hygiene/disallowed-constructs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> disallowed-constructs-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/UndoSnapshot.swift, so its constructs are unread
+
+> ⚠️ tool rule 'code-hygiene/function-length-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> function-length-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift, so its bodies are unread
+
+> ⚠️ tool rule 'code-hygiene/function-length-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> function-length-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/UndoSnapshot.swift, so its bodies are unread
+
+> ⚠️ tool rule 'code-hygiene/idioms-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> idioms-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/idioms-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> idioms-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/UndoSnapshot.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/magic-numbers-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> magic-numbers-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift, so its literals are unread
+
+> ⚠️ tool rule 'code-hygiene/magic-numbers-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> magic-numbers-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/UndoSnapshot.swift, so its literals are unread
+
+> ⚠️ tool rule 'code-hygiene/missing-docs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> missing-docs-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/RedoSnapshot.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/missing-docs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> missing-docs-swift found no file at Sources/FoundationModelsMultitool/Capabilities/Snapshots/UndoSnapshot.swift, so its declarations are unread
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Snapshots/RollbackSnapshot.swift:94` `duplication/duplication` — The `corrective(_:)` step of RollbackSnapshot is a near-verbatim copy of the corrective step in TakeSnapshot and ListSnapshots. Each one wraps a message in its own result type with empty or nil fields. The copies can drift apart when the correction shape changes. Look for a shared way to build a correction-only result, such as one helper that takes the result type's initializer or a protocol with a default `corrective` implementation. If the three result types cannot share code in Swift, record the trade-off in the final report and keep the three one-line bodies, because each body is only a constructor call.
+  - Resolution: the new file `Snapshots/SnapshotsVerbResult.swift` has the protocol `SnapshotsVerbResult` (requirements `init()` and a settable `correction`) with one default `corrective(_:)`. All three result types conform. The fields other than `correction` have empty default values. The sub-protocol `SnapshotCheckpointResult` has one default `result(of:)` for `take` and `rollback`, because that step was the same copy. The three private `corrective(_:)` steps and the two copies of `result(of:)` are gone from the Snapshots folder.

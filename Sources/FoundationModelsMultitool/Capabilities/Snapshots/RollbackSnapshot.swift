@@ -38,7 +38,7 @@ struct RollbackSnapshotArguments {
 @Generable(
     description: "the new rollback checkpoint with the files it changed, or isUnchanged when the work tree is "
         + "already equal to that point, or the correction that says why no rollback was made.")
-struct RollbackSnapshotResult {
+struct RollbackSnapshotResult: SnapshotCheckpointResult {
 
     /// The new rollback checkpoint, or `nil` when no checkpoint was made.
     @Guide(
@@ -50,7 +50,7 @@ struct RollbackSnapshotResult {
     /// Whether the work tree was already equal to the selected point.
     @Guide(
         description: "True when the work tree is already equal to that point, thus no checkpoint was made.")
-    var isUnchanged: Bool
+    var isUnchanged = false
 
     /// Why no rollback was made, or `nil` when the rollback ran.
     @Guide(description: "Why no rollback was made; null when the rollback ran.")
@@ -72,27 +72,7 @@ extension RollbackSnapshot {
         let index = arguments.index
         return try await context.perform { store, sessionKey in
             try await store.rollback(sessionKey: sessionKey, to: index)
-        }.resolve(corrective: Self.corrective, then: Self.result(of:))
-    }
-
-    // MARK: Steps
-
-    /// The result of a rollback.
-    ///
-    /// - Parameter checkpoint: The new rollback checkpoint, or `nil` for no
-    ///   change.
-    /// - Returns: The result.
-    private static func result(of checkpoint: Checkpoint?) -> RollbackSnapshotResult {
-        RollbackSnapshotResult(
-            checkpoint: checkpoint.map(SnapshotCheckpoint.init), isUnchanged: checkpoint == nil, correction: nil)
-    }
-
-    /// A result that carries only a correction.
-    ///
-    /// - Parameter message: The correction the model reads and acts on.
-    /// - Returns: The corrective ``RollbackSnapshotResult``.
-    private static func corrective(_ message: String) -> RollbackSnapshotResult {
-        RollbackSnapshotResult(checkpoint: nil, isUnchanged: false, correction: message)
+        }.resolve(corrective: RollbackSnapshotResult.corrective, then: RollbackSnapshotResult.result(of:))
     }
 }
 

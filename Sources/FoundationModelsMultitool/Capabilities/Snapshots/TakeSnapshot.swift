@@ -25,7 +25,7 @@ struct TakeSnapshotArguments {
 @Generable(
     description: "the new checkpoint, or isUnchanged when no file changed after the last snapshot, or the "
         + "correction that says why no snapshot was taken.")
-struct TakeSnapshotResult {
+struct TakeSnapshotResult: SnapshotCheckpointResult {
 
     /// The new checkpoint, or `nil` when no checkpoint was made.
     @Guide(description: "The new checkpoint; null when no checkpoint was made.")
@@ -33,7 +33,7 @@ struct TakeSnapshotResult {
 
     /// Whether no file changed after the last snapshot.
     @Guide(description: "True when no file changed after the last snapshot, thus no checkpoint was made.")
-    var isUnchanged: Bool
+    var isUnchanged = false
 
     /// Why no snapshot was taken, or `nil` when the snapshot was taken.
     @Guide(description: "Why no snapshot was taken; null when the snapshot was taken.")
@@ -54,26 +54,7 @@ extension TakeSnapshot {
         let trigger = SnapshotTrigger.manual(label: arguments.label)
         return try await context.perform { store, sessionKey in
             try await store.take(sessionKey: sessionKey, trigger: trigger)
-        }.resolve(corrective: Self.corrective, then: Self.result(of:))
-    }
-
-    // MARK: Steps
-
-    /// The result of a snapshot.
-    ///
-    /// - Parameter checkpoint: The new checkpoint, or `nil` for no change.
-    /// - Returns: The result.
-    private static func result(of checkpoint: Checkpoint?) -> TakeSnapshotResult {
-        TakeSnapshotResult(
-            checkpoint: checkpoint.map(SnapshotCheckpoint.init), isUnchanged: checkpoint == nil, correction: nil)
-    }
-
-    /// A result that carries only a correction.
-    ///
-    /// - Parameter message: The correction the model reads and acts on.
-    /// - Returns: The corrective ``TakeSnapshotResult``.
-    private static func corrective(_ message: String) -> TakeSnapshotResult {
-        TakeSnapshotResult(checkpoint: nil, isUnchanged: false, correction: message)
+        }.resolve(corrective: TakeSnapshotResult.corrective, then: TakeSnapshotResult.result(of:))
     }
 }
 

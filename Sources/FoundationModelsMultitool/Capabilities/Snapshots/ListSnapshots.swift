@@ -24,14 +24,14 @@ struct ListSnapshotsArguments {}
 /// checkpoint.
 @Generable(
     description: "the checkpoints of the session, oldest first, or the correction that says why there is no list.")
-struct ListSnapshotsResult {
+struct ListSnapshotsResult: SnapshotsVerbResult {
 
     /// The checkpoints, oldest first.
     @Guide(
         description:
             "The checkpoints of the session, oldest first. The index of each one is the index that "
             + "tools.snapshots.rollback takes.")
-    var checkpoints: [SnapshotCheckpoint]
+    var checkpoints: [SnapshotCheckpoint] = []
 
     /// Why there is no list, or `nil` when the list stands.
     @Guide(description: "Why there is no list; null when the list stands.")
@@ -50,7 +50,7 @@ extension ListSnapshots {
     func call(arguments: ListSnapshotsArguments) async throws -> ListSnapshotsResult {
         try await context.perform { store, sessionKey in
             try await store.checkpoints(sessionKey: sessionKey)
-        }.resolve(corrective: Self.corrective, then: Self.result(of:))
+        }.resolve(corrective: ListSnapshotsResult.corrective, then: Self.result(of:))
     }
 
     // MARK: Steps
@@ -61,14 +61,6 @@ extension ListSnapshots {
     /// - Returns: The result.
     private static func result(of checkpoints: [Checkpoint]) -> ListSnapshotsResult {
         ListSnapshotsResult(checkpoints: checkpoints.map(SnapshotCheckpoint.init), correction: nil)
-    }
-
-    /// A result that carries only a correction.
-    ///
-    /// - Parameter message: The correction the model reads and acts on.
-    /// - Returns: The corrective ``ListSnapshotsResult``.
-    private static func corrective(_ message: String) -> ListSnapshotsResult {
-        ListSnapshotsResult(checkpoints: [], correction: message)
     }
 }
 
