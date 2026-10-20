@@ -1,6 +1,23 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m5d952k8kdrk5me7vaxw617a
+  text: |-
+    Agreed API with foundationmodelshooks-8b (HOOKS-5, Hooks cards ^rnqwhs1 and ^x3r4ntw), 2026-10-20. Names can change before the Hooks push:
+    - The old calls are removed. The new calls are `take(sessionKey:owner:trigger:)`, `checkpoints(sessionKey:owner:)` and `rollback(sessionKey:owner:to:)`.
+    - New `SnapshotError` cases: `indirect case notAvailable(cause: SnapshotError)`, `case repositoryFailure(description: String)` (only as a cause), and `case noTimeline` (only from `timelineSummary`).
+    - `unavailable` now also means "this owner did not open the key". Change its text, which today says only "not in a git work tree".
+    - The `take` or `rollback` that meets the conflict throws `.timelineConflict` itself. The later calls throw `.notAvailable(cause: .timelineConflict)`.
+    - The text names only the cause case, and never the `description` of `repositoryFailure`, because it can hold a path.
+    - Give `noTimeline` a text in the exhaustive `switch`, although Multitool does not call `timelineSummary`.
+    - Multitool main does not build from the Hooks push until this card is pushed. Do this card at once when Hooks sends the sha.
+  timestamp: 2026-10-20T18:28:35.560435+00:00
+- actor: claude-code
+  id: 01m5d95dkcnntg2144rgnem8sy
+  text: 'Change to the agreed API (2026-10-20, with foundationmodelsacpagent-68 and foundationmodelshooks-8b): the cause is a small enum, not an indirect SnapshotError. `case notAvailable(cause: SnapshotUnavailableCause)` with the cases `workingDirectoryMismatch`, `timelineConflict` and `openFailed`. A failed open with an error that is not a SnapshotError gives `openFailed`. The text must name each of the three cases. `repositoryFailure(description:)` may not exist. Use the names that Hooks pushes.'
+  timestamp: 2026-10-20T18:28:46.828011+00:00
 position_column: todo
 position_ordinal: '80'
 title: 'Snapshots: say "not available for this session" after a timeline error (ACPA-15)'
