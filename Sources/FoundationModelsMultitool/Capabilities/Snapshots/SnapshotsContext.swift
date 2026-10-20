@@ -1,11 +1,13 @@
 // `SnapshotsContext` — the one context of the snapshots capability: the
-// shared store, and the read of the session key at call time.
+// shared store, and the read of the session key and the owner at call time.
 //
 // The capability does NOT get a session key when it is built. The registry is
 // built before the session exists, and `MultiTool.forked()` gives the same
-// tool to a fork. Thus each verb reads `HookSession.current?.sessionKey` when
-// it runs. Router binds `HookSession.current` for each model call, and a fork
-// in a different working directory has its own key.
+// tool to a fork. Thus each verb reads `HookSession.current` when it runs: its
+// `sessionKey` names the timeline, and its `sessionID` is the owner that the
+// store checks. Router binds `HookSession.current` for each model call, and a
+// fork in a different working directory has its own key. A session that did
+// not open the key never gets the checkpoints of another owner of the key.
 //
 // A failure stays IN BAND, as a `correction`. It is never thrown: a call with
 // no bound session, each `SnapshotError` of the store, and an error of libgit2
@@ -21,27 +23,28 @@ struct SnapshotsContext: Sendable {
     /// The store that the capability and `SnapshotHook` share.
     let store: SnapshotStore
 
-    /// Runs `operation` on the store for the session key of the bound
-    /// session.
+    /// Runs `operation` on the store for the session key and the owner of
+    /// the bound session.
     ///
-    /// The session key is read from `HookSession.current` at call time. When
-    /// no session is bound, the operation does not run, and the result is the
-    /// correction of ``SnapshotError/unavailable``.
+    /// The session key and the owner (the session ID) are read from
+    /// `HookSession.current` at call time. When no session is bound, the
+    /// operation does not run, and the result is the correction of
+    /// ``SnapshotError/unavailable``.
     ///
-    /// - Parameter operation: The store operation, which gets the store and
-    ///   the session key.
+    /// - Parameter operation: The store operation, which gets the store, the
+    ///   session key and the owner.
     /// - Returns: The value of the operation, or the correction that says why
     ///   there is no value.
     /// - Throws: `CancellationError` when the calling task is cancelled. Each
     ///   other error becomes a correction.
     func perform<Value: Sendable>(
-        _ operation: @Sendable (SnapshotStore, String) async throws -> Value
+        _ operation: @Sendable (SnapshotStore, String, String) async throws -> Value
     ) async throws -> Result<Value, CorrectiveRejection> {
-        guard let sessionKey = HookSession.current?.sessionKey else {
+        guard let session = HookSession.current else {
             return .failure(CorrectiveRejection(correctiveMessage: SnapshotError.unavailable.correctiveMessage))
         }
         do {
-            return .success(try await operation(store, sessionKey))
+            return .success(try await operation(store, session.sessionKey, session.sessionID))
         } catch let error as SnapshotError {
             return .failure(CorrectiveRejection(correctiveMessage: error.correctiveMessage))
         } catch is CancellationError {
@@ -72,13 +75,27 @@ extension SnapshotError: CorrectiveFailure {
     /// The verbs of this capability call only the list, take and rollback
     /// operations of the store. Thus ``sessionKeyOpen``, ``invalidSessionKey``
     /// and ``unreadableTimeline`` come only from an open or a remove that a
-    /// caller of ``SnapshotsContext/perform(_:)`` runs. Each case has its own
-    /// text all the same.
+    /// caller of ``SnapshotsContext/perform(_:)`` runs, and ``noTimeline``
+    /// comes only from `SnapshotStore.timelineSummary(sessionKey:)`, which no
+    /// verb calls. Each case has its own text all the same.
+    ///
+    /// ``unavailable`` means that no session is bound, that the session did
+    /// not open its session key, or that its working folder is not in a git
+    /// work tree. ``notAvailable(cause:)`` means that an earlier open of the
+    /// session or a timeline conflict of the key stopped the snapshots of the
+    /// session; its text names only the cause case, never a path or the text
+    /// of a file.
     var correctiveMessage: String {
         switch self {
         case .unavailable:
-            "No snapshots are available for this session: no session is bound to the call, or the working "
-                + "folder of the session is not in a git work tree. \(Self.stopCallingSnapshots)"
+            "No snapshots are available for this session: no session is bound to the call, this session did not "
+                + "open its session key, or the working folder of the session is not in a git work tree. "
+                + Self.stopCallingSnapshots
+        case .notAvailable(let cause):
+            "Snapshots are not available for this session: \(cause.rawValue). \(Self.stopCallingSnapshots)"
+        case .noTimeline:
+            "This session key has no snapshot timeline, thus no snapshot is available for this session. "
+                + Self.stopCallingSnapshots
         case .invalidCheckpoint(let index):
             "There is no checkpoint \(index). A valid index is from 0 (the baseline, the state when the "
                 + "session opened) to the count of checkpoints. Call tools.snapshots.list to see the checkpoints "

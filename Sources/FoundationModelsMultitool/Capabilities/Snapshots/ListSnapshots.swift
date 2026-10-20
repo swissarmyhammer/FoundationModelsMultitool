@@ -42,14 +42,15 @@ extension ListSnapshots {
 
     // MARK: Execution
 
-    /// Reads the checkpoints of the session key of the bound session.
+    /// Reads the checkpoints of the session key of the bound session, for
+    /// that session as the owner.
     ///
     /// - Parameter arguments: None.
     /// - Returns: The checkpoints, or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: ListSnapshotsArguments) async throws -> ListSnapshotsResult {
-        try await context.perform { store, sessionKey in
-            try await store.checkpoints(sessionKey: sessionKey)
+        try await context.perform { store, sessionKey, owner in
+            try await store.checkpoints(sessionKey: sessionKey, owner: owner)
         }.resolve(corrective: ListSnapshotsResult.corrective, then: Self.result(of:))
     }
 

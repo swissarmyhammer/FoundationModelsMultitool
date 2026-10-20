@@ -62,7 +62,8 @@ extension RollbackSnapshot {
     // MARK: Execution
 
     /// Makes the work tree of the session key of the bound session equal to
-    /// the tree after checkpoint `arguments.index`.
+    /// the tree after checkpoint `arguments.index`, for that session as the
+    /// owner.
     ///
     /// - Parameter arguments: The index of the checkpoint.
     /// - Returns: The new rollback checkpoint, "no change", or the
@@ -70,8 +71,8 @@ extension RollbackSnapshot {
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: RollbackSnapshotArguments) async throws -> RollbackSnapshotResult {
         let index = arguments.index
-        return try await context.perform { store, sessionKey in
-            try await store.rollback(sessionKey: sessionKey, to: index)
+        return try await context.perform { store, sessionKey, owner in
+            try await store.rollback(sessionKey: sessionKey, owner: owner, to: index)
         }.resolve(corrective: RollbackSnapshotResult.corrective, then: RollbackSnapshotResult.result(of:))
     }
 }

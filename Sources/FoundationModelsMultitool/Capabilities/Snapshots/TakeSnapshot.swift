@@ -45,15 +45,15 @@ extension TakeSnapshot {
     // MARK: Execution
 
     /// Records the state of the work tree of the session key of the bound
-    /// session.
+    /// session, for that session as the owner.
     ///
     /// - Parameter arguments: The optional label.
     /// - Returns: The new checkpoint, "no change", or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: TakeSnapshotArguments) async throws -> TakeSnapshotResult {
         let trigger = SnapshotTrigger.manual(label: arguments.label)
-        return try await context.perform { store, sessionKey in
-            try await store.take(sessionKey: sessionKey, trigger: trigger)
+        return try await context.perform { store, sessionKey, owner in
+            try await store.take(sessionKey: sessionKey, owner: owner, trigger: trigger)
         }.resolve(corrective: TakeSnapshotResult.corrective, then: TakeSnapshotResult.result(of:))
     }
 }

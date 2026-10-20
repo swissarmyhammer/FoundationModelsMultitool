@@ -36,10 +36,14 @@ import FoundationModelsHooks
 /// **The session key is read at call time.** The capability gets no session
 /// key when it is built: the registry is built before the session exists, and
 /// `MultiTool.forked()` gives the same tool to a fork. Each verb reads
-/// `HookSession.current?.sessionKey` when it runs, and Router binds
+/// `HookSession.current` when it runs: the `sessionKey` names the timeline,
+/// and the `sessionID` is the owner that the store checks. Router binds
 /// `HookSession.current` for each model call. Thus a fork in a different
-/// working directory acts on its own key. A call with no bound session gives
-/// the correction of `SnapshotError.unavailable`.
+/// working directory acts on its own key, and a session that did not open the
+/// key gets none of the checkpoints of another owner. A call with no bound
+/// session gives the correction of `SnapshotError.unavailable`. After a failed
+/// open of the session or a timeline conflict of the key, each verb gives the
+/// correction of `SnapshotError.notAvailable(cause:)`.
 ///
 /// **A rollback inside a `runCode` snippet** makes no second checkpoint. The
 /// store sets its `last` tree to the restored tree, thus the `PostToolUse`

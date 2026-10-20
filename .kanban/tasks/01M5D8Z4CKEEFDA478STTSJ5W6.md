@@ -26,7 +26,35 @@ comments:
     - evidence: `git fetch origin` in ../FoundationModelsHooks on 2026-10-20 gives origin/main 9a9e20a. `git grep` finds no `SnapshotUnavailableCause` and no `owner:` on `take`, `checkpoints` or `rollback`.
     - next: when foundationmodelshooks-8b sends the HOOKS-5 sha, run /finish ^ttsj5w6.
   timestamp: 2026-10-20T18:38:54.371609+00:00
-position_column: todo
+- actor: claude-code
+  id: 01m5da7waw4a6p928qmx1trjs8
+  text: |-
+    Research (2026-10-20). Hooks checkout is at c66f336 after `swift package update FoundationModelsHooks`.
+    - Hooks API: `take(sessionKey:owner:trigger:)`, `checkpoints(sessionKey:owner:)`, `rollback(sessionKey:owner:to:)`. `SnapshotError.notAvailable(cause: SnapshotUnavailableCause)` with the String raw-value cases `workingDirectoryMismatch`, `timelineConflict`, `openFailed`. `SnapshotError.noTimeline` comes only from `timelineSummary`. No `repositoryFailure` case exists.
+    - `SnapshotUnavailableCause(of:)` maps each open error that is not `workingDirectoryMismatch` or `timelineConflict` to `openFailed`. Thus an open over a timeline commit with no trigger (`unreadableTimeline`) records `openFailed`. The tests use that to produce `openFailed` through the store.
+    - A second open of a key that is open with a different working directory throws `workingDirectoryMismatch` from the in-memory check, and records the cause for that owner only.
+    - After a conflict, the key state has `failure = .timelineConflict`, thus each owner of the key on that store gets `notAvailable(cause: .timelineConflict)`.
+    - Plan: `SnapshotsContext.perform` gives the operation `(store, sessionKey, owner)`, where `owner` is `HookSession.current.sessionID`.
+  timestamp: 2026-10-20T18:47:36.028029+00:00
+- actor: claude-code
+  id: 01m5daggrnq9phhv92c66p09n2
+  text: |-
+    Implementation landed (not committed, not pushed).
+    - `SnapshotsContext.perform` gives the operation `(store, sessionKey, owner)`. The owner is `HookSession.current.sessionID`. With no bound session, the result is the `unavailable` correction.
+    - `list`, `take` and `rollback` give the owner to `checkpoints(sessionKey:owner:)`, `take(sessionKey:owner:trigger:)` and `rollback(sessionKey:owner:to:)`.
+    - New texts: `notAvailable(cause:)` gives "Snapshots are not available for this session: <cause.rawValue>. Do not call tools.snapshots again in this session." `noTimeline` has its own text. The `unavailable` text now also says "this session did not open its session key".
+    - Tests through the store: moved project (a copy of the work tree in a new folder) gives `workingDirectoryMismatch`; a take after a second store moved the timeline, then `list`, gives `timelineConflict`; an open over a timeline commit with no trigger (from a second store, while the first store has the key open) gives `openFailed`. Each test checks the text and that `list` gives no checkpoint of the other owner. A further test: a session that did not open the key gets `unavailable` and no checkpoint of the open session.
+    - The card says: after the push, send the sha to foundationmodelsacpagent-68. The commit step must do that.
+    - `swift test` output has one SwiftPM build-system line: "warning: missing creator for mutated node: ... mlx-swift_Cmlx.bundle/Contents/MacOS". It comes from the mlx-swift dependency build, not from a compiler diagnostic of this change.
+  timestamp: 2026-10-20T18:52:19.093918+00:00
+- actor: claude-code
+  id: 01m5dagkef1cz4wgrsdtdbvse0
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/Snapshots/{SnapshotsContext.swift, ListSnapshots.swift, TakeSnapshot.swift, RollbackSnapshot.swift, SnapshotsCapability.swift}, Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift. `swift test` (one run, Hooks c66f336): 2528 tests in 220 suites passed, 0 failures.
+    - next: /review ^ttsj5w6, then commit and push, then send the sha to foundationmodelsacpagent-68.
+  timestamp: 2026-10-20T18:52:21.839747+00:00
+position_column: doing
 position_ordinal: '80'
 title: 'Snapshots: say "not available for this session" after a timeline error (ACPA-15)'
 ---
@@ -43,4 +71,4 @@ The Multitool part:
 2. `SnapshotError.correctiveMessage` for the new case says: "Snapshots are not available for this session: <case>. Do not call tools.snapshots again in this session." Here <case> is `workingDirectoryMismatch` or `timelineConflict`. Give no path and no file content.
 3. A test of each case with a temporary store: a moved working directory, and a timeline conflict. Each test checks the text, and checks that `list` does not give the checkpoints of the other owner.
 
-After the push, send the sha to foundationmodelsacpagent-68. #blocked-external
+After the push, send the sha to foundationmodelsacpagent-68.
