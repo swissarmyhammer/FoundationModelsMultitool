@@ -54,8 +54,25 @@ comments:
     - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/Snapshots/{SnapshotsContext.swift, ListSnapshots.swift, TakeSnapshot.swift, RollbackSnapshot.swift, SnapshotsCapability.swift}, Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift. `swift test` (one run, Hooks c66f336): 2528 tests in 220 suites passed, 0 failures.
     - next: /review ^ttsj5w6, then commit and push, then send the sha to foundationmodelsacpagent-68.
   timestamp: 2026-10-20T18:52:21.839747+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5damexnsychhq1m1xptfqr1
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 66268e4). 6 files reviewed. Counts: findings 0, confirmed 0, refuted 1, attempted 7, failed 0, skipped 0. The engine did not review 2 .kanban files (.reviewignore).
+    - next: The task is in done. Send the sha to foundationmodelsacpagent-68 after the push.
+  timestamp: 2026-10-20T18:54:28.277260+00:00
+- actor: claude-code
+  id: 01m5damxhymmrhtt8pt0s8d2ve
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 6 files (SnapshotsContext, ListSnapshots, TakeSnapshot, RollbackSnapshot, SnapshotsCapability, SnapshotsCapabilityTests)
+    - test: green — swift test, 2528 tests in 220 suites passed, against Hooks c66f336
+    - commit: 66268e4
+    - review: clean — review sha HEAD~1..HEAD, findings 0, refuted 1
+    - next: the user approves the push; then send the sha to testudoapp-4c, foundationmodelsacpagent-68 and foundationmodelshooks-8b.
+  timestamp: 2026-10-20T18:54:43.262880+00:00
+position_column: done
+position_ordinal: ffffffab80
 title: 'Snapshots: say "not available for this session" after a timeline error (ACPA-15)'
 ---
 FoundationModelsACPAgent asks for this change for ACPA-15 (its card ^j4pd8zw).
