@@ -76,6 +76,9 @@ struct SnapshotsCapabilityTests {
         /// The repository whose work tree the store records.
         let repository: TemporaryGitRepository
 
+        /// The folder that holds the shadow repositories of ``store``.
+        let storeDirectory: URL
+
         /// The store that the capability and the test share.
         let store: SnapshotStore
 
@@ -95,10 +98,38 @@ struct SnapshotsCapabilityTests {
         let repository = try TemporaryGitRepository()
         try repository.write(baseText, to: baseFile)
         try repository.commit(message: "base")
-        let store = SnapshotStore(directory: TestSupport.makeTemporaryDirectory(named: testDirectoryName))
+        let storeDirectory = TestSupport.makeTemporaryDirectory(named: testDirectoryName)
+        let store = SnapshotStore(directory: storeDirectory)
         let session = makeSession(key: key, workingDirectory: repository.workDirectory)
         try await store.open(sessionKey: key, owner: session.sessionID, workingDirectory: repository.workDirectory)
-        return Fixture(repository: repository, store: store, session: session, context: SnapshotsContext(store: store))
+        return Fixture(
+            repository: repository, storeDirectory: storeDirectory, store: store, session: session,
+            context: SnapshotsContext(store: store))
+    }
+
+    /// Makes a second store on the store folder of `fixture`, and opens the
+    /// key of `fixture` on it with the working directory of `fixture`.
+    ///
+    /// - Parameters:
+    ///   - fixture: The fixture whose store folder and key the new store
+    ///     uses.
+    ///   - owner: The session ID that opens the key on the new store.
+    /// - Returns: The new store.
+    /// - Throws: What the store throws.
+    private static func openSecondStore(on fixture: Fixture, owner: String) async throws -> SnapshotStore {
+        let store = SnapshotStore(directory: fixture.storeDirectory)
+        try await store.open(
+            sessionKey: fixture.session.sessionKey, owner: owner, workingDirectory: fixture.repository.workDirectory)
+        return store
+    }
+
+    /// Gives the correction of a `perform` result, or `nil` for a value.
+    ///
+    /// - Parameter result: The result of `SnapshotsContext.perform`.
+    /// - Returns: The corrective message of the failure, or `nil`.
+    private static func correction<Value>(of result: Result<Value, CorrectiveRejection>) -> String? {
+        guard case .failure(let rejection) = result else { return nil }
+        return rejection.correctiveMessage
     }
 
     /// Makes a session with `key` in `workingDirectory`.
@@ -462,6 +493,138 @@ struct SnapshotsCapabilityTests {
 
         /// The correction, or `nil`.
         let correction: String?
+    }
+
+    // MARK: - Changed while closed
+
+    /// A change of the work tree while no store had the key open becomes a
+    /// `changedWhileClosed` checkpoint when a store opens the key again.
+    /// `list` shows that checkpoint as text that the model can read.
+    @Test("list after a change while the key was closed gives a 'changed while closed' checkpoint")
+    func listGivesAChangedWhileClosedCheckpoint() async throws {
+        let fixture = try await Self.makeFixture()
+        await fixture.store.release(sessionKey: Self.firstKey, owner: fixture.session.sessionID)
+        try fixture.repository.write("later\n", to: Self.laterFile)
+        let reopened = try await Self.openSecondStore(on: fixture, owner: fixture.session.sessionID)
+
+        let result = try await HookSession.$current.withValue(fixture.session) {
+            try await ListSnapshots(context: SnapshotsContext(store: reopened)).call(
+                arguments: ListSnapshotsArguments())
+        }
+
+        #expect(result.correction == nil)
+        #expect(result.checkpoints.map(\.trigger) == ["changed while closed"])
+        #expect(result.checkpoints.map(\.files) == [[Self.laterFile]])
+    }
+
+    // MARK: - Store errors
+
+    /// The session key that is not one path component, because it holds a
+    /// `/`.
+    private static let keyWithASlash = "lineage/one"
+
+    /// The path of the timeline ref in a shadow repository, relative to the
+    /// shadow folder of the key.
+    private static let timelineReferencePath = "refs/snapshots/timeline"
+
+    /// The session ID of a second writer on the key of a fixture.
+    private static let otherWriter = "session-other-writer"
+
+    /// Moves the timeline ref of the key of `fixture` to `commit`, as a
+    /// damaged timeline does. The fixture must have released the key.
+    ///
+    /// The shadow repository reads the objects of the source repository
+    /// through its alternates file, thus a commit of the source repository
+    /// is a commit that the timeline can name.
+    ///
+    /// - Parameters:
+    ///   - fixture: The fixture whose timeline ref moves.
+    ///   - commit: The 40-hex SHA of the new tip.
+    /// - Throws: The error of `FileManager` or of the write.
+    private static func pointTimeline(of fixture: Fixture, at commit: String) throws {
+        let reference = fixture.storeDirectory
+            .appendingPathComponent(fixture.session.sessionKey, isDirectory: true)
+            .appendingPathComponent(timelineReferencePath, isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: reference.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "\(commit)\n".write(to: reference, atomically: true, encoding: .utf8)
+    }
+
+    /// A take after another store moved the timeline of the same key gives
+    /// the `timelineConflict` correction, and no checkpoint.
+    @Test("take after another store moved the timeline gives the timelineConflict corrective result")
+    func takeAfterAnotherWriterGivesTimelineConflict() async throws {
+        let fixture = try await Self.makeFixture()
+        let otherStore = try await Self.openSecondStore(on: fixture, owner: Self.otherWriter)
+        try fixture.repository.write("one\n", to: Self.firstFile)
+        _ = try await otherStore.take(sessionKey: Self.firstKey, trigger: .manual(label: "other"))
+        try fixture.repository.write("two\n", to: Self.secondFile)
+
+        let result = try await HookSession.$current.withValue(fixture.session) {
+            try await TakeSnapshot(context: fixture.context).call(arguments: TakeSnapshotArguments(label: nil))
+        }
+
+        #expect(result.correction == SnapshotError.timelineConflict.correctiveMessage)
+        #expect(result.checkpoint == nil)
+        #expect(!result.isUnchanged)
+    }
+
+    /// An open over a timeline commit that has no `Snapshot-Trigger` trailer
+    /// gives the `unreadableTimeline` correction, not a thrown error.
+    @Test("an open over a timeline commit with no trigger gives the unreadableTimeline corrective result")
+    func anOpenOverAnUnreadableTimelineGivesUnreadableTimeline() async throws {
+        let fixture = try await Self.makeFixture()
+        await fixture.store.release(sessionKey: Self.firstKey, owner: fixture.session.sessionID)
+        try fixture.repository.write("one\n", to: Self.firstFile)
+        try Self.pointTimeline(of: fixture, at: try fixture.repository.commit(message: "no trigger"))
+        let owner = fixture.session.sessionID
+        let workDirectory = fixture.repository.workDirectory
+
+        let result = try await HookSession.$current.withValue(fixture.session) {
+            try await fixture.context.perform { store, sessionKey in
+                try await store.open(sessionKey: sessionKey, owner: owner, workingDirectory: workDirectory)
+            }
+        }
+
+        #expect(Self.correction(of: result) == SnapshotError.unreadableTimeline.correctiveMessage)
+    }
+
+    /// A remove of a key that a session has open gives the `sessionKeyOpen`
+    /// correction, not a thrown error.
+    @Test("a remove of the open key gives the sessionKeyOpen corrective result")
+    func aRemoveOfTheOpenKeyGivesSessionKeyOpen() async throws {
+        let fixture = try await Self.makeFixture()
+
+        let result = try await HookSession.$current.withValue(fixture.session) {
+            try await fixture.context.perform { store, sessionKey in try await store.remove(sessionKey: sessionKey) }
+        }
+
+        #expect(Self.correction(of: result) == SnapshotError.sessionKeyOpen.correctiveMessage)
+    }
+
+    /// A session key that is not one path component gives the
+    /// `invalidSessionKey` correction, not a thrown error.
+    @Test("a session key with a slash gives the invalidSessionKey corrective result")
+    func aSessionKeyWithASlashGivesInvalidSessionKey() async throws {
+        let fixture = try await Self.makeFixture()
+        let session = Self.makeSession(key: Self.keyWithASlash, workingDirectory: fixture.repository.workDirectory)
+
+        let result = try await HookSession.$current.withValue(session) {
+            try await fixture.context.perform { store, sessionKey in try await store.remove(sessionKey: sessionKey) }
+        }
+
+        #expect(Self.correction(of: result) == SnapshotError.invalidSessionKey.correctiveMessage)
+    }
+
+    /// The correction of each store error that FoundationModelsHooks added
+    /// tells the model what to do next with `tools.snapshots`.
+    @Test(
+        "the correction of each new store error names tools.snapshots",
+        arguments: [SnapshotError.timelineConflict, .unreadableTimeline, .sessionKeyOpen, .invalidSessionKey])
+    func eachNewStoreErrorCorrectionNamesTheNextStep(error: SnapshotError) {
+        let message = error.correctiveMessage
+
+        #expect(message.contains("tools.snapshots"), "message was: \(message)")
     }
 
     // MARK: - Shared result builders

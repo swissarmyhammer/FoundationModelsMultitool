@@ -62,21 +62,23 @@ struct SnapshotsContext: Sendable {
 
 extension SnapshotError: CorrectiveFailure {
 
+    /// The last sentence of each correction after which no snapshot
+    /// operation of the session can give a value.
+    private static let stopCallingSnapshots = "Do not call tools.snapshots again in this session."
+
     /// The correction that tells the model why the operation gave no value,
     /// and what to do next.
     ///
-    /// The verbs of this capability do not call a store operation that
-    /// throws one of the two "no checkpoint" cases. The switch must cover
-    /// those cases, thus they share one generic text.
+    /// The verbs of this capability call only the list, take and rollback
+    /// operations of the store. Thus ``sessionKeyOpen``, ``invalidSessionKey``
+    /// and ``unreadableTimeline`` come only from an open or a remove that a
+    /// caller of ``SnapshotsContext/perform(_:)`` runs. Each case has its own
+    /// text all the same.
     var correctiveMessage: String {
         switch self {
         case .unavailable:
             "No snapshots are available for this session: no session is bound to the call, or the working "
-                + "folder of the session is not in a git work tree. Do not call tools.snapshots again in this "
-                + "session."
-        case .nothingToUndo, .nothingToRedo:
-            "The snapshot operation found no checkpoint to act on. Call tools.snapshots.list to see the "
-                + "checkpoints."
+                + "folder of the session is not in a git work tree. \(Self.stopCallingSnapshots)"
         case .invalidCheckpoint(let index):
             "There is no checkpoint \(index). A valid index is from 0 (the baseline, the state when the "
                 + "session opened) to the count of checkpoints. Call tools.snapshots.list to see the checkpoints "
@@ -84,6 +86,19 @@ extension SnapshotError: CorrectiveFailure {
         case .workingDirectoryMismatch:
             "The snapshots of this session key belong to a different working folder, thus no snapshot is "
                 + "available for this working folder."
+        case .timelineConflict:
+            "Another writer changed the snapshot timeline of this session after this session read it, for "
+                + "example a second app instance on the same session. The operation recorded no checkpoint, and "
+                + "the checkpoints of this session are not current. \(Self.stopCallingSnapshots)"
+        case .unreadableTimeline:
+            "The snapshot timeline of this session holds a checkpoint that cannot be read, thus no snapshot is "
+                + "available for this session. \(Self.stopCallingSnapshots)"
+        case .sessionKeyOpen:
+            "The snapshots of this session cannot be removed while a session has them open. The checkpoints did "
+                + "not change. Call tools.snapshots.list to see the checkpoints."
+        case .invalidSessionKey:
+            "The session key of this session is not a valid name for its snapshots, thus no snapshot is "
+                + "available for this session. \(Self.stopCallingSnapshots)"
         }
     }
 }

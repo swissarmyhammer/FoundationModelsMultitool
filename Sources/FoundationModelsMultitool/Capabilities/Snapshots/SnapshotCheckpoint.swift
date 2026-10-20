@@ -22,8 +22,9 @@ struct SnapshotCheckpoint: Equatable {
     @Guide(
         description:
             "What took the snapshot: 'tool <name> (call <id>)' for a tool call, 'label <text>' or 'manual' for "
-            + "tools.snapshots.take, 'rollback to <index>' for tools.snapshots.rollback, or 'pending' for a "
-            + "change that a rollback recorded first.")
+            + "tools.snapshots.take, 'rollback to <index>' for tools.snapshots.rollback, 'pending' for a "
+            + "change that a rollback recorded first, or 'changed while closed' for a change that occurred "
+            + "while the app was not running.")
     var trigger: String
 
     /// The files that the checkpoint changed.
@@ -65,6 +66,8 @@ extension SnapshotCheckpoint {
             "pending"
         case .rollback(let index):
             "rollback to \(index)"
+        case .changedWhileClosed:
+            "changed while closed"
         }
     }
 }
