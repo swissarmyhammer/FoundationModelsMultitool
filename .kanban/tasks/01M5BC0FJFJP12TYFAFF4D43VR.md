@@ -66,8 +66,24 @@ comments:
     - evidence: 5 files. New: Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsVerbResult.swift. Changed: ListSnapshots.swift, TakeSnapshot.swift, RollbackSnapshot.swift, Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift. swift test (one full run): 2513 tests in 220 suites pass, no compiler warning. The only build-system line is the known SwiftPM note "missing creator for mutated node" for the mlx-swift_Cmlx bundle, which is not from this change.
     - next: /review. The finding in Review Findings (2026-10-19 20:03) is checked.
   timestamp: 2026-10-20T01:10:28.377917+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5bdtvfw7r3c3ybhrpntje9v
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 2268853). The engine reviewed 5 files and found 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). The one prior finding (duplication of corrective in RollbackSnapshot.swift) is checked.
+    - next: The task is in done. No more work for review.
+  timestamp: 2026-10-20T01:11:54.620387+00:00
+- actor: claude-code
+  id: 01m5bdv78v02ckdpqz1ftevfjx
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — shared corrective and result helpers in SnapshotsVerbResult.swift; 5 files
+    - test: green — swift test, 2513 tests in 220 suites passed, no compiler warnings
+    - commit: 2268853 (pushed to origin/main)
+    - review: clean — 0 findings; task is in done
+  timestamp: 2026-10-20T01:12:06.683065+00:00
+position_column: done
+position_ordinal: ffffffa880
 title: 'snapshots capability: replace undo and redo with rollback to a point in time'
 ---
 ## Context
