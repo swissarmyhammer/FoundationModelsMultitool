@@ -18,6 +18,14 @@ comments:
   id: 01m5d95dkcnntg2144rgnem8sy
   text: 'Change to the agreed API (2026-10-20, with foundationmodelsacpagent-68 and foundationmodelshooks-8b): the cause is a small enum, not an indirect SnapshotError. `case notAvailable(cause: SnapshotUnavailableCause)` with the cases `workingDirectoryMismatch`, `timelineConflict` and `openFailed`. A failed open with an error that is not a SnapshotError gives `openFailed`. The text must name each of the three cases. `repositoryFailure(description:)` may not exist. Use the names that Hooks pushes.'
   timestamp: 2026-10-20T18:28:46.828011+00:00
+- actor: claude-code
+  id: 01m5d9qyx3q00ekq08mnrwmj72
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: not started. Blocked by FoundationModelsHooks ^x3r4ntw.
+    - evidence: `git fetch origin` in ../FoundationModelsHooks on 2026-10-20 gives origin/main 9a9e20a. `git grep` finds no `SnapshotUnavailableCause` and no `owner:` on `take`, `checkpoints` or `rollback`.
+    - next: when foundationmodelshooks-8b sends the HOOKS-5 sha, run /finish ^ttsj5w6.
+  timestamp: 2026-10-20T18:38:54.371609+00:00
 position_column: todo
 position_ordinal: '80'
 title: 'Snapshots: say "not available for this session" after a timeline error (ACPA-15)'
