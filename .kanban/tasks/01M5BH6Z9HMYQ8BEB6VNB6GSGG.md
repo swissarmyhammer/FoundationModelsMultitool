@@ -30,8 +30,24 @@ comments:
     - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotCheckpoint.swift, Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsContext.swift, Tests/FoundationModelsMultitoolTests/SnapshotsCapabilityTests.swift; swift test 2519 tests in 220 suites passed; Package.resolved (gitignored) at 9a9e20a
     - next: review
   timestamp: 2026-10-20T02:15:44.227395+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5bhk27cf9t3e6gfqh8rr7se
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit dafebbb). 0 findings, 0 confirmed, 1 refuted. 3 files reviewed. 2 files in .kanban are not reviewed because of an ignore rule. The task has no prior review findings.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-20T02:17:33.676002+00:00
+- actor: claude-code
+  id: 01m5bhkccn65cpfd5epzvstqy3
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files; Hooks pin 9a9e20a
+    - test: green — swift test, 2519 tests in 220 suites passed, 0 failures (from the implement run; no code change after it)
+    - commit: dafebbb (pushed to origin/main)
+    - review: clean — 0 findings; task is in done
+  timestamp: 2026-10-20T02:17:44.085626+00:00
+position_column: done
+position_ordinal: ffffffa980
 title: 'snapshots capability: adapt to FoundationModelsHooks 9a9e20a'
 ---
 ## Context
