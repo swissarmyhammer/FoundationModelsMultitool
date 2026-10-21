@@ -36,10 +36,12 @@ import Operations
 /// the top-level tools of a session, to the registry of `runCode`, and to a
 /// forked session. Each copy shares the directory that ``init(directory:)``
 /// gets, and the record of the messages that `read inbox` gave, which
-/// ``init(directory:)`` makes one time and `reply message` reads. A later
-/// part that must be shared — the `sessions` GraphQL endpoint and its change
-/// log — is made one time for each directory, never for each copy, so
-/// ``init(directory:)`` keeps its shape.
+/// ``init(directory:)`` makes one time and `reply message` reads.
+///
+/// The tool is also a `GraphQLEndpointTool`: its `graphQLEndpoints` is one
+/// endpoint, ``SessionsGraph``, over the same directory (D75). The endpoint
+/// is made one time for each directory, never for each copy: each copy of
+/// the tool, and each tool over the same directory, gives the same instance.
 public struct SessionsTool: Tool, OperationDescribing {
     /// The raw payload: an `op` and the fields of one operation.
     public typealias Arguments = GeneratedContent
@@ -54,6 +56,9 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// The tool that resolves and dispatches each call.
     let operationTool: OperationTool<SessionsToolContext>
 
+    /// The `sessions` endpoint of the directory of the tool.
+    private let endpoint: SessionsGraph
+
     /// Makes the `sessions` tool over `directory`.
     ///
     /// - Parameter directory: The session directory that each operation
@@ -62,6 +67,7 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// - Throws: The error of `OperationTool.init` when the schema of the
     ///   operations cannot be fused.
     public init(directory: any SessionDirectory) throws {
+        endpoint = SessionsGraph.endpoint(of: directory)
         operationTool = try OperationTool(
             name: Self.toolName,
             description: SessionsToolText.toolDescription,
@@ -147,5 +153,14 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// - Returns: The plain text.
     private static func plainText(of answer: String) -> String {
         (try? JSONDecoder().decode(String.self, from: Data(answer.utf8))) ?? answer
+    }
+}
+
+extension SessionsTool: GraphQLEndpointTool {
+    /// One endpoint: the `sessions` endpoint (``SessionsGraph``) over the
+    /// directory of the tool. Each copy of the tool, and each tool over the
+    /// same directory, gives the same instance.
+    public var graphQLEndpoints: [any GraphQLEndpoint] {
+        [endpoint]
     }
 }

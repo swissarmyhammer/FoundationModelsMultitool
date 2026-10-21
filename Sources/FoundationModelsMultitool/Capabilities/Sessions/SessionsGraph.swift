@@ -1,0 +1,223 @@
+// `SessionsGraph` — the `sessions` GraphQL endpoint (MT-10): the sessions of
+// the server and their messages for the clients of the host, over the same
+// `SessionDirectory` that the `sessions` tool reads (session.md section 11).
+//
+// The schema is in `SessionsGraphSchema.swift`, and its object types are in
+// `SessionsGraphTypes.swift`. This file holds the endpoint, the one endpoint
+// of each directory, and the coded errors.
+
+import Foundation
+import FoundationModelsExtras
+import GraphQL
+import Synchronization
+
+/// The `sessions` GraphQL endpoint: the queries of the sessions of the server
+/// and of their messages, over one ``SessionDirectory``.
+///
+/// The endpoint has the server scope. Its queries are flat root fields
+/// (EXTRAS-9 rule 5):
+///
+/// - `Query.sessions(filter:)` gives the sessions that match a filter, the
+///   newest first, at most 50 when the filter names no limit. The filter has
+///   the rules of the `list sessions` op of the tool.
+/// - `Query.session(id:)` gives one session, or `null`. A `Session` gives its
+///   `parent`, its `startedBy`, its `children` (the subagent tree of a client)
+///   and its `unreadCount`.
+/// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
+///   the oldest first. It marks none read (D72): only the `read inbox` op of
+///   the tool does.
+///
+/// An id argument reads a session id in any letter case, as the tool does,
+/// and a text that is not a session id gives `INVALID_SESSION_ID` with the
+/// corrective of the tool. The mutations and the `changes(after:)`
+/// subscription come with later tasks.
+///
+/// The visibility rule of session.md section 11.3 (EXTRAS-9 rule 4) applies
+/// to each result through ``SessionsVisibility``, the rule that the `sessions`
+/// tool reads too: the agent and a device of the user see each session, and
+/// an external client sees only the sessions that it owns, their subagents,
+/// and the sessions that they started, to any depth.
+///
+/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:)`` gives
+/// the same instance for each call over the same directory, thus each copy of
+/// ``SessionsTool``, of each session and each fork, gives the same endpoint.
+///
+/// The name rewrite takes the general query verbs, for example `listSessions`
+/// for `sessions`, and the aliases of ``rules``.
+public final class SessionsGraph: GraphQLEndpoint {
+    /// The name of the endpoint.
+    public static let endpointName = "sessions"
+
+    /// The other names that a call can write for the names of the schema
+    /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
+    /// session, `sessionId` for the `id` of `session`, and `id` for the
+    /// `sessionId` of `inbox`.
+    static let rules = GraphQLNameRules(
+        aliases: GraphQLAliasTable(
+            byType: ["Session": ["agentId": ["agent"], "cwd": ["folder"]]],
+            byField: ["Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]]]))
+
+    /// The name of the endpoint.
+    public let name = endpointName
+
+    /// The version of the schema.
+    public let version = "1"
+
+    /// The scope of the endpoint: the server.
+    public let scope = GraphQLEndpointScope.server
+
+    /// The directory that each call reads.
+    private let directory: any SessionDirectory
+
+    /// Makes the endpoint over a directory. A caller outside this type gets
+    /// the endpoint with ``endpoint(of:)``, which makes one for each
+    /// directory.
+    ///
+    /// - Parameter directory: The directory that the `sessions` tool also
+    ///   reads.
+    private init(directory: any SessionDirectory) {
+        self.directory = directory
+    }
+
+    /// Gives the one endpoint of `directory` (EXTRAS-9 rule 1).
+    ///
+    /// The first call for a directory makes the endpoint, and each later call
+    /// gives the same instance while a caller holds it. A directory with no
+    /// identity, a value type, gets a new endpoint for each call. This call
+    /// does no I/O.
+    ///
+    /// - Parameter directory: The session directory, for example the one of
+    ///   the Router, or an `InMemorySessionDirectory` in a test.
+    /// - Returns: The endpoint.
+    public static func endpoint(of directory: any SessionDirectory) -> SessionsGraph {
+        guard type(of: directory) is AnyObject.Type else {
+            return SessionsGraph(directory: directory)
+        }
+        let key = ObjectIdentifier(directory as AnyObject)
+        return endpoints.withLock { endpoints in
+            endpoints = endpoints.filter { $0.value.endpoint != nil }
+            if let endpoint = endpoints[key]?.endpoint {
+                return endpoint
+            }
+            let endpoint = SessionsGraph(directory: directory)
+            endpoints[key] = WeakEndpoint(endpoint: endpoint)
+            return endpoint
+        }
+    }
+
+    /// The schema of the endpoint in SDL. The schema is built once for each
+    /// process; when that build fails, the text is empty and each call throws
+    /// the error of the build.
+    public var schema: String {
+        switch SessionsGraphAPI.builtSchema {
+        case .success(let built):
+            printSchema(schema: built.schema)
+        case .failure:
+            ""
+        }
+    }
+
+    /// Runs one GraphQL document.
+    ///
+    /// - Parameters:
+    ///   - query: The GraphQL document.
+    ///   - variables: The values of the variables of the document.
+    ///   - operationName: The operation of the document to run, or `nil`.
+    ///   - viewer: The client that makes the call, or `nil` for the agent.
+    /// - Returns: The GraphQL response as JSON text.
+    /// - Throws: A fault that is not a GraphQL error, for example the error of
+    ///   a schema build that failed.
+    public func execute(
+        query: String, variables: [String: Map], operationName: String?, viewer: GraphQLViewer?
+    ) async throws -> String {
+        try await api().respond(
+            to: query, variables: variables, operationName: operationName, rules: Self.rules,
+            formattedWith: .sortedKeys, context: context(of: viewer))
+    }
+
+    /// Starts one GraphQL subscription. The schema has no subscription yet,
+    /// so the stream gives one response with the error, and then ends.
+    ///
+    /// - Parameters:
+    ///   - query: The subscription document.
+    ///   - variables: The values of the variables of the document.
+    ///   - operationName: The operation of the document to run, or `nil`.
+    ///   - viewer: The client that makes the call, or `nil` for the agent.
+    /// - Returns: The GraphQL response of each event as JSON text.
+    /// - Throws: A fault that is not a GraphQL error, for example the error of
+    ///   a schema build that failed.
+    public func subscribe(
+        query: String, variables: [String: Map], operationName: String?, viewer: GraphQLViewer?
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        try await api().subscribe(
+            to: query, variables: variables, operationName: operationName, rules: Self.rules,
+            formattedWith: .sortedKeys, context: context(of: viewer))
+    }
+
+    /// The context of one call: the directory, read with the visibility of
+    /// the viewer.
+    ///
+    /// - Parameter viewer: The client that makes the call, or `nil` for the
+    ///   agent.
+    /// - Returns: The context.
+    private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
+        SessionsGraphContext(sessions: SessionsVisibility(directory: directory, viewer: viewer))
+    }
+
+    /// The Graphiti engine of a call: the schema of the process.
+    ///
+    /// - Returns: The engine.
+    /// - Throws: The error of a schema build that failed.
+    private func api() throws -> SessionsGraphAPI {
+        SessionsGraphAPI(schema: try SessionsGraphAPI.builtSchema.get())
+    }
+
+    // MARK: - The one endpoint of each directory
+
+    /// One endpoint that ``endpoints`` holds weakly: the table never keeps an
+    /// endpoint, or its directory, alive. While a caller holds the endpoint,
+    /// the endpoint holds its directory, thus no other directory can take the
+    /// object identifier of the key.
+    private struct WeakEndpoint {
+        /// The endpoint, or `nil` after the last caller released it.
+        weak var endpoint: SessionsGraph?
+    }
+
+    /// The endpoint of each directory that a caller holds now, by the object
+    /// identifier of the directory.
+    private static let endpoints = Mutex<[ObjectIdentifier: WeakEndpoint]>([:])
+}
+
+/// The coded errors of the `sessions` endpoint, with an `UPPER_SNAKE` code in
+/// `extensions.code`, for an argument that the endpoint cannot read. A
+/// session that the viewer cannot see, or that the directory does not hold,
+/// is no error of a query: one session is `null` and a list leaves it out
+/// (EXTRAS-9 rules 4 and 5).
+enum SessionsGraphError: CodedError {
+    /// `INVALID_FOLDER`: the `cwd` of a filter is not an absolute path.
+    case invalidFolder(text: String)
+
+    /// `INVALID_SESSION_ID`: an id argument is not a session id.
+    case invalidSessionID(text: String)
+
+    /// The code of each case, for the conformance check of rule 8.
+    static let codes = [invalidFolder(text: "").code, invalidSessionID(text: "").code]
+
+    /// The code of the error.
+    var code: String {
+        switch self {
+        case .invalidFolder: "INVALID_FOLDER"
+        case .invalidSessionID: "INVALID_SESSION_ID"
+        }
+    }
+
+    /// The message of the error: what is wrong, and how to correct the call.
+    /// It is the corrective that the `sessions` tool gives for the same
+    /// argument.
+    var message: String {
+        switch self {
+        case .invalidFolder(let text): SessionsToolText.relativeFolder(text)
+        case .invalidSessionID(let text): SessionsToolText.notASessionID(text)
+        }
+    }
+}

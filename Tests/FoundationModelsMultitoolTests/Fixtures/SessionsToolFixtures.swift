@@ -24,7 +24,7 @@ enum SessionsToolFixtures {
     /// The display name of the agent of each registered session.
     static let agentName = "Coder"
 
-    /// A live, idle root session, by default of ``agentID`` in
+    /// A live, idle session, by default a root session of ``agentID`` in
     /// ``workingFolder``.
     ///
     /// - Parameters:
@@ -33,17 +33,24 @@ enum SessionsToolFixtures {
     ///   - title: The title of the session.
     ///   - agent: The agent id of the session, as it is written.
     ///   - folder: The working folder of the session.
+    ///   - kind: The kind of the session. The default is a root session.
+    ///   - parentID: The parent of a subagent, or the original of a fork.
+    ///   - startedBy: The session that started this root session.
     /// - Returns: The summary.
     static func summary(
         id: ULID = ULID(),
         tags: Set<String> = [],
         title: String? = nil,
         agent: String = agentID,
-        folder: URL = workingFolder
+        folder: URL = workingFolder,
+        kind: SessionKind = .root,
+        parentID: ULID? = nil,
+        startedBy: ULID? = nil
     ) -> SessionSummary {
         SessionSummary(
             id: id, agentID: agent, agentName: agentName, workingDirectory: folder, title: title, tags: tags,
-            kind: .root, state: .idle, origin: .client, createdAt: fixedDate, updatedAt: fixedDate, isLive: true)
+            kind: kind, state: .idle, parentID: parentID, startedBy: startedBy, origin: .client, createdAt: fixedDate,
+            updatedAt: fixedDate, isLive: true)
     }
 
     /// The `op` payload of one operation with its fields.

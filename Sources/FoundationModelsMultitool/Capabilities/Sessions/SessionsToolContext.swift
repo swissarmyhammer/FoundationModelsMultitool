@@ -13,6 +13,14 @@ struct SessionsToolContext: Sendable {
     /// The session directory that each operation reads.
     let directory: any SessionDirectory
 
+    /// The sessions of the directory as the tool sees them: through the
+    /// visibility rule that the `sessions` endpoint applies too, with no
+    /// viewer, because the agent of the session sees each session (EXTRAS-9
+    /// rule 4).
+    var sessions: SessionsVisibility {
+        SessionsVisibility(directory: directory, viewer: nil)
+    }
+
     /// The session of the current call, or `nil` for a call with no
     /// `ToolContext` (outside a Router session). A call with no caller can
     /// only read the directory (session.md section 8.2).
@@ -47,7 +55,7 @@ struct SessionsToolContext: Sendable {
     /// - Throws: `SessionDirectoryError.unknownSession` when no session has
     ///   the id, and each error of `summary(of:)`.
     func existingSummary(of id: ULID) async throws -> SessionSummary {
-        guard let summary = try await directory.summary(of: id) else {
+        guard let summary = try await sessions.summary(of: id) else {
             throw SessionDirectoryError.unknownSession(id)
         }
         return summary

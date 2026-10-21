@@ -10,6 +10,10 @@ comments:
   id: 01m5f691yb717mcjft77pb5csj
   text: 'ACPAgent owns the end-to-end check as ^y673pyv: a composed session''s top-level tools give the settings and snapshots endpoints (name, version, scope). It lands with ACPAgent''s Extras+Multitool update. The default snapshots resolver (session id = session key) fits: ACPAgent''s snapshot key is the ACP session id raw value (AgentHooks.swift:115, SessionLifecycle.swift:64).'
   timestamp: 2026-10-21T12:16:49.099412+00:00
+- actor: claude-code
+  id: 01m5fcdnbj65h1eefzv7n389px
+  text: 'Per-package record — agents: DONE. FoundationModelsAgents origin/main 712bcbb (AG-8a 0579ae2/d700d4c, AG-8b cec9897/5a3706e, AG-8c pushed after the user overrode a review rule that asked for `private` on cross-type members). Conformance passes with no exceptions. 664 tests green.'
+  timestamp: 2026-10-21T14:04:11.506484+00:00
 position_column: todo
 position_ordinal: 8a80
 title: 'Coordinate: GraphQL endpoint conventions across the family (EXTRAS-9, D115)'

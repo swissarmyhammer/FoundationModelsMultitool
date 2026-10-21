@@ -77,7 +77,7 @@ extension ListSessions {
     ///   `startedBy` that is not a session id, or an error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         do {
-            let summaries = try await context.directory.sessions(matching: try query())
+            let summaries = try await context.sessions.sessions(matching: try query())
             return SessionsToolText.listing(of: summaries, callerID: context.callerID)
         } catch {
             return SessionsToolText.corrective(for: error)
@@ -90,17 +90,16 @@ extension ListSessions {
     /// - Throws: ``SessionsToolInputError`` for a filter that the tool
     ///   cannot read.
     private func query() throws(SessionsToolInputError) -> SessionQuery {
-        let workState = try SessionsToolInput.state(state)
-        return SessionQuery(
+        let filter = SessionQuery(
             workingDirectory: try SessionsToolInput.folder(cwd),
             agentID: agent,
             tag: tag,
             kind: try SessionsToolInput.kind(kind),
-            state: workState,
+            state: try SessionsToolInput.state(state),
             parentID: try SessionsToolInput.sessionID(parent),
-            startedBy: try SessionsToolInput.sessionID(startedBy),
-            includesRecorded: (includeRecorded ?? false) || workState == .archived,
-            limit: SessionsToolInput.listLimit(limit))
+            startedBy: try SessionsToolInput.sessionID(startedBy))
+        return SessionsToolInput.listQuery(
+            filter, includeRecorded: includeRecorded, limit: limit, defaultingTo: SessionQuery.defaultLimit)
     }
 }
 

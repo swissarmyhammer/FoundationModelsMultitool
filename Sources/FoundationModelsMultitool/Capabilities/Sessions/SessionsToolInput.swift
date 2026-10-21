@@ -282,13 +282,37 @@ enum SessionsToolInput {
         return trimmed.hasPrefix(prefix) ? String(trimmed.dropFirst(prefix.count)) : trimmed
     }
 
-    /// The limit of one `list sessions` call: `requested` brought into
-    /// `1...maximumListLimit`, or ``SessionQuery/defaultLimit`` for no limit.
+    /// The limit of one listing: `requested` brought into
+    /// `1...maximumListLimit`, or `fallback` for no limit.
     ///
-    /// - Parameter requested: The limit of the call, or `nil`.
+    /// - Parameters:
+    ///   - requested: The limit of the call, or `nil`.
+    ///   - fallback: The limit of a call that names none.
     /// - Returns: The limit.
-    static func listLimit(_ requested: Int?) -> Int {
-        min(max(requested ?? SessionQuery.defaultLimit, 1), maximumListLimit)
+    static func listLimit(_ requested: Int?, defaultingTo fallback: Int) -> Int {
+        min(max(requested ?? fallback, 1), maximumListLimit)
+    }
+
+    /// The directory query of one listing, with the rules that `list
+    /// sessions` and the `sessions` query of the endpoint share: a `state` of
+    /// `archived` also finds the sessions that are not live, because an
+    /// archived session is never live, and the limit is brought into range.
+    ///
+    /// - Parameters:
+    ///   - filter: The filter of the call; its `includesRecorded` and its
+    ///     `limit` are not read.
+    ///   - includeRecorded: True to also find the sessions that are not live,
+    ///     or `nil` for the default, `false`.
+    ///   - limit: The limit of the call, or `nil`.
+    ///   - fallback: The limit of a call that names none.
+    /// - Returns: The query.
+    static func listQuery(
+        _ filter: SessionQuery, includeRecorded: Bool?, limit: Int?, defaultingTo fallback: Int
+    ) -> SessionQuery {
+        var query = filter
+        query.includesRecorded = (includeRecorded ?? false) || filter.state == .archived
+        query.limit = listLimit(limit, defaultingTo: fallback)
+        return query
     }
 
     /// The case of `values` whose raw value is `text`, in any letter case.

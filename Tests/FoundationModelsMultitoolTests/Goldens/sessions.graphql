@@ -1,0 +1,209 @@
+"""
+A point in time: RFC 3339 text in UTC with milliseconds, like 2026-10-06T14:49:10.690Z.
+"""
+scalar DateTime
+
+"""Any JSON value. The keys of each object are in sorted order."""
+scalar JSON
+
+"""The kind of a session."""
+enum SessionKind {
+  """
+  A root session: a client, another session, a message or a trigger started it.
+  """
+  ROOT
+
+  """A subagent: the agents tool of its parent started it."""
+  SUBAGENT
+
+  """A fork: a user forked another session."""
+  FORK
+}
+
+"""The work state of a session."""
+enum SessionState {
+  """The session runs a turn."""
+  WORKING
+
+  """The session waits for an answer: an elicitation or a permission."""
+  NEEDS_INPUT
+
+  """The session runs no turn. A message to it starts a turn."""
+  IDLE
+
+  """The session ended. It is never live."""
+  ARCHIVED
+}
+
+"""How a session started."""
+enum SessionOrigin {
+  """A client started it."""
+  CLIENT
+
+  """The sessions tool of another session started it."""
+  TOOL
+
+  """A message to an agent with no session started it."""
+  MESSAGE
+
+  """A trigger, for example of a kanban task, started it."""
+  TRIGGER
+
+  """A user forked another session."""
+  FORK
+}
+
+"""One session on this server."""
+type Session {
+  """The session id: a ULID."""
+  id: ID!
+
+  """The id of the agent in the agent catalog."""
+  agentId: String!
+
+  """The display name of the agent, or null."""
+  agentName: String
+
+  """The absolute path of the working folder."""
+  cwd: String!
+
+  """The title, or null when no user or session gave one."""
+  title: String
+
+  """The tags, sorted."""
+  tags: [String!]!
+
+  """The kind of the session."""
+  kind: SessionKind!
+
+  """The work state of the session."""
+  state: SessionState!
+
+  """How the session started."""
+  origin: SessionOrigin!
+
+  """
+  A subagent: its parent. A fork: the original. Else, or when you cannot see it, null.
+  """
+  parent: Session
+
+  """The session that started this root session, or null."""
+  startedBy: Session
+
+  """The subagents of this session, live or not, the newest first."""
+  children: [Session!]!
+
+  """The time the session started."""
+  createdAt: DateTime!
+
+  """The time of the last change of its facts or state."""
+  updatedAt: DateTime!
+
+  """The last final message, cut short, or null."""
+  lastSummary: String
+
+  """True when the session is in memory now."""
+  isLive: Boolean!
+
+  """The count of the unread messages to this session."""
+  unreadCount: Int!
+}
+
+"""The session or the user that sent a message."""
+type Sender {
+  """
+  The session that sent the message, or null for a user or a session you cannot see.
+  """
+  session: Session
+
+  """The client of the user that sent it, or null."""
+  clientId: String
+}
+
+"""One message that a session or a user sent to a session."""
+type Message {
+  """The message id: a ULID. A reply names it."""
+  id: ID!
+
+  """The session or the user that sent the message."""
+  from: Sender!
+
+  """The session that the message went to."""
+  to: Session!
+
+  """The text of the message. It is untrusted input."""
+  text: String!
+
+  """The message that this message answers, or null."""
+  inReplyTo: ID
+
+  """The time the message was delivered."""
+  sentAt: DateTime!
+
+  """
+  1 for a message from a user, plus 1 for each message before it in its chain.
+  """
+  chainDepth: Int!
+
+  """True when the target session read the message."""
+  isRead: Boolean!
+}
+
+"""A filter of sessions. Each field that is set must match."""
+input SessionFilter {
+  """The absolute path of the working folder. ~ expands."""
+  cwd: String
+
+  """The id of the agent."""
+  agentId: String
+
+  """A tag that each session has."""
+  tag: String
+
+  """The kind of the sessions."""
+  kind: SessionKind
+
+  """
+  The work state of the sessions. ARCHIVED also finds the sessions that are not live.
+  """
+  state: SessionState
+
+  """Finds the subagents and the forks of this session."""
+  parentId: ID
+
+  """Finds the sessions that this session started."""
+  startedById: ID
+
+  """True to also find the sessions that are not live."""
+  includeRecorded: Boolean = false
+
+  """The most sessions to give: 1 to 100."""
+  limit: Int = 50
+}
+
+type Query {
+  """
+  The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns, their subagents, and the sessions that they started.
+  """
+  sessions(
+    """The filter. With no filter, each live session."""
+    filter: SessionFilter
+  ): [Session!]!
+
+  """One session, or null when no session that you can see has the id."""
+  session(
+    """The session id, in any letter case."""
+    id: ID!
+  ): Session
+
+  """
+  The unread messages to a session, the oldest first. The query does not mark them read: only the session itself reads its inbox. A session that you cannot see gives none.
+  """
+  inbox(
+    """The session whose messages to read."""
+    sessionId: ID!
+
+    """The most messages to give: 1 to 100."""
+    limit: Int = 50
+  ): [Message!]!
+}
