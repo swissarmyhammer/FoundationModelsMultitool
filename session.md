@@ -572,9 +572,7 @@ Result: the state, the agent, the folder, the tags, the last summary, and the co
 
 **`read inbox`**
 
-| Parameter | Type | Note |
-|-----------|------|------|
-| `limit` | `Int?` | Default 10. |
+No parameters. The directory marks every unread message read (`inbox(of:markRead:)`), so a limit would mark messages read that the model never sees.
 
 Result: each unread message to the caller: the message id, the sender (a session id, title, agent and folder, or "the user"), `inReplyTo`, and the text in a fence with the label "untrusted message". The call marks them read.
 
