@@ -2,17 +2,19 @@
 // the server and their messages for the clients of the host, over the same
 // `SessionDirectory` that the `sessions` tool reads (session.md section 11).
 //
-// The schema is in `SessionsGraphSchema.swift`, and its object types are in
-// `SessionsGraphTypes.swift`. This file holds the endpoint, the one endpoint
-// of each directory, and the coded errors.
+// The schema is in `SessionsGraphSchema.swift`, its mutations are in
+// `SessionsGraphMutations.swift`, and its object types are in
+// `SessionsGraphTypes.swift`. This file holds the endpoint, its name rules,
+// and the one endpoint of each directory.
 
 import Foundation
 import FoundationModelsExtras
 import GraphQL
 import Synchronization
 
-/// The `sessions` GraphQL endpoint: the queries of the sessions of the server
-/// and of their messages, over one ``SessionDirectory``.
+/// The `sessions` GraphQL endpoint: the queries and the mutations of the
+/// sessions of the server and of their messages, over one
+/// ``SessionDirectory``.
 ///
 /// The endpoint has the server scope. Its queries are flat root fields
 /// (EXTRAS-9 rule 5):
@@ -27,16 +29,24 @@ import Synchronization
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
 ///
+/// Its mutations (EXTRAS-9 rule 7) have the names of the code-mode verbs of
+/// the tool ops, and share their work and their correctives:
+/// `startSession`, `tagSession`, `untagSession`, `renameSession`,
+/// `archiveSession`, `sendMessage` and `replyMessage`, each with one `input`.
+/// A client acts as its user, and a call with no viewer acts as the caller
+/// session. A start from a client opens a tab only on that client (section
+/// 11.5, D90). The `changes(after:)` subscription comes with a later task.
+///
 /// An id argument reads a session id in any letter case, as the tool does,
 /// and a text that is not a session id gives `INVALID_SESSION_ID` with the
-/// corrective of the tool. The mutations and the `changes(after:)`
-/// subscription come with later tasks.
+/// corrective of the tool. Each refusal is a ``SessionsRefusal``.
 ///
 /// The visibility rule of session.md section 11.3 (EXTRAS-9 rule 4) applies
 /// to each result through ``SessionsVisibility``, the rule that the `sessions`
 /// tool reads too: the agent and a device of the user see each session, and
 /// an external client sees only the sessions that it owns, their subagents,
-/// and the sessions that they started, to any depth.
+/// and the sessions that they started, to any depth. A mutation on a session
+/// that the viewer cannot see gives the `NOT_FOUND` of the toolkit.
 ///
 /// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:)`` gives
 /// the same instance for each call over the same directory, thus each copy of
@@ -50,11 +60,13 @@ public final class SessionsGraph: GraphQLEndpoint {
 
     /// The other names that a call can write for the names of the schema
     /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
-    /// session, `sessionId` for the `id` of `session`, and `id` for the
-    /// `sessionId` of `inbox`.
+    /// session, `sessionId` for the `id` of `session`, `id` for the
+    /// `sessionId` of `inbox`, the bare verb of each mutation, and the names
+    /// of the tool op of each mutation for the fields of its input.
     static let rules = GraphQLNameRules(
         aliases: GraphQLAliasTable(
-            byType: ["Session": ["agentId": ["agent"], "cwd": ["folder"]]],
+            byType: SessionsGraphMutation.aliasTables.merging(
+                ["Session": ["agentId": ["agent"], "cwd": ["folder"]]]) { mutation, _ in mutation },
             byField: ["Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]]]))
 
     /// The name of the endpoint.
@@ -186,38 +198,4 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// The endpoint of each directory that a caller holds now, by the object
     /// identifier of the directory.
     private static let endpoints = Mutex<[ObjectIdentifier: WeakEndpoint]>([:])
-}
-
-/// The coded errors of the `sessions` endpoint, with an `UPPER_SNAKE` code in
-/// `extensions.code`, for an argument that the endpoint cannot read. A
-/// session that the viewer cannot see, or that the directory does not hold,
-/// is no error of a query: one session is `null` and a list leaves it out
-/// (EXTRAS-9 rules 4 and 5).
-enum SessionsGraphError: CodedError {
-    /// `INVALID_FOLDER`: the `cwd` of a filter is not an absolute path.
-    case invalidFolder(text: String)
-
-    /// `INVALID_SESSION_ID`: an id argument is not a session id.
-    case invalidSessionID(text: String)
-
-    /// The code of each case, for the conformance check of rule 8.
-    static let codes = [invalidFolder(text: "").code, invalidSessionID(text: "").code]
-
-    /// The code of the error.
-    var code: String {
-        switch self {
-        case .invalidFolder: "INVALID_FOLDER"
-        case .invalidSessionID: "INVALID_SESSION_ID"
-        }
-    }
-
-    /// The message of the error: what is wrong, and how to correct the call.
-    /// It is the corrective that the `sessions` tool gives for the same
-    /// argument.
-    var message: String {
-        switch self {
-        case .invalidFolder(let text): SessionsToolText.relativeFolder(text)
-        case .invalidSessionID(let text): SessionsToolText.notASessionID(text)
-        }
-    }
 }

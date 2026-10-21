@@ -226,12 +226,15 @@ enum SessionsToolText {
     /// The corrective of an error of an operation.
     ///
     /// - Parameter error: The error.
-    /// - Returns: The text of a ``SessionsToolInputError``, the corrective of
-    ///   a `SessionDirectoryError`, or a sentence that names any other error.
+    /// - Returns: The text of a ``SessionsRefusal``, the corrective of a reply
+    ///   to an unknown message, the corrective of a `SessionDirectoryError`,
+    ///   or a sentence that names any other error.
     static func corrective(for error: any Error) -> String {
         switch error {
-        case let input as SessionsToolInputError:
-            return input.correctiveText
+        case let refusal as SessionsRefusal:
+            return refusal.message
+        case let unknown as SessionsUnknownMessage:
+            return unknownMessage(unknown.id)
         case let directoryError as SessionDirectoryError:
             return corrective(for: directoryError)
         default:

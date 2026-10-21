@@ -28,6 +28,19 @@ struct SessionsToolContext: Sendable {
         ToolContext.current?.sessionID
     }
 
+    /// The caller session of an operation that acts for it.
+    ///
+    /// - Parameter opString: The op string of the operation, for the
+    ///   corrective of a call with no caller session.
+    /// - Returns: The caller session.
+    /// - Throws: ``SessionsRefusal`` for a call with no caller session.
+    func callerID(for opString: String) throws(SessionsRefusal) -> ULID {
+        guard let callerID else {
+            throw SessionsRefusal(.missingCaller, SessionsToolText.noCallerSession(opString))
+        }
+        return callerID
+    }
+
     /// Runs the work of an operation that acts for the caller session, and
     /// turns each error into a corrective.
     ///
@@ -38,11 +51,8 @@ struct SessionsToolContext: Sendable {
     /// - Returns: What `body` gave, a corrective for a call with no caller
     ///   session, or the corrective of the error that `body` threw.
     func answer(asCallerOf opString: String, _ body: (ULID) async throws -> String) async -> String {
-        guard let callerID else {
-            return SessionsToolText.noCallerSession(opString)
-        }
         do {
-            return try await body(callerID)
+            return try await body(try callerID(for: opString))
         } catch {
             return SessionsToolText.corrective(for: error)
         }

@@ -309,3 +309,117 @@ struct SessionsGraphInboxArguments: Codable, Sendable {
     /// The most messages to give, or `nil` for the default.
     let limit: Int?
 }
+
+// MARK: - Mutations
+
+/// The `SendOutcome` enum: what happened to a message at one target.
+enum SessionsGraphOutcome: String, Codable, CaseIterable, Sendable {
+    /// The target was idle: the message starts a turn.
+    case delivered = "DELIVERED"
+
+    /// The target works: the message waits for the end of its turn.
+    case queued = "QUEUED"
+
+    /// An agent address started a new session with the message.
+    case started = "STARTED"
+
+    /// A loop guard, an archived target or no match refused the message.
+    case refused = "REFUSED"
+
+    /// Makes the enum value of an outcome of the directory.
+    ///
+    /// - Parameter outcome: The outcome of the directory.
+    init(_ outcome: SessionSendReceipt.Outcome) {
+        switch outcome {
+        case .delivered: self = .delivered
+        case .queued: self = .queued
+        case .started: self = .started
+        case .refused: self = .refused
+        }
+    }
+}
+
+/// The `SendReceipt` object: what happened to a message at one target.
+struct SessionsGraphReceipt: Sendable {
+    /// The id of the message, or `nil` when the directory made none.
+    let messageId: ToolkitID?
+
+    /// What happened to the message.
+    let outcome: SessionsGraphOutcome
+
+    /// Why the target refused the message, or `nil`.
+    let reason: String?
+
+    /// The target session, or `nil` when no session matched the address.
+    let targetID: ULID?
+
+    /// Makes the object of a receipt of the directory.
+    ///
+    /// - Parameter receipt: The receipt.
+    init(_ receipt: SessionSendReceipt) {
+        messageId = receipt.messageID.map { ToolkitID($0.description) }
+        outcome = SessionsGraphOutcome(receipt.outcome)
+        reason = receipt.reason
+        targetID = receipt.target
+    }
+}
+
+/// The arguments of each mutation: one input object.
+struct SessionsGraphMutationArguments<Input: Codable & Sendable>: Codable, Sendable {
+    /// The input object of the mutation.
+    let input: Input
+}
+
+/// The `TagSessionInput` input object of `Mutation.tagSession`.
+struct SessionsGraphTagInput: Codable, Sendable {
+    /// The session to tag, in any letter case.
+    let id: ToolkitID
+
+    /// The tags to add.
+    let tags: [String]
+}
+
+/// The `UntagSessionInput` input object of `Mutation.untagSession`.
+struct SessionsGraphUntagInput: Codable, Sendable {
+    /// The session to untag, in any letter case.
+    let id: ToolkitID
+
+    /// The tags to remove.
+    let tags: [String]
+}
+
+/// The `RenameSessionInput` input object of `Mutation.renameSession`.
+struct SessionsGraphRenameInput: Codable, Sendable {
+    /// The session to rename, in any letter case.
+    let id: ToolkitID
+
+    /// The new title.
+    let title: String
+}
+
+/// The `ArchiveSessionInput` input object of `Mutation.archiveSession`.
+struct SessionsGraphArchiveInput: Codable, Sendable {
+    /// The session to archive, in any letter case.
+    let id: ToolkitID
+}
+
+/// The `SendMessageInput` input object of `Mutation.sendMessage`.
+struct SessionsGraphSendInput: Codable, Sendable {
+    /// The address of the message, in a form of session.md section 9.
+    let to: String
+
+    /// The text of the message.
+    let message: String
+}
+
+/// The `ReplyMessageInput` input object of `Mutation.replyMessage`.
+struct SessionsGraphReplyInput: Codable, Sendable {
+    /// The session that got the message, in any letter case.
+    let sessionId: ToolkitID
+
+    /// The id of the message to answer.
+    let inReplyTo: ToolkitID
+
+    /// The text of the reply.
+    let message: String
+}

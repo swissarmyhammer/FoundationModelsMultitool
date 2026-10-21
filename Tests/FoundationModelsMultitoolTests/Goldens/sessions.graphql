@@ -53,6 +53,21 @@ enum SessionOrigin {
   FORK
 }
 
+"""What happened to a message at one target."""
+enum SendOutcome {
+  """The target was idle: the message starts a turn."""
+  DELIVERED
+
+  """The target works: the message waits for the end of its turn."""
+  QUEUED
+
+  """An agent with no live session started one with the message."""
+  STARTED
+
+  """A loop guard, an archived target or no match refused the message."""
+  REFUSED
+}
+
 """One session on this server."""
 type Session {
   """The session id: a ULID."""
@@ -149,6 +164,23 @@ type Message {
   isRead: Boolean!
 }
 
+"""What happened to a message at one target."""
+type SendReceipt {
+  """The id of the message, or null when none was made."""
+  messageId: ID
+
+  """
+  The target session, or null for no match or a session that you cannot see.
+  """
+  target: Session
+
+  """What happened to the message."""
+  outcome: SendOutcome!
+
+  """Why the target refused the message, or null."""
+  reason: String
+}
+
 """A filter of sessions. Each field that is set must match."""
 input SessionFilter {
   """The absolute path of the working folder. ~ expands."""
@@ -181,6 +213,100 @@ input SessionFilter {
   limit: Int = 50
 }
 
+"""A new root session of an agent, with its first message."""
+input StartSessionInput {
+  """
+  The agent id. With none, the AGENT.md of the folder, else the default agent.
+  """
+  agentId: String
+
+  """
+  The absolute path of an existing folder. ~ expands. With none, the default folder.
+  """
+  cwd: String
+
+  """The first message. The new agent sees only this text."""
+  message: String!
+
+  """The tags of the new session."""
+  tags: [String!]
+
+  """The title of the new session."""
+  title: String
+}
+
+"""The tags to add to a session."""
+input TagSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """
+  The tags to add. A tag has 1 to 64 characters: letters, digits, -, _, : and .
+  """
+  tags: [String!]!
+}
+
+"""The tags to remove from a session."""
+input UntagSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """The tags to remove."""
+  tags: [String!]!
+}
+
+"""The new title of a session."""
+input RenameSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """The new title."""
+  title: String!
+}
+
+"""The session to archive."""
+input ArchiveSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  """
+  id: ID!
+}
+
+"""A message and its address."""
+input SendMessageInput {
+  """
+  The address: a session id, @agent, @agent:/path, an absolute folder path, or #tag. An external client gives a session id. A session that you cannot see is NOT_FOUND. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
+  """
+  to: String!
+
+  """The full text. The target sees only this text."""
+  message: String!
+}
+
+"""
+A reply to a message that a session got. It goes to the session that sent the message.
+"""
+input ReplyMessageInput {
+  """
+  The session that got the message. A session that you cannot see is NOT_FOUND.
+  """
+  sessionId: ID!
+
+  """
+  The id of the message to answer. The reply goes to its sender: a sender that you cannot see makes the message NOT_FOUND. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
+  """
+  inReplyTo: ID!
+
+  """The full text. The target sees only this text."""
+  message: String!
+}
+
 type Query {
   """
   The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns, their subagents, and the sessions that they started.
@@ -206,4 +332,58 @@ type Query {
     """The most messages to give: 1 to 100."""
     limit: Int = 50
   ): [Message!]!
+}
+
+type Mutation {
+  """
+  Starts a new root session of an agent. It works in the background, and only your client opens it in a tab. An external client cannot start a session.
+  """
+  startSession(
+    """The agent, the folder and the first message."""
+    input: StartSessionInput!
+  ): Session!
+
+  """Adds tags to a session. Gives the session with its tags."""
+  tagSession(
+    """The session and the tags."""
+    input: TagSessionInput!
+  ): Session!
+
+  """
+  Removes tags from a session. Gives the session with the tags that stay.
+  """
+  untagSession(
+    """The session and the tags."""
+    input: UntagSessionInput!
+  ): Session!
+
+  """Sets the title of a session."""
+  renameSession(
+    """The session and its new title."""
+    input: RenameSessionInput!
+  ): Session!
+
+  """
+  Archives a session: stops its turn and ends its work. It takes no more messages, and its transcript stays.
+  """
+  archiveSession(
+    """The session."""
+    input: ArchiveSessionInput!
+  ): Session!
+
+  """
+  Sends a message from you to a session, an agent, a folder or a tag. Gives what happened at each target. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
+  """
+  sendMessage(
+    """The address and the text."""
+    input: SendMessageInput!
+  ): [SendReceipt!]!
+
+  """
+  Replies to a message that a session got, from you. Gives what happened at each target. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
+  """
+  replyMessage(
+    """The session that got the message, the message and the text."""
+    input: ReplyMessageInput!
+  ): [SendReceipt!]!
 }

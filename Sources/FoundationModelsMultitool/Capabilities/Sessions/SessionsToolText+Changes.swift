@@ -50,12 +50,10 @@ extension SessionsToolText {
 
     /// The answer of `rename session`: the new title of the session.
     ///
-    /// - Parameters:
-    ///   - id: The session.
-    ///   - title: The new title.
+    /// - Parameter summary: The session after the call, which has a title.
     /// - Returns: The answer.
-    static func renamed(_ id: ULID, to title: String) -> String {
-        "Session \(id.ulidString) has the title \"\(title)\"."
+    static func renamed(_ summary: SessionSummary) -> String {
+        "Session \(summary.id.ulidString) has the title \"\(summary.title ?? "")\"."
     }
 
     /// The answer of `archive session`: the session, its agent and its

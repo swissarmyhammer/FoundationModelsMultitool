@@ -2,7 +2,8 @@ import Foundation
 import Testing
 
 /// The parts of one GraphQL response of an endpoint that a test reads: the
-/// `data` object, the code of each error, and the `extensions.rewrites` list.
+/// `data` object, the code and the message of each error, and the
+/// `extensions.rewrites` list.
 struct GraphQLReply {
 
     /// The `data` object, or `nil` when the response has none.
@@ -10,6 +11,9 @@ struct GraphQLReply {
 
     /// The code of each error, in order.
     let codes: [String]
+
+    /// The message of each error, in order.
+    let messages: [String]
 
     /// The `extensions.rewrites` list.
     let rewrites: [[String: Any]]
@@ -23,6 +27,7 @@ struct GraphQLReply {
         data = object["data"] as? [String: Any]
         let errors = object["errors"] as? [[String: Any]] ?? []
         codes = errors.compactMap { error in (error["extensions"] as? [String: Any])?["code"] as? String }
+        messages = errors.compactMap { error in error["message"] as? String }
         rewrites = (object["extensions"] as? [String: Any])?["rewrites"] as? [[String: Any]] ?? []
     }
 

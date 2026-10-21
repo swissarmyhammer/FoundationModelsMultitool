@@ -341,7 +341,7 @@ struct SessionsGraphQueryTests {
         let probe = GraphQLAliasProbe(query: "{ listSessions { id } }", from: "listSessions", to: "sessions")
 
         let problems = await GraphQLEndpointConformance.problems(
-            of: graph, scope: .server, probe: probe, codes: SessionsGraphError.codes,
+            of: graph, scope: .server, probe: probe, codes: SessionsRefusal.codes,
             exceptions: [GraphQLConventionException(rule: .changes, removedBy: Self.changesTask)])
 
         #expect(problems.isEmpty, "problems: \(problems)")

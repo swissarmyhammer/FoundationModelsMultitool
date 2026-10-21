@@ -87,9 +87,8 @@ extension ListSessions {
     /// The directory query of the filters of this call.
     ///
     /// - Returns: The query.
-    /// - Throws: ``SessionsToolInputError`` for a filter that the tool
-    ///   cannot read.
-    private func query() throws(SessionsToolInputError) -> SessionQuery {
+    /// - Throws: ``SessionsRefusal`` for a filter that the tool cannot read.
+    private func query() throws(SessionsRefusal) -> SessionQuery {
         let filter = SessionQuery(
             workingDirectory: try SessionsToolInput.folder(cwd),
             agentID: agent,

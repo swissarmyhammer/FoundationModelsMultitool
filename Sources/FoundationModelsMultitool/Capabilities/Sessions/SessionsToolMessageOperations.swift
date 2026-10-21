@@ -10,6 +10,10 @@
 // ``SessionsToolContext/answer(asCallerOf:_:)`` catches each error and gives
 // ``SessionsToolText/corrective(for:)``.
 //
+// The work of each send is in the extension of ``SessionsToolContext`` at the
+// end of this file, which the `sendMessage` and `replyMessage` mutations of
+// the `sessions` endpoint call too (MT-10).
+//
 // TODO(MT-7): declare the risk facts of session.md section 8.3 on each
 // operation (`send message` and `reply message` each send to another agent),
 // when MT-1 and MT-7 land.
@@ -54,7 +58,8 @@ extension SendMessage {
     ///   target took, or an error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
-            try await context.send(message, to: try SessionsToolInput.address(to), from: callerID)
+            let address = try SessionsToolInput.address(to)
+            return SessionsToolText.receipts(try await context.send(message, to: address, from: .session(callerID)))
         }
     }
 }
@@ -90,36 +95,53 @@ extension ReplyMessage {
     ///   that no target took, or an error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
-            let originalID = try SessionsToolInput.messageID(inReplyTo)
-            guard let original = try await context.directory.message(originalID, to: callerID) else {
-                return SessionsToolText.unknownMessage(originalID)
-            }
-            guard case .session(let sender) = original.from else {
-                return SessionsToolText.replyToUser(originalID)
-            }
-            return try await context.send(message, to: .session(sender), inReplyTo: originalID, from: callerID)
+            let original = try await context.replyTarget(of: inReplyTo, to: callerID)
+            let receipts = try await context.send(
+                message, to: .session(original.sender), inReplyTo: original.id, from: .session(callerID))
+            return SessionsToolText.receipts(receipts)
         }
     }
 }
 
 extension SessionsToolContext {
-    /// Sends `text` from the caller to `address`, for `send message` and
-    /// `reply message`.
+    /// Sends `text` from `sender` to `address`, for `send message`,
+    /// `reply message` and the `sendMessage` and `replyMessage` mutations.
     ///
     /// - Parameters:
     ///   - text: The text of the message.
     ///   - address: The target of the message.
     ///   - inReplyTo: The id of the message that this one answers, or `nil`.
-    ///   - callerID: The caller session, which sends the message.
-    /// - Returns: One line for each receipt, or the corrective of a send that
-    ///   no target took.
-    /// - Throws: ``SessionsToolInputError`` for a blank text, and each error
-    ///   of `send(_:)`.
+    ///   - sender: The session or the user that sends the message.
+    /// - Returns: One receipt for each target.
+    /// - Throws: ``SessionsRefusal`` for a blank text, and each error of
+    ///   `send(_:)`.
     func send(
-        _ text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from callerID: ULID
-    ) async throws -> String {
+        _ text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender
+    ) async throws -> [SessionSendReceipt] {
         let body = try SessionsToolInput.requiredText(text, parameter: SessionsToolText.messageParameter)
-        let outgoing = OutgoingSessionMessage(from: .session(callerID), to: address, text: body, inReplyTo: inReplyTo)
-        return SessionsToolText.receipts(try await directory.send(outgoing))
+        let outgoing = OutgoingSessionMessage(from: sender, to: address, text: body, inReplyTo: inReplyTo)
+        return try await directory.send(outgoing)
+    }
+
+    /// The message that a reply answers, and the session that sent it, for
+    /// `reply message` and the `replyMessage` mutation.
+    ///
+    /// - Parameters:
+    ///   - text: The text of the id of the message.
+    ///   - recipient: The session that got the message.
+    /// - Returns: The id of the message, and the session that sent it, which
+    ///   the reply goes to.
+    /// - Throws: ``SessionsRefusal`` for a text that is not a message id or
+    ///   a message from the user, ``SessionsUnknownMessage`` for an id that
+    ///   no message to `recipient` has, and each error of `message(_:to:)`.
+    func replyTarget(of text: String, to recipient: ULID) async throws -> (id: MailID, sender: ULID) {
+        let originalID = try SessionsToolInput.messageID(text)
+        guard let original = try await directory.message(originalID, to: recipient) else {
+            throw SessionsUnknownMessage(id: originalID)
+        }
+        guard case .session(let sender) = original.from else {
+            throw SessionsRefusal(.userMessage, SessionsToolText.replyToUser(originalID))
+        }
+        return (originalID, sender)
     }
 }

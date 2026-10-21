@@ -42,10 +42,26 @@ comments:
     - evidence: `swift test` 2658 tests in 226 suites passed, 0 failures, no compiler warnings; then, after a test-file-only line wrap, `swift test --filter SessionsGraph` 36 tests passed. 13 files: new Sources/.../Sessions/SessionsGraph.swift, SessionsGraphSchema.swift, SessionsGraphTypes.swift, SessionsVisibility.swift; changed SessionsTool.swift, SessionsToolContext.swift, SessionsToolInput.swift, SessionsToolOperations.swift; new Tests/.../SessionsGraphQueryTests.swift, Fixtures/GraphQLReply.swift, Fixtures/ForwardingSessionDirectory.swift, Goldens/sessions.graphql; changed Fixtures/SessionsToolFixtures.swift
     - next: /review (task left in doing, not committed)
   timestamp: 2026-10-21T14:21:54.915012+00:00
+- actor: claude-code
+  id: 01m5fe04gdjk8cszrc9swjc114
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (c272c95) — 0 findings (14 attempted, 1 refuted, 0 failed); 12 files reviewed; 8 .kanban files skipped by .reviewignore; Goldens/sessions.graphql matched no validator
+    - next: task moved to done
+  timestamp: 2026-10-21T14:31:45.421546+00:00
+- actor: claude-code
+  id: 01m5fe0fmcewmkfktqkb1qvapr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 13 files (SessionsGraph, schema, types, visibility, tool changes, tests, fixtures, golden)
+    - test: green — swift test, 2658 tests / 226 suites (run by implement)
+    - commit: c272c95
+    - review: clean — 0 findings
+  timestamp: 2026-10-21T14:31:56.812013+00:00
 depends_on:
 - 01M5F236W9NXECHBE44PTMVYQZ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb480
 title: SessionsGraph queries and visibility; SessionsTool gives it (MT-10)
 ---
 ## What

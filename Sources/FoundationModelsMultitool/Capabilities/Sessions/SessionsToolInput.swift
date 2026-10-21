@@ -7,20 +7,12 @@
 // case, as an agent id is a folder name), a tag written as `#tag`, a message
 // address in each form of session.md section 9, a message id in any letter
 // case, and space around a text. An argument with no clear intent throws a
-// ``SessionsToolInputError``, and the operation answers its corrective
-// text.
+// ``SessionsRefusal``: the operation answers its corrective text, and the
+// `sessions` endpoint gives it as a coded error.
 
 import Foundation
 import FoundationModelsExtras
 import ULID
-
-/// An argument of the `sessions` tool that the tool cannot read. The
-/// operation catches it and answers ``correctiveText``; it never leaves the
-/// tool.
-struct SessionsToolInputError: Error {
-    /// The corrective text that the model reads.
-    let correctiveText: String
-}
 
 /// The readers of the text arguments of the `sessions` tool.
 enum SessionsToolInput {
@@ -48,8 +40,8 @@ enum SessionsToolInput {
     /// - Parameter text: A session id, in any letter case, with any space
     ///   around it.
     /// - Returns: The id, or `nil` when `text` is `nil`.
-    /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID.
-    static func sessionID(_ text: String?) throws(SessionsToolInputError) -> ULID? {
+    /// - Throws: ``SessionsRefusal`` when `text` is not a ULID.
+    static func sessionID(_ text: String?) throws(SessionsRefusal) -> ULID? {
         guard let text else {
             return nil
         }
@@ -62,8 +54,8 @@ enum SessionsToolInput {
     ///   - text: A session id, in any letter case, or `nil`.
     ///   - caller: The caller session, the session of a call with no id.
     /// - Returns: The id.
-    /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID.
-    static func sessionID(_ text: String?, defaultingTo caller: ULID) throws(SessionsToolInputError) -> ULID {
+    /// - Throws: ``SessionsRefusal`` when `text` is not a ULID.
+    static func sessionID(_ text: String?, defaultingTo caller: ULID) throws(SessionsRefusal) -> ULID {
         try sessionID(text) ?? caller
     }
 
@@ -72,10 +64,10 @@ enum SessionsToolInput {
     /// - Parameter text: A session id, in any letter case, with any space
     ///   around it.
     /// - Returns: The id.
-    /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
-    ///   text names `listSessions`.
-    static func sessionID(_ text: String) throws(SessionsToolInputError) -> ULID {
-        try requiredULID(text, corrective: SessionsToolText.notASessionID)
+    /// - Throws: ``SessionsRefusal`` when `text` is not a ULID. The text
+    ///   names `listSessions`.
+    static func sessionID(_ text: String) throws(SessionsRefusal) -> ULID {
+        try requiredULID(text, kind: .invalidSessionID, corrective: SessionsToolText.notASessionID)
     }
 
     /// The message id of `text`.
@@ -83,10 +75,10 @@ enum SessionsToolInput {
     /// - Parameter text: A message id, in any letter case, with any space
     ///   around it.
     /// - Returns: The id.
-    /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
-    ///   text names `readInbox`.
-    static func messageID(_ text: String) throws(SessionsToolInputError) -> MailID {
-        MailID(try requiredULID(text, corrective: SessionsToolText.notAMessageID))
+    /// - Throws: ``SessionsRefusal`` when `text` is not a ULID. The text
+    ///   names `readInbox`.
+    static func messageID(_ text: String) throws(SessionsRefusal) -> MailID {
+        MailID(try requiredULID(text, kind: .invalidMessageID, corrective: SessionsToolText.notAMessageID))
     }
 
     /// The target of a message that `text` names (session.md section 9).
@@ -100,9 +92,9 @@ enum SessionsToolInput {
     ///
     /// - Parameter text: The address, with any space around it.
     /// - Returns: The address.
-    /// - Throws: ``SessionsToolInputError`` for a text in no form, which names
-    ///   each form.
-    static func address(_ text: String) throws(SessionsToolInputError) -> SessionAddress {
+    /// - Throws: ``SessionsRefusal`` for a text in no form, which names each
+    ///   form.
+    static func address(_ text: String) throws(SessionsRefusal) -> SessionAddress {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let id = ulid(trimmed) {
             return .session(id)
@@ -116,15 +108,15 @@ enum SessionsToolInput {
         if trimmed.hasPrefix(agentPrefix), let agent = try agentAddress(bare(trimmed, prefix: agentPrefix)) {
             return agent
         }
-        throw SessionsToolInputError(correctiveText: SessionsToolText.notAnAddress(text))
+        throw SessionsRefusal(.invalidAddress, SessionsToolText.notAnAddress(text))
     }
 
     /// The agent address of the text after the `@` of an address.
     ///
     /// - Parameter text: `agent` or `agent:/path`.
     /// - Returns: The address, or `nil` when the text names no agent.
-    /// - Throws: ``SessionsToolInputError`` from ``folder(_:)``.
-    private static func agentAddress(_ text: String) throws(SessionsToolInputError) -> SessionAddress? {
+    /// - Throws: ``SessionsRefusal`` from ``folder(_:)``.
+    private static func agentAddress(_ text: String) throws(SessionsRefusal) -> SessionAddress? {
         let separator = text.indices.last { index in
             text[index] == folderSeparator && isPath(String(text[text.index(after: index)...]))
         }
@@ -155,16 +147,17 @@ enum SessionsToolInput {
     ///
     /// - Parameters:
     ///   - text: The text of an id argument.
+    ///   - kind: The kind of the refusal of a text that is not a ULID.
     ///   - corrective: The corrective for a text that is not a ULID, given the
     ///     text as written.
     /// - Returns: The ULID.
-    /// - Throws: ``SessionsToolInputError`` with the text of `corrective` when
-    ///   `text` is not a ULID.
+    /// - Throws: ``SessionsRefusal`` of `kind`, with the text of `corrective`,
+    ///   when `text` is not a ULID.
     private static func requiredULID(
-        _ text: String, corrective: (String) -> String
-    ) throws(SessionsToolInputError) -> ULID {
+        _ text: String, kind: SessionsRefusal.Kind, corrective: (String) -> String
+    ) throws(SessionsRefusal) -> ULID {
         guard let id = ulid(text) else {
-            throw SessionsToolInputError(correctiveText: corrective(text))
+            throw SessionsRefusal(kind, corrective(text))
         }
         return id
     }
@@ -173,15 +166,15 @@ enum SessionsToolInput {
     ///
     /// - Parameter path: An absolute path, or a path that starts with `~`.
     /// - Returns: The folder, or `nil` when `path` is `nil`.
-    /// - Throws: ``SessionsToolInputError`` for a relative path.
-    static func folder(_ path: String?) throws(SessionsToolInputError) -> URL? {
+    /// - Throws: ``SessionsRefusal`` for a relative path.
+    static func folder(_ path: String?) throws(SessionsRefusal) -> URL? {
         guard let path else {
             return nil
         }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let expanded = trimmed.hasPrefix(homePrefix) ? NSString(string: trimmed).expandingTildeInPath : trimmed
         guard expanded.hasPrefix(rootPrefix) else {
-            throw SessionsToolInputError(correctiveText: SessionsToolText.relativeFolder(path))
+            throw SessionsRefusal(.invalidFolder, SessionsToolText.relativeFolder(path))
         }
         return URL(fileURLWithPath: expanded, isDirectory: true)
     }
@@ -190,8 +183,8 @@ enum SessionsToolInput {
     ///
     /// - Parameter text: A kind, in any letter case.
     /// - Returns: The kind, or `nil` when `text` is `nil`.
-    /// - Throws: ``SessionsToolInputError`` for a text that names no kind.
-    static func kind(_ text: String?) throws(SessionsToolInputError) -> SessionKind? {
+    /// - Throws: ``SessionsRefusal`` for a text that names no kind.
+    static func kind(_ text: String?) throws(SessionsRefusal) -> SessionKind? {
         try value(of: text, among: SessionKind.allCases, parameter: SessionsToolText.kindParameter)
     }
 
@@ -199,8 +192,8 @@ enum SessionsToolInput {
     ///
     /// - Parameter text: A state, in any letter case.
     /// - Returns: The state, or `nil` when `text` is `nil`.
-    /// - Throws: ``SessionsToolInputError`` for a text that names no state.
-    static func state(_ text: String?) throws(SessionsToolInputError) -> SessionState? {
+    /// - Throws: ``SessionsRefusal`` for a text that names no state.
+    static func state(_ text: String?) throws(SessionsRefusal) -> SessionState? {
         try value(of: text, among: SessionState.allCases, parameter: SessionsToolText.stateParameter)
     }
 
@@ -236,11 +229,11 @@ enum SessionsToolInput {
     ///
     /// - Parameter texts: The tags.
     /// - Returns: The tags.
-    /// - Throws: ``SessionsToolInputError`` when no text is a tag.
-    static func tags(_ texts: [String]) throws(SessionsToolInputError) -> Set<String> {
+    /// - Throws: ``SessionsRefusal`` when no text is a tag.
+    static func tags(_ texts: [String]) throws(SessionsRefusal) -> Set<String> {
         let tags = tagSet(texts)
         guard !tags.isEmpty else {
-            throw SessionsToolInputError(correctiveText: SessionsToolText.noTags)
+            throw SessionsRefusal(.missingTags, SessionsToolText.noTags)
         }
         return tags
     }
@@ -251,10 +244,10 @@ enum SessionsToolInput {
     ///   - text: The text of the argument.
     ///   - parameter: The name of the argument, for the corrective.
     /// - Returns: The text with no space around it.
-    /// - Throws: ``SessionsToolInputError`` for a text that holds only space.
-    static func requiredText(_ text: String, parameter: String) throws(SessionsToolInputError) -> String {
+    /// - Throws: ``SessionsRefusal`` for a text that holds only space.
+    static func requiredText(_ text: String, parameter: String) throws(SessionsRefusal) -> String {
         guard let value = nonBlank(text) else {
-            throw SessionsToolInputError(correctiveText: SessionsToolText.blankText(parameter))
+            throw SessionsRefusal(.blankText, SessionsToolText.blankText(parameter))
         }
         return value
     }
@@ -322,17 +315,18 @@ enum SessionsToolInput {
     ///   - values: Each case of the type.
     ///   - parameter: The name of the argument, for the corrective.
     /// - Returns: The case, or `nil` when `text` is `nil`.
-    /// - Throws: ``SessionsToolInputError`` for a text that names no case.
+    /// - Throws: ``SessionsRefusal`` for a text that names no case.
     private static func value<Value: RawRepresentable>(
         of text: String?, among values: [Value], parameter: String
-    ) throws(SessionsToolInputError) -> Value? where Value.RawValue == String {
+    ) throws(SessionsRefusal) -> Value? where Value.RawValue == String {
         guard let text else {
             return nil
         }
         let wanted = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard let match = values.first(where: { $0.rawValue.lowercased() == wanted }) else {
-            throw SessionsToolInputError(
-                correctiveText: SessionsToolText.unknownValue(text, parameter: parameter, allowed: values.map(\.rawValue)))
+            throw SessionsRefusal(
+                .invalidValue,
+                SessionsToolText.unknownValue(text, parameter: parameter, allowed: values.map(\.rawValue)))
         }
         return match
     }

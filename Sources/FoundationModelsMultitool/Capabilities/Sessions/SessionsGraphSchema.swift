@@ -36,8 +36,8 @@ struct SessionsGraphResolver: Sendable {
     ///   - arguments: The filter.
     /// - Returns: The sessions that match the filter and that the viewer can
     ///   see, the newest first.
-    /// - Throws: A ``SessionsGraphError`` for a filter that the endpoint
-    ///   cannot read, or an error of the directory.
+    /// - Throws: A ``SessionsRefusal`` for a filter that the endpoint cannot
+    ///   read, or an error of the directory.
     func sessions(
         context: SessionsGraphContext, arguments: SessionsGraphSessionsArguments
     ) async throws -> [SessionsGraphSession] {
@@ -52,8 +52,8 @@ struct SessionsGraphResolver: Sendable {
     ///   - arguments: The session id.
     /// - Returns: The session, or `nil` when no session has the id or the
     ///   viewer cannot see it.
-    /// - Throws: ``SessionsGraphError/invalidSessionID(text:)`` for an id that
-    ///   is not a session id, or an error of the directory.
+    /// - Throws: ``SessionsRefusal`` for an id that is not a session id, or
+    ///   an error of the directory.
     func session(
         context: SessionsGraphContext, arguments: SessionsGraphSessionArguments
     ) async throws -> SessionsGraphSession? {
@@ -70,8 +70,8 @@ struct SessionsGraphResolver: Sendable {
     ///   - arguments: The session id and the limit.
     /// - Returns: The messages, at most the limit of them, or none when no
     ///   session has the id or the viewer cannot see it.
-    /// - Throws: ``SessionsGraphError/invalidSessionID(text:)`` for an id that
-    ///   is not a session id, or an error of the directory.
+    /// - Throws: ``SessionsRefusal`` for an id that is not a session id, or
+    ///   an error of the directory.
     func inbox(
         context: SessionsGraphContext, arguments: SessionsGraphInboxArguments
     ) async throws -> [SessionsGraphMessage] {
@@ -180,12 +180,11 @@ extension SessionsGraphFilter {
     /// The directory query of this filter, with the rules of `list sessions`.
     ///
     /// - Returns: The query.
-    /// - Throws: ``SessionsGraphError/invalidFolder(text:)`` for a relative
-    ///   `cwd`, ``SessionsGraphError/invalidSessionID(text:)`` for an id that
+    /// - Throws: ``SessionsRefusal`` for a relative `cwd`, or for an id that
     ///   is not a session id.
-    func query() throws(SessionsGraphError) -> SessionQuery {
+    func query() throws(SessionsRefusal) -> SessionQuery {
         let filter = SessionQuery(
-            workingDirectory: try Self.folder(cwd),
+            workingDirectory: try SessionsToolInput.folder(cwd),
             agentID: agentId,
             tag: tag,
             kind: kind?.kind,
@@ -196,38 +195,20 @@ extension SessionsGraphFilter {
             filter, includeRecorded: includeRecorded, limit: limit,
             defaultingTo: SessionsGraphResolver.defaultListLimit)
     }
-
-    /// The working folder of a `cwd`, as `list sessions` reads it.
-    ///
-    /// - Parameter path: The path, or `nil`.
-    /// - Returns: The folder, or `nil` for no path.
-    /// - Throws: ``SessionsGraphError/invalidFolder(text:)`` for a relative
-    ///   path.
-    private static func folder(_ path: String?) throws(SessionsGraphError) -> URL? {
-        do {
-            return try SessionsToolInput.folder(path)
-        } catch {
-            throw .invalidFolder(text: path ?? "")
-        }
-    }
 }
 
 /// The readers of the arguments of the `sessions` endpoint: the readers of
-/// the `sessions` tool, with the coded errors of the endpoint.
+/// the `sessions` tool, whose refusals are the coded errors of the endpoint.
 enum SessionsGraphInput {
     /// The session id of an id argument, in any letter case, as the
     /// `sessions` tool reads it.
     ///
     /// - Parameter id: The id argument.
     /// - Returns: The session id.
-    /// - Throws: ``SessionsGraphError/invalidSessionID(text:)`` when the id is
-    ///   not a session id.
-    static func sessionID(_ id: ToolkitID) throws(SessionsGraphError) -> ULID {
-        do {
-            return try SessionsToolInput.sessionID(id.text)
-        } catch {
-            throw .invalidSessionID(text: id.text)
-        }
+    /// - Throws: ``SessionsRefusal`` with the code `INVALID_SESSION_ID` when
+    ///   the id is not a session id.
+    static func sessionID(_ id: ToolkitID) throws(SessionsRefusal) -> ULID {
+        try SessionsToolInput.sessionID(id.text)
     }
 }
 
@@ -246,9 +227,13 @@ struct SessionsGraphAPI: API {
     let schema: Schema<SessionsGraphResolver, SessionsGraphContext>
 
     /// One type of the schema: an enum, an object type or an input object.
-    private typealias SchemaType = TypeComponent<SessionsGraphResolver, SessionsGraphContext>
+    typealias SchemaType = TypeComponent<SessionsGraphResolver, SessionsGraphContext>
 
-    /// Builds the schema of the endpoint.
+    /// One root field of the schema: a query or a mutation.
+    typealias SchemaField = FieldComponent<SessionsGraphResolver, SessionsGraphContext>
+
+    /// Builds the schema of the endpoint. The mutations and their types are
+    /// in `SessionsGraphMutations.swift`.
     ///
     /// - Returns: The schema.
     /// - Throws: An error of the schema builder.
@@ -260,15 +245,33 @@ struct SessionsGraphAPI: API {
                 kindEnum()
                 stateEnum()
                 originEnum()
+                outcomeEnum()
                 sessionType()
                 senderType()
                 messageType()
+                receiptType()
                 filterInput()
+                startInput()
+                tagInput()
+                untagInput()
+                renameInput()
+                archiveInput()
+                sendInput()
+                replyInput()
             }
             .addQuery {
                 sessionsField()
                 sessionField()
                 inboxField()
+            }
+            .addMutation {
+                startSessionField()
+                tagSessionField()
+                untagSessionField()
+                renameSessionField()
+                archiveSessionField()
+                sendMessageField()
+                replyMessageField()
             }
             .build()
     }
