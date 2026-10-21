@@ -14,6 +14,10 @@ comments:
   id: 01m5fcdnbj65h1eefzv7n389px
   text: 'Per-package record — agents: DONE. FoundationModelsAgents origin/main 712bcbb (AG-8a 0579ae2/d700d4c, AG-8b cec9897/5a3706e, AG-8c pushed after the user overrode a review rule that asked for `private` on cross-type members). Conformance passes with no exceptions. 664 tests green.'
   timestamp: 2026-10-21T14:04:11.506484+00:00
+- actor: claude-code
+  id: 01m5g2ntx5z3fbhjwk4pt7f22t
+  text: 'skills: the subscription alias probe cleanup is done (Skills 325045e, test b9270e9). The conformance check covers both the query and the subscription alias probes and reports no problems, with no exceptions.'
+  timestamp: 2026-10-21T20:33:08.005230+00:00
 position_column: todo
 position_ordinal: 8a80
 title: 'Coordinate: GraphQL endpoint conventions across the family (EXTRAS-9, D115)'
