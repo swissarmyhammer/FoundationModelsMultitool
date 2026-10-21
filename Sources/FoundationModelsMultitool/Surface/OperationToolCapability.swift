@@ -27,13 +27,11 @@ struct OperationToolCapability: Capability {
 
     /// The one tool of this capability. The registry mounts one verb for
     /// each operation of it.
+    ///
+    /// The `Capability` default of `graphQLEndpoints` reads this list, so it
+    /// gives the endpoints of ``tool`` itself when it is a
+    /// `GraphQLEndpointTool`, as `SettingsTool` is. The registry reads them
+    /// before it replaces ``tool`` with one `OperationVerbTool` for each
+    /// operation, because no verb is a `GraphQLEndpointTool`.
     var tools: [any Tool] { [tool] }
-
-    /// The endpoints of ``tool`` when it is a `GraphQLEndpointTool`, as
-    /// `SettingsTool` is. Read from the tool itself, because the registry
-    /// replaces it with one `OperationVerbTool` for each operation, and no
-    /// verb is a `GraphQLEndpointTool`.
-    var graphQLEndpoints: [any GraphQLEndpoint] {
-        (tool as? any GraphQLEndpointTool)?.graphQLEndpoints ?? []
-    }
 }

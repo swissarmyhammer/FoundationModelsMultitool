@@ -361,33 +361,28 @@ extension MultiTool {
 
         // MARK: - GraphQL endpoints
 
-        /// The name and the scope of one endpoint: the key under which a host
-        /// keeps one endpoint (D77).
-        private struct EndpointKey: Hashable {
-            /// The name of the endpoint.
-            let name: String
-
-            /// The scope of the endpoint.
-            let scope: GraphQLEndpointScope
-        }
-
         /// The GraphQL endpoints of every capability, in capability order,
         /// with one endpoint for each name and scope.
         ///
         /// Read from the capabilities of ``registrations``, before the
         /// expansion replaces each operation tool with its verbs. When two
-        /// endpoints share a name and a scope, the first in capability order
-        /// stays, as the host keeps the first (D77).
+        /// endpoints share a name and a scope — the key under which a host
+        /// keeps one endpoint — the first in capability order stays, as the
+        /// host keeps the first (D77).
         ///
         /// - Returns: the endpoints, in capability order.
         private func capabilityEndpoints() -> [any GraphQLEndpoint] {
-            var seen: Set<EndpointKey> = []
-            return registrations
-                .flatMap { registration -> [any GraphQLEndpoint] in
-                    guard case .capability(let capability) = registration else { return [] }
-                    return capability.graphQLEndpoints
+            let endpoints = registrations.flatMap { registration -> [any GraphQLEndpoint] in
+                guard case .capability(let capability) = registration else { return [] }
+                return capability.graphQLEndpoints
+            }
+            return endpoints.enumerated()
+                .filter { index, endpoint in
+                    !endpoints[..<index].contains { earlier in
+                        earlier.name == endpoint.name && earlier.scope == endpoint.scope
+                    }
                 }
-                .filter { endpoint in seen.insert(EndpointKey(name: endpoint.name, scope: endpoint.scope)).inserted }
+                .map(\.element)
         }
 
         // MARK: - Rendering
