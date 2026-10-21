@@ -22,18 +22,6 @@ import ULID
 struct SessionsToolReadTests {
     // MARK: - Shared test constants
 
-    /// The fixed time of each summary of a case.
-    private static let fixedDate = Date(timeIntervalSince1970: 1_800_000_000)
-
-    /// The working folder of each registered session.
-    private static let workingFolder = URL(fileURLWithPath: "/work/project")
-
-    /// The agent id of each registered session.
-    private static let agentID = "coder"
-
-    /// The display name of the agent of each registered session.
-    private static let agentName = "Coder"
-
     /// The tag of the tagged session.
     private static let reviewTag = "review"
 
@@ -73,30 +61,8 @@ struct SessionsToolReadTests {
 
     // MARK: - Helpers
 
-    /// A live, idle root session of ``agentID`` in ``workingFolder``.
-    ///
-    /// - Parameters:
-    ///   - id: The session id.
-    ///   - tags: The tags of the session.
-    ///   - title: The title of the session.
-    /// - Returns: The summary.
-    private static func summary(id: ULID = ULID(), tags: Set<String> = [], title: String? = nil) -> SessionSummary {
-        SessionSummary(
-            id: id, agentID: agentID, agentName: agentName, workingDirectory: workingFolder, title: title, tags: tags,
-            kind: .root, state: .idle, origin: .client, createdAt: fixedDate, updatedAt: fixedDate, isLive: true)
-    }
-
-    /// The `op` payload of one operation with its fields.
-    ///
-    /// - Parameters:
-    ///   - op: The op string.
-    ///   - fields: The fields of the operation.
-    /// - Returns: The payload.
-    private static func payload(_ op: String, _ fields: [(String, any ConvertibleToGeneratedContent)] = [])
-        -> GeneratedContent
-    {
-        GeneratedContent(properties: [("op", op)] + fields, uniquingKeysWith: { _, new in new })
-    }
+    /// The shared fixtures of the `sessions` tool tests.
+    private typealias Fixtures = SessionsToolFixtures
 
     /// Sends ``messageText``, or `text`, from `sender` to `target`.
     ///
@@ -113,34 +79,17 @@ struct SessionsToolReadTests {
         _ = try await directory.send(OutgoingSessionMessage(from: .session(sender), to: .session(target), text: text))
     }
 
-    /// Runs `body` with the context of a stub run bound, after it registers a
-    /// session with the id of that run in `directory`.
-    ///
-    /// - Parameters:
-    ///   - directory: The directory that gets the caller session.
-    ///   - body: The work that runs as the caller, given the caller id.
-    /// - Returns: What `body` returned.
-    /// - Throws: What the stub run or `body` throws.
-    private static func asCaller<Result>(
-        in directory: InMemorySessionDirectory, _ body: (ULID) async throws -> Result
-    ) async throws -> Result {
-        try await withOuterRunContext { context in
-            directory.register(summary(id: context.sessionID))
-            return try await ToolContext.$current.withValue(context) { try await body(context.sessionID) }
-        }
-    }
-
     // MARK: - list sessions
 
     @Test("list sessions gives one line for each session, and marks the caller with (you)")
     func listSessionsListsEachSessionAndMarksTheCaller() async throws {
         let directory = InMemorySessionDirectory()
-        let other = Self.summary(tags: [Self.reviewTag], title: Self.reviewTitle)
+        let other = Fixtures.summary(tags: [Self.reviewTag], title: Self.reviewTitle)
         directory.register(other)
         let tool = try SessionsTool(directory: directory)
 
-        let (output, callerID) = try await Self.asCaller(in: directory) { callerID in
-            (try await tool.call(arguments: Self.payload("list sessions")), callerID)
+        let (output, callerID) = try await Fixtures.asCaller(in: directory) { callerID in
+            (try await tool.call(arguments: Fixtures.payload("list sessions")), callerID)
         }
 
         let lines = output.split(separator: "\n").map(String.init)
@@ -150,17 +99,17 @@ struct SessionsToolReadTests {
         #expect(!otherLine.contains(Self.youMark))
         #expect(otherLine.contains(Self.reviewTitle))
         #expect(otherLine.contains(Self.reviewTag))
-        #expect(otherLine.contains(Self.agentID))
-        #expect(otherLine.contains(Self.workingFolder.path))
+        #expect(otherLine.contains(Fixtures.agentID))
+        #expect(otherLine.contains(Fixtures.workingFolder.path))
     }
 
     @Test("list sessions with a tag no session has gives \"No sessions match.\"")
     func listSessionsWithNoMatchSaysSo() async throws {
         let directory = InMemorySessionDirectory()
-        directory.register(Self.summary())
+        directory.register(Fixtures.summary())
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await tool.call(arguments: Self.payload("list sessions", [("tag", Self.reviewTag)]))
+        let output = try await tool.call(arguments: Fixtures.payload("list sessions", [("tag", Self.reviewTag)]))
 
         #expect(output == Self.noMatchText)
     }
@@ -168,11 +117,11 @@ struct SessionsToolReadTests {
     @Test("list sessions with a relative cwd gives a corrective and lists nothing")
     func listSessionsWithARelativeFolderIsACorrective() async throws {
         let directory = InMemorySessionDirectory()
-        let session = Self.summary()
+        let session = Fixtures.summary()
         directory.register(session)
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await tool.call(arguments: Self.payload("list sessions", [("cwd", "project")]))
+        let output = try await tool.call(arguments: Fixtures.payload("list sessions", [("cwd", "project")]))
 
         #expect(output.contains("absolute"), "output was: \(output)")
         #expect(!output.contains(session.id.ulidString))
@@ -181,14 +130,14 @@ struct SessionsToolReadTests {
     @Test("list sessions with state Archived, in any letter case, also finds the recorded sessions, with no includeRecorded")
     func listSessionsOfArchivedStateIncludesRecordedSessions() async throws {
         let directory = InMemorySessionDirectory()
-        let live = Self.summary()
+        let live = Fixtures.summary()
         directory.register(live)
-        let archived = Self.summary()
+        let archived = Fixtures.summary()
         directory.register(archived)
         _ = try await directory.archive(archived.id, by: .user(clientID: "test"))
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await tool.call(arguments: Self.payload("list sessions", [("state", "Archived")]))
+        let output = try await tool.call(arguments: Fixtures.payload("list sessions", [("state", "Archived")]))
 
         #expect(output.contains(archived.id.ulidString), "output was: \(output)")
         #expect(!output.contains(live.id.ulidString))
@@ -199,19 +148,19 @@ struct SessionsToolReadTests {
     @Test("check session gives the state, the agent, the folder, the tags, the last summary and the unread count")
     func checkSessionGivesTheFactsOfTheSession() async throws {
         let directory = InMemorySessionDirectory()
-        let other = Self.summary(tags: [Self.reviewTag], title: Self.reviewTitle)
+        let other = Fixtures.summary(tags: [Self.reviewTag], title: Self.reviewTitle)
         directory.register(other)
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await Self.asCaller(in: directory) { callerID in
+        let output = try await Fixtures.asCaller(in: directory) { callerID in
             try await Self.send(from: other.id, to: callerID, in: directory)
             try directory.finishTurn(of: other.id, lastSummary: Self.lastSummary)
-            return try await tool.call(arguments: Self.payload("check session", [("id", other.id.ulidString)]))
+            return try await tool.call(arguments: Fixtures.payload("check session", [("id", other.id.ulidString)]))
         }
 
         #expect(output.contains(SessionState.idle.rawValue), "output was: \(output)")
-        #expect(output.contains(Self.agentID))
-        #expect(output.contains(Self.workingFolder.path))
+        #expect(output.contains(Fixtures.agentID))
+        #expect(output.contains(Fixtures.workingFolder.path))
         #expect(output.contains(Self.reviewTag))
         #expect(output.contains(Self.lastSummary))
         #expect(output.contains("Unread messages from it to you: 1"), "output was: \(output)")
@@ -220,12 +169,12 @@ struct SessionsToolReadTests {
     @Test("check session reads a session id in lower case")
     func checkSessionReadsALowerCaseID() async throws {
         let directory = InMemorySessionDirectory()
-        let session = Self.summary(title: Self.reviewTitle)
+        let session = Fixtures.summary(title: Self.reviewTitle)
         directory.register(session)
         let tool = try SessionsTool(directory: directory)
 
         let output = try await tool.call(
-            arguments: Self.payload("check session", [("id", session.id.ulidString.lowercased())]))
+            arguments: Fixtures.payload("check session", [("id", session.id.ulidString.lowercased())]))
 
         #expect(output.contains(session.id.ulidString), "output was: \(output)")
         #expect(output.contains(Self.reviewTitle))
@@ -235,7 +184,8 @@ struct SessionsToolReadTests {
     func checkSessionOfAnUnknownIDNamesListSessions() async throws {
         let tool = try SessionsTool(directory: InMemorySessionDirectory())
 
-        let output = try await tool.call(arguments: Self.payload("check session", [("id", Self.absentID.ulidString)]))
+        let output = try await tool.call(
+            arguments: Fixtures.payload("check session", [("id", Self.absentID.ulidString)]))
 
         #expect(output.contains(Self.absentID.ulidString), "output was: \(output)")
         #expect(output.contains(Self.listSessionsVerb), "output was: \(output)")
@@ -245,7 +195,7 @@ struct SessionsToolReadTests {
     func checkSessionOfAMalformedIDNamesListSessions() async throws {
         let tool = try SessionsTool(directory: InMemorySessionDirectory())
 
-        let output = try await tool.call(arguments: Self.payload("check session", [("id", Self.malformedID)]))
+        let output = try await tool.call(arguments: Fixtures.payload("check session", [("id", Self.malformedID)]))
 
         #expect(output.contains(Self.malformedID), "output was: \(output)")
         #expect(output.contains(Self.listSessionsVerb), "output was: \(output)")
@@ -256,14 +206,14 @@ struct SessionsToolReadTests {
     @Test("read inbox gives each unread message in an untrusted fence, and a second read gives none")
     func readInboxMarksTheMessagesRead() async throws {
         let directory = InMemorySessionDirectory()
-        let sender = Self.summary(title: Self.reviewTitle)
+        let sender = Fixtures.summary(title: Self.reviewTitle)
         directory.register(sender)
         let tool = try SessionsTool(directory: directory)
 
-        let (first, second) = try await Self.asCaller(in: directory) { callerID in
+        let (first, second) = try await Fixtures.asCaller(in: directory) { callerID in
             try await Self.send(from: sender.id, to: callerID, in: directory)
-            let first = try await tool.call(arguments: Self.payload("read inbox"))
-            let second = try await tool.call(arguments: Self.payload("read inbox"))
+            let first = try await tool.call(arguments: Fixtures.payload("read inbox"))
+            let second = try await tool.call(arguments: Fixtures.payload("read inbox"))
             return (first, second)
         }
 
@@ -277,13 +227,13 @@ struct SessionsToolReadTests {
     @Test("read inbox fences a message that holds a fence of its own with a longer fence")
     func readInboxFenceOutlastsTheFenceOfTheMessage() async throws {
         let directory = InMemorySessionDirectory()
-        let sender = Self.summary()
+        let sender = Fixtures.summary()
         directory.register(sender)
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await Self.asCaller(in: directory) { callerID in
+        let output = try await Fixtures.asCaller(in: directory) { callerID in
             try await Self.send(Self.fencedMessageText, from: sender.id, to: callerID, in: directory)
-            return try await tool.call(arguments: Self.payload("read inbox"))
+            return try await tool.call(arguments: Fixtures.payload("read inbox"))
         }
 
         #expect(output.contains("````\(Self.untrustedLabel)\n\(Self.fencedMessageText)\n````"), "output was: \(output)")
@@ -293,7 +243,7 @@ struct SessionsToolReadTests {
     func readInboxWithNoCallerIsACorrective() async throws {
         let tool = try SessionsTool(directory: InMemorySessionDirectory())
 
-        let output = try await tool.call(arguments: Self.payload("read inbox"))
+        let output = try await tool.call(arguments: Fixtures.payload("read inbox"))
 
         #expect(output != Self.emptyInboxText)
         #expect(output.contains("session"), "output was: \(output)")
@@ -319,12 +269,12 @@ struct SessionsToolReadTests {
     @Test("tools.sessions.listSessions, checkSession and readInbox work in one runCode snippet through withSessions")
     func theReadVerbsWorkInASnippet() async throws {
         let directory = InMemorySessionDirectory()
-        let sender = Self.summary(title: Self.reviewTitle)
+        let sender = Fixtures.summary(title: Self.reviewTitle)
         directory.register(sender)
         let tool = try SessionsTool(directory: directory)
         let multiTool = MultiTool(registry: try MultiTool.Builder().withSessions(tool).buildRegistry())
 
-        let output = try await Self.asCaller(in: directory) { callerID in
+        let output = try await Fixtures.asCaller(in: directory) { callerID in
             try await Self.send(from: sender.id, to: callerID, in: directory)
             return try await multiTool.call(
                 arguments: RunCodeArguments(

@@ -4,7 +4,8 @@
 // Each operation is an `@Operation` over ``SessionsToolContext``, in the
 // style of the `agents` tool. Each answer is plain text, and each error is a
 // corrective text, never a thrown model error: `execute(in:)` catches each
-// error and gives ``SessionsToolText/corrective(for:)``.
+// error and gives ``SessionsToolText/corrective(for:)``. The change
+// operations are in `SessionsToolChangeOperations.swift`.
 //
 // TODO(MT-7): declare the risk facts of session.md section 8.3 on each
 // operation (`list sessions`, `check session` and `read inbox` each read),
@@ -124,9 +125,7 @@ extension CheckSession {
     func execute(in context: SessionsToolContext) async throws -> String {
         do {
             let sessionID = try SessionsToolInput.sessionID(id)
-            guard let summary = try await context.directory.summary(of: sessionID) else {
-                throw SessionDirectoryError.unknownSession(sessionID)
-            }
+            let summary = try await context.existingSummary(of: sessionID)
             let callerID = context.callerID
             let unread = try await Self.unreadCount(from: sessionID, to: callerID, in: context.directory)
             return SessionsToolText.facts(of: summary, callerID: callerID, unreadFromIt: unread)
@@ -181,15 +180,10 @@ extension ReadInbox {
     /// - Returns: The messages, or "No unread messages." A corrective for a
     ///   call with no caller session, or for an error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
-        guard let callerID = context.callerID else {
-            return SessionsToolText.noCallerSession
-        }
-        do {
+        await context.answer(asCallerOf: Self.opString) { callerID in
             let messages = try await context.directory.inbox(of: callerID, markRead: true)
             let senders = try await Self.senderSummaries(of: messages, in: context.directory)
             return SessionsToolText.inbox(of: messages, senders: senders)
-        } catch {
-            return SessionsToolText.corrective(for: error)
         }
     }
 

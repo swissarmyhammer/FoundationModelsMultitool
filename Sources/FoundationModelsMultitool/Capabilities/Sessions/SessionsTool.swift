@@ -1,6 +1,6 @@
-// `SessionsTool` — the `sessions` tool: the operations that find, check and
-// read the other sessions of the server through a `SessionDirectory`
-// (session.md sections 8 and 14, MT-2 and MT-9).
+// `SessionsTool` — the `sessions` tool: the operations that find, check,
+// read, start, tag, rename and archive the sessions of the server through a
+// `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
 //
 // The tool has the shape of the `agents` tool of FoundationModelsAgents: a
 // public struct that holds an `OperationTool` of its operations. A host gives
@@ -14,17 +14,20 @@ import FoundationModelsExtras
 import Operations
 
 /// The `sessions` tool: find the sessions of the server, check one of them,
-/// and read the messages that other sessions sent to the caller session.
+/// read the messages that other sessions sent to the caller session, start a
+/// new session, tag, untag and rename a session, and archive a session.
 ///
-/// The operations are `list sessions`, `check session` and `read inbox`. In
-/// code mode each one is a verb of `tools.sessions`: `listSessions`,
-/// `checkSession` and `readInbox`. Each answer is plain text, and each error
-/// is a corrective text the model reads in the same turn, never a thrown
-/// error.
+/// The operations are `list sessions`, `check session`, `read inbox`,
+/// `start session`, `tag session`, `untag session`, `rename session` and
+/// `archive session`. In code mode each one is a verb of `tools.sessions`:
+/// `listSessions`, `checkSession`, `readInbox`, `startSession`, `tagSession`,
+/// `untagSession`, `renameSession` and `archiveSession`. Each answer is plain
+/// text, and each error is a corrective text the model reads in the same
+/// turn, never a thrown error.
 ///
 /// The caller session is `ToolContext.current?.sessionID`. A call with no
-/// `ToolContext` reads the directory, but `read inbox` then gives a
-/// corrective, because it reads the inbox of the caller.
+/// `ToolContext` reads the directory, but each operation that acts for the
+/// caller — `read inbox` and each change — then gives a corrective.
 ///
 /// **The tool is a value type, and a host copies it** (EXTRAS-9 rule 1): to
 /// the top-level tools of a session, to the registry of `runCode`, and to a
@@ -62,6 +65,11 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(ListSessions.self),
                 AnyOperation(CheckSession.self),
                 AnyOperation(ReadInbox.self),
+                AnyOperation(StartSession.self),
+                AnyOperation(TagSession.self),
+                AnyOperation(UntagSession.self),
+                AnyOperation(RenameSession.self),
+                AnyOperation(ArchiveSession.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))
     }

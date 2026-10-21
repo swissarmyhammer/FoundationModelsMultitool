@@ -32,10 +32,26 @@ comments:
     - evidence: `swift test --filter SessionsToolReadTests` 12/12 passed; full `swift test` 2573 tests in 223 suites passed, 0 failures; `swift build` no code warnings. 7 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/{SessionsTool,SessionsToolContext,SessionsToolOperations,SessionsToolInput,SessionsToolText}.swift, Sources/FoundationModelsMultitool/Surface/MultiToolBuilder+Capabilities.swift, Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift
     - next: /review
   timestamp: 2026-10-21T12:56:47.275164+00:00
+- actor: claude-code
+  id: 01m5f8yq076x104cygdhqsv2jm
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (7f2020b) — 0 findings, 0 confirmed, 1 refuted, 7 files reviewed, 6 .kanban files skipped by .reviewignore
+    - next: none; task moved to done
+  timestamp: 2026-10-21T13:03:35.943713+00:00
+- actor: claude-code
+  id: 01m5f8z56qa0q129we38x6z7bg
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 Capabilities/Sessions files, MultiToolBuilder+Capabilities.swift, SessionsToolReadTests.swift
+    - test: green — swift test, 2573 tests / 223 suites (run by implement)
+    - commit: 7f2020b (docs 3c1c359)
+    - review: clean — 0 findings
+  timestamp: 2026-10-21T13:03:50.487290+00:00
 depends_on:
 - 01M5F2FRK43MH90K2KVNK0RXQ2
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb080
 title: SessionsTool skeleton, withSessions, and the read ops (MT-2, MT-9)
 ---
 ## What
