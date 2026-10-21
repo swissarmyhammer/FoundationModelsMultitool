@@ -307,6 +307,26 @@ input ReplyMessageInput {
   message: String!
 }
 
+"""One change of one session that you can see."""
+type SessionChange {
+  """The cursor that resumes the subscription after this change."""
+  cursor: String!
+
+  """The time of the change."""
+  at: DateTime!
+
+  """The session that started: new, restored or forked."""
+  added: [ID!]!
+
+  """The session whose facts, state or inbox changed, or that was archived."""
+  changed: [ID!]!
+
+  """
+  The sessions that left the server: none, because an archived session stays.
+  """
+  removed: [ID!]!
+}
+
 type Query {
   """
   The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns, their subagents, and the sessions that they started.
@@ -332,6 +352,11 @@ type Query {
     """The most messages to give: 1 to 100."""
     limit: Int = 50
   ): [Message!]!
+
+  """
+  The cursor of the newest change. Read the sessions, then subscribe to changes after this cursor.
+  """
+  cursor: String!
 }
 
 type Mutation {
@@ -386,4 +411,16 @@ type Mutation {
     """The session that got the message, the message and the text."""
     input: ReplyMessageInput!
   ): [SendReceipt!]!
+}
+
+type Subscription {
+  """
+  The changes of the sessions that you can see, after a cursor. RESYNC_REQUIRED ends it when a change after the cursor is lost: read the sessions and the cursor again, then subscribe with that cursor.
+  """
+  changes(
+    """
+    The cursor to resume after, from the cursor query or a change. None: the changes from now.
+    """
+    after: String
+  ): SessionChange!
 }

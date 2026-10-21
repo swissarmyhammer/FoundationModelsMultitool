@@ -380,6 +380,13 @@ enum MultitoolTelemetry {
         /// other facts stand. Level: `error`.
         case hostNameReadFailed = "host name read failed"
 
+        /// The change feed of the `sessions` endpoint could not read the
+        /// chain of anchors of a changed session from the directory. The
+        /// chain of the change is then the session alone, so an external
+        /// client that sees the session only through an anchor gets no
+        /// change of it. Level: `error`.
+        case sessionAnchorChainReadFailed = "session anchor chain read failed"
+
         /// A rebuild of the surface after a change of an MCP server failed,
         /// and the old surface stays. Level: `warning`.
         case surfaceRebuildFailed = "surfaceRebuildFailed"

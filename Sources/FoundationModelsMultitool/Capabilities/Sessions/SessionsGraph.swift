@@ -3,9 +3,10 @@
 // `SessionDirectory` that the `sessions` tool reads (session.md section 11).
 //
 // The schema is in `SessionsGraphSchema.swift`, its mutations are in
-// `SessionsGraphMutations.swift`, and its object types are in
-// `SessionsGraphTypes.swift`. This file holds the endpoint, its name rules,
-// and the one endpoint of each directory.
+// `SessionsGraphMutations.swift`, its object types are in
+// `SessionsGraphTypes.swift`, and its change feed and `changes` subscription
+// are in `SessionsGraphChanges.swift`. This file holds the endpoint, its name
+// rules, and the one endpoint of each directory.
 
 import Foundation
 import FoundationModelsExtras
@@ -35,7 +36,16 @@ import Synchronization
 /// `archiveSession`, `sendMessage` and `replyMessage`, each with one `input`.
 /// A client acts as its user, and a call with no viewer acts as the caller
 /// session. A start from a client opens a tab only on that client (section
-/// 11.5, D90). The `changes(after:)` subscription comes with a later task.
+/// 11.5, D90).
+///
+/// Its changes follow EXTRAS-9 rule 9: `Query.cursor` gives the cursor of
+/// the newest change, and `Subscription.changes(after:)` gives each change
+/// after a cursor, one `SessionChange` for each event of the directory. A
+/// started session, a new root session among them, is `added`; a change of
+/// its facts, its state or its inbox, and its archive, is `changed`. A
+/// subscription gives a viewer only the changes of the sessions that it can
+/// see, and ends with `RESYNC_REQUIRED` when a change after its cursor is
+/// lost. The endpoint keeps the newest ``changeLogCapacity`` changes.
 ///
 /// An id argument reads a session id in any letter case, as the tool does,
 /// and a text that is not a session id gives `INVALID_SESSION_ID` with the
@@ -50,7 +60,8 @@ import Synchronization
 ///
 /// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:)`` gives
 /// the same instance for each call over the same directory, thus each copy of
-/// ``SessionsTool``, of each session and each fork, gives the same endpoint.
+/// ``SessionsTool``, of each session and each fork, gives the same endpoint,
+/// with one change log and one cursor.
 ///
 /// The name rewrite takes the general query verbs, for example `listSessions`
 /// for `sessions`, and the aliases of ``rules``.
@@ -58,15 +69,24 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// The name of the endpoint.
     public static let endpointName = "sessions"
 
+    /// The number of the newest changes that the endpoint keeps: a
+    /// subscription resumes after a cursor at most this many changes old,
+    /// and a subscriber that falls this many changes behind gets
+    /// `RESYNC_REQUIRED`.
+    static let changeLogCapacity = 1024
+
     /// The other names that a call can write for the names of the schema
     /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
     /// session, `sessionId` for the `id` of `session`, `id` for the
-    /// `sessionId` of `inbox`, the bare verb of each mutation, and the names
-    /// of the tool op of each mutation for the fields of its input.
+    /// `sessionId` of `inbox`, `sessionChanges` for the `changes`
+    /// subscription, the bare verb of each mutation, and the names of the
+    /// tool op of each mutation for the fields of its input.
     static let rules = GraphQLNameRules(
         aliases: GraphQLAliasTable(
-            byType: SessionsGraphMutation.aliasTables.merging(
-                ["Session": ["agentId": ["agent"], "cwd": ["folder"]]]) { mutation, _ in mutation },
+            byType: SessionsGraphMutation.aliasTables.merging([
+                "Session": ["agentId": ["agent"], "cwd": ["folder"]],
+                "Subscription": ["changes": ["sessionChanges"]],
+            ]) { mutation, _ in mutation },
             byField: ["Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]]]))
 
     /// The name of the endpoint.
@@ -81,14 +101,19 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// The directory that each call reads.
     private let directory: any SessionDirectory
 
-    /// Makes the endpoint over a directory. A caller outside this type gets
-    /// the endpoint with ``endpoint(of:)``, which makes one for each
-    /// directory.
+    /// The change log of the endpoint, which the events of ``directory``
+    /// feed from the moment the endpoint is made.
+    private let changes: SessionsGraphChangeFeed
+
+    /// Makes the endpoint over a directory, and starts its change feed. A
+    /// caller outside this type gets the endpoint with ``endpoint(of:)``,
+    /// which makes one for each directory.
     ///
     /// - Parameter directory: The directory that the `sessions` tool also
     ///   reads.
     private init(directory: any SessionDirectory) {
         self.directory = directory
+        changes = SessionsGraphChangeFeed(directory: directory, capacity: Self.changeLogCapacity)
     }
 
     /// Gives the one endpoint of `directory` (EXTRAS-9 rule 1).
@@ -147,8 +172,10 @@ public final class SessionsGraph: GraphQLEndpoint {
             formattedWith: .sortedKeys, context: context(of: viewer))
     }
 
-    /// Starts one GraphQL subscription. The schema has no subscription yet,
-    /// so the stream gives one response with the error, and then ends.
+    /// Starts one GraphQL subscription: `changes(after:)`, or its alias
+    /// `sessionChanges`. The stream gives one response for each change that
+    /// the viewer can see, and ends with one `RESYNC_REQUIRED` response when
+    /// a change after the cursor is lost.
     ///
     /// - Parameters:
     ///   - query: The subscription document.
@@ -167,13 +194,13 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The context of one call: the directory, read with the visibility of
-    /// the viewer.
+    /// the viewer, and the change feed of the endpoint.
     ///
     /// - Parameter viewer: The client that makes the call, or `nil` for the
     ///   agent.
     /// - Returns: The context.
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
-        SessionsGraphContext(sessions: SessionsVisibility(directory: directory, viewer: viewer))
+        SessionsGraphContext(sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

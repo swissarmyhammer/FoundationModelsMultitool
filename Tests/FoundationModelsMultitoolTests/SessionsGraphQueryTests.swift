@@ -23,10 +23,6 @@ struct SessionsGraphQueryTests {
 
     // MARK: - Constants
 
-    /// The task that removes the exception of rule 9: the `changes`
-    /// subscription of the endpoint.
-    private static let changesTask = "01M5F24FFN8EJB0BGPD3XRY2W9"
-
     /// The ID of a client that is not a device of the user.
     private static let externalClientId = "client-external"
 
@@ -333,16 +329,25 @@ struct SessionsGraphQueryTests {
         #expect(first !== second)
     }
 
-    /// The endpoint conforms to the toolkit conventions, and `listSessions`
-    /// rewrites to `sessions`. Rule 9 waits for the `changes` subscription.
-    @Test("the endpoint conforms, with the listSessions alias probe")
-    func theEndpointConforms() async {
-        let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())
-        let probe = GraphQLAliasProbe(query: "{ listSessions { id } }", from: "listSessions", to: "sessions")
+    /// The endpoint conforms to the toolkit conventions, rule 9 among them:
+    /// `listSessions` rewrites to `sessions`, and `sessionChanges` to
+    /// `changes`. The subscription probe resumes after the cursor that the
+    /// endpoint gave before one change, so its first response is that change.
+    @Test("the endpoint conforms, with the listSessions and sessionChanges alias probes")
+    func theEndpointConforms() async throws {
+        let directory = InMemorySessionDirectory()
+        let graph = SessionsGraph.endpoint(of: directory)
+        let cursor = try #require(try await Self.run("{ cursor }", on: graph).data?["cursor"] as? String)
+        directory.register(Fixtures.summary())
+        let probes = [
+            GraphQLAliasProbe(query: "{ listSessions { id } }", from: "listSessions", to: "sessions"),
+            GraphQLAliasProbe(
+                query: "subscription($after: String) { sessionChanges(after: $after) { cursor } }",
+                variables: ["after": .string(cursor)], from: "sessionChanges", to: "changes", kind: .subscription),
+        ]
 
         let problems = await GraphQLEndpointConformance.problems(
-            of: graph, scope: .server, probe: probe, codes: SessionsRefusal.codes,
-            exceptions: [GraphQLConventionException(rule: .changes, removedBy: Self.changesTask)])
+            of: graph, scope: .server, probes: probes, codes: SessionsRefusal.codes, clock: ManualRunClock())
 
         #expect(problems.isEmpty, "problems: \(problems)")
     }

@@ -55,7 +55,7 @@ struct SessionsVisibility: Sendable {
     /// - Returns: The summaries.
     /// - Throws: The error of the directory.
     func sessions(matching query: SessionQuery) async throws -> [SessionSummary] {
-        guard let externalViewer else {
+        guard externalViewer != nil else {
             return try await directory.sessions(matching: query)
         }
         var unbounded = query
@@ -64,7 +64,7 @@ struct SessionsVisibility: Sendable {
         // A loop and not a `filter`: each check awaits the directory, and the
         // loop stops at the limit.
         for summary in try await directory.sessions(matching: unbounded) where visible.count < query.limit {
-            if try await isVisible(summary, to: externalViewer) {
+            if try await isVisible(summary) {
                 visible.append(summary)
             }
         }
@@ -81,31 +81,59 @@ struct SessionsVisibility: Sendable {
         guard let summary = try await directory.summary(of: id) else {
             return nil
         }
-        guard let externalViewer else {
+        guard externalViewer != nil else {
             return summary
         }
-        return try await isVisible(summary, to: externalViewer) ? summary : nil
+        return try await isVisible(summary) ? summary : nil
     }
 
-    /// Tells if an external client can see a session: it owns the session,
-    /// or a session up its chain of anchors.
+    /// Tells if the viewer can see a session, from its chain of anchors.
     ///
-    /// - Parameters:
-    ///   - summary: The session.
-    ///   - client: The external client.
-    /// - Returns: `true` when the client can see the session.
+    /// This is the rule itself, with no read of the directory, so a reader
+    /// that holds the chain, for example the change feed of the `sessions`
+    /// endpoint, applies it at once. The agent and a device of the user see
+    /// each session; an external client sees a session when it owns a
+    /// session of the chain.
+    ///
+    /// - Parameter chain: The session and its anchors, as
+    ///   ``anchorChain(of:)`` gives them.
+    /// - Returns: `true` when the viewer can see the session.
+    func sees(anchorChain chain: [ULID]) -> Bool {
+        guard let externalViewer else {
+            return true
+        }
+        return chain.contains { externalViewer.owns($0.ulidString) }
+    }
+
+    /// The chain of anchors of a session: the session first, then its
+    /// anchor, the anchor of that anchor, and so on. The chain reads the
+    /// directory, and does not depend on the viewer.
+    ///
+    /// A chain that loops back ends: each session is in it one time. A
+    /// session whose anchor the directory does not hold ends the chain.
+    ///
+    /// - Parameter summary: The session.
+    /// - Returns: The ids of the chain, the session first.
     /// - Throws: The error of the directory.
-    private func isVisible(_ summary: SessionSummary, to client: GraphQLViewer) async throws -> Bool {
+    func anchorChain(of summary: SessionSummary) async throws -> [ULID] {
+        var chain: [ULID] = []
         var visited: Set<ULID> = []
         var current: SessionSummary? = summary
-        // A chain that loops back ends: each session is checked one time.
         while let session = current, visited.insert(session.id).inserted {
-            if client.owns(session.id.ulidString) {
-                return true
-            }
+            chain.append(session.id)
             current = try await anchor(of: session)
         }
-        return false
+        return chain
+    }
+
+    /// Tells if the viewer can see a session: an external client sees it
+    /// when it owns the session, or a session up its chain of anchors.
+    ///
+    /// - Parameter summary: The session.
+    /// - Returns: `true` when the viewer can see the session.
+    /// - Throws: The error of the directory.
+    private func isVisible(_ summary: SessionSummary) async throws -> Bool {
+        sees(anchorChain: try await anchorChain(of: summary))
     }
 
     /// The anchor of a session: the parent of a subagent, or the session

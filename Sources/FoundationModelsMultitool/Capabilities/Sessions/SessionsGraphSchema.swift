@@ -20,6 +20,10 @@ struct SessionsGraphContext: GraphQLRunContext {
 
     /// The sessions of the directory as the viewer of the call sees them.
     let sessions: SessionsVisibility
+
+    /// The change feed of the endpoint, for the `cursor` query and the
+    /// `changes` subscription. A subscription holds it through its context.
+    let changes: SessionsGraphChangeFeed
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -229,11 +233,12 @@ struct SessionsGraphAPI: API {
     /// One type of the schema: an enum, an object type or an input object.
     typealias SchemaType = TypeComponent<SessionsGraphResolver, SessionsGraphContext>
 
-    /// One root field of the schema: a query or a mutation.
+    /// One root field of the schema: a query, a mutation or a subscription.
     typealias SchemaField = FieldComponent<SessionsGraphResolver, SessionsGraphContext>
 
     /// Builds the schema of the endpoint. The mutations and their types are
-    /// in `SessionsGraphMutations.swift`.
+    /// in `SessionsGraphMutations.swift`, and the `cursor` query, the
+    /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
     /// - Throws: An error of the schema builder.
@@ -258,13 +263,18 @@ struct SessionsGraphAPI: API {
                 archiveInput()
                 sendInput()
                 replyInput()
+                changeType()
             }
             .addQuery {
                 sessionsField()
                 sessionField()
                 inboxField()
+                cursorField()
             }
             .addMutation(mutationFields)
+            .addSubscription {
+                changesField()
+            }
             .build()
     }
 
