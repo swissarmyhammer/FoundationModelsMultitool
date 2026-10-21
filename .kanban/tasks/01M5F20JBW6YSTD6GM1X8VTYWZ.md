@@ -34,11 +34,27 @@ comments:
     - evidence: `swift test` → 2561 tests in 222 suites passed, 0 failures, no compiler warnings (only SwiftPM's "missing creator" note for the mlx bundle); `swift test --filter SnapshotsGraphTests` → 23 passed. Files: Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsGraph.swift (new), SnapshotsGraphSchema.swift (new), SnapshotsCapability.swift; Tests/FoundationModelsMultitoolTests/SnapshotsGraphTests.swift (new), Tests/FoundationModelsMultitoolTests/Goldens/snapshots.graphql (new).
     - next: /review
   timestamp: 2026-10-21T12:10:59.069034+00:00
+- actor: claude-code
+  id: 01m5f66wyxcsx1q49wy2kp5xvz
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 2a30e09) — 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed; 4 files reviewed; .kanban/ ignored by .reviewignore; Goldens/snapshots.graphql matched no validator
+    - next: task moved to done
+  timestamp: 2026-10-21T12:15:38.461220+00:00
+- actor: claude-code
+  id: 01m5f679g22m5a2z84q1pyzk44
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SnapshotsGraph.swift, SnapshotsGraphSchema.swift, SnapshotsCapability.swift, SnapshotsGraphTests.swift, Goldens/snapshots.graphql
+    - test: green — swift test, 2561 tests / 222 suites (run by implement)
+    - commit: 2a30e09
+    - review: clean — 0 findings
+  timestamp: 2026-10-21T12:15:51.298948+00:00
 depends_on:
 - 01M5F200PV1QFFH82EK6197PXX
 - 01M5F2FRK43MH90K2KVNK0RXQ2
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffae80
 title: 'SnapshotsGraph: checkpoint queries and rollbackTimeline mutation (MT-13)'
 ---
 ## What

@@ -6,6 +6,10 @@ comments:
   id: 01m5f3www750c3haqk1h8dfrfw
   text: 'EXTRAS-10 landed (Extras f126153, on origin). Drop the interim local NOT_FOUND: use `GraphQLToolkitError.notFound(kind:id:)` from the toolkit.'
   timestamp: 2026-10-21T11:35:13.543341+00:00
+- actor: claude-code
+  id: 01m5f66f909kc3d6ssarawnmr2
+  text: 'EXTRAS-3 landed (Extras ceb37f7). Note: SessionQuery defaults to limit 20 (the tool''s list sessions); the graph''s `sessions` query must pass its own limit, 50 per session.md section 11.2. Origin type is SessionDirectoryOrigin.'
+  timestamp: 2026-10-21T12:15:24.448166+00:00
 depends_on:
 - 01M5F236W9NXECHBE44PTMVYQZ
 position_column: todo
