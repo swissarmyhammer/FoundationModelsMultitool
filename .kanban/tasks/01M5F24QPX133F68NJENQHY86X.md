@@ -6,6 +6,10 @@ comments:
   id: 01m5f66ypptpxv5wjyf7jc01wt
   text: 'Per-package record — skills: DONE. FoundationModelsSkills origin/main d694b08 (3bf828d graph, f0f7244 tool conformance, 9711ce2 changes/cursor). Conformance passes with codes: [] and exceptions: [] against Extras 9c47e10. 690 tests green.'
   timestamp: 2026-10-21T12:15:40.246830+00:00
+- actor: claude-code
+  id: 01m5f691yb717mcjft77pb5csj
+  text: 'ACPAgent owns the end-to-end check as ^y673pyv: a composed session''s top-level tools give the settings and snapshots endpoints (name, version, scope). It lands with ACPAgent''s Extras+Multitool update. The default snapshots resolver (session id = session key) fits: ACPAgent''s snapshot key is the ACP session id raw value (AgentHooks.swift:115, SessionLifecycle.swift:64).'
+  timestamp: 2026-10-21T12:16:49.099412+00:00
 position_column: todo
 position_ordinal: 8a80
 title: 'Coordinate: GraphQL endpoint conventions across the family (EXTRAS-9, D115)'

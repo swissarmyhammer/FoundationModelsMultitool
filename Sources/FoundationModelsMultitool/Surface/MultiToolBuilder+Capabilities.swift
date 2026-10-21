@@ -295,4 +295,25 @@ extension MultiTool.Builder {
     public func withOperationTool(noun: String, tool: any OperationDescribing) -> Self {
         withCapability(OperationToolCapability(noun: noun, tool: tool))
     }
+
+    /// Queues the `sessions` tool of the session under the noun `sessions`:
+    /// each operation of `tool` becomes one verb, `tools.sessions.listSessions`,
+    /// `tools.sessions.checkSession` and `tools.sessions.readInbox`.
+    ///
+    /// **Sessions is OFF by default.** A builder that never calls this
+    /// renders no `tools.sessions` namespace.
+    ///
+    /// The host gives the same instance that is a top-level tool of the
+    /// session (session.md MT-9, D76). A call of a verb goes through the
+    /// registry and the `runCode` path, so the check of the snippet sees it; a
+    /// direct call of the top-level tool does not.
+    ///
+    /// The noun is owned, as for ``withOperationTool(noun:tool:)``: a second
+    /// registration under `sessions` makes `buildRegistry()` fail.
+    ///
+    /// - Parameter tool: The `sessions` tool of the session.
+    @discardableResult
+    public func withSessions(_ tool: SessionsTool) -> Self {
+        withOperationTool(noun: SessionsTool.toolName, tool: tool)
+    }
 }
