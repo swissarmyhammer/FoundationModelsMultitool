@@ -91,7 +91,7 @@ extension ReplyMessage {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let originalID = try SessionsToolInput.messageID(inReplyTo)
-            guard let original = try await context.receivedMessage(originalID, by: callerID) else {
+            guard let original = try await context.directory.message(originalID, to: callerID) else {
                 return SessionsToolText.unknownMessage(originalID)
             }
             guard case .session(let sender) = original.from else {

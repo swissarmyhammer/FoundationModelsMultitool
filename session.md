@@ -463,6 +463,10 @@ public protocol SessionDirectory: Sendable {
     /// The messages to `id` that are not read. With `markRead`, they become
     /// read, and a queued message does not start a turn later.
     func inbox(of id: ULID, markRead: Bool) async throws -> [SessionMessage]
+    /// The message `id` that went to `recipient`, read or not, or `nil` when
+    /// no message has the id or it went to another session. It marks nothing
+    /// read. `reply message` finds the sender of `inReplyTo` with it.
+    func message(_ id: MailID, to recipient: ULID) async throws -> SessionMessage?
     /// Ends the session `id` (D68): stops a running turn, removes it from the
     /// live list, marks it archived in its facts, and sends `archived`.
     /// `by` is the session or the user that archives it, for the audit.

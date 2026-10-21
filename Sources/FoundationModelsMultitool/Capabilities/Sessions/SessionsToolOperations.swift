@@ -175,8 +175,8 @@ extension ReadInbox {
     /// "untrusted message".
     ///
     /// The directory marks each unread message read in one call, thus the
-    /// answer holds each of them. The record of the context keeps each one,
-    /// thus `reply message` can answer it.
+    /// answer holds each of them. The directory still gives each one by its
+    /// id, read or not, thus `reply message` can answer it.
     ///
     /// - Parameter context: The shared context of the tool.
     /// - Returns: The messages, or "No unread messages." A corrective for a
@@ -184,7 +184,6 @@ extension ReadInbox {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let messages = try await context.directory.inbox(of: callerID, markRead: true)
-            await context.receivedMessages.record(messages)
             let senders = try await Self.senderSummaries(of: messages, in: context.directory)
             return SessionsToolText.inbox(of: messages, senders: senders)
         }

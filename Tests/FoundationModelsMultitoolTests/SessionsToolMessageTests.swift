@@ -61,13 +61,6 @@ struct SessionsToolMessageTests {
     /// A sends-per-turn limit that refuses each send of a session.
     private static let noSendsPerTurn = 0
 
-    /// The chain depth of a message from a turn that a user started.
-    private static let firstChainDepth = 1
-
-    /// A limit of the record of read messages that keeps only the newest
-    /// message.
-    private static let oneMessageLimit = 1
-
     /// The outcome word of a delivered message in the answer.
     private static let deliveredWord = "Delivered"
 
@@ -449,6 +442,26 @@ struct SessionsToolMessageTests {
         #expect(senderInbox.contains("in reply to \(questionID)"), "inbox was: \(senderInbox)")
     }
 
+    @Test("reply message from a new SessionsTool to a message that an earlier one's read inbox gave reaches its sender")
+    func replyMessageFromANewToolToAReadMessageReachesTheSender() async throws {
+        let directory = InMemorySessionDirectory()
+        let sender = Fixtures.summary()
+        directory.register(sender)
+        let readingTool = try SessionsTool(directory: directory)
+        let replyingTool = try SessionsTool(directory: directory)
+
+        let (questionID, output) = try await Fixtures.asCaller(in: directory) { callerID in
+            let questionID = try await Self.ask(from: .session(sender.id), to: callerID, in: directory)
+            _ = try await readingTool.call(arguments: Fixtures.payload("read inbox"))
+            return (questionID, try await Self.replyMessage(to: questionID.description, with: replyingTool))
+        }
+
+        let reply = try #require(try await Self.unread(to: sender.id, in: directory).first, "output was: \(output)")
+        #expect(reply.inReplyTo == questionID)
+        #expect(reply.text == Self.replyText)
+        #expect(output.contains(Self.deliveredWord), "output was: \(output)")
+    }
+
     @Test("reply message to an unread message goes to its sender with inReplyTo")
     func replyMessageToAnUnreadMessageReachesTheSender() async throws {
         let directory = InMemorySessionDirectory()
@@ -516,43 +529,6 @@ struct SessionsToolMessageTests {
         let output = try await Self.replyMessage(to: Self.absentID.ulidString, with: tool)
 
         #expect(output.contains("reply message"), "output was: \(output)")
-    }
-
-    // MARK: - The record of the messages that read inbox gave
-
-    /// A message from a new session to `recipient`, as the directory
-    /// delivers it.
-    ///
-    /// - Parameter recipient: The session that the message went to.
-    /// - Returns: The message.
-    private static func delivered(to recipient: ULID) -> SessionMessage {
-        SessionMessage(
-            id: MailID(), from: .session(ULID()), to: recipient, text: questionText, sentAt: Fixtures.fixedDate,
-            chainDepth: firstChainDepth)
-    }
-
-    @Test("the record of read messages forgets the oldest message past its limit")
-    func theRecordForgetsTheOldestMessagePastItsLimit() async throws {
-        let recipient = ULID()
-        let record = SessionsToolReceivedMessages(limit: Self.oneMessageLimit)
-        let oldest = Self.delivered(to: recipient)
-        let newest = Self.delivered(to: recipient)
-
-        await record.record([oldest, newest])
-
-        #expect(await record.message(oldest.id, to: recipient) == nil)
-        #expect(await record.message(newest.id, to: recipient) == newest)
-    }
-
-    @Test("the record of read messages gives a message only to the session that it went to")
-    func theRecordGivesAMessageOnlyToItsRecipient() async throws {
-        let message = Self.delivered(to: ULID())
-        let record = SessionsToolReceivedMessages()
-
-        await record.record([message])
-
-        #expect(await record.message(message.id, to: ULID()) == nil)
-        #expect(await record.message(message.id, to: message.to) == message)
     }
 
     // MARK: - The snippet through withSessions
