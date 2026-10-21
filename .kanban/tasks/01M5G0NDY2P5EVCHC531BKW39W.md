@@ -17,10 +17,26 @@ comments:
     - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsGraphSchema.swift, Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsGraph.swift, Tests/FoundationModelsMultitoolTests/SnapshotsGraphTests.swift. RED: `swift test --filter SnapshotsGraphTests` 5 new tests failed for the expected reasons; GREEN: 36/36. `swift test --filter Snapshots` 81 tests in 4 suites passed; `swift test` 2707 tests in 229 suites passed, 0 failures. Only warning is SwiftPM's "missing creator for mutated node" on the mlx-swift_Cmlx.bundle dependency product, which exists independent of this change.
     - next: /review (task left in doing, not committed)
   timestamp: 2026-10-21T20:40:11.539337+00:00
+- actor: claude-code
+  id: 01m5g37hzgtv5hwpppmrxvgv2x
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (71726c1) — 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed, 0 skipped; 3 files reviewed, 2 .kanban files excluded by .reviewignore
+    - next: none — task moved to done
+  timestamp: 2026-10-21T20:42:48.688630+00:00
+- actor: claude-code
+  id: 01m5g37xv1ykna6cmt466znn83
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files
+    - test: green — swift test, 2707 passed
+    - commit: 71726c1
+    - review: clean
+  timestamp: 2026-10-21T20:43:00.833135+00:00
 depends_on:
 - 01M5F22CW6973NQR15P8B9JWYH
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffba80
 title: 'SnapshotsGraph: checkpoints of a closed session through timelineCheckpoints (MT-13)'
 ---
 ## What
