@@ -66,11 +66,27 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsGraphQueryTests.swift; `swift test` -> 2685 tests in 228 suites passed, 0 failures (one llbuild "missing creator for mutated node" line for the mlx-swift_Cmlx bundle, no compiler warnings); review finding checked
     - next: /review
   timestamp: 2026-10-21T16:15:24.247128+00:00
+- actor: claude-code
+  id: 01m5fm2xzqj2mhwvvmek4m13tn
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (64f159f): 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed; 1 file reviewed, 2 .kanban files excluded by .reviewignore. Prior finding SessionsGraphQueryTests.swift:345 completeness/inverse-operation-coverage is checked; fixed by sessionChangesSubscription requesting `cursor added changed removed` and the new test theFirstSessionChangesResponseAddsTheRegisteredSession asserting added == [registered session id], changed == [], removed == [].
+    - next: task moved to done.
+  timestamp: 2026-10-21T16:18:08.503748+00:00
+- actor: claude-code
+  id: 01m5fm3cjva34s735yxt5a823k
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — SessionsGraphQueryTests.swift (probe reads added; sibling test)
+    - test: green — swift test, 2685 tests / 228 suites (run by implement)
+    - commit: 64f159f
+    - review: clean — 0 findings, 1/1 prior checked
+  timestamp: 2026-10-21T16:18:23.451655+00:00
 depends_on:
 - 01M5F23YY9X0YEG7M1D9C0FP9M
 - 01M5F249SHTG5BWEM0HAF25EM5
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb680
 title: SessionsGraph changes(after:) subscription and cursor (MT-10)
 ---
 ## What
