@@ -9,8 +9,11 @@ import ULID
 /// registered session, the `op` payload of a call, and the caller session of a
 /// stub run.
 enum SessionsToolFixtures {
+    /// The seconds from 1970 to ``fixedDate``: a time in January 2027.
+    static let fixedSecondsSince1970: TimeInterval = 1_800_000_000
+
     /// The fixed time of each summary of a case.
-    static let fixedDate = Date(timeIntervalSince1970: 1_800_000_000)
+    static let fixedDate = Date(timeIntervalSince1970: fixedSecondsSince1970)
 
     /// The working folder of each registered session.
     static let workingFolder = URL(fileURLWithPath: "/work/project")

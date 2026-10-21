@@ -3,9 +3,11 @@
 //
 // Each reader is forgiving where the intent is clear: a session id in any
 // letter case, a kind or a state in any letter case, a list limit out of
-// range brought into range, an agent written as `@agent`, a tag written as
-// `#tag`, and space around a text. An argument with no clear intent throws a
-// ``SessionsToolInputError``, and the operation answers its corrective text.
+// range brought into range, an agent written as `@agent` (in its own letter
+// case, as an agent id is a folder name), a tag written as `#tag`, and space
+// around a text. An argument with no clear intent throws a
+// ``SessionsToolInputError``, and the operation answers its corrective
+// text.
 
 import Foundation
 import FoundationModelsExtras
@@ -112,9 +114,19 @@ enum SessionsToolInput {
 
     /// The agent id of `text`, or `nil` for no text or a blank text.
     ///
+    /// An agent id is the folder name of the agent (`AgentDefinition.id` in
+    /// FoundationModelsAgents), so its letter case is part of the id: the
+    /// reader keeps the case as written and never folds it. The session
+    /// directory resolves the id as given, or refuses it with
+    /// `SessionDirectoryError.unknownAgent` and the near names, which the
+    /// operation answers as a corrective. An agent registered as `Coder`
+    /// starts from `Coder` or `@Coder`, and `coder` gets the corrective that
+    /// names `Coder`.
+    ///
     /// - Parameter text: An agent id, with any space around it, also in the
     ///   `@agent` form of a message address.
-    /// - Returns: The id, or `nil` for the default of the launcher.
+    /// - Returns: The id in its own letter case, or `nil` for the default of
+    ///   the launcher.
     static func agentID(_ text: String?) -> String? {
         nonBlank(text.map { bare($0, prefix: agentPrefix) })
     }

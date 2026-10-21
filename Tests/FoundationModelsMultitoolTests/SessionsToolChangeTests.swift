@@ -31,6 +31,10 @@ struct SessionsToolChangeTests {
     /// does not know.
     private static let misspelledAgent = "codr"
 
+    /// An agent id with a capital letter: the folder name of an agent that a
+    /// launcher registers as it is written.
+    private static let capitalizedAgent = "Coder"
+
     /// The first message of each start.
     private static let firstMessage = "Review the parser and report back."
 
@@ -66,14 +70,16 @@ struct SessionsToolChangeTests {
 
     // MARK: - Helpers
 
-    /// A directory whose launcher knows ``SessionsToolFixtures/agentID`` and
-    /// the default agent.
+    /// A directory whose launcher knows `agentIDs` and the default agent.
     ///
+    /// - Parameter agentIDs: The agent ids that the launcher knows, each as
+    ///   it is written. ``SessionsToolFixtures/agentID`` when not given.
     /// - Returns: The directory.
-    private static func directoryWithLauncher() -> InMemorySessionDirectory {
+    private static func directoryWithLauncher(
+        agentIDs: [String] = [Fixtures.agentID]
+    ) -> InMemorySessionDirectory {
         InMemorySessionDirectory(
-            launcher: InMemorySessionDirectory.Launcher(
-                agentIDs: [Fixtures.agentID], defaultWorkingDirectory: launcherFolder))
+            launcher: InMemorySessionDirectory.Launcher(agentIDs: agentIDs, defaultWorkingDirectory: launcherFolder))
     }
 
     /// The sessions that `starter` started.
@@ -189,6 +195,39 @@ struct SessionsToolChangeTests {
         #expect(output.contains(Self.misspelledAgent), "output was: \(output)")
         #expect(output.contains(Fixtures.agentID), "output was: \(output)")
         #expect(output.contains(Self.findAgentsVerb), "output was: \(output)")
+    }
+
+    @Test("start session of an agent id with capitals, written as @Coder, starts the agent registered as Coder")
+    func startSessionKeepsTheLetterCaseOfTheAgentID() async throws {
+        let directory = Self.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
+        let tool = try SessionsTool(directory: directory)
+
+        let started = try await Fixtures.asCaller(in: directory) { callerID in
+            _ = try await tool.call(
+                arguments: Fixtures.payload(
+                    "start session", [("agent", "@\(Self.capitalizedAgent)"), ("message", Self.firstMessage)]))
+            return try await Self.sessions(startedBy: callerID, in: directory)
+        }
+
+        #expect(started.map(\.agentID) == [Self.capitalizedAgent])
+    }
+
+    @Test("start session of a registered agent id in another letter case gives the unknown-agent corrective with the near name")
+    func startSessionOfAnAgentIDInAnotherCaseNamesTheNearMatch() async throws {
+        let directory = Self.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
+        let tool = try SessionsTool(directory: directory)
+        let otherCase = Self.capitalizedAgent.lowercased()
+
+        let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in
+            let output = try await tool.call(
+                arguments: Fixtures.payload("start session", [("agent", otherCase), ("message", Self.firstMessage)]))
+            return (output, try await Self.sessions(startedBy: callerID, in: directory))
+        }
+
+        #expect(output.contains("\"\(otherCase)\""), "output was: \(output)")
+        #expect(output.contains(Self.capitalizedAgent), "output was: \(output)")
+        #expect(output.contains(Self.findAgentsVerb), "output was: \(output)")
+        #expect(started.isEmpty)
     }
 
     @Test("start session with a blank first message gives a corrective and starts nothing")
