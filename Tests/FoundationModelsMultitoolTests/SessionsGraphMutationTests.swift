@@ -34,9 +34,6 @@ struct SessionsGraphMutationTests {
     /// The ID of a client that is not a device of the user.
     private static let externalClientId = "client-external"
 
-    /// The folder that a start with no folder and no starter gets.
-    private static let launcherFolder = URL(fileURLWithPath: "/work/agents")
-
     /// The folder that a start names in its `cwd`.
     private static let namedFolder = URL(fileURLWithPath: "/work/other")
 
@@ -105,17 +102,6 @@ struct SessionsGraphMutationTests {
         let fromUser: MailID
     }
 
-    /// A directory with a launcher that knows ``SessionsToolFixtures/agentID``,
-    /// and a fixed clock, so two directories stamp the same times.
-    ///
-    /// - Returns: The directory.
-    private static func makeDirectory() -> InMemorySessionDirectory {
-        InMemorySessionDirectory(
-            launcher: InMemorySessionDirectory.Launcher(
-                agentIDs: [Fixtures.agentID], defaultWorkingDirectory: launcherFolder),
-            now: { Fixtures.fixedDate })
-    }
-
     /// Stages a scene in `directory`, whose caller session is registered.
     ///
     /// - Parameters:
@@ -170,11 +156,9 @@ struct SessionsGraphMutationTests {
         let target = ULID()
         let archived = ULID()
         return try await withOuterRunContext { context in
-            var scenes: [Scene] = []
-            for directory in directories {
+            let scenes = try await directories.asyncMap { directory in
                 directory.register(Fixtures.summary(id: context.sessionID))
-                scenes.append(
-                    try await stage(target: target, archived: archived, caller: context.sessionID, in: directory))
+                return try await stage(target: target, archived: archived, caller: context.sessionID, in: directory)
             }
             return try await ToolContext.$current.withValue(context) { try await body(scenes) }
         }
@@ -221,23 +205,37 @@ struct SessionsGraphMutationTests {
     /// - Throws: What the directory throws.
     private static func facts(of directory: InMemorySessionDirectory, known: Set<ULID>) async throws -> [String] {
         let name: (ULID?) -> String = { id in id.map { known.contains($0) ? $0.ulidString : "new" } ?? "none" }
-        var lines: [String] = []
-        for summary in try await directory.sessions(matching: SessionQuery(includesRecorded: true, limit: .max)) {
-            let inbox = try await directory.inbox(of: summary.id, markRead: false).map { message in
-                let sender: String =
-                    switch message.from {
-                    case .session(let id): name(id)
-                    case .user(let clientID): "user \(clientID)"
-                    }
-                return "\(sender) \(message.text) reply \(message.inReplyTo != nil) depth \(message.chainDepth)"
-            }
-            lines.append(
-                "\(name(summary.id)) \(summary.agentID) \(summary.workingDirectory.path) \(summary.title ?? "-") "
-                    + "\(summary.tags.sorted()) \(summary.kind) \(summary.state) \(summary.origin) "
-                    + "parent \(name(summary.parentID)) startedBy \(name(summary.startedBy)) live \(summary.isLive) "
-                    + "inbox \(inbox)")
+        let summaries = try await directory.sessions(matching: SessionQuery(includesRecorded: true, limit: .max))
+        return try await summaries.asyncMap { summary in
+            try await factLine(of: summary, in: directory, naming: name)
         }
-        return lines.sorted()
+        .sorted()
+    }
+
+    /// The facts of one session that a change can reach, on one line, with
+    /// each session id written by `name` and each message id left out.
+    ///
+    /// - Parameters:
+    ///   - summary: The session.
+    ///   - directory: The directory, for the inbox of the session.
+    ///   - name: Writes a session id, or `nil`.
+    /// - Returns: The line.
+    /// - Throws: What the directory throws.
+    private static func factLine(
+        of summary: SessionSummary, in directory: InMemorySessionDirectory, naming name: (ULID?) -> String
+    ) async throws -> String {
+        let inbox = try await directory.inbox(of: summary.id, markRead: false).map { message in
+            let sender: String =
+                switch message.from {
+                case .session(let id): name(id)
+                case .user(let clientID): "user \(clientID)"
+                }
+            return "\(sender) \(message.text) reply \(message.inReplyTo != nil) depth \(message.chainDepth)"
+        }
+        return "\(name(summary.id)) \(summary.agentID) \(summary.workingDirectory.path) \(summary.title ?? "-") "
+            + "\(summary.tags.sorted()) \(summary.kind) \(summary.state) \(summary.origin) "
+            + "parent \(name(summary.parentID)) startedBy \(name(summary.startedBy)) live \(summary.isLive) "
+            + "inbox \(inbox)"
     }
 
     /// The `started` event of one session in a stream.
@@ -347,8 +345,8 @@ struct SessionsGraphMutationTests {
     /// directories that hold the same sessions the same way.
     @Test("each mutation changes the directory as its tool op does", arguments: parityCases)
     func eachMutationChangesTheDirectoryAsItsOpDoes(_ parity: ParityCase) async throws {
-        let byTool = Self.makeDirectory()
-        let byGraph = Self.makeDirectory()
+        let byTool = Fixtures.directoryWithLauncher()
+        let byGraph = Fixtures.directoryWithLauncher()
 
         let (reply, staged, known) = try await Self.inScenes([byTool, byGraph]) { scenes in
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
@@ -459,7 +457,7 @@ struct SessionsGraphMutationTests {
     /// the tool as the message of its coded error, and changes nothing.
     @Test("each mutation refuses with the corrective of its tool op", arguments: refusalCases)
     func eachMutationRefusesWithTheCorrectiveOfItsOp(_ refusal: RefusalCase) async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
 
         let (answer, reply, staged, known) = try await Self.inScenes([directory]) { scenes in
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
@@ -479,7 +477,7 @@ struct SessionsGraphMutationTests {
     /// the tool, and starts nothing.
     @Test("a start by the agent with no caller session gives MISSING_CALLER with the corrective of the tool")
     func aStartWithNoCallerGivesMissingCaller() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
 
         let answer = try await Self.callTool(
             Fixtures.payload("start session", [("message", Self.firstMessage)]), on: directory)
@@ -494,7 +492,7 @@ struct SessionsGraphMutationTests {
     /// `NOT_FOUND` of the toolkit.
     @Test("a mutation on an unknown session gives NOT_FOUND")
     func anUnknownSessionGivesNotFound() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.inScenes([directory]) { _ in
             try await Self.run(
@@ -513,7 +511,7 @@ struct SessionsGraphMutationTests {
     /// (D90).
     @Test("a start from a device opens a tab only for that client")
     func aDeviceStartOpensATabOnlyForThatClient() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let events = directory.events()
 
         let reply = try await Self.run(
@@ -526,7 +524,7 @@ struct SessionsGraphMutationTests {
         #expect(session["origin"] as? String == "CLIENT")
         #expect(session["startedBy"] is NSNull)
         #expect(started.requestedByClient == Self.deviceClientId)
-        #expect(started.summary.workingDirectory.path == Self.launcherFolder.path)
+        #expect(started.summary.workingDirectory.path == Fixtures.launcherFolder.path)
     }
 
     /// A start by the agent is a start of a model: the origin is `TOOL`, the
@@ -534,7 +532,7 @@ struct SessionsGraphMutationTests {
     /// client opens a tab (D90).
     @Test("a start by the agent opens no tab")
     func anAgentStartOpensNoTab() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let events = directory.events()
 
         let (reply, callerID) = try await Fixtures.asCaller(in: directory) { callerID in
@@ -554,7 +552,7 @@ struct SessionsGraphMutationTests {
     /// the message from the user on that client, at depth 1.
     @Test("a send from a device comes from the user on that client")
     func aDeviceSendComesFromTheUser() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let target = Fixtures.summary()
         directory.register(target)
 
@@ -576,7 +574,7 @@ struct SessionsGraphMutationTests {
     /// the id of the message that it answers.
     @Test("a reply from a device goes to the sender of the message, from the user")
     func aDeviceReplyGoesToTheSender() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let sender = Fixtures.summary()
         let recipient = Fixtures.summary()
         directory.register(sender)
@@ -709,7 +707,7 @@ struct SessionsGraphMutationTests {
     /// mutation changes nothing.
     @Test("an external viewer gets NOT_FOUND for a session it cannot see", arguments: hiddenCases)
     func anExternalViewerGetsNotFoundForAHiddenSession(_ hidden: HiddenCase) async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
         let known: Set<ULID> = [scene.owned, scene.stranger]
         let staged = try await Self.facts(of: directory, known: known)
@@ -723,7 +721,7 @@ struct SessionsGraphMutationTests {
     /// An external client changes a session that it can see.
     @Test("an external viewer tags a session that it owns")
     func anExternalViewerTagsItsSession() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
 
         let reply = try await Self.run(
@@ -753,7 +751,7 @@ struct SessionsGraphMutationTests {
     /// does not own is `NOT_FOUND`, and nothing changes.
     @Test("an external viewer gets NOT_FOUND for a change of a session it sees but does not own", arguments: unownedChanges)
     func anExternalViewerChangesOnlyOwnedSessions(_ unowned: HiddenCase) async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
@@ -785,7 +783,7 @@ struct SessionsGraphMutationTests {
     /// refused receipt, and no message goes.
     @Test("an external viewer's message to a session it sees but does not own is refused", arguments: unownedMessages)
     func anExternalViewerMessagesOnlyOwnedSessions(_ unowned: HiddenCase) async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
@@ -803,7 +801,7 @@ struct SessionsGraphMutationTests {
     /// An external client sends to a session that it owns.
     @Test("an external viewer sends to a session that it owns")
     func anExternalViewerSendsToItsSession() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
 
         let reply = try await Self.run(
@@ -821,7 +819,7 @@ struct SessionsGraphMutationTests {
     /// starts.
     @Test("an external viewer cannot start a session")
     func anExternalViewerCannotStart() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let viewer = GraphQLViewer(clientId: Self.externalClientId, trust: .external)
 
         let reply = try await Self.run(
@@ -836,7 +834,7 @@ struct SessionsGraphMutationTests {
     /// `INVALID_ADDRESS`, and no message goes.
     @Test("an external viewer cannot send to a tag")
     func anExternalViewerCannotSendToATag() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
         let known: Set<ULID> = [scene.owned, scene.stranger]
         let staged = try await Self.facts(of: directory, known: known)
@@ -901,7 +899,7 @@ struct SessionsGraphMutationTests {
     /// in `extensions.rewrites`.
     @Test("each bare verb works and shows in extensions.rewrites", arguments: aliasCases)
     func eachBareVerbWorks(_ alias: AliasCase) async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.inScenes([directory]) { scenes in
             try await Self.run(
@@ -917,7 +915,7 @@ struct SessionsGraphMutationTests {
     /// `agent`, `folder` and `prompt`.
     @Test("the input of startSession takes the aliases of the tool op")
     func theStartInputTakesTheAliasesOfTheOp() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.run(
             "mutation { startSession(input: {agent: \"\(Fixtures.agentID)\", folder: \"\(Self.namedFolder.path)\", "
@@ -936,7 +934,7 @@ struct SessionsGraphMutationTests {
     /// `address` and `text`.
     @Test("the input of sendMessage takes the aliases of the tool op")
     func theSendInputTakesTheAliasesOfTheOp() async throws {
-        let directory = Self.makeDirectory()
+        let directory = Fixtures.directoryWithLauncher()
         let target = Fixtures.summary()
         directory.register(target)
 

@@ -76,7 +76,7 @@ extension StartSession {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let arguments = SessionStartArguments(agentId: agent, cwd: cwd, message: message, tags: tags, title: title)
-            return SessionsToolText.started(try await context.start(arguments, by: .session(callerID)))
+            return SessionsToolText.started(try await context.start(with: arguments, by: .session(callerID)))
         }
     }
 }
@@ -153,7 +153,7 @@ extension TagSession {
     /// - Returns: The tags of the session after the call, or a corrective.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answerTagChange(of: id, opString: Self.opString) { target in
-            try await context.addTags(tags, to: target)
+            try await context.addTags(named: tags, to: target)
         }
     }
 }
@@ -180,7 +180,7 @@ extension UntagSession {
     /// - Returns: The tags of the session after the call, or a corrective.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answerTagChange(of: id, opString: Self.opString) { target in
-            try await context.removeTags(tags, from: target)
+            try await context.removeTags(named: tags, from: target)
         }
     }
 }
@@ -210,7 +210,7 @@ extension RenameSession {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let target = try SessionsToolInput.sessionID(id, defaultingTo: callerID)
-            return SessionsToolText.renamed(try await context.rename(target, to: title))
+            return SessionsToolText.renamed(try await context.rename(session: target, to: title))
         }
     }
 }
@@ -239,7 +239,7 @@ extension ArchiveSession {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let sessionID = try SessionsToolInput.sessionID(id)
-            return SessionsToolText.archived(try await context.archive(sessionID, by: .session(callerID)))
+            return SessionsToolText.archived(try await context.archive(session: sessionID, by: .session(callerID)))
         }
     }
 }
@@ -253,8 +253,8 @@ extension SessionsToolContext {
     ///   - starter: The session or the user that starts the session.
     /// - Returns: The new session.
     /// - Throws: ``SessionsRefusal`` for an argument that the tool cannot
-    ///   read, and each error of `start(_:)`.
-    func start(_ arguments: SessionStartArguments, by starter: SessionMessageSender) async throws -> SessionSummary {
+    ///   read, and each error of `SessionDirectory.start(_:)`.
+    func start(with arguments: SessionStartArguments, by starter: SessionMessageSender) async throws -> SessionSummary {
         try await directory.start(try arguments.request(by: starter))
     }
 
@@ -266,8 +266,8 @@ extension SessionsToolContext {
     ///   - target: The session.
     /// - Returns: The session after the call.
     /// - Throws: ``SessionsRefusal`` for a call with no tag, and each error
-    ///   of `addTags(_:to:)`.
-    func addTags(_ texts: [String], to target: ULID) async throws -> SessionSummary {
+    ///   of `SessionDirectory.addTags(_:to:)`.
+    func addTags(named texts: [String], to target: ULID) async throws -> SessionSummary {
         try await directory.addTags(try SessionsToolInput.tags(texts), to: target)
     }
 
@@ -279,8 +279,8 @@ extension SessionsToolContext {
     ///   - target: The session.
     /// - Returns: The session after the call.
     /// - Throws: ``SessionsRefusal`` for a call with no tag, and each error
-    ///   of `removeTags(_:from:)`.
-    func removeTags(_ texts: [String], from target: ULID) async throws -> SessionSummary {
+    ///   of `SessionDirectory.removeTags(_:from:)`.
+    func removeTags(named texts: [String], from target: ULID) async throws -> SessionSummary {
         try await directory.removeTags(try SessionsToolInput.tags(texts), from: target)
     }
 
@@ -292,8 +292,8 @@ extension SessionsToolContext {
     ///   - title: The new title, with any space around it.
     /// - Returns: The session after the call.
     /// - Throws: ``SessionsRefusal`` for a blank title, and each error of
-    ///   `setTitle(_:of:)`.
-    func rename(_ target: ULID, to title: String) async throws -> SessionSummary {
+    ///   `SessionDirectory.setTitle(_:of:)`.
+    func rename(session target: ULID, to title: String) async throws -> SessionSummary {
         let newTitle = try SessionsToolInput.requiredText(title, parameter: SessionsToolText.titleParameter)
         return try await directory.setTitle(newTitle, of: target)
     }
@@ -307,8 +307,8 @@ extension SessionsToolContext {
     /// - Returns: The archived session.
     /// - Throws: ``SessionsRefusal`` for a session that is archived already,
     ///   `SessionDirectoryError.unknownSession` when no session has the id,
-    ///   and each error of `archive(_:by:)`.
-    func archive(_ target: ULID, by archiver: SessionMessageSender) async throws -> SessionSummary {
+    ///   and each error of `SessionDirectory.archive(_:by:)`.
+    func archive(session target: ULID, by archiver: SessionMessageSender) async throws -> SessionSummary {
         guard try await existingSummary(of: target).state != .archived else {
             throw SessionsRefusal(.archivedSession, SessionsToolText.archivedAlready(target))
         }

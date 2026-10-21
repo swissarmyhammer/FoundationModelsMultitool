@@ -61,6 +61,39 @@ comments:
     - `swift test --filter Sessions`: 116 tests in 6 suites passed. Full `swift test`: 2676 tests in 227 suites passed, no warnings.
     - The task stays in doing, not committed.
   timestamp: 2026-10-21T15:05:30.179071+00:00
+- actor: claude-code
+  id: 01m5fh0e0mtq8y4yftkws72m0m
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (8fedcdc) — 9 findings (9 confirmed, 3 refuted): SessionsGraphMutations.swift:628, SessionsToolChangeOperations.swift:257, :283, :296, :311, SessionsToolMessageOperations.swift:119, SessionsGraphMutationTests.swift:112, :173, :224
+    - next: implement the 9 open items in the 2026-10-21 10:05 Review Findings section; task stays in review
+  timestamp: 2026-10-21T15:24:20.884193+00:00
+- actor: claude-code
+  id: 01m5fh0yckwz4gcw0n81kbn630
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 16 files (mutations, shared op core, SessionsRefusal, owner rules, SDL descriptions, tests, golden)
+    - test: green — swift test, 2676 tests / 227 suites (run by implement)
+    - commit: 8fedcdc
+    - review: findings — SessionsGraphMutations.swift:628, SessionsToolChangeOperations.swift:257/283/296/311, SessionsToolMessageOperations.swift:119, SessionsGraphMutationTests.swift:112/173/224
+  timestamp: 2026-10-21T15:24:37.651823+00:00
+- actor: claude-code
+  id: 01m5fhb9j8tpftb2s9yv4tfex2
+  text: |-
+    Review findings (2026-10-21 10:05) fixed, all 9:
+    - duplication: the seven `xxxField()` builders are gone. `SessionsGraphAPI.mutationFields()` lists the seven fields, each built by one generic helper `mutationField(_:at:input:description:)` (generic over the input and output types of the resolver, with Graphiti's `AsyncResolve`). The schema calls `.addMutation(mutationFields)`: a function reference passes the result-builder parameter without a closure. The description texts are byte-identical, and Goldens/sessions.graphql did not change.
+    - fluent-usage: `start(with:by:)`, `addTags(named:to:)` (same cause in the same file, not cited), `removeTags(named:from:)`, `rename(session:to:)`, `archive(session:by:)`, `send(text:to:inReplyTo:from:)`. Updated every call site in the tool ops and in SessionsGraphMutations.swift. Doc references to the directory methods now say `SessionDirectory.x(_:)` so they are not confused with the relabeled context methods.
+    - reuse: `SessionsToolFixtures.directoryWithLauncher(agentIDs:)` and `SessionsToolFixtures.launcherFolder` replace `makeDirectory()` in SessionsGraphMutationTests and the two local `directoryWithLauncher` copies in SessionsToolChangeTests and SessionsToolMessageTests (the Message tests pass `agentIDs: [reviewerAgent]`). The shared helper keeps the fixed clock, and the Change and Message tests still pass with it.
+    - immutability: new test fixture `Array.asyncMap` (Fixtures/ArrayAsyncMap.swift), sequential and recursive with no var accumulator. `inScenes` maps directories to scenes, and `facts` maps summaries through the new `factLine(of:in:naming:)` helper and then sorts.
+    - Gotcha: `files edit` with `replace_all: true` replaced only one occurrence per call, so I did the mechanical renames with sed and checked them with rg.
+  timestamp: 2026-10-21T15:30:16.776283+00:00
+- actor: claude-code
+  id: 01m5fhbcq295pskm8m8s6de4p4
+  text: |-
+    ### implement — changed
+    - evidence: `swift test`: 2676 tests in 227 suites passed, 0 failures, no compiler warnings. The only `warning:` line is SwiftPM's "missing creator for mutated node" on the mlx-swift_Cmlx.bundle dependency build product, not from this code. Goldens/sessions.graphql unchanged. 9 files: Sources/.../Sessions/{SessionsGraphMutations,SessionsGraphSchema,SessionsToolChangeOperations,SessionsToolMessageOperations}.swift; Tests/.../{SessionsGraphMutationTests,SessionsToolChangeTests,SessionsToolMessageTests}.swift, Fixtures/SessionsToolFixtures.swift, Fixtures/ArrayAsyncMap.swift (new).
+    - next: /review (task stays in doing, not committed)
+  timestamp: 2026-10-21T15:30:20.002535+00:00
 depends_on:
 - 01M5F23YY9X0YEG7M1D9C0FP9M
 - 01M5F23F0NMKMEXGZESNEZB6S0
@@ -89,3 +122,23 @@ In `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift`
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #graphql #sessions
+
+## Review Findings (2026-10-21 10:05)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 15 file(s) reviewed, 5 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphMutations.swift:628` `duplication/duplication` — Seven field builder methods (startSessionField through replyMessageField, lines 628–699) are near-verbatim duplicates differing only in mutation reference, resolver method, and descriptions. These should be one function with arguments. Extract a single static helper function parameterized by mutation name, resolver method, input description, and field description. Replace each xxxSessionField() method to call this helper instead of repeating the Field creation code seven times.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:257` `swift/fluent-usage` — The first parameter is unlabeled (`_ arguments:`) for a non-value-conversion operation. The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions. Otherwise, label it.' Starting a session is an operation, not a value conversion, so the parameter should be labeled. Add an explicit label to the first parameter: `func start(arguments: SessionStartArguments, by starter: SessionMessageSender)` or use a more descriptive name such as `startArguments:` or `config:`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:283` `swift/fluent-usage` — The first parameter is unlabeled (`_ texts:`) for a non-value-conversion operation. The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions. Otherwise, label it.' Removing tags from a session is an operation, not a value conversion, so the parameter should be labeled. Add an explicit label to the first parameter: `func removeTags(tags: [String], from target: ULID)` to make the call phrase clearer.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:296` `swift/fluent-usage` — The first parameter is unlabeled (`_ target:`) for a non-value-conversion operation. The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions. Otherwise, label it.' Renaming a session is an operation, not a value conversion, so the parameter should be labeled. Add an explicit label: `func rename(target: ULID, to title: String)` or use a name that clarifies what is being renamed, such as `session:`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:311` `swift/fluent-usage` — The first parameter is unlabeled (`_ target:`) for a non-value-conversion operation. The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions. Otherwise, label it.' Archiving a session is an operation, not a value conversion, so the parameter should be labeled. Add an explicit label: `func archive(target: ULID, by archiver: SessionMessageSender)` or use `session:` for clarity.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolMessageOperations.swift:119` `swift/fluent-usage` — The first parameter is unlabeled (`_ text:`) for a non-value-conversion operation. The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions. Otherwise, label it.' Sending a message is an operation, not a value conversion, so the parameter should be labeled. Add an explicit label to the first parameter: `func send(text: String, to address: SessionAddress, ...)` or `send(message: String, to address: SessionAddress, ...)` to clarify the phrase at the call site.
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:112` `reuse/reuse` — The `makeDirectory()` helper function reinvents the same test directory creation logic already defined across multiple other test files. The function creates an InMemorySessionDirectory with identical configuration (launcher with agentID, fixed clock) that other test files implement as separate utilities. Extract `makeDirectory()` to a shared test support file (e.g., in Tests/FoundationModelsMultitoolTests/Fixtures/ or a SessionsGraphTestSupport.swift module) and import it from all test files that need this standard directory setup, rather than redefining it in each test file.
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:173` `swift/immutability` — Accumulates Scene objects using a var accumulator in a loop with append, rather than using map/compactMap. Refactor to use async map if available, or extract the scene-building logic (directory.register + stage operations) into a helper method to isolate the side effects from the collection building.
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:224` `swift/immutability` — Collects strings using a var accumulator with append in a loop, rather than using map/compactMap. Extract the fact-string-building logic to a helper method and call it from a map operation: `let lines = try await directory.sessions(...).map { summary in buildFactLine(for: summary, known: known) }.sorted()`. If async I/O constraints prevent direct map, consider wrapping the loop logic in a separate function to isolate the side effects.

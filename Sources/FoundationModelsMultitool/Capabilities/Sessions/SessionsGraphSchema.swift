@@ -264,15 +264,7 @@ struct SessionsGraphAPI: API {
                 sessionField()
                 inboxField()
             }
-            .addMutation {
-                startSessionField()
-                tagSessionField()
-                untagSessionField()
-                renameSessionField()
-                archiveSessionField()
-                sendMessageField()
-                replyMessageField()
-            }
+            .addMutation(mutationFields)
             .build()
     }
 

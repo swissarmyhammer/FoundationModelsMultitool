@@ -59,7 +59,8 @@ extension SendMessage {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let address = try SessionsToolInput.address(to)
-            return SessionsToolText.receipts(try await context.send(message, to: address, from: .session(callerID)))
+            let receipts = try await context.send(text: message, to: address, from: .session(callerID))
+            return SessionsToolText.receipts(receipts)
         }
     }
 }
@@ -97,7 +98,7 @@ extension ReplyMessage {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let original = try await context.replyTarget(of: inReplyTo, to: callerID)
             let receipts = try await context.send(
-                message, to: .session(original.sender), inReplyTo: original.id, from: .session(callerID))
+                text: message, to: .session(original.sender), inReplyTo: original.id, from: .session(callerID))
             return SessionsToolText.receipts(receipts)
         }
     }
@@ -114,9 +115,9 @@ extension SessionsToolContext {
     ///   - sender: The session or the user that sends the message.
     /// - Returns: One receipt for each target.
     /// - Throws: ``SessionsRefusal`` for a blank text, and each error of
-    ///   `send(_:)`.
+    ///   `SessionDirectory.send(_:)`.
     func send(
-        _ text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender
+        text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender
     ) async throws -> [SessionSendReceipt] {
         let body = try SessionsToolInput.requiredText(text, parameter: SessionsToolText.messageParameter)
         let outgoing = OutgoingSessionMessage(from: sender, to: address, text: body, inReplyTo: inReplyTo)

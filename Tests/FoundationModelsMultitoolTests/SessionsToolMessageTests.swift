@@ -23,9 +23,6 @@ struct SessionsToolMessageTests {
     /// The reason of a refusal of the test double.
     private typealias Refusal = InMemorySessionDirectory.Refusal
 
-    /// The folder that a start with no folder and no starter gets.
-    private static let launcherFolder = URL(fileURLWithPath: "/work/agents")
-
     /// A folder other than ``SessionsToolFixtures/workingFolder``.
     private static let otherFolder = URL(fileURLWithPath: "/work/other")
 
@@ -93,16 +90,6 @@ struct SessionsToolMessageTests {
     private static let absentID = ULID()
 
     // MARK: - Helpers
-
-    /// A directory whose launcher knows ``reviewerAgent`` and the default
-    /// agent.
-    ///
-    /// - Returns: The directory.
-    private static func directoryWithLauncher() -> InMemorySessionDirectory {
-        InMemorySessionDirectory(
-            launcher: InMemorySessionDirectory.Launcher(
-                agentIDs: [reviewerAgent], defaultWorkingDirectory: launcherFolder))
-    }
 
     /// Calls `send message` as the caller of the current context.
     ///
@@ -247,7 +234,7 @@ struct SessionsToolMessageTests {
 
     @Test("send message to @agent with no live session starts one, and gives its id")
     func sendMessageToAnAgentWithNoSessionStartsOne() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
         let tool = try SessionsTool(directory: directory)
 
         let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in

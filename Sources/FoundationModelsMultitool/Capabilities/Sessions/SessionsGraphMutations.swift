@@ -279,7 +279,7 @@ extension SessionsGraphResolver {
                 throw SessionsRefusal(.untrustedClient, SessionsGraphText.externalStart)
             }
             let starter = try context.actor(of: .start)
-            return SessionsGraphSession(try await context.actions.start(arguments.input, by: starter))
+            return SessionsGraphSession(try await context.actions.start(with: arguments.input, by: starter))
         }
     }
 
@@ -295,7 +295,7 @@ extension SessionsGraphResolver {
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphTagInput>
     ) async throws -> SessionsGraphSession {
         try await Self.changedSession(arguments.input.id, in: context) { target in
-            try await context.actions.addTags(arguments.input.tags, to: target)
+            try await context.actions.addTags(named: arguments.input.tags, to: target)
         }
     }
 
@@ -311,7 +311,7 @@ extension SessionsGraphResolver {
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphUntagInput>
     ) async throws -> SessionsGraphSession {
         try await Self.changedSession(arguments.input.id, in: context) { target in
-            try await context.actions.removeTags(arguments.input.tags, from: target)
+            try await context.actions.removeTags(named: arguments.input.tags, from: target)
         }
     }
 
@@ -327,7 +327,7 @@ extension SessionsGraphResolver {
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphRenameInput>
     ) async throws -> SessionsGraphSession {
         try await Self.changedSession(arguments.input.id, in: context) { target in
-            try await context.actions.rename(target, to: arguments.input.title)
+            try await context.actions.rename(session: target, to: arguments.input.title)
         }
     }
 
@@ -346,7 +346,7 @@ extension SessionsGraphResolver {
         try await Self.coding {
             let archiver = try context.actor(of: .archive)
             let target = try await context.visibleSession(arguments.input.id)
-            return SessionsGraphSession(try await context.actions.archive(target, by: archiver))
+            return SessionsGraphSession(try await context.actions.archive(session: target, by: archiver))
         }
     }
 
@@ -368,7 +368,7 @@ extension SessionsGraphResolver {
             if case .session(let target) = address, !context.viewerOwns(target) {
                 return context.notOwnedReceipts(to: target)
             }
-            let receipts = try await context.actions.send(arguments.input.message, to: address, from: sender)
+            let receipts = try await context.actions.send(text: arguments.input.message, to: address, from: sender)
             return receipts.map(SessionsGraphReceipt.init)
         }
     }
@@ -398,7 +398,7 @@ extension SessionsGraphResolver {
                 return context.notOwnedReceipts(to: original.sender)
             }
             let receipts = try await context.actions.send(
-                input.message, to: .session(original.sender), inReplyTo: original.id, from: sender)
+                text: input.message, to: .session(original.sender), inReplyTo: original.id, from: sender)
             return receipts.map(SessionsGraphReceipt.init)
         }
     }
@@ -622,79 +622,62 @@ extension SessionsGraphAPI {
         .description("A reply to a message that a session got. It goes to the session that sent the message.")
     }
 
-    /// The `Mutation.startSession` field.
+    /// The fields of the `Mutation` type: one for each mutation, in the order
+    /// of ``SessionsGraphMutation/all``.
     ///
-    /// - Returns: The field.
-    static func startSessionField() -> SchemaField {
-        Field(SessionsGraphMutation.start.name, at: SessionsGraphResolver.startSession) {
-            Argument("input", at: \.input).description("The agent, the folder and the first message.")
-        }
-        .description(
-            "Starts a new root session of an agent. It works in the background, and only your client opens it in a "
-                + "tab. An external client cannot start a session.")
+    /// - Returns: The fields.
+    static func mutationFields() -> [SchemaField] {
+        [
+            mutationField(
+                .start, at: SessionsGraphResolver.startSession,
+                input: "The agent, the folder and the first message.",
+                description: "Starts a new root session of an agent. It works in the background, and only your client "
+                    + "opens it in a tab. An external client cannot start a session."),
+            mutationField(
+                .tag, at: SessionsGraphResolver.tagSession, input: "The session and the tags.",
+                description: "Adds tags to a session. Gives the session with its tags."),
+            mutationField(
+                .untag, at: SessionsGraphResolver.untagSession, input: "The session and the tags.",
+                description: "Removes tags from a session. Gives the session with the tags that stay."),
+            mutationField(
+                .rename, at: SessionsGraphResolver.renameSession, input: "The session and its new title.",
+                description: "Sets the title of a session."),
+            mutationField(
+                .archive, at: SessionsGraphResolver.archiveSession, input: "The session.",
+                description: "Archives a session: stops its turn and ends its work. It takes no more messages, and its "
+                    + "transcript stays."),
+            mutationField(
+                .send, at: SessionsGraphResolver.sendMessage, input: "The address and the text.",
+                description: "Sends a message from you to a session, an agent, a folder or a tag. "
+                    + "\(receiptsDescription) \(ownedTargetRule)"),
+            mutationField(
+                .reply, at: SessionsGraphResolver.replyMessage,
+                input: "The session that got the message, the message and the text.",
+                description: "Replies to a message that a session got, from you. \(receiptsDescription) "
+                    + ownedTargetRule),
+        ]
     }
 
-    /// The `Mutation.tagSession` field.
+    /// The field of one mutation: its name, its resolver, and its one
+    /// `input` argument.
     ///
+    /// - Parameters:
+    ///   - mutation: The mutation, which gives the name of the field.
+    ///   - resolve: The resolver of the field.
+    ///   - input: The description of the `input` argument.
+    ///   - description: The description of the field.
     /// - Returns: The field.
-    static func tagSessionField() -> SchemaField {
-        Field(SessionsGraphMutation.tag.name, at: SessionsGraphResolver.tagSession) {
-            Argument("input", at: \.input).description("The session and the tags.")
+    private static func mutationField<Input: Codable & Sendable, Output: Sendable>(
+        _ mutation: SessionsGraphMutation,
+        at resolve: @escaping AsyncResolve<
+            SessionsGraphResolver, SessionsGraphContext, SessionsGraphMutationArguments<Input>, Output
+        >,
+        input: String,
+        description: String
+    ) -> SchemaField {
+        Field(mutation.name, at: resolve) {
+            Argument("input", at: \.input).description(input)
         }
-        .description("Adds tags to a session. Gives the session with its tags.")
-    }
-
-    /// The `Mutation.untagSession` field.
-    ///
-    /// - Returns: The field.
-    static func untagSessionField() -> SchemaField {
-        Field(SessionsGraphMutation.untag.name, at: SessionsGraphResolver.untagSession) {
-            Argument("input", at: \.input).description("The session and the tags.")
-        }
-        .description("Removes tags from a session. Gives the session with the tags that stay.")
-    }
-
-    /// The `Mutation.renameSession` field.
-    ///
-    /// - Returns: The field.
-    static func renameSessionField() -> SchemaField {
-        Field(SessionsGraphMutation.rename.name, at: SessionsGraphResolver.renameSession) {
-            Argument("input", at: \.input).description("The session and its new title.")
-        }
-        .description("Sets the title of a session.")
-    }
-
-    /// The `Mutation.archiveSession` field.
-    ///
-    /// - Returns: The field.
-    static func archiveSessionField() -> SchemaField {
-        Field(SessionsGraphMutation.archive.name, at: SessionsGraphResolver.archiveSession) {
-            Argument("input", at: \.input).description("The session.")
-        }
-        .description(
-            "Archives a session: stops its turn and ends its work. It takes no more messages, and its transcript "
-                + "stays.")
-    }
-
-    /// The `Mutation.sendMessage` field.
-    ///
-    /// - Returns: The field.
-    static func sendMessageField() -> SchemaField {
-        Field(SessionsGraphMutation.send.name, at: SessionsGraphResolver.sendMessage) {
-            Argument("input", at: \.input).description("The address and the text.")
-        }
-        .description(
-            "Sends a message from you to a session, an agent, a folder or a tag. \(receiptsDescription) "
-                + ownedTargetRule)
-    }
-
-    /// The `Mutation.replyMessage` field.
-    ///
-    /// - Returns: The field.
-    static func replyMessageField() -> SchemaField {
-        Field(SessionsGraphMutation.reply.name, at: SessionsGraphResolver.replyMessage) {
-            Argument("input", at: \.input).description("The session that got the message, the message and the text.")
-        }
-        .description("Replies to a message that a session got, from you. \(receiptsDescription) \(ownedTargetRule)")
+        .description(description)
     }
 }

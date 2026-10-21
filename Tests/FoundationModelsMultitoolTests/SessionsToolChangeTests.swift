@@ -21,9 +21,6 @@ struct SessionsToolChangeTests {
     /// The shared fixtures of the `sessions` tool tests.
     private typealias Fixtures = SessionsToolFixtures
 
-    /// The folder that a start with no folder and no starter gets.
-    private static let launcherFolder = URL(fileURLWithPath: "/work/agents")
-
     /// The folder that a start names in its `cwd`.
     private static let namedFolder = URL(fileURLWithPath: "/work/other")
 
@@ -70,18 +67,6 @@ struct SessionsToolChangeTests {
 
     // MARK: - Helpers
 
-    /// A directory whose launcher knows `agentIDs` and the default agent.
-    ///
-    /// - Parameter agentIDs: The agent ids that the launcher knows, each as
-    ///   it is written. ``SessionsToolFixtures/agentID`` when not given.
-    /// - Returns: The directory.
-    private static func directoryWithLauncher(
-        agentIDs: [String] = [Fixtures.agentID]
-    ) -> InMemorySessionDirectory {
-        InMemorySessionDirectory(
-            launcher: InMemorySessionDirectory.Launcher(agentIDs: agentIDs, defaultWorkingDirectory: launcherFolder))
-    }
-
     /// The sessions that `starter` started.
     ///
     /// - Parameters:
@@ -110,7 +95,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session starts a root session of the agent in the folder of the caller, started by the caller")
     func startSessionStartsASessionInTheFolderOfTheCaller() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in
@@ -132,7 +117,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session with a cwd, tags and a title starts the session with them")
     func startSessionTakesTheFolderTheTagsAndTheTitle() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let started = try await Fixtures.asCaller(in: directory) { callerID in
@@ -154,7 +139,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session reads an agent id written as @agent with space around it")
     func startSessionReadsAnAgentAddress() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let started = try await Fixtures.asCaller(in: directory) { callerID in
@@ -183,7 +168,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session of an unknown agent gives a corrective with the near names and findAgents")
     func startSessionOfAnUnknownAgentNamesTheNearNames() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let output = try await Fixtures.asCaller(in: directory) { _ in
@@ -199,7 +184,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session of an agent id with capitals, written as @Coder, starts the agent registered as Coder")
     func startSessionKeepsTheLetterCaseOfTheAgentID() async throws {
-        let directory = Self.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
         let tool = try SessionsTool(directory: directory)
 
         let started = try await Fixtures.asCaller(in: directory) { callerID in
@@ -214,7 +199,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session of a registered agent id in another letter case gives the unknown-agent corrective with the near name")
     func startSessionOfAnAgentIDInAnotherCaseNamesTheNearMatch() async throws {
-        let directory = Self.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
         let tool = try SessionsTool(directory: directory)
         let otherCase = Self.capitalizedAgent.lowercased()
 
@@ -232,7 +217,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session with a blank first message gives a corrective and starts nothing")
     func startSessionWithABlankMessageIsACorrective() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in
@@ -246,7 +231,7 @@ struct SessionsToolChangeTests {
 
     @Test("start session with no ToolContext gives a corrective and starts nothing")
     func startSessionWithNoCallerIsACorrective() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let tool = try SessionsTool(directory: directory)
 
         let output = try await tool.call(arguments: Fixtures.payload("start session", [("message", Self.firstMessage)]))
@@ -506,7 +491,7 @@ struct SessionsToolChangeTests {
         "tools.sessions.startSession, tagSession, untagSession, renameSession and archiveSession change the directory in one runCode snippet"
     )
     func theChangeVerbsWorkInASnippet() async throws {
-        let directory = Self.directoryWithLauncher()
+        let directory = Fixtures.directoryWithLauncher()
         let other = Fixtures.summary(tags: [Self.urgentTag])
         directory.register(other)
         let tool = try SessionsTool(directory: directory)

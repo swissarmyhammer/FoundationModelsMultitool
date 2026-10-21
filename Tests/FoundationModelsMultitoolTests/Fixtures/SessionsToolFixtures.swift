@@ -24,6 +24,22 @@ enum SessionsToolFixtures {
     /// The display name of the agent of each registered session.
     static let agentName = "Coder"
 
+    /// The folder that the launcher of ``directoryWithLauncher(agentIDs:)``
+    /// gives a start with no folder and no starter.
+    static let launcherFolder = URL(fileURLWithPath: "/work/agents")
+
+    /// A directory whose launcher knows `agentIDs` and the default agent, with
+    /// a fixed clock, so two directories stamp the same times.
+    ///
+    /// - Parameter agentIDs: The agent ids that the launcher knows, each as it
+    ///   is written. ``agentID`` when not given.
+    /// - Returns: The directory.
+    static func directoryWithLauncher(agentIDs: [String] = [agentID]) -> InMemorySessionDirectory {
+        InMemorySessionDirectory(
+            launcher: InMemorySessionDirectory.Launcher(agentIDs: agentIDs, defaultWorkingDirectory: launcherFolder),
+            now: { fixedDate })
+    }
+
     /// A live, idle session, by default a root session of ``agentID`` in
     /// ``workingFolder``.
     ///
