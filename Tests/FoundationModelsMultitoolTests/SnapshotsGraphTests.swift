@@ -104,6 +104,7 @@ struct SnapshotsGraphTests {
         (.unreadableTimeline, "UNREADABLE_TIMELINE"),
         (.sessionKeyOpen, "SESSION_KEY_OPEN"),
         (.invalidSessionKey, "INVALID_SESSION_KEY"),
+        (.fileNotInCheckpoint(path: "README.md"), "FILE_NOT_IN_CHECKPOINT"),
     ]
 
     /// The selection of each checkpoint that a test reads.

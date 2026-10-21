@@ -48,10 +48,26 @@ comments:
     - evidence: `swift test --filter Snapshots` 69 tests / 4 suites passed; full `swift test` 2695 tests / 229 suites passed, 0 failures. The only build warning is SPM's pre-existing "missing creator for mutated node" for mlx-swift_Cmlx.bundle, which is unrelated. Files: Sources/.../Snapshots/{SnapshotsGraphChanges.swift (new), SnapshotsGraph.swift, SnapshotsGraphSchema.swift, SnapshotsCapability.swift}, Tests/.../{SnapshotsGraphChangesTests.swift (new), SnapshotsGraphTests.swift, Goldens/snapshots.graphql}
     - next: /review
   timestamp: 2026-10-21T20:08:46.859089+00:00
+- actor: claude-code
+  id: 01m5g1gwr9kvzjs6v1waf44xwg
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (31943bf) — 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed); no prior Review Findings sections
+    - next: task moved to done
+  timestamp: 2026-10-21T20:12:57.481433+00:00
+- actor: claude-code
+  id: 01m5g1h8b79jwkfrd23rfr64gz
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files
+    - test: green — swift test, 2695 passed
+    - commit: 31943bf
+    - review: clean
+  timestamp: 2026-10-21T20:13:09.351670+00:00
 depends_on:
 - 01M5F20JBW6YSTD6GM1X8VTYWZ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb880
 title: 'SnapshotsGraph: changes(after:) subscription and cursor query (MT-13)'
 ---
 ## What

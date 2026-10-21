@@ -77,7 +77,9 @@ extension SnapshotError: CorrectiveFailure {
     /// and ``unreadableTimeline`` come only from an open or a remove that a
     /// caller of ``SnapshotsContext/perform(_:)`` runs, and ``noTimeline``
     /// comes only from `SnapshotStore.timelineSummary(sessionKey:)`, which no
-    /// verb calls. Each case has its own text all the same.
+    /// verb calls. ``fileNotInCheckpoint(path:)`` comes only from the file
+    /// reads of the store, which no verb calls. Each case has its own text all
+    /// the same.
     ///
     /// ``unavailable`` means that no session is bound, that the session did
     /// not open its session key, or that its working folder is not in a git
@@ -116,6 +118,9 @@ extension SnapshotError: CorrectiveFailure {
         case .invalidSessionKey:
             "The session key of this session is not a valid name for its snapshots, thus no snapshot is "
                 + "available for this session. \(Self.stopCallingSnapshots)"
+        case .fileNotInCheckpoint(let path):
+            "The file \(path) is not one of the files that this checkpoint changed. Call tools.snapshots.list to "
+                + "see the files of each checkpoint."
         }
     }
 }

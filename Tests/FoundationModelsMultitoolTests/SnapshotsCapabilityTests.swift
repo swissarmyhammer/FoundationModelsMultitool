@@ -707,7 +707,7 @@ struct SnapshotsCapabilityTests {
         arguments: [
             SnapshotError.timelineConflict, .unreadableTimeline, .sessionKeyOpen, .invalidSessionKey, .noTimeline,
             .notAvailable(cause: .workingDirectoryMismatch), .notAvailable(cause: .timelineConflict),
-            .notAvailable(cause: .openFailed),
+            .notAvailable(cause: .openFailed), .fileNotInCheckpoint(path: "README.md"),
         ])
     func eachNewStoreErrorCorrectionNamesTheNextStep(error: SnapshotError) {
         let message = error.correctiveMessage

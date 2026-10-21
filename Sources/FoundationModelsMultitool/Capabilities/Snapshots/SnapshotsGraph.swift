@@ -222,6 +222,10 @@ enum SnapshotsGraphError: CodedError, Equatable {
     /// snapshots.
     case invalidSessionKey
 
+    /// `FILE_NOT_IN_CHECKPOINT`: the path is not one of the files that the
+    /// checkpoint changed.
+    case fileNotInCheckpoint(path: String)
+
     /// The last sentence of each message after which the session gets no
     /// snapshot.
     private static let noMoreSnapshots = "The session gets no snapshot until it opens its session key again."
@@ -253,6 +257,8 @@ enum SnapshotsGraphError: CodedError, Equatable {
             Self.sessionKeyOpen
         case .invalidSessionKey:
             Self.invalidSessionKey
+        case .fileNotInCheckpoint(let path):
+            Self.fileNotInCheckpoint(path: path)
         }
     }
 
@@ -267,6 +273,7 @@ enum SnapshotsGraphError: CodedError, Equatable {
         case .unreadableTimeline: "UNREADABLE_TIMELINE"
         case .sessionKeyOpen: "SESSION_KEY_OPEN"
         case .invalidSessionKey: "INVALID_SESSION_KEY"
+        case .fileNotInCheckpoint: "FILE_NOT_IN_CHECKPOINT"
         }
     }
 
@@ -294,6 +301,9 @@ enum SnapshotsGraphError: CodedError, Equatable {
         case .invalidSessionKey:
             "The session key of this session is not a valid name for its snapshots, thus the session has no "
                 + "snapshot."
+        case .fileNotInCheckpoint(let path):
+            "The file \(path) is not one of the files that this checkpoint changed. Query the files of the "
+                + "checkpoint to see its paths."
         }
     }
 }
