@@ -75,10 +75,7 @@ enum SessionsToolInput {
     /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
     ///   text names `listSessions`.
     static func sessionID(_ text: String) throws(SessionsToolInputError) -> ULID {
-        guard let id = ulid(text) else {
-            throw SessionsToolInputError(correctiveText: SessionsToolText.notASessionID(text))
-        }
-        return id
+        try requiredULID(text, corrective: SessionsToolText.notASessionID)
     }
 
     /// The message id of `text`.
@@ -89,10 +86,7 @@ enum SessionsToolInput {
     /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
     ///   text names `readInbox`.
     static func messageID(_ text: String) throws(SessionsToolInputError) -> MailID {
-        guard let id = ulid(text) else {
-            throw SessionsToolInputError(correctiveText: SessionsToolText.notAMessageID(text))
-        }
-        return MailID(id)
+        MailID(try requiredULID(text, corrective: SessionsToolText.notAMessageID))
     }
 
     /// The target of a message that `text` names (session.md section 9).
@@ -155,6 +149,24 @@ enum SessionsToolInput {
     /// - Returns: The ULID, or `nil` when `text` is not a ULID.
     private static func ulid(_ text: String) -> ULID? {
         ULID(ulidString: text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
+    }
+
+    /// The ULID of `text`, as ``ulid(_:)`` reads it, which the text must hold.
+    ///
+    /// - Parameters:
+    ///   - text: The text of an id argument.
+    ///   - corrective: The corrective for a text that is not a ULID, given the
+    ///     text as written.
+    /// - Returns: The ULID.
+    /// - Throws: ``SessionsToolInputError`` with the text of `corrective` when
+    ///   `text` is not a ULID.
+    private static func requiredULID(
+        _ text: String, corrective: (String) -> String
+    ) throws(SessionsToolInputError) -> ULID {
+        guard let id = ulid(text) else {
+            throw SessionsToolInputError(correctiveText: corrective(text))
+        }
+        return id
     }
 
     /// The working folder of `path`, or `nil` for no path.

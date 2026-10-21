@@ -29,6 +29,33 @@ comments:
     - evidence: `swift test` — 2623 tests in 225 suites passed, 0 failures (SessionsToolMessageTests 25/25). 10 files: Sources/.../Sessions/SessionsTool.swift, SessionsToolContext.swift, SessionsToolInput.swift, SessionsToolOperations.swift, SessionsToolText.swift, SessionsToolText+Messages.swift (new), SessionsToolMessageOperations.swift (new), SessionsToolReceivedMessages.swift (new); Tests/.../SessionsToolMessageTests.swift (new), Tests/.../Fixtures/SessionsToolFixtures.swift
     - next: /review. Follow-up ^nv64e95 (port lookup of a message by id).
   timestamp: 2026-10-21T13:40:08.030716+00:00
+- actor: claude-code
+  id: 01m5fbdw6j5fey6r1mbcpf1bab
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (f88cc9e) — 1 finding (1 confirmed, 0 refuted) — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolInput.swift:92
+    - next: implement the duplication/duplication finding (shared ULID-parse helper for messageID and sessionID), then re-review
+  timestamp: 2026-10-21T13:46:49.938953+00:00
+- actor: claude-code
+  id: 01m5fbe8m0p0grf4w4cwxasr8j
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 10 files (message ops, received-messages record, text, input, fixtures, tests)
+    - test: green — swift test, 2623 tests / 225 suites (run by implement)
+    - commit: f88cc9e
+    - review: findings — SessionsToolInput.swift:92
+  timestamp: 2026-10-21T13:47:02.656076+00:00
+- actor: claude-code
+  id: 01m5fbhdap346rr5e0bxt7nqgm
+  text: 'Finding SessionsToolInput.swift:92 (duplication) resolved: new private `SessionsToolInput.requiredULID(_:corrective:)` holds the one guard/throw/return over `ulid(_:)`. `sessionID(_ text: String)` is `try requiredULID(text, corrective: SessionsToolText.notASessionID)`; `messageID` is `MailID(try requiredULID(text, corrective: SessionsToolText.notAMessageID))`. The MailID wrap stays at the call site as one expression rather than a `wrap:` closure parameter, so the helper is not generic. Whole-file sweep: no other id reader throws on a non-ULID. `address(_:)` uses `ulid(_:)` as a test that falls through to the other address forms, so it stays as it is. Refactor only; the existing correctives are pinned by checkSessionOfAMalformedIDNamesListSessions and replyMessageToAMalformedIDNamesReadInbox.'
+  timestamp: 2026-10-21T13:48:45.782022+00:00
+- actor: claude-code
+  id: 01m5fbhfy0rnnbfz72er6xbecj
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolInput.swift. `swift test` — 2623 tests in 225 suites passed, 0 failures. Its one warning line is the SwiftPM build-graph note "missing creator for mutated node" on the mlx-swift_Cmlx.bundle. It does not come from this package's sources.
+    - next: /review
+  timestamp: 2026-10-21T13:48:48.448894+00:00
 depends_on:
 - 01M5F236W9NXECHBE44PTMVYQZ
 position_column: doing
@@ -52,3 +79,12 @@ In `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsTool.swift` 
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #sessions
+
+## Review Findings (2026-10-21 08:41)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolInput.swift:92` `duplication/duplication` — messageID function (lines 92–95) duplicates the guard-and-parse pattern of sessionID (lines 78–81), differing only in error message name and return type wrapping. Extract a shared helper function parameterized by the error message function and return wrapper, e.g. `parseULIDAs<T>(_:wrap:error:)`, eliminating the duplicated guard/throw/return logic.
