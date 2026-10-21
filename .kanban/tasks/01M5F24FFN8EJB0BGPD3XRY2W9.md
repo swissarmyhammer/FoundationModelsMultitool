@@ -32,6 +32,40 @@ comments:
     - evidence: `swift test` -> 2684 tests in 228 suites passed, 0 failures, no compiler warnings; files: Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphChanges.swift (new), SessionsGraph.swift, SessionsGraphSchema.swift, SessionsVisibility.swift, Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry.swift, Tests/FoundationModelsMultitoolTests/SessionsGraphChangesTests.swift (new), SessionsGraphQueryTests.swift, Goldens/sessions.graphql
     - next: /review
   timestamp: 2026-10-21T16:03:47.235962+00:00
+- actor: claude-code
+  id: 01m5fkny7tj957gx6v6j7jypdb
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (9d556d6) — 1 finding (1 confirmed, 0 refuted) — Tests/FoundationModelsMultitoolTests/SessionsGraphQueryTests.swift:345 (completeness/inverse-operation-coverage)
+    - next: implementer resolves the unchecked item in the 2026-10-21 11:04 Review Findings section, then re-run /review
+  timestamp: 2026-10-21T16:11:02.778474+00:00
+- actor: claude-code
+  id: 01m5fkpbmk85kjgmht0f8z2rha
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 8 files (SessionsGraphChanges, visibility split, schema, tests, golden)
+    - test: green — swift test, 2684 tests / 228 suites (run by implement)
+    - commit: 9d556d6
+    - review: findings — SessionsGraphQueryTests.swift:345
+  timestamp: 2026-10-21T16:11:16.499457+00:00
+- actor: claude-code
+  id: 01m5fkxvfw41s654j1yh73r4nh
+  text: |-
+    Resolved the review finding at SessionsGraphQueryTests.swift (completeness/inverse-operation-coverage), the stronger way:
+    - The probe document is now the constant `sessionChangesSubscription` and selects `cursor added changed removed` (it was `{ cursor }`). `{ cursor }` is now the constant `cursorQuery`.
+    - `GraphQLAliasProbe` has no data assertion (FoundationModelsExtras GraphQLTestKit: the subscription probe checks only the rewrite and that no error came back), so the id is asserted in a sibling test, `theFirstSessionChangesResponseAddsTheRegisteredSession`. It subscribes with the same document after the same cursor, reads the first response, and expects no error, `added == [registered id]`, `changed == []` and `removed == []`.
+    - A shared setup struct, `RegisteredAfterCursor` (directory, the endpoint, the cursor, then one registered live root session), feeds both tests. It holds the endpoint strongly. `SessionsGraph.endpoint(of:)` caches endpoints weakly, and a new endpoint has a new ChangeLog epoch, so if the endpoint were dropped between reading the cursor and subscribing, the result would be RESYNC_REQUIRED.
+    - The conformance doc comment now says exactly what each probe checks (the rewrite, and no error), says that the probe does not read the data, and names the sibling test that does.
+    - TDD: RED was the sibling test against the old `{ cursor }` selection (added/changed/removed came back nil, 3 issues). GREEN came after widening the selection.
+    - Note: `swift test` prints one SwiftPM/llbuild line, `warning: missing creator for mutated node: .../mlx-swift_Cmlx.bundle/Contents/MacOS`. It comes from the dependency resource bundle during an incremental build, not from a compiler diagnostic in this repo, and this change touched only one test file.
+  timestamp: 2026-10-21T16:15:22.108818+00:00
+- actor: claude-code
+  id: 01m5fkxxjqgbxd5x6nnw05hyyg
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsGraphQueryTests.swift; `swift test` -> 2685 tests in 228 suites passed, 0 failures (one llbuild "missing creator for mutated node" line for the mlx-swift_Cmlx bundle, no compiler warnings); review finding checked
+    - next: /review
+  timestamp: 2026-10-21T16:15:24.247128+00:00
 depends_on:
 - 01M5F23YY9X0YEG7M1D9C0FP9M
 - 01M5F249SHTG5BWEM0HAF25EM5
@@ -62,3 +96,15 @@ In `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift`
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-21 11:04)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 3 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphQueryTests.swift:345` `completeness/inverse-operation-coverage` — The docstring claims the subscription probe verifies 'its first response is that change' — that the change registered in the write direction comes through in the subscription response. However, the subscription query at lines 345–346 only requests `{ cursor }`, not the change itself. The test verifies the subscription alias works and accepts the cursor parameter, but does not verify the expected change appears in the response. Either clarify the docstring to document that the test verifies only the alias and cursor parameter work (not full round-trip), or expand the subscription query to request change fields (e.g., `added`, `removed`, or `changed`) to confirm the registered change appears in the response.

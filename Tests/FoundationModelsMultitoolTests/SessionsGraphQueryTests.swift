@@ -88,6 +88,14 @@ struct SessionsGraphQueryTests {
     /// `Tests/FoundationModelsMultitoolTests/Goldens`.
     private static let goldenFileName = "sessions.graphql"
 
+    /// The root query of the newest cursor.
+    private static let cursorQuery = "{ cursor }"
+
+    /// The subscription of the `sessionChanges` alias probe, with every field
+    /// of a change.
+    private static let sessionChangesSubscription =
+        "subscription($after: String) { sessionChanges(after: $after) { cursor added changed removed } }"
+
     // MARK: - Helpers
 
     /// The shared fixtures of the `sessions` tool tests.
@@ -151,6 +159,41 @@ struct SessionsGraphQueryTests {
         /// The endpoint over ``directory``.
         var graph: SessionsGraph {
             SessionsGraph.endpoint(of: directory)
+        }
+    }
+
+    /// The setup of the `sessionChanges` alias probe: an endpoint, the cursor
+    /// that it gave, and one live root session registered after that cursor,
+    /// so the first change after the cursor adds that session.
+    private struct RegisteredAfterCursor {
+        /// The directory that holds ``session``.
+        let directory = InMemorySessionDirectory()
+
+        /// The live root session registered after ``cursor``.
+        let session = Fixtures.summary()
+
+        /// The endpoint over ``directory``. The setup holds it, because the
+        /// endpoint cache holds an endpoint weakly, and a new endpoint has a
+        /// new change log that cannot resume after ``cursor``.
+        let graph: SessionsGraph
+
+        /// The cursor that ``graph`` gave before ``session`` was registered.
+        let cursor: String
+
+        /// Reads the cursor of the endpoint, then registers ``session``.
+        ///
+        /// - Throws: What the endpoint throws, or an error when the response
+        ///   has no cursor.
+        init() async throws {
+            graph = SessionsGraph.endpoint(of: directory)
+            cursor = try #require(try await run(cursorQuery, on: graph).data?["cursor"] as? String)
+            directory.register(session)
+        }
+
+        /// The variables of ``sessionChangesSubscription``: resume after
+        /// ``cursor``.
+        var variables: [String: Map] {
+            ["after": .string(cursor)]
         }
     }
 
@@ -329,27 +372,48 @@ struct SessionsGraphQueryTests {
         #expect(first !== second)
     }
 
-    /// The endpoint conforms to the toolkit conventions, rule 9 among them:
-    /// `listSessions` rewrites to `sessions`, and `sessionChanges` to
-    /// `changes`. The subscription probe resumes after the cursor that the
-    /// endpoint gave before one change, so its first response is that change.
+    /// The endpoint conforms to the toolkit conventions, rule 9 among them.
+    /// The `listSessions` probe checks that its response reports the rewrite
+    /// to `sessions` and has no error. The `sessionChanges` probe resumes
+    /// after the cursor that the endpoint gave before one session was
+    /// registered, and checks that its first response reports the rewrite to
+    /// `changes` and has no error. The probe does not read the data of that
+    /// response; ``theFirstSessionChangesResponseAddsTheRegisteredSession()``
+    /// checks that the data is the change of the registered session.
     @Test("the endpoint conforms, with the listSessions and sessionChanges alias probes")
     func theEndpointConforms() async throws {
-        let directory = InMemorySessionDirectory()
-        let graph = SessionsGraph.endpoint(of: directory)
-        let cursor = try #require(try await Self.run("{ cursor }", on: graph).data?["cursor"] as? String)
-        directory.register(Fixtures.summary())
+        let setup = try await RegisteredAfterCursor()
         let probes = [
             GraphQLAliasProbe(query: "{ listSessions { id } }", from: "listSessions", to: "sessions"),
             GraphQLAliasProbe(
-                query: "subscription($after: String) { sessionChanges(after: $after) { cursor } }",
-                variables: ["after": .string(cursor)], from: "sessionChanges", to: "changes", kind: .subscription),
+                query: Self.sessionChangesSubscription, variables: setup.variables, from: "sessionChanges",
+                to: "changes", kind: .subscription),
         ]
 
         let problems = await GraphQLEndpointConformance.problems(
-            of: graph, scope: .server, probes: probes, codes: SessionsRefusal.codes, clock: ManualRunClock())
+            of: setup.graph, scope: .server, probes: probes, codes: SessionsRefusal.codes, clock: ManualRunClock())
 
         #expect(problems.isEmpty, "problems: \(problems)")
+    }
+
+    /// The first response of the subscription of the `sessionChanges` probe,
+    /// after the same cursor, is the change of the session registered after
+    /// that cursor: `added` holds the id of that session, and `changed` and
+    /// `removed` are empty.
+    @Test("the first response of the sessionChanges probe subscription adds the registered session")
+    func theFirstSessionChangesResponseAddsTheRegisteredSession() async throws {
+        let setup = try await RegisteredAfterCursor()
+        var responses = try await setup.graph.subscribe(
+            query: Self.sessionChangesSubscription, variables: setup.variables, operationName: nil, viewer: nil
+        ).makeAsyncIterator()
+
+        let reply = try GraphQLReply(json: try #require(try await responses.next()))
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let change = try reply.object("sessionChanges")
+        #expect(change["added"] as? [String] == [setup.session.id.ulidString])
+        #expect(change["changed"] as? [String] == [])
+        #expect(change["removed"] as? [String] == [])
     }
 
     /// Each type, field, argument, enum value and input field of the schema
