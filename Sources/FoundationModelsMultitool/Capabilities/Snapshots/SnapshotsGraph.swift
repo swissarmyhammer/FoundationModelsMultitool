@@ -41,11 +41,14 @@ import GraphQL
 /// One store has one change log (EXTRAS-9 rule 1): each endpoint over the
 /// same store, of each ``SnapshotsCapability`` value, gives the same cursor.
 ///
-/// A session that the resolver does not know, or whose session key the store
-/// has not open for it (for example a released session), gives no checkpoint,
-/// and its rollback gives the `NOT_FOUND` of the toolkit. An external client
-/// sees, rolls back and gets the changes of only the sessions that it owns;
-/// the agent and a device of the user see each session.
+/// The queries read the timeline of the session key from disk with no owner,
+/// so a session whose key is closed (for example a released session) still
+/// gives its checkpoints and their diffs. A session that the resolver does not
+/// know, or whose session key has no timeline, gives no checkpoint. A rollback
+/// needs the session key open for the session: a released or unknown session
+/// gives the `NOT_FOUND` of the toolkit. An external client sees, rolls back
+/// and gets the changes of only the sessions that it owns; the agent and a
+/// device of the user see each session.
 ///
 /// The name rewrite takes `rollback` for `rollbackTimeline`, `snapshotChanges`
 /// for `changes`, and the general query verbs, for example `listCheckpoints`

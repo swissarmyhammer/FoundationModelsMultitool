@@ -40,6 +40,18 @@ struct SnapshotsGraphTests {
     /// A session ID that the stub resolver does not know.
     private static let unknownSessionId = "session-unknown"
 
+    /// A valid session key that no store of a test opens, thus a key with no
+    /// timeline on disk.
+    private static let absentSessionKey = "lineage-absent"
+
+    /// A session key that is not one path component, thus not a valid name
+    /// for its snapshots.
+    private static let invalidSessionKey = "lineage/one"
+
+    /// The index of the checkpoint that another store adds after the two
+    /// checkpoints of a fixture.
+    private static let thirdIndex = 3
+
     /// The ID of a client that is not a device of the user.
     private static let externalClientId = "client-external"
 
@@ -266,6 +278,17 @@ struct SnapshotsGraphTests {
         SnapshotsGraph(
             store: fixture.store, sessionKey: stubSessionKey, sessionId: stubSessionId,
             changeLogCapacity: SnapshotsGraph.changeLogCapacity, diff: diff)
+    }
+
+    /// Makes the endpoint over the store of `fixture`, with a resolver that
+    /// gives `key` for each session ID.
+    ///
+    /// - Parameters:
+    ///   - fixture: The fixture whose store the endpoint reads.
+    ///   - key: The session key of each session ID.
+    /// - Returns: The endpoint.
+    private static func graph(over fixture: Fixture, resolvingTo key: String) -> SnapshotsGraph {
+        SnapshotsGraph(store: fixture.store, sessionKey: { _ in key }, sessionId: stubSessionId)
     }
 
     /// Runs the `changes` query of checkpoint `index` of ``sessionId``.
@@ -553,7 +576,8 @@ struct SnapshotsGraphTests {
     }
 
     /// The endpoint reads the timeline of the session key that the resolver
-    /// gives for the session ID, with the session ID as the owner.
+    /// gives for the session ID; a session key passed as a session ID names
+    /// no session.
     @Test("a stub resolver maps the session id to its session key")
     func theResolverMapsTheSessionIdToItsKey() async throws {
         let fixture = try await Self.makeFixture()
@@ -741,25 +765,35 @@ struct SnapshotsGraphTests {
     }
 
     /// After another store moved the timeline of the key, a rollback gives
-    /// `CONFLICTING_TIMELINE`, and each later query of the session gives
+    /// `CONFLICTING_TIMELINE`, and each later rollback of the session gives
     /// `SNAPSHOTS_NOT_AVAILABLE`.
     @Test("a timeline conflict gives CONFLICTING_TIMELINE, then SNAPSHOTS_NOT_AVAILABLE")
     func aTimelineConflictGivesItsCodes() async throws {
-        let fixture = try await Self.makeFixture()
-        try await Self.makeTwoCheckpoints(in: fixture)
-        let otherStore = try await Self.storeOnTheSameDirectory(as: fixture)
-        try fixture.repository.write("three\n", to: Self.thirdFile)
-        _ = try await otherStore.take(
-            sessionKey: Self.sessionKey, owner: Self.unknownSessionId, trigger: .manual(label: nil))
+        let fixture = try await Self.makeConflictedFixture()
 
         let rollback = try await Self.rollback(to: Self.firstIndex, on: fixture.graph)
-        let query = try await Self.checkpoints(on: fixture.graph)
+        let laterRollback = try await Self.rollback(to: Self.firstIndex, on: fixture.graph)
 
         #expect(rollback.codes == ["CONFLICTING_TIMELINE"])
-        #expect(query.codes == ["SNAPSHOTS_NOT_AVAILABLE"])
+        #expect(laterRollback.codes == ["SNAPSHOTS_NOT_AVAILABLE"])
     }
 
-    // MARK: - Unknown and released sessions
+    /// After a timeline conflict stopped the snapshots of the session, the
+    /// queries still read the timeline of the key from disk, with the
+    /// checkpoint that the other store added.
+    @Test("after a timeline conflict, checkpoints reads the timeline from disk")
+    func aConflictedTimelineIsStillRead() async throws {
+        let fixture = try await Self.makeConflictedFixture()
+        _ = try await Self.rollback(to: Self.firstIndex, on: fixture.graph)
+
+        let reply = try await Self.checkpoints(on: fixture.graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let indexes = try reply.list("checkpoints").map { $0["index"] as? Int }
+        #expect(indexes == [Self.firstIndex, Self.secondIndex, Self.thirdIndex])
+    }
+
+    // MARK: - Unknown and closed sessions
 
     /// A session ID that the resolver does not know gives no checkpoints, a
     /// `null` checkpoint, and `NOT_FOUND` for a rollback.
@@ -777,21 +811,87 @@ struct SnapshotsGraphTests {
         #expect(rollback.codes == [Self.notFoundCode])
     }
 
-    /// A session that released its key gives no checkpoints, a `null`
-    /// checkpoint, and `NOT_FOUND` for a rollback.
-    @Test("a released session gives [], null and NOT_FOUND")
-    func aReleasedSessionGivesNothing() async throws {
-        let fixture = try await Self.makeFixture()
-        try await Self.makeTwoCheckpoints(in: fixture)
-        await fixture.store.release(sessionKey: Self.sessionKey, owner: Self.sessionId)
+    /// `checkpoints` of a session that released its key gives the timeline
+    /// of the closed key, read from disk.
+    @Test("checkpoints gives the timeline of a released session")
+    func checkpointsOfAReleasedSessionGivesItsTimeline() async throws {
+        let fixture = try await Self.makeReleasedFixture()
 
-        let list = try await Self.checkpoints(on: fixture.graph)
-        let single = try await Self.checkpoint(Self.firstIndex, on: fixture.graph)
+        let reply = try await Self.checkpoints(on: fixture.graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let checkpoints = try reply.list("checkpoints")
+        #expect(checkpoints.map { $0["index"] as? Int } == [Self.firstIndex, Self.secondIndex])
+        #expect(checkpoints.map { $0["trigger"] as? String } == ["label \(Self.firstLabel)", Self.toolTrigger])
+        #expect(checkpoints.map { $0["files"] as? [String] } == [[Self.firstFile], [Self.secondFile]])
+    }
+
+    /// `checkpoint` of a session that released its key gives the checkpoint
+    /// of the closed key.
+    @Test("checkpoint gives one checkpoint of a released session")
+    func checkpointOfAReleasedSessionGivesTheCheckpoint() async throws {
+        let fixture = try await Self.makeReleasedFixture()
+
+        let checkpoint = try await Self.checkpoint(Self.secondIndex, on: fixture.graph).object("checkpoint")
+
+        #expect(checkpoint["id"] as? String == "\(Self.sessionId):\(Self.secondIndex)")
+        #expect(checkpoint["files"] as? [String] == [Self.secondFile])
+    }
+
+    /// `changes` of a checkpoint of a session that released its key gives
+    /// the diff of each file, read from disk.
+    @Test("changes gives the diffs of a checkpoint of a released session")
+    func changesOfAReleasedSessionGivesTheDiffs() async throws {
+        let fixture = try await Self.makeReleasedFixture()
+
+        let reply = try await Self.changes(of: Self.firstIndex, on: fixture.graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let changes = try #require(try reply.object("checkpoint")["changes"] as? [[String: Any]])
+        #expect(changes.map { $0["path"] as? String } == [Self.firstFile])
+        let diffLines = try #require(changes.first?["diff"] as? String).split(separator: "\n").map(String.init)
+        #expect(diffLines.contains("+one"))
+    }
+
+    /// A rollback of a session that released its key gives `NOT_FOUND`: the
+    /// rollback still needs the key open for the session.
+    @Test("rollbackTimeline of a released session gives NOT_FOUND")
+    func rollbackOfAReleasedSessionGivesNotFound() async throws {
+        let fixture = try await Self.makeReleasedFixture()
+
         let rollback = try await Self.rollback(to: Self.firstIndex, on: fixture.graph)
 
-        #expect(try list.list("checkpoints").isEmpty)
-        #expect(single.isNull("checkpoint"))
         #expect(rollback.codes == [Self.notFoundCode])
+        let secondPath = fixture.repository.workDirectory.appendingPathComponent(Self.secondFile).path
+        #expect(FileManager.default.fileExists(atPath: secondPath))
+    }
+
+    /// A session whose key has no timeline on disk gives no checkpoints and
+    /// a `null` checkpoint, not an error.
+    @Test("a session key with no timeline gives [] and null")
+    func aKeyWithNoTimelineGivesNothing() async throws {
+        let fixture = try await Self.makeFixture()
+        let graph = Self.graph(over: fixture, resolvingTo: Self.absentSessionKey)
+
+        let list = try await Self.checkpoints(on: graph)
+        let single = try await Self.checkpoint(Self.firstIndex, on: graph)
+
+        #expect(list.codes.isEmpty, "errors: \(list.messages)")
+        #expect(try list.list("checkpoints").isEmpty)
+        #expect(single.codes.isEmpty, "errors: \(single.messages)")
+        #expect(single.isNull("checkpoint"))
+    }
+
+    /// A session key that is not a valid name for its snapshots gives
+    /// `INVALID_SESSION_KEY`.
+    @Test("an invalid session key gives INVALID_SESSION_KEY")
+    func anInvalidSessionKeyGivesItsCode() async throws {
+        let fixture = try await Self.makeFixture()
+        let graph = Self.graph(over: fixture, resolvingTo: Self.invalidSessionKey)
+
+        let reply = try await Self.checkpoints(on: graph)
+
+        #expect(reply.codes == ["INVALID_SESSION_KEY"])
     }
 
     // MARK: - Viewers
@@ -865,5 +965,32 @@ struct SnapshotsGraphTests {
         try await store.open(
             sessionKey: sessionKey, owner: unknownSessionId, workingDirectory: fixture.repository.workDirectory)
         return store
+    }
+
+    /// Makes a fixture with two checkpoints, and then a second store over the
+    /// same store folder takes a third checkpoint, which adds ``thirdFile``.
+    /// Thus the timeline moved after the store of the fixture read it.
+    ///
+    /// - Returns: The fixture.
+    /// - Throws: What the repository or the stores throw.
+    private static func makeConflictedFixture() async throws -> Fixture {
+        let fixture = try await makeFixture()
+        try await makeTwoCheckpoints(in: fixture)
+        let otherStore = try await storeOnTheSameDirectory(as: fixture)
+        try fixture.repository.write("three\n", to: thirdFile)
+        _ = try await otherStore.take(sessionKey: sessionKey, owner: unknownSessionId, trigger: .manual(label: nil))
+        return fixture
+    }
+
+    /// Makes a fixture with two checkpoints, and then releases its session
+    /// key, as `SnapshotHook` does on `SessionEnd`. Thus the key is closed.
+    ///
+    /// - Returns: The fixture.
+    /// - Throws: What the repository or the store throws.
+    private static func makeReleasedFixture() async throws -> Fixture {
+        let fixture = try await makeFixture()
+        try await makeTwoCheckpoints(in: fixture)
+        await fixture.store.release(sessionKey: sessionKey, owner: sessionId)
+        return fixture
     }
 }

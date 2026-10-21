@@ -3,8 +3,10 @@
 // `SnapshotStore`.
 //
 // The resolver maps a session ID to its session key with the resolver that
-// the host gives, and passes the session ID as the owner, the same two values
-// that `SnapshotsContext` reads from `HookSession.current` for the verbs.
+// the host gives. The queries read the timeline of the key from disk with no
+// owner, so they also read a closed key. The rollback passes the session ID as
+// the owner, the same two values that `SnapshotsContext` reads from
+// `HookSession.current` for the verbs.
 
 import Foundation
 import FoundationModelsExtras
@@ -169,9 +171,9 @@ struct SnapshotsGraphResolver: Sendable {
     /// - Parameters:
     ///   - context: The context of the call, which gives the viewer.
     ///   - arguments: The session ID.
-    /// - Returns: The checkpoints, oldest first. No checkpoint for a session
-    ///   that the viewer cannot see, that the host does not know, or that has
-    ///   its session key not open.
+    /// - Returns: The checkpoints, oldest first, of an open or a closed
+    ///   session key. No checkpoint for a session that the viewer cannot see,
+    ///   that the host does not know, or whose session key has no timeline.
     /// - Throws: A ``SnapshotsGraphError`` for each other store error.
     func checkpoints(
         context: SnapshotsGraphContext, arguments: SnapshotsGraphCheckpointsArguments
@@ -221,14 +223,16 @@ struct SnapshotsGraphResolver: Sendable {
         }
     }
 
-    /// Reads the timeline of a session, with the session ID as the owner.
+    /// Reads the timeline of a session from disk. The read needs no owner, so
+    /// it reads the timeline of an open key and of a closed key (for example
+    /// the key of a released session) alike.
     ///
     /// - Parameters:
     ///   - sessionId: The session ID.
     ///   - context: The context of the call, which gives the viewer.
     /// - Returns: The checkpoints, oldest first, or `nil` for a session that
-    ///   the viewer cannot see, that the host does not know, or that has its
-    ///   session key not open.
+    ///   the viewer cannot see, that the host does not know, or whose session
+    ///   key has no timeline.
     /// - Throws: A ``SnapshotsGraphError`` for each other store error.
     private func timeline(of sessionId: String, context: SnapshotsGraphContext) async throws
         -> [SnapshotsGraphCheckpoint]?
@@ -237,14 +241,10 @@ struct SnapshotsGraphResolver: Sendable {
             return nil
         }
         do {
-            return try await store.checkpoints(sessionKey: key, owner: sessionId).map { checkpoint in
+            return try await store.timelineCheckpoints(sessionKey: key).map { checkpoint in
                 SnapshotsGraphCheckpoint(checkpoint, sessionId: sessionId, sessionKey: key)
             }
-        } catch SnapshotError.unavailable {
-            // TODO(HOOKS-5): a released session has a closed timeline on disk.
-            // `SnapshotStore.timelineSummary(sessionKey:)` reads only its count,
-            // its last date and its working directory, not its checkpoints, so
-            // the store cannot list the checkpoints of a released session yet.
+        } catch SnapshotError.noTimeline {
             return nil
         } catch let error as SnapshotError {
             throw SnapshotsGraphError.coded(error, sessionId: sessionId)
