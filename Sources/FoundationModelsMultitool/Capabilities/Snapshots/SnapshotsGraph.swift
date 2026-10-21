@@ -2,8 +2,9 @@
 // checkpoints of each session for the clients of the host, over the one
 // `SnapshotStore` that the snapshots capability and `SnapshotHook` share.
 //
-// The schema is in `SnapshotsGraphSchema.swift`. This file holds the endpoint
-// and its coded errors.
+// The schema is in `SnapshotsGraphSchema.swift`, and its change feed and
+// `changes` subscription are in `SnapshotsGraphChanges.swift`. This file holds
+// the endpoint and its coded errors.
 
 import Foundation
 import FoundationModelsExtras
@@ -25,21 +26,46 @@ import GraphQL
 /// - `Mutation.rollbackTimeline(input:)` rolls the work tree of a session back
 ///   to a checkpoint, and gives the new rollback checkpoint (D95).
 ///
+/// Its changes follow EXTRAS-9 rule 9: `Query.cursor` gives the cursor of the
+/// newest change, and `Subscription.changes(after:sessionId:)` gives each
+/// change after a cursor, one `SnapshotChange` for each new checkpoint of the
+/// store: a take, a pending or rollback checkpoint of a rollback, or a change
+/// made while the session key was closed. The new checkpoint is `added`, with
+/// the id that `checkpoint(sessionId:index:)` gives. A subscription ends with
+/// `RESYNC_REQUIRED` when a change after its cursor is lost. The endpoint
+/// keeps the newest ``changeLogCapacity`` changes.
+///
+/// One store has one change log (EXTRAS-9 rule 1): each endpoint over the
+/// same store, of each ``SnapshotsCapability`` value, gives the same cursor.
+///
 /// A session that the resolver does not know, or whose session key the store
 /// has not open for it (for example a released session), gives no checkpoint,
 /// and its rollback gives the `NOT_FOUND` of the toolkit. An external client
-/// sees and rolls back only the sessions that it owns; the agent and a device
-/// of the user see each session.
+/// sees, rolls back and gets the changes of only the sessions that it owns;
+/// the agent and a device of the user see each session.
 ///
-/// The name rewrite takes `rollback` for `rollbackTimeline`, and the general
-/// query verbs, for example `listCheckpoints` for `checkpoints`.
+/// The name rewrite takes `rollback` for `rollbackTimeline`, `snapshotChanges`
+/// for `changes`, and the general query verbs, for example `listCheckpoints`
+/// for `checkpoints`.
 public struct SnapshotsGraph: GraphQLEndpoint {
     /// The name of the endpoint.
     public static let endpointName = "snapshots"
 
-    /// The other names that a call can write for the names of the schema.
+    /// The number of the newest changes that the change log of a store
+    /// keeps: a subscription resumes after a cursor at most this many changes
+    /// old, and a subscriber that falls this many changes behind gets
+    /// `RESYNC_REQUIRED`.
+    static let changeLogCapacity = 1024
+
+    /// The other names that a call can write for the names of the schema:
+    /// `rollback` for the `rollbackTimeline` mutation, and `snapshotChanges`
+    /// for the `changes` subscription.
     static let rules = GraphQLNameRules(
-        aliases: GraphQLAliasTable(byType: ["Mutation": ["rollbackTimeline": ["rollback"]]])
+        aliases: GraphQLAliasTable(
+            byType: [
+                "Mutation": ["rollbackTimeline": ["rollback"]],
+                "Subscription": ["changes": ["snapshotChanges"]],
+            ])
     )
 
     /// The name of the endpoint.
@@ -54,15 +80,48 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     /// The root resolver over the store.
     private let resolver: SnapshotsGraphResolver
 
+    /// The change log of the store, which the change stream of the store
+    /// feeds; each endpoint over the store shares it.
+    private let changes: SnapshotsGraphChangeFeed
+
     /// Makes the endpoint over a store.
+    ///
+    /// The change log of a store maps each session key of a change to its
+    /// session ID with the `sessionId` resolver of the first endpoint over
+    /// the store, so a host gives each endpoint over one store the same
+    /// resolvers.
     ///
     /// - Parameters:
     ///   - store: The store that the host also gives to the snapshots
     ///     capability and to `SnapshotHook`.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
     ///     session that the host does not know.
-    public init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?) {
+    ///   - sessionId: The inverse of `sessionKey`: gives the session ID of a
+    ///     session key, or `nil` for a key that the host does not know. A
+    ///     checkpoint of an unknown key gives no change.
+    public init(
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
+        sessionId: @escaping @Sendable (String) async -> String?
+    ) {
+        self.init(
+            store: store, sessionKey: sessionKey, sessionId: sessionId, changeLogCapacity: Self.changeLogCapacity)
+    }
+
+    /// Makes the endpoint over a store, with a change log of a given
+    /// capacity when the store has no change log yet.
+    ///
+    /// - Parameters:
+    ///   - store: The store.
+    ///   - sessionKey: Gives the session key of a session ID, or `nil`.
+    ///   - sessionId: Gives the session ID of a session key, or `nil`.
+    ///   - changeLogCapacity: The number of the newest changes that a new
+    ///     change log of the store keeps.
+    init(
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
+        sessionId: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int
+    ) {
         resolver = SnapshotsGraphResolver(store: store, sessionKey: sessionKey)
+        changes = SnapshotsGraphChangeFeed.feed(of: store, sessionId: sessionId, capacity: changeLogCapacity)
     }
 
     /// The schema of the endpoint in SDL. The schema is built once for each
@@ -92,11 +151,13 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     ) async throws -> String {
         try await api().respond(
             to: query, variables: variables, operationName: operationName, rules: Self.rules,
-            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer))
+            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer, changes: changes))
     }
 
-    /// Starts one GraphQL subscription. The schema has no subscription yet,
-    /// so the stream gives one response with the error, and then ends.
+    /// Starts one GraphQL subscription: `changes(after:sessionId:)`, or its
+    /// alias `snapshotChanges`. The stream gives one response for each new
+    /// checkpoint that the viewer can see, and ends with one
+    /// `RESYNC_REQUIRED` response when a change after the cursor is lost.
     ///
     /// - Parameters:
     ///   - query: The subscription document.
@@ -111,7 +172,7 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     ) async throws -> AsyncThrowingStream<String, Error> {
         try await api().subscribe(
             to: query, variables: variables, operationName: operationName, rules: Self.rules,
-            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer))
+            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer, changes: changes))
     }
 
     /// The Graphiti engine of a call: the schema of the process and the

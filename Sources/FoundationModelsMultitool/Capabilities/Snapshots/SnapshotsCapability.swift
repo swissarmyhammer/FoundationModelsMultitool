@@ -82,29 +82,41 @@ public struct SnapshotsCapability: Capability {
     }
 
     /// Makes the snapshots capability over the store that the host gives to
-    /// it.
+    /// it, for a host whose session keys are the session IDs: the GraphQL
+    /// endpoint treats a session ID as its session key, and a session key as
+    /// its session ID.
+    ///
+    /// - Parameter store: The store that the host also gives to
+    ///   `SnapshotHook`, which takes the snapshots on the tool events.
+    public init(store: SnapshotStore) {
+        self.init(store: store, sessionKey: { sessionId in sessionId }, sessionId: { sessionKey in sessionKey })
+    }
+
+    /// Makes the snapshots capability over the store that the host gives to
+    /// it, for a host with lineage session keys.
     ///
     /// The initializer builds one `SnapshotsContext` and hands it to each
-    /// verb, and builds the one ``SnapshotsGraph`` over the store.
+    /// verb, and builds the ``SnapshotsGraph`` over the store.
     ///
     /// A GraphQL call names a session by its session ID, and the store takes
     /// the session key of the session lineage. `sessionKey` maps the one to
-    /// the other. The default treats the session ID as the session key, which
-    /// is right for a host whose session keys are the session IDs; a host with
-    /// lineage keys gives its own resolver.
+    /// the other, and `sessionId` maps a session key of a change of the store
+    /// back to the session ID that the change names.
     ///
     /// - Parameters:
     ///   - store: The store that the host also gives to `SnapshotHook`, which
     ///     takes the snapshots on the tool events.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
-    ///     session that the host does not know. The default gives the session
-    ///     ID itself.
+    ///     session that the host does not know.
+    ///   - sessionId: The inverse of `sessionKey`: gives the session ID of a
+    ///     session key, or `nil` for a key that the host does not know.
     public init(
         store: SnapshotStore,
-        sessionKey: @escaping @Sendable (String) async -> String? = { sessionId in sessionId }
+        sessionKey: @escaping @Sendable (String) async -> String?,
+        sessionId: @escaping @Sendable (String) async -> String?
     ) {
         let context = SnapshotsContext(store: store)
         tools = [ListSnapshots(context: context), TakeSnapshot(context: context), RollbackSnapshot(context: context)]
-        graph = SnapshotsGraph(store: store, sessionKey: sessionKey)
+        graph = SnapshotsGraph(store: store, sessionKey: sessionKey, sessionId: sessionId)
     }
 }

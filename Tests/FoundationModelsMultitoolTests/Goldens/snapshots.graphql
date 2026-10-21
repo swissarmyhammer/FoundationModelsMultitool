@@ -42,6 +42,31 @@ input RollbackTimelineInput {
   index: Int!
 }
 
+"""One new checkpoint of one session that you can see."""
+type SnapshotChange {
+  """The cursor that resumes the subscription after this change."""
+  cursor: String!
+
+  """The time of the change."""
+  at: DateTime!
+
+  """The session whose checkpoints changed."""
+  sessionId: ID!
+
+  """
+  The new checkpoint: query checkpoint(sessionId:index:) for its files and trigger.
+  """
+  added: [ID!]!
+
+  """The checkpoints that changed: none, a checkpoint never changes."""
+  changed: [ID!]!
+
+  """
+  The checkpoints that left the timeline: none, a rollback is a new checkpoint.
+  """
+  removed: [ID!]!
+}
+
 type Query {
   """
   The checkpoints of a session, oldest first. An unknown session gives none.
@@ -65,6 +90,11 @@ type Query {
     """The index of the checkpoint, from 1."""
     index: Int!
   ): Checkpoint
+
+  """
+  The cursor of the newest change. Read the checkpoints, then subscribe to changes after this cursor.
+  """
+  cursor: String!
 }
 
 type Mutation {
@@ -75,4 +105,21 @@ type Mutation {
     """The session and the checkpoint to restore."""
     input: RollbackTimelineInput!
   ): Checkpoint
+}
+
+type Subscription {
+  """
+  The new checkpoints of the sessions that you can see, after a cursor. RESYNC_REQUIRED ends it when a change after the cursor is lost: read the checkpoints and the cursor again, then subscribe with that cursor.
+  """
+  changes(
+    """
+    The cursor to resume after, from the cursor query or a change. None: the changes from now.
+    """
+    after: String
+
+    """
+    The session whose changes to give. None: each session that you can see.
+    """
+    sessionId: ID
+  ): SnapshotChange!
 }

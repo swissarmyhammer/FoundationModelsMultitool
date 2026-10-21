@@ -44,12 +44,22 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
     ///   - checkpoint: The checkpoint of the store.
     ///   - sessionId: The session whose timeline holds the checkpoint.
     init(_ checkpoint: Checkpoint, sessionId: String) {
-        id = ToolkitID([sessionId, String(checkpoint.index)].joined(separator: Self.idSeparator))
+        id = Self.id(sessionId: sessionId, index: checkpoint.index)
         index = checkpoint.index
         trigger = SnapshotCheckpoint.text(of: checkpoint.trigger)
         toolCallId = Self.toolCallId(of: checkpoint.trigger)
         files = checkpoint.files
         at = DateTime(checkpoint.date)
+    }
+
+    /// The id of a checkpoint: `<sessionId>:<index>`.
+    ///
+    /// - Parameters:
+    ///   - sessionId: The session whose timeline holds the checkpoint.
+    ///   - index: The index of the checkpoint.
+    /// - Returns: The id.
+    static func id(sessionId: String, index: Int) -> ToolkitID {
+        ToolkitID([sessionId, String(index)].joined(separator: idSeparator))
     }
 
     /// The tool call of a trigger.
@@ -107,6 +117,10 @@ struct SnapshotsGraphContext: GraphQLRunContext {
 
     /// The client of the call, or `nil` for the agent.
     let viewer: GraphQLViewer?
+
+    /// The change feed of the store, for the `cursor` query and the
+    /// `changes` subscription. A subscription holds it through its context.
+    let changes: SnapshotsGraphChangeFeed
 
     /// Tells if the client of the call can see a session (EXTRAS-9 rule 4):
     /// the agent and a device of the user see each session, and an external
@@ -242,7 +256,8 @@ struct SnapshotsGraphAPI: API {
     /// The schema.
     let schema: Schema<SnapshotsGraphResolver, SnapshotsGraphContext>
 
-    /// Builds the schema of the endpoint.
+    /// Builds the schema of the endpoint. The `cursor` query, the `changes`
+    /// subscription and its type are in `SnapshotsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
     /// - Throws: An error of the schema builder.
@@ -271,6 +286,7 @@ struct SnapshotsGraphAPI: API {
                         .description("The index of the checkpoint to restore. 0 is the baseline.")
                 }
                 .description("The checkpoint to roll the work tree of a session back to.")
+                changeType()
             }
             .addQuery {
                 Field("checkpoints", at: SnapshotsGraphResolver.checkpoints) {
@@ -282,6 +298,7 @@ struct SnapshotsGraphAPI: API {
                     Argument("index", at: \.index).description("The index of the checkpoint, from 1.")
                 }
                 .description("One checkpoint of a session, or null when the session has no such checkpoint.")
+                cursorField()
             }
             .addMutation {
                 Field("rollbackTimeline", at: SnapshotsGraphResolver.rollbackTimeline) {
@@ -292,6 +309,9 @@ struct SnapshotsGraphAPI: API {
                         + "checkpoint at the end of the timeline, which this gives, and the later checkpoints stay. "
                         + "Null when the work tree already equals that checkpoint. An unknown session gives "
                         + "NOT_FOUND.")
+            }
+            .addSubscription {
+                changesField()
             }
             .build()
     }

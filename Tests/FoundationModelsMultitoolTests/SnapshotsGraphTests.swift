@@ -85,9 +85,12 @@ struct SnapshotsGraphTests {
     /// The code of the toolkit for an id that the endpoint does not hold.
     private static let notFoundCode = GraphQLToolkitError.notFound(kind: "", id: "").code
 
-    /// The task that removes the exception of rule 9: the `changes`
-    /// subscription of the endpoint.
-    private static let changesTask = "01M5F225QGNMD545GC6MTS9MTV"
+    /// The root query of the newest cursor.
+    private static let cursorQuery = "{ cursor }"
+
+    /// The subscription of the `snapshotChanges` alias probe, after a cursor.
+    private static let snapshotChangesSubscription =
+        "subscription($after: String) { snapshotChanges(after: $after) { cursor added changed removed } }"
 
     /// Each error of the store, with the code that the endpoint gives for it.
     /// `unavailable` is the `NOT_FOUND` of the toolkit for the session.
@@ -147,6 +150,15 @@ struct SnapshotsGraphTests {
         id == sessionId ? sessionKey : nil
     }
 
+    /// The inverse of ``stubSessionKey(_:)``: it gives ``sessionId`` for
+    /// ``sessionKey``, and no session ID for each other key.
+    ///
+    /// - Parameter key: The session key.
+    /// - Returns: The session ID, or `nil`.
+    @Sendable private static func stubSessionId(_ key: String) async -> String? {
+        key == sessionKey ? sessionId : nil
+    }
+
     /// Makes a repository with one base commit, a store, the session key
     /// open on the store for ``sessionId``, and the endpoint over the store.
     ///
@@ -167,7 +179,7 @@ struct SnapshotsGraphTests {
         try await store.open(sessionKey: key, owner: sessionId, workingDirectory: repository.workDirectory)
         return Fixture(
             repository: repository, storeDirectory: storeDirectory, store: store,
-            graph: SnapshotsGraph(store: store, sessionKey: resolver))
+            graph: SnapshotsGraph(store: store, sessionKey: resolver, sessionId: stubSessionId))
     }
 
     /// Makes two checkpoints in the fixture: a manual one that adds
@@ -183,6 +195,21 @@ struct SnapshotsGraphTests {
         try fixture.repository.write("two\n", to: secondFile)
         _ = try await fixture.store.take(
             sessionKey: key, owner: sessionId, trigger: .toolUse(toolCallID: toolCallId, toolName: toolName))
+    }
+
+    /// Makes a fixture, reads the cursor of its endpoint, and then takes the
+    /// first checkpoint, which adds ``firstFile``.
+    ///
+    /// - Returns: The fixture, and the cursor from before the checkpoint.
+    /// - Throws: What the repository, the store or the endpoint throws, or an
+    ///   error when the response has no cursor.
+    private static func checkpointAfterCursor() async throws -> (fixture: Fixture, cursor: String) {
+        let fixture = try await makeFixture()
+        let cursor = try #require(try await run(cursorQuery, on: fixture.graph).data?["cursor"] as? String)
+        try fixture.repository.write("one\n", to: firstFile)
+        _ = try await fixture.store.take(
+            sessionKey: sessionKey, owner: sessionId, trigger: .manual(label: firstLabel))
+        return (fixture, cursor)
     }
 
     /// Runs one document on the endpoint of `fixture`.
@@ -275,21 +302,51 @@ struct SnapshotsGraphTests {
         #expect(fixture.graph.scope == .server)
     }
 
-    /// The endpoint conforms to the toolkit conventions, and `listCheckpoints`
-    /// rewrites to `checkpoints`. Rule 9 waits for the `changes` subscription.
-    @Test("the endpoint conforms, with the listCheckpoints alias probe")
+    /// The endpoint conforms to the toolkit conventions, rule 9 among them.
+    /// The `listCheckpoints` probe checks that its response reports the
+    /// rewrite to `checkpoints` and has no error. The `snapshotChanges` probe
+    /// resumes after the cursor that the endpoint gave before one checkpoint
+    /// was taken, and checks that its first response reports the rewrite to
+    /// `changes` and has no error;
+    /// ``theFirstSnapshotChangesResponseAddsTheCheckpoint()`` checks its data.
+    @Test("the endpoint conforms, with the listCheckpoints and snapshotChanges alias probes")
     func theEndpointConforms() async throws {
-        let fixture = try await Self.makeFixture()
-        let probe = GraphQLAliasProbe(
-            query: "{ listCheckpoints(sessionId: \"\(Self.sessionId)\") { id } }",
-            from: "listCheckpoints", to: "checkpoints")
+        let setup = try await Self.checkpointAfterCursor()
+        let probes = [
+            GraphQLAliasProbe(
+                query: "{ listCheckpoints(sessionId: \"\(Self.sessionId)\") { id } }",
+                from: "listCheckpoints", to: "checkpoints"),
+            GraphQLAliasProbe(
+                query: Self.snapshotChangesSubscription, variables: ["after": .string(setup.cursor)],
+                from: "snapshotChanges", to: "changes", kind: .subscription),
+        ]
         let codes = Self.storeErrorCodes.map(\.code)
 
         let problems = await GraphQLEndpointConformance.problems(
-            of: fixture.graph, scope: .server, probe: probe, codes: codes,
-            exceptions: [GraphQLConventionException(rule: .changes, removedBy: Self.changesTask)])
+            of: setup.fixture.graph, scope: .server, probes: probes, codes: codes, clock: ManualRunClock())
 
         #expect(problems.isEmpty, "problems: \(problems)")
+    }
+
+    /// The first response of the subscription of the `snapshotChanges`
+    /// probe, after the same cursor, is the change of the checkpoint taken
+    /// after that cursor: `added` holds its id, and `changed` and `removed`
+    /// are empty.
+    @Test("the first response of the snapshotChanges probe subscription adds the checkpoint")
+    func theFirstSnapshotChangesResponseAddsTheCheckpoint() async throws {
+        let setup = try await Self.checkpointAfterCursor()
+        var responses = try await setup.fixture.graph.subscribe(
+            query: Self.snapshotChangesSubscription, variables: ["after": .string(setup.cursor)],
+            operationName: nil, viewer: nil
+        ).makeAsyncIterator()
+
+        let reply = try GraphQLReply(json: try #require(try await responses.next()))
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let change = try reply.object("snapshotChanges")
+        #expect(change["added"] as? [String] == ["\(Self.sessionId):\(Self.firstIndex)"])
+        #expect(change["changed"] as? [String] == [])
+        #expect(change["removed"] as? [String] == [])
     }
 
     /// Each type, field, argument and input field of the schema has a
