@@ -1,4 +1,5 @@
 import FoundationModels
+import FoundationModelsExtras
 
 /// A noun, plus the tools that render under that noun — eventplan.md §
 /// "Registration of capabilities: noun/verb".
@@ -51,4 +52,21 @@ public protocol Capability: Sendable {
     /// Each tool gives its own verb through `Tool.name`.
     /// `MultiTool.Builder.withCapability(_:)` gives the noun to each one.
     var tools: [any Tool] { get }
+
+    /// The GraphQL endpoints of this capability, in the order of its tools.
+    ///
+    /// The registry flattens a capability into verb tools and keeps no
+    /// capability, so `buildRegistry()` reads this list before the
+    /// expansion, and `MultiTool` gives the endpoints of every capability as
+    /// one `GraphQLEndpointTool` (EXTRAS-7 / D82). The default collects the
+    /// endpoints of each tool of ``tools`` that is a `GraphQLEndpointTool`.
+    var graphQLEndpoints: [any GraphQLEndpoint] { get }
+}
+
+extension Capability {
+    /// The endpoints of each tool of ``tools`` that is a
+    /// `GraphQLEndpointTool`, in tool order.
+    public var graphQLEndpoints: [any GraphQLEndpoint] {
+        tools.flatMap { tool in (tool as? any GraphQLEndpointTool)?.graphQLEndpoints ?? [] }
+    }
 }

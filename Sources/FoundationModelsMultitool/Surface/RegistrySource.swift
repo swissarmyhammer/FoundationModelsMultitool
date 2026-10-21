@@ -128,9 +128,14 @@ extension MultiTool {
         /// is the verb itself, so a `tools.<group>.<verb>` call goes through
         /// the verb to the parent.
         ///
+        /// The GraphQL endpoints of the capabilities are read before the
+        /// expansion, which keeps no capability — see
+        /// ``capabilityEndpoints()``.
+        ///
         /// - Returns: the rendered catalog paired with its live tool
-        ///   instances, in `.directMode() == false` (both `runCode` and
-        ///   `searchTools` surfaced).
+        ///   instances and the GraphQL endpoints of its capabilities, in
+        ///   `.directMode() == false` (both `runCode` and `searchTools`
+        ///   surfaced).
         /// - Throws: `ToolAPIRendererError`, propagated unchanged and never
         ///   wrapped — the same posture `ToolInvoker` takes toward a tool's
         ///   own thrown error — when a queued tool cannot be fully rendered.
@@ -143,6 +148,7 @@ extension MultiTool {
         ///   when anything other than the owning capability registers under a
         ///   noun a capability claimed.
         public func buildRegistry() throws -> MultiTool.Registry {
+            let graphQLEndpoints = capabilityEndpoints()
             let expansion = try expanded()
             var entries: [APISurface.Entry] = []
             var toolsByPath: [String: any Tool] = [:]
@@ -209,7 +215,11 @@ extension MultiTool {
                 )
             }
 
-            return MultiTool.Registry(surface: APISurface(entries: entries), tools: toolsByPath)
+            return MultiTool.Registry(
+                surface: APISurface(entries: entries),
+                tools: toolsByPath,
+                graphQLEndpoints: graphQLEndpoints
+            )
         }
 
         /// Reads the current catalog of each MCP server again, and then
@@ -347,6 +357,37 @@ extension MultiTool {
             return try operationTool.operationDescriptors.map { descriptor in
                 try OperationVerbTool(parent: operationTool, descriptor: descriptor)
             }
+        }
+
+        // MARK: - GraphQL endpoints
+
+        /// The name and the scope of one endpoint: the key under which a host
+        /// keeps one endpoint (D77).
+        private struct EndpointKey: Hashable {
+            /// The name of the endpoint.
+            let name: String
+
+            /// The scope of the endpoint.
+            let scope: GraphQLEndpointScope
+        }
+
+        /// The GraphQL endpoints of every capability, in capability order,
+        /// with one endpoint for each name and scope.
+        ///
+        /// Read from the capabilities of ``registrations``, before the
+        /// expansion replaces each operation tool with its verbs. When two
+        /// endpoints share a name and a scope, the first in capability order
+        /// stays, as the host keeps the first (D77).
+        ///
+        /// - Returns: the endpoints, in capability order.
+        private func capabilityEndpoints() -> [any GraphQLEndpoint] {
+            var seen: Set<EndpointKey> = []
+            return registrations
+                .flatMap { registration -> [any GraphQLEndpoint] in
+                    guard case .capability(let capability) = registration else { return [] }
+                    return capability.graphQLEndpoints
+                }
+                .filter { endpoint in seen.insert(EndpointKey(name: endpoint.name, scope: endpoint.scope)).inserted }
         }
 
         // MARK: - Rendering

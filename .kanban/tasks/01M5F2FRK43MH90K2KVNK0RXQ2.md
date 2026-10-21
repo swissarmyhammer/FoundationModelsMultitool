@@ -17,8 +17,24 @@ comments:
     - evidence: `swift build` Build complete; `swift test` 2531 tests in 220 suites passed, 0 failures. The one build-system line `warning: missing creator for mutated node: ...mlx-swift_Cmlx.bundle...` comes from the mlx-swift dependency through Extras and was there before the manifest change (it shows in the RED run too).
     - next: /review
   timestamp: 2026-10-21T11:41:37.370090+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5f4dn8xwg00hsdekgj75mhm
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (1d307c8) — 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed; 3 files reviewed, 30 .kanban/ files excluded by .reviewignore
+    - next: none — task moved to done
+  timestamp: 2026-10-21T11:44:22.813546+00:00
+- actor: claude-code
+  id: 01m5f4e182zret2envaqp787eq
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Package.swift, PackageManifestTests.swift, Read.swift
+    - test: green — swift test, 2531 tests / 220 suites, 0 failures (run by implement)
+    - commit: 1d307c8
+    - review: clean — 0 findings
+  timestamp: 2026-10-21T11:44:35.074446+00:00
+position_column: done
+position_ordinal: ffffffac80
 title: 'Package manifest: GraphQL, Graphiti and the Operations product'
 ---
 ## What

@@ -31,6 +31,15 @@ extension MultiTool {
         /// default, surfaces `searchTools` as well — see ``directMode()``.
         public let isDirectMode: Bool
 
+        /// The GraphQL endpoints of the capabilities of this registry, in
+        /// capability order, with one endpoint for each name and scope.
+        ///
+        /// `buildRegistry()` reads them from the capabilities before it
+        /// flattens each one into verb tools, because `tools` keeps no
+        /// capability. `MultiTool` gives them as its own
+        /// `graphQLEndpoints` (EXTRAS-7 / D82).
+        public let graphQLEndpoints: [any GraphQLEndpoint]
+
         /// Creates a registry pairing a rendered surface with its live tool
         /// instances.
         ///
@@ -48,10 +57,18 @@ extension MultiTool {
         ///     see `makePreamble(for:bindsSearchTools:)`.
         ///   - isDirectMode: whether this registry is in direct mode
         ///     (`runCode` only). Defaults to `false`.
-        public init(surface: APISurface, tools: [String: any Tool], isDirectMode: Bool = false) {
+        ///   - graphQLEndpoints: the GraphQL endpoints of the capabilities of
+        ///     this registry. Defaults to `[]`.
+        public init(
+            surface: APISurface,
+            tools: [String: any Tool],
+            isDirectMode: Bool = false,
+            graphQLEndpoints: [any GraphQLEndpoint] = []
+        ) {
             self.surface = surface
             self.tools = tools
             self.isDirectMode = isDirectMode
+            self.graphQLEndpoints = graphQLEndpoints
         }
 
         /// Returns a copy of this registry in **direct mode**: `runCode` is
@@ -62,11 +79,11 @@ extension MultiTool {
         /// Direct mode takes discovery away and nothing else. Every mounted
         /// `runCode` call still goes to the background, and a settled run
         /// still comes back to the session as mail. The executable surface
-        /// itself (`surface`/`tools`) is unchanged — only the affordance
-        /// metadata (`isDirectMode`, `affordances`, `supportsSearchTools`)
-        /// flips.
+        /// itself (`surface`/`tools`) and the `graphQLEndpoints` are
+        /// unchanged — only the affordance metadata (`isDirectMode`,
+        /// `affordances`, `supportsSearchTools`) flips.
         public func directMode() -> Registry {
-            Registry(surface: surface, tools: tools, isDirectMode: true)
+            Registry(surface: surface, tools: tools, isDirectMode: true, graphQLEndpoints: graphQLEndpoints)
         }
 
         /// The session-facing operations this registry surfaces —
@@ -322,9 +339,24 @@ public struct RunCodeArguments {
 /// Each `tools.X(...)` call is an `AsyncHostFunction`, which the interpreter's
 /// own promise pump installs as a JS function returning a `Promise` — see
 /// `invokeAsync` for the full dispatch.
-public struct MultiTool: Tool {
+///
+/// `runCode` is a `GraphQLEndpointTool` (EXTRAS-7 / D82): a host reads
+/// endpoints only from its top-level tools, and the registry flattens each
+/// capability into verbs, so `runCode` gives the endpoints of every
+/// capability of its current registry.
+public struct MultiTool: GraphQLEndpointTool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
+
+    /// The GraphQL endpoints of the capabilities of the current registry.
+    ///
+    /// Read from the holder at each read, so a registry swapped in at a
+    /// submission boundary — an MCP rebuild, for example — changes the list
+    /// too.
+    public var graphQLEndpoints: [any GraphQLEndpoint] {
+        holder.current.registry.graphQLEndpoints
+    }
+
     /// The box that holds the catalog + live tool instances this `runCode`
     /// dispatches into, and everything precomputed from them, as one
     /// `RegistryBundle` — see `RegistryHolder`.
