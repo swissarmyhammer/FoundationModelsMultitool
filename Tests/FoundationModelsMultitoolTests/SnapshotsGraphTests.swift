@@ -138,57 +138,6 @@ struct SnapshotsGraphTests {
         let graph: SnapshotsGraph
     }
 
-    /// The parts of one GraphQL response that a test reads.
-    private struct Reply {
-
-        /// The `data` object, or `nil` when the response has none.
-        let data: [String: Any]?
-
-        /// The code of each error, in order.
-        let codes: [String]
-
-        /// The `extensions.rewrites` list.
-        let rewrites: [[String: Any]]
-
-        /// Reads a response.
-        ///
-        /// - Parameter json: The JSON text of the response.
-        /// - Throws: An error when the text is not a JSON object.
-        init(json: String) throws {
-            let object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-            data = object["data"] as? [String: Any]
-            let errors = object["errors"] as? [[String: Any]] ?? []
-            codes = errors.compactMap { error in (error["extensions"] as? [String: Any])?["code"] as? String }
-            rewrites = (object["extensions"] as? [String: Any])?["rewrites"] as? [[String: Any]] ?? []
-        }
-
-        /// The list of objects at `key` of `data`.
-        ///
-        /// - Parameter key: The response key.
-        /// - Returns: The objects.
-        /// - Throws: An error when `data` has no list of objects at `key`.
-        func list(_ key: String) throws -> [[String: Any]] {
-            try #require(data?[key] as? [[String: Any]])
-        }
-
-        /// The object at `key` of `data`.
-        ///
-        /// - Parameter key: The response key.
-        /// - Returns: The object.
-        /// - Throws: An error when `data` has no object at `key`.
-        func object(_ key: String) throws -> [String: Any] {
-            try #require(data?[key] as? [String: Any])
-        }
-
-        /// Tells if `data` holds `null` at `key`.
-        ///
-        /// - Parameter key: The response key.
-        /// - Returns: `true` for a `null` value.
-        func isNull(_ key: String) -> Bool {
-            data?[key] is NSNull
-        }
-    }
-
     /// The stub resolver: it gives ``sessionKey`` for ``sessionId``, and no
     /// key for each other session ID.
     ///
@@ -248,8 +197,9 @@ struct SnapshotsGraphTests {
     ///   not a JSON object.
     private static func run(
         _ query: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
-    ) async throws -> Reply {
-        try Reply(json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
+    ) async throws -> GraphQLReply {
+        try GraphQLReply(
+            json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
     }
 
     /// Runs the `checkpoints` query of `id`.
@@ -262,7 +212,7 @@ struct SnapshotsGraphTests {
     /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
     private static func checkpoints(
         of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
-    ) async throws -> Reply {
+    ) async throws -> GraphQLReply {
         try await run(checkpointsQuery, variables: ["sessionId": .string(id)], viewer: viewer, on: graph)
     }
 
@@ -277,7 +227,7 @@ struct SnapshotsGraphTests {
     /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
     private static func checkpoint(
         _ index: Int, of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
-    ) async throws -> Reply {
+    ) async throws -> GraphQLReply {
         try await run(
             checkpointQuery, variables: ["sessionId": .string(id), "index": .number(Number(index))], viewer: viewer,
             on: graph)
@@ -294,7 +244,7 @@ struct SnapshotsGraphTests {
     /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
     private static func rollback(
         to index: Int, of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
-    ) async throws -> Reply {
+    ) async throws -> GraphQLReply {
         let input: Map = ["sessionId": .string(id), "index": .number(Number(index))]
         return try await run(rollbackMutation, variables: ["input": input], viewer: viewer, on: graph)
     }
@@ -519,8 +469,7 @@ struct SnapshotsGraphTests {
             on: fixture.graph)
 
         #expect(try reply.object("rollback")["index"] as? Int == Self.rollbackIndex)
-        let rewrites = reply.rewrites.map { [$0["from"] as? String, $0["to"] as? String] }
-        #expect(rewrites.contains(["rollback", "rollbackTimeline"]))
+        #expect(reply.rewrote("rollback", to: "rollbackTimeline"))
     }
 
     /// A rollback to an index that the timeline does not have gives
