@@ -24,16 +24,25 @@ enum SessionsToolFixtures {
     /// The display name of the agent of each registered session.
     static let agentName = "Coder"
 
-    /// A live, idle root session of ``agentID`` in ``workingFolder``.
+    /// A live, idle root session, by default of ``agentID`` in
+    /// ``workingFolder``.
     ///
     /// - Parameters:
     ///   - id: The session id.
     ///   - tags: The tags of the session.
     ///   - title: The title of the session.
+    ///   - agent: The agent id of the session, as it is written.
+    ///   - folder: The working folder of the session.
     /// - Returns: The summary.
-    static func summary(id: ULID = ULID(), tags: Set<String> = [], title: String? = nil) -> SessionSummary {
+    static func summary(
+        id: ULID = ULID(),
+        tags: Set<String> = [],
+        title: String? = nil,
+        agent: String = agentID,
+        folder: URL = workingFolder
+    ) -> SessionSummary {
         SessionSummary(
-            id: id, agentID: agentID, agentName: agentName, workingDirectory: workingFolder, title: title, tags: tags,
+            id: id, agentID: agent, agentName: agentName, workingDirectory: folder, title: title, tags: tags,
             kind: .root, state: .idle, origin: .client, createdAt: fixedDate, updatedAt: fixedDate, isLive: true)
     }
 

@@ -5,7 +5,8 @@
 // style of the `agents` tool. Each answer is plain text, and each error is a
 // corrective text, never a thrown model error: `execute(in:)` catches each
 // error and gives ``SessionsToolText/corrective(for:)``. The change
-// operations are in `SessionsToolChangeOperations.swift`.
+// operations are in `SessionsToolChangeOperations.swift`, and the message
+// operations in `SessionsToolMessageOperations.swift`.
 //
 // TODO(MT-7): declare the risk facts of session.md section 8.3 on each
 // operation (`list sessions`, `check session` and `read inbox` each read),
@@ -174,7 +175,8 @@ extension ReadInbox {
     /// "untrusted message".
     ///
     /// The directory marks each unread message read in one call, thus the
-    /// answer holds each of them.
+    /// answer holds each of them. The record of the context keeps each one,
+    /// thus `reply message` can answer it.
     ///
     /// - Parameter context: The shared context of the tool.
     /// - Returns: The messages, or "No unread messages." A corrective for a
@@ -182,6 +184,7 @@ extension ReadInbox {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let messages = try await context.directory.inbox(of: callerID, markRead: true)
+            await context.receivedMessages.record(messages)
             let senders = try await Self.senderSummaries(of: messages, in: context.directory)
             return SessionsToolText.inbox(of: messages, senders: senders)
         }

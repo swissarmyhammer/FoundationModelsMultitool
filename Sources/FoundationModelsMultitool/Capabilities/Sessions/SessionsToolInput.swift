@@ -4,8 +4,9 @@
 // Each reader is forgiving where the intent is clear: a session id in any
 // letter case, a kind or a state in any letter case, a list limit out of
 // range brought into range, an agent written as `@agent` (in its own letter
-// case, as an agent id is a folder name), a tag written as `#tag`, and space
-// around a text. An argument with no clear intent throws a
+// case, as an agent id is a folder name), a tag written as `#tag`, a message
+// address in each form of session.md section 9, a message id in any letter
+// case, and space around a text. An argument with no clear intent throws a
 // ``SessionsToolInputError``, and the operation answers its corrective
 // text.
 
@@ -37,6 +38,10 @@ enum SessionsToolInput {
 
     /// The first character of a tag in a message address: `#tag`.
     private static let tagPrefix = "#"
+
+    /// The character between the agent and the folder of an agent address:
+    /// `@agent:/path`.
+    private static let folderSeparator: Character = ":"
 
     /// The session id of `text`, or `nil` for no text.
     ///
@@ -70,11 +75,86 @@ enum SessionsToolInput {
     /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
     ///   text names `listSessions`.
     static func sessionID(_ text: String) throws(SessionsToolInputError) -> ULID {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let id = ULID(ulidString: trimmed.uppercased()) else {
+        guard let id = ulid(text) else {
             throw SessionsToolInputError(correctiveText: SessionsToolText.notASessionID(text))
         }
         return id
+    }
+
+    /// The message id of `text`.
+    ///
+    /// - Parameter text: A message id, in any letter case, with any space
+    ///   around it.
+    /// - Returns: The id.
+    /// - Throws: ``SessionsToolInputError`` when `text` is not a ULID. The
+    ///   text names `readInbox`.
+    static func messageID(_ text: String) throws(SessionsToolInputError) -> MailID {
+        guard let id = ulid(text) else {
+            throw SessionsToolInputError(correctiveText: SessionsToolText.notAMessageID(text))
+        }
+        return MailID(id)
+    }
+
+    /// The target of a message that `text` names (session.md section 9).
+    ///
+    /// The reader reads the form of the text: a ULID, in any letter case, is a
+    /// session; `@agent` and `@agent:/path` are an agent, in its own letter
+    /// case, and in a folder when the text gives one; a path that starts with
+    /// `/` or `~` is a folder; and `#tag` is a tag. In `@agent:/path` the last
+    /// `:` before a `/` or a `~` starts the folder, thus a `folder:` agent id
+    /// with a folder of its own stays whole.
+    ///
+    /// - Parameter text: The address, with any space around it.
+    /// - Returns: The address.
+    /// - Throws: ``SessionsToolInputError`` for a text in no form, which names
+    ///   each form.
+    static func address(_ text: String) throws(SessionsToolInputError) -> SessionAddress {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id = ulid(trimmed) {
+            return .session(id)
+        }
+        if isPath(trimmed), let folder = try folder(trimmed) {
+            return .folder(folder)
+        }
+        if trimmed.hasPrefix(tagPrefix), let tag = nonBlank(bare(trimmed, prefix: tagPrefix)) {
+            return .tag(tag)
+        }
+        if trimmed.hasPrefix(agentPrefix), let agent = try agentAddress(bare(trimmed, prefix: agentPrefix)) {
+            return agent
+        }
+        throw SessionsToolInputError(correctiveText: SessionsToolText.notAnAddress(text))
+    }
+
+    /// The agent address of the text after the `@` of an address.
+    ///
+    /// - Parameter text: `agent` or `agent:/path`.
+    /// - Returns: The address, or `nil` when the text names no agent.
+    /// - Throws: ``SessionsToolInputError`` from ``folder(_:)``.
+    private static func agentAddress(_ text: String) throws(SessionsToolInputError) -> SessionAddress? {
+        let separator = text.indices.last { index in
+            text[index] == folderSeparator && isPath(String(text[text.index(after: index)...]))
+        }
+        guard let separator else {
+            return nonBlank(text).map { .agent(id: $0, folder: nil) }
+        }
+        let folder = try folder(String(text[text.index(after: separator)...]))
+        return nonBlank(String(text[..<separator])).map { .agent(id: $0, folder: folder) }
+    }
+
+    /// Whether `text` is an absolute path or a path under the home folder.
+    ///
+    /// - Parameter text: The text, with no space around it.
+    /// - Returns: True when `text` starts with `/` or `~`.
+    private static func isPath(_ text: String) -> Bool {
+        text.hasPrefix(rootPrefix) || text.hasPrefix(homePrefix)
+    }
+
+    /// The ULID of `text`, in any letter case, with any space around it.
+    ///
+    /// - Parameter text: The text.
+    /// - Returns: The ULID, or `nil` when `text` is not a ULID.
+    private static func ulid(_ text: String) -> ULID? {
+        ULID(ulidString: text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
     }
 
     /// The working folder of `path`, or `nil` for no path.

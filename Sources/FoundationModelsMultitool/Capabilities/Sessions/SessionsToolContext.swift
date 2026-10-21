@@ -3,7 +3,9 @@
 //
 // session.md section 8: `SessionsToolContext` holds `any SessionDirectory`.
 // Each operation reads the directory through it, and reads the caller
-// session from `ToolContext.current` at the start of its call.
+// session from `ToolContext.current` at the start of its call. It also holds
+// the record of the messages that `read inbox` gave, because the directory
+// gives no message by its id (``SessionsToolReceivedMessages``).
 
 import FoundationModelsExtras
 import ULID
@@ -12,6 +14,10 @@ import ULID
 struct SessionsToolContext: Sendable {
     /// The session directory that each operation reads.
     let directory: any SessionDirectory
+
+    /// The messages that `read inbox` gave, which `reply message` reads. Each
+    /// copy of the context shares this one record.
+    let receivedMessages = SessionsToolReceivedMessages()
 
     /// The session of the current call, or `nil` for a call with no
     /// `ToolContext` (outside a Router session). A call with no caller can
@@ -51,5 +57,22 @@ struct SessionsToolContext: Sendable {
             throw SessionDirectoryError.unknownSession(id)
         }
         return summary
+    }
+
+    /// The message `id` that the session `callerID` got: an unread message in
+    /// its inbox, or a message that `read inbox` gave it.
+    ///
+    /// - Parameters:
+    ///   - id: The id of the message.
+    ///   - callerID: The caller session.
+    /// - Returns: The message, or `nil` when the caller got no message with
+    ///   the id.
+    /// - Throws: Each error of `inbox(of:markRead:)`.
+    func receivedMessage(_ id: MailID, by callerID: ULID) async throws -> SessionMessage? {
+        let unread = try await directory.inbox(of: callerID, markRead: false)
+        if let message = unread.first(where: { $0.id == id }) {
+            return message
+        }
+        return await receivedMessages.message(id, to: callerID)
     }
 }

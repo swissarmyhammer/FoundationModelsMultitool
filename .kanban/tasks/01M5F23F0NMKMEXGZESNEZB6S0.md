@@ -69,10 +69,26 @@ comments:
     - evidence: `swift test` ran 2598 tests in 224 suites: all passed, 0 failures, no compiler warnings. The only `warning:` line is the existing SwiftPM build-graph note "missing creator for mutated node" for the mlx-swift_Cmlx.bundle dependency. 3 files: Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolInput.swift, Tests/FoundationModelsMultitoolTests/SessionsToolChangeTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/SessionsToolFixtures.swift. Both findings in `## Review Findings (2026-10-21 08:15)` are checked.
     - next: /review (task stays in doing, not committed)
   timestamp: 2026-10-21T13:26:17.141285+00:00
+- actor: claude-code
+  id: 01m5fabmh40ntaresjff51r8pa
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (a4f0198) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed; 3 files reviewed, 2 .kanban files excluded by .reviewignore. Both prior findings (2026-10-21 08:15) checked and fixed: SessionsToolInput.swift agentID now documents the case-preserving contract, pinned by two new tests in SessionsToolChangeTests.swift (`@Coder` starts `Coder`; `coder` gets the unknown-agent corrective naming `Coder`); SessionsToolFixtures.swift magic number now the named constant `fixedSecondsSince1970`.
+    - next: none — task moved to done.
+  timestamp: 2026-10-21T13:28:07.972761+00:00
+- actor: claude-code
+  id: 01m5fac2kve6egcz5scrhrhqbj
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — SessionsToolInput.swift, SessionsToolChangeTests.swift, Fixtures/SessionsToolFixtures.swift (2 findings fixed)
+    - test: green — swift test, 2598 tests / 224 suites (run by implement)
+    - commit: a4f0198
+    - review: clean — 0 findings, 2/2 prior checked
+  timestamp: 2026-10-21T13:28:22.395520+00:00
 depends_on:
 - 01M5F236W9NXECHBE44PTMVYQZ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb180
 title: 'SessionsTool change ops: start, tag, untag, rename, archive (MT-2)'
 ---
 ## What

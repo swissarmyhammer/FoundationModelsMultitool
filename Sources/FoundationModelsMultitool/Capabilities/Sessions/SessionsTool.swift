@@ -1,6 +1,6 @@
 // `SessionsTool` — the `sessions` tool: the operations that find, check,
-// read, start, tag, rename and archive the sessions of the server through a
-// `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
+// read, message, start, tag, rename and archive the sessions of the server
+// through a `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
 //
 // The tool has the shape of the `agents` tool of FoundationModelsAgents: a
 // public struct that holds an `OperationTool` of its operations. A host gives
@@ -14,27 +14,32 @@ import FoundationModelsExtras
 import Operations
 
 /// The `sessions` tool: find the sessions of the server, check one of them,
-/// read the messages that other sessions sent to the caller session, start a
-/// new session, tag, untag and rename a session, and archive a session.
+/// read the messages that other sessions sent to the caller session, send a
+/// message and reply to one, start a new session, tag, untag and rename a
+/// session, and archive a session.
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
-/// `start session`, `tag session`, `untag session`, `rename session` and
-/// `archive session`. In code mode each one is a verb of `tools.sessions`:
-/// `listSessions`, `checkSession`, `readInbox`, `startSession`, `tagSession`,
+/// `send message`, `reply message`, `start session`, `tag session`,
+/// `untag session`, `rename session` and `archive session`. In code mode each
+/// one is a verb of `tools.sessions`: `listSessions`, `checkSession`,
+/// `readInbox`, `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
 /// `untagSession`, `renameSession` and `archiveSession`. Each answer is plain
 /// text, and each error is a corrective text the model reads in the same
 /// turn, never a thrown error.
 ///
 /// The caller session is `ToolContext.current?.sessionID`. A call with no
 /// `ToolContext` reads the directory, but each operation that acts for the
-/// caller — `read inbox` and each change — then gives a corrective.
+/// caller — `read inbox`, each message and each change — then gives a
+/// corrective.
 ///
 /// **The tool is a value type, and a host copies it** (EXTRAS-9 rule 1): to
 /// the top-level tools of a session, to the registry of `runCode`, and to a
-/// forked session. The one thing each copy shares is the directory that
-/// ``init(directory:)`` gets. A later part that must be shared — the
-/// `sessions` GraphQL endpoint and its change log — is made one time for each
-/// directory, never for each copy, so ``init(directory:)`` keeps its shape.
+/// forked session. Each copy shares the directory that ``init(directory:)``
+/// gets, and the record of the messages that `read inbox` gave, which
+/// ``init(directory:)`` makes one time and `reply message` reads. A later
+/// part that must be shared — the `sessions` GraphQL endpoint and its change
+/// log — is made one time for each directory, never for each copy, so
+/// ``init(directory:)`` keeps its shape.
 public struct SessionsTool: Tool, OperationDescribing {
     /// The raw payload: an `op` and the fields of one operation.
     public typealias Arguments = GeneratedContent
@@ -65,6 +70,8 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(ListSessions.self),
                 AnyOperation(CheckSession.self),
                 AnyOperation(ReadInbox.self),
+                AnyOperation(SendMessage.self),
+                AnyOperation(ReplyMessage.self),
                 AnyOperation(StartSession.self),
                 AnyOperation(TagSession.self),
                 AnyOperation(UntagSession.self),
