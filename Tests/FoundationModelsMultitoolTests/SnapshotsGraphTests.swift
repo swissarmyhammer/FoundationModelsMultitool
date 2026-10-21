@@ -11,6 +11,7 @@ import Foundation
 import FoundationModelsExtras
 import FoundationModelsHooks
 import GraphQL
+import Synchronization
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -85,6 +86,9 @@ struct SnapshotsGraphTests {
     /// The code of the toolkit for an id that the endpoint does not hold.
     private static let notFoundCode = GraphQLToolkitError.notFound(kind: "", id: "").code
 
+    /// The code of the toolkit for a fault that is not a coded error.
+    private static let internalCode = GraphQLToolkitError.internalFailure(detail: "").code
+
     /// The root query of the newest cursor.
     private static let cursorQuery = "{ cursor }"
 
@@ -118,6 +122,20 @@ struct SnapshotsGraphTests {
     private static let checkpointQuery =
         "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) "
         + "\(checkpointSelection) }"
+
+    /// The `checkpoint` query of one index of a session, with the diff of
+    /// each file that the checkpoint changed.
+    private static let changesQuery =
+        "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) "
+        + "{ index changes { path diff } } }"
+
+    /// The `checkpoints` query of a session, with the diff of each file of
+    /// each checkpoint.
+    private static let checkpointsChangesQuery =
+        "query($sessionId: ID!) { checkpoints(sessionId: $sessionId) { index changes { path diff } } }"
+
+    /// The text of ``baseFile`` after the edit of a test.
+    private static let editedBaseText = "edited\n"
 
     /// The `rollbackTimeline` mutation.
     private static let rollbackMutation =
@@ -181,6 +199,54 @@ struct SnapshotsGraphTests {
         return Fixture(
             repository: repository, storeDirectory: storeDirectory, store: store,
             graph: SnapshotsGraph(store: store, sessionKey: resolver, sessionId: stubSessionId))
+    }
+
+    /// The number of the calls of a diff provider.
+    private final class DiffCallCount: Sendable {
+        /// The count, behind a lock: the resolvers of one call can run at
+        /// once.
+        private let calls = Mutex(0)
+
+        /// The number of the calls so far.
+        var value: Int {
+            calls.withLock { $0 }
+        }
+
+        /// A diff provider that counts each call and gives an empty diff.
+        var provider: SnapshotsGraphDiffProvider {
+            { [self] _, _, _ in
+                calls.withLock { $0 += 1 }
+                return ""
+            }
+        }
+    }
+
+    /// An error of a diff provider that is not a ``SnapshotError``, as a
+    /// libgit2 failure of the store is.
+    private struct DiffReadFailure: Error {}
+
+    /// Makes the endpoint over the store of `fixture`, with a diff provider.
+    ///
+    /// - Parameters:
+    ///   - fixture: The fixture whose store the endpoint reads.
+    ///   - diff: The diff provider of the endpoint.
+    /// - Returns: The endpoint.
+    private static func graph(over fixture: Fixture, diff: @escaping SnapshotsGraphDiffProvider) -> SnapshotsGraph {
+        SnapshotsGraph(
+            store: fixture.store, sessionKey: stubSessionKey, sessionId: stubSessionId,
+            changeLogCapacity: SnapshotsGraph.changeLogCapacity, diff: diff)
+    }
+
+    /// Runs the `changes` query of checkpoint `index` of ``sessionId``.
+    ///
+    /// - Parameters:
+    ///   - index: The index of the checkpoint.
+    ///   - graph: The endpoint.
+    /// - Returns: The response.
+    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    private static func changes(of index: Int, on graph: SnapshotsGraph) async throws -> GraphQLReply {
+        try await run(
+            changesQuery, variables: ["sessionId": .string(sessionId), "index": .number(Number(index))], on: graph)
     }
 
     /// Makes two checkpoints in the fixture: a manual one that adds
@@ -480,6 +546,83 @@ struct SnapshotsGraphTests {
         let checkpoints = try await Self.checkpoints(on: graph).list("checkpoints")
 
         #expect(checkpoints.map { $0["index"] as? Int } == [Self.firstIndex, Self.secondIndex])
+    }
+
+    // MARK: - File changes
+
+    /// `changes` of a checkpoint that edits one file gives that file with
+    /// the unified diff of the edit, from the store.
+    @Test("changes gives the unified diff of an edited file")
+    func changesGivesTheDiffOfAnEdit() async throws {
+        let fixture = try await Self.makeFixture()
+        try fixture.repository.write(Self.editedBaseText, to: Self.baseFile)
+        _ = try await fixture.store.take(
+            sessionKey: Self.sessionKey, owner: Self.sessionId, trigger: .manual(label: Self.firstLabel))
+
+        let reply = try await Self.changes(of: Self.firstIndex, on: fixture.graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let changes = try #require(try reply.object("checkpoint")["changes"] as? [[String: Any]])
+        #expect(changes.map { $0["path"] as? String } == [Self.baseFile])
+        let diffLines = try #require(changes.first?["diff"] as? String).split(separator: "\n").map(String.init)
+        #expect(diffLines.contains("--- a/\(Self.baseFile)"))
+        #expect(diffLines.contains("+++ b/\(Self.baseFile)"))
+        #expect(diffLines.contains("-base"))
+        #expect(diffLines.contains("+edited"))
+    }
+
+    /// A `checkpoints` query that does not select `changes` reads no diff.
+    @Test("a checkpoints query without changes does not call the diff provider")
+    func checkpointsWithoutChangesReadNoDiff() async throws {
+        let fixture = try await Self.makeFixture()
+        try await Self.makeTwoCheckpoints(in: fixture)
+        let count = DiffCallCount()
+
+        let reply = try await Self.checkpoints(on: Self.graph(over: fixture, diff: count.provider))
+
+        #expect(try reply.list("checkpoints").count == Self.secondIndex)
+        #expect(count.value == 0)
+    }
+
+    /// A `checkpoints` query that selects `changes` reads one diff for each
+    /// file of each checkpoint.
+    @Test("a checkpoints query with changes calls the diff provider for each file")
+    func checkpointsWithChangesReadEachDiff() async throws {
+        let fixture = try await Self.makeFixture()
+        try await Self.makeTwoCheckpoints(in: fixture)
+        let count = DiffCallCount()
+        let graph = Self.graph(over: fixture, diff: count.provider)
+
+        let reply = try await Self.run(
+            Self.checkpointsChangesQuery, variables: ["sessionId": .string(Self.sessionId)], on: graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(count.value == Self.secondIndex)
+    }
+
+    /// A store error of the diff gives the code of that error.
+    @Test("a store error of the diff gives its code")
+    func aStoreErrorOfTheDiffGivesItsCode() async throws {
+        let fixture = try await Self.makeFixture()
+        try await Self.makeTwoCheckpoints(in: fixture)
+        let graph = Self.graph(over: fixture) { _, _, path in throw SnapshotError.fileNotInCheckpoint(path: path) }
+
+        let reply = try await Self.changes(of: Self.firstIndex, on: graph)
+
+        #expect(reply.codes == ["FILE_NOT_IN_CHECKPOINT"])
+    }
+
+    /// A diff error that is not a store error, as a libgit2 failure is,
+    /// gives the `INTERNAL` code of the toolkit.
+    @Test("a diff failure that is not a store error gives INTERNAL")
+    func anotherDiffFailureGivesInternal() async throws {
+        let fixture = try await Self.makeFixture()
+        try await Self.makeTwoCheckpoints(in: fixture)
+        let graph = Self.graph(over: fixture) { _, _, _ in throw DiffReadFailure() }
+
+        let reply = try await Self.changes(of: Self.firstIndex, on: graph)
+
+        #expect(reply.codes == [Self.internalCode])
     }
 
     // MARK: - Mutation

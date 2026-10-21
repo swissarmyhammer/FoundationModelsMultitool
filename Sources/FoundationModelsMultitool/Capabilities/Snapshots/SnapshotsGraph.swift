@@ -3,8 +3,9 @@
 // `SnapshotStore` that the snapshots capability and `SnapshotHook` share.
 //
 // The schema is in `SnapshotsGraphSchema.swift`, and its change feed and
-// `changes` subscription are in `SnapshotsGraphChanges.swift`. This file holds
-// the endpoint and its coded errors.
+// `changes` subscription are in `SnapshotsGraphChanges.swift`, and the diffs
+// of `Checkpoint.changes` are in `SnapshotsGraphFileChanges.swift`. This file
+// holds the endpoint and its coded errors.
 
 import Foundation
 import FoundationModelsExtras
@@ -22,7 +23,9 @@ import GraphQL
 ///
 /// - `Query.checkpoints(sessionId:)` gives the checkpoints of a session, oldest
 ///   first, and `Query.checkpoint(sessionId:index:)` gives one checkpoint, or
-///   `null`. The `id` of a checkpoint is `<sessionId>:<index>`.
+///   `null`. The `id` of a checkpoint is `<sessionId>:<index>`, and its
+///   `changes` give the unified diff of each file that it changed, read only
+///   when a query selects them.
 /// - `Mutation.rollbackTimeline(input:)` rolls the work tree of a session back
 ///   to a checkpoint, and gives the new rollback checkpoint (D95).
 ///
@@ -84,6 +87,9 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     /// feeds; each endpoint over the store shares it.
     private let changes: SnapshotsGraphChangeFeed
 
+    /// Reads the diff of one file of one checkpoint, for `Checkpoint.changes`.
+    private let diff: SnapshotsGraphDiffProvider
+
     /// Makes the endpoint over a store.
     ///
     /// The change log of a store maps each session key of a change to its
@@ -116,12 +122,17 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     ///   - sessionId: Gives the session ID of a session key, or `nil`.
     ///   - changeLogCapacity: The number of the newest changes that a new
     ///     change log of the store keeps.
+    ///   - diff: Reads the diff of one file of one checkpoint for
+    ///     `Checkpoint.changes`, or `nil` for
+    ///     `SnapshotStore.diff(sessionKey:index:path:)` of `store`.
     init(
         store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
-        sessionId: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int
+        sessionId: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int,
+        diff: SnapshotsGraphDiffProvider? = nil
     ) {
         resolver = SnapshotsGraphResolver(store: store, sessionKey: sessionKey)
         changes = SnapshotsGraphChangeFeed.feed(of: store, sessionId: sessionId, capacity: changeLogCapacity)
+        self.diff = diff ?? { key, index, path in try await store.diff(sessionKey: key, index: index, path: path) }
     }
 
     /// The schema of the endpoint in SDL. The schema is built once for each
@@ -151,7 +162,7 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     ) async throws -> String {
         try await api().respond(
             to: query, variables: variables, operationName: operationName, rules: Self.rules,
-            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer, changes: changes))
+            formattedWith: .sortedKeys, context: context(of: viewer))
     }
 
     /// Starts one GraphQL subscription: `changes(after:sessionId:)`, or its
@@ -172,7 +183,17 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     ) async throws -> AsyncThrowingStream<String, Error> {
         try await api().subscribe(
             to: query, variables: variables, operationName: operationName, rules: Self.rules,
-            formattedWith: .sortedKeys, context: SnapshotsGraphContext(viewer: viewer, changes: changes))
+            formattedWith: .sortedKeys, context: context(of: viewer))
+    }
+
+    /// The context of one call: its viewer, and the change feed and the diff
+    /// provider of this endpoint.
+    ///
+    /// - Parameter viewer: The client that makes the call, or `nil` for the
+    ///   agent.
+    /// - Returns: The context.
+    private func context(of viewer: GraphQLViewer?) -> SnapshotsGraphContext {
+        SnapshotsGraphContext(viewer: viewer, changes: changes, diff: diff)
     }
 
     /// The Graphiti engine of a call: the schema of the process and the

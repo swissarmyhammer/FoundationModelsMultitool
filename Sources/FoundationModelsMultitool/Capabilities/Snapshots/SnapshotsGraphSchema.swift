@@ -38,12 +38,23 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
     /// The time of the snapshot.
     let at: DateTime
 
+    /// The session whose timeline holds the checkpoint. Not a field: the
+    /// `changes` resolver codes its errors for this session.
+    let sessionId: String
+
+    /// The session key of ``sessionId``. Not a field: the `changes` resolver
+    /// reads the diffs of this key.
+    let sessionKey: String
+
     /// Makes the object of a checkpoint of the store.
     ///
     /// - Parameters:
     ///   - checkpoint: The checkpoint of the store.
     ///   - sessionId: The session whose timeline holds the checkpoint.
-    init(_ checkpoint: Checkpoint, sessionId: String) {
+    ///   - sessionKey: The session key of `sessionId`.
+    init(_ checkpoint: Checkpoint, sessionId: String, sessionKey: String) {
+        self.sessionId = sessionId
+        self.sessionKey = sessionKey
         id = Self.id(sessionId: sessionId, index: checkpoint.index)
         index = checkpoint.index
         trigger = SnapshotCheckpoint.text(of: checkpoint.trigger)
@@ -121,6 +132,9 @@ struct SnapshotsGraphContext: GraphQLRunContext {
     /// The change feed of the store, for the `cursor` query and the
     /// `changes` subscription. A subscription holds it through its context.
     let changes: SnapshotsGraphChangeFeed
+
+    /// Reads the diff of one file of one checkpoint, for `Checkpoint.changes`.
+    let diff: SnapshotsGraphDiffProvider
 
     /// Tells if the client of the call can see a session (EXTRAS-9 rule 4):
     /// the agent and a device of the user see each session, and an external
@@ -201,7 +215,7 @@ struct SnapshotsGraphResolver: Sendable {
         }
         do {
             let checkpoint = try await store.rollback(sessionKey: key, owner: sessionId, to: arguments.input.index)
-            return checkpoint.map { SnapshotsGraphCheckpoint($0, sessionId: sessionId) }
+            return checkpoint.map { SnapshotsGraphCheckpoint($0, sessionId: sessionId, sessionKey: key) }
         } catch let error as SnapshotError {
             throw SnapshotsGraphError.coded(error, sessionId: sessionId)
         }
@@ -224,7 +238,7 @@ struct SnapshotsGraphResolver: Sendable {
         }
         do {
             return try await store.checkpoints(sessionKey: key, owner: sessionId).map { checkpoint in
-                SnapshotsGraphCheckpoint(checkpoint, sessionId: sessionId)
+                SnapshotsGraphCheckpoint(checkpoint, sessionId: sessionId, sessionKey: key)
             }
         } catch SnapshotError.unavailable {
             // TODO(HOOKS-5): a released session has a closed timeline on disk.
@@ -257,7 +271,9 @@ struct SnapshotsGraphAPI: API {
     let schema: Schema<SnapshotsGraphResolver, SnapshotsGraphContext>
 
     /// Builds the schema of the endpoint. The `cursor` query, the `changes`
-    /// subscription and its type are in `SnapshotsGraphChanges.swift`.
+    /// subscription and its type are in `SnapshotsGraphChanges.swift`, and
+    /// the `FileChange` type of `Checkpoint.changes` is in
+    /// `SnapshotsGraphFileChanges.swift`.
     ///
     /// - Returns: The schema.
     /// - Throws: An error of the schema builder.
@@ -278,8 +294,13 @@ struct SnapshotsGraphAPI: API {
                         .description("The tool call that took the snapshot, or null when no tool call took it.")
                     Field("files", at: \.files).description("The files that the checkpoint changed.")
                     Field("at", at: \.at).description("The time of the snapshot.")
+                    Field("changes", at: SnapshotsGraphCheckpoint.changes)
+                        .description(
+                            "Each file that the checkpoint changed, with its unified diff. Select it only when you "
+                                + "need the diffs: each one is read from disk.")
                 }
                 .description("One checkpoint: a recorded change of the work tree of a session.")
+                fileChangeType()
                 Input(SnapshotsGraphRollbackInput.self, as: "RollbackTimelineInput") {
                     InputField("sessionId", at: \.sessionId).description(Self.sessionIdDescription)
                     InputField("index", at: \.index)

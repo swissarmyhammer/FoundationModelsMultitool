@@ -29,6 +29,22 @@ type Checkpoint {
 
   """The time of the snapshot."""
   at: DateTime!
+
+  """
+  Each file that the checkpoint changed, with its unified diff. Select it only when you need the diffs: each one is read from disk.
+  """
+  changes: [FileChange!]!
+}
+
+"""One file that a checkpoint changed, with its diff."""
+type FileChange {
+  """The path of the file, relative to the working folder."""
+  path: String!
+
+  """
+  The unified diff of the file, as git diff gives it. An added file diffs from /dev/null, a deleted file to /dev/null, and a binary file gives a 'Binary files ... differ' line.
+  """
+  diff: String!
 }
 
 """The checkpoint to roll the work tree of a session back to."""
