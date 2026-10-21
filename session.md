@@ -487,7 +487,7 @@ public enum SessionDirectoryError: Error, Sendable, Equatable {
 Notes:
 
 - `SessionMessage` is a public type in Extras. Router has a file `Session/SessionMessage.swift`, but no type of that name. Thus there is no clash.
-- A message from a session goes as `Mail(sender: .session(from), body: .agentMessage(from:content:))`. A message from a UI goes as `Mail(sender: .user, body: .agentMessage…)` with the client id in the record. These types exist in Extras today.
+- A message from a session goes as `Mail(sender: .session(from), body: .agentMessage(from:content:))`. A message from a UI goes as `Mail(sender: .user, body: .userMessage(prompt:options:))`, because a UI has no session id and the message is input of the user (section 10.1). Router keeps the client id, `inReplyTo`, the chain depth and the read flag in its own record (`messages.jsonl` in the recording directory of the target), and `Mail` gets no new field. The directory renders the sender header (title, agent, folder, or "the user") into the content. These types exist in Extras today. The Extras origin type is `SessionDirectoryOrigin`, because FoundationModelsHooks already has a public `SessionOrigin`.
 - `ULID` is the session id. It is also the ACP session id (`RoutedACPAgent.swift:84-85`).
 
 ## 7. The event stream
