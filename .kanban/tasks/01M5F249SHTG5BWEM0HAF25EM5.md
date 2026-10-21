@@ -94,6 +94,38 @@ comments:
     - evidence: `swift test`: 2676 tests in 227 suites passed, 0 failures, no compiler warnings. The only `warning:` line is SwiftPM's "missing creator for mutated node" on the mlx-swift_Cmlx.bundle dependency build product, not from this code. Goldens/sessions.graphql unchanged. 9 files: Sources/.../Sessions/{SessionsGraphMutations,SessionsGraphSchema,SessionsToolChangeOperations,SessionsToolMessageOperations}.swift; Tests/.../{SessionsGraphMutationTests,SessionsToolChangeTests,SessionsToolMessageTests}.swift, Fixtures/SessionsToolFixtures.swift, Fixtures/ArrayAsyncMap.swift (new).
     - next: /review (task stays in doing, not committed)
   timestamp: 2026-10-21T15:30:20.002535+00:00
+- actor: claude-code
+  id: 01m5fhn1p1q10a3j1vc543wrwy
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (2fed63f) — 1 finding (1 confirmed, 0 refuted, 14 attempted): Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift:9 (reuse/reuse). All 9 prior findings from 2026-10-21 10:05 are checked.
+    - next: consolidate `asyncMap` with the existing `mappedInOrder` implementation, then re-review.
+  timestamp: 2026-10-21T15:35:36.385973+00:00
+- actor: claude-code
+  id: 01m5fhntcxb6zw7crnwqryhdnk
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 9 files (9 findings fixed)
+    - test: green — swift test, 2676 tests / 227 suites (run by implement)
+    - commit: 2fed63f
+    - review: findings — Fixtures/ArrayAsyncMap.swift:9 (9/9 prior checked)
+  timestamp: 2026-10-21T15:36:01.693693+00:00
+- actor: claude-code
+  id: 01m5fj8814yeyt7kxkg3yjr674
+  text: |-
+    Review finding (2026-10-21 10:30) fixed: `Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift:9` `reuse/reuse`.
+    - `mappedInOrder(by:)` now stands in one place: Tests/Support/MultitoolTestSupport/SequenceMappedInOrder.swift, as a `public` `Sequence` extension with the same name and signature. The unit test target already linked `MultitoolTestSupport` in Package.swift, so no dependency was added. IntegrationTests/Package.swift already links the product too.
+    - Deleted the `private extension Sequence` copy from NoDescriptionSurfaceDiscoveryTests.swift, which now has `import MultitoolTestSupport`. Deleted Fixtures/ArrayAsyncMap.swift. The two `asyncMap` calls in SessionsGraphMutationTests (`inScenes`, `facts`) now call `mappedInOrder`; that file already imported MultitoolTestSupport.
+    - Added the helper to the list of helpers in the `multitoolTestSupportTargetName` doc in Package.swift.
+    - Gotcha (environment, not code): `swift build --build-tests` in IntegrationTests/ failed before this change could be checked. The gitignored IntegrationTests/Package.resolved pinned older main revisions: Extras 6c91b77 has no `GraphQLEndpoint`. Running `swift package update FoundationModelsExtras` moved Extras to 6716646, and that broke Router (no `.catalogChange` case). `swift package resolve --revision` is refused against `branch: main` requirements. Fix that worked: set the three swissarmyhammer pins in IntegrationTests/Package.resolved (Extras fda3a55, Router f055e69, CodeContext b0c8aba) to the root Package.resolved revisions. That file is gitignored, so this changes no tracked file.
+  timestamp: 2026-10-21T15:46:05.476802+00:00
+- actor: claude-code
+  id: 01m5fj8b6a8fv25rz7bxjm85zg
+  text: |-
+    ### implement — changed
+    - evidence: `swift test` (root): 2676 tests in 227 suites passed, 0 failures, no compiler warnings. The only `warning:` line is SwiftPM's "missing creator for mutated node" on mlx-swift_Cmlx.bundle. `swift build --build-tests` in IntegrationTests/: Build complete, 0 errors, same single SwiftPM bundle warning. Live tests were not run. 5 files: Tests/Support/MultitoolTestSupport/SequenceMappedInOrder.swift (new), Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift (deleted), Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift, Package.swift (doc comment).
+    - next: /review (task stays in doing, not committed)
+  timestamp: 2026-10-21T15:46:08.714298+00:00
 depends_on:
 - 01M5F23YY9X0YEG7M1D9C0FP9M
 - 01M5F23F0NMKMEXGZESNEZB6S0
@@ -142,3 +174,12 @@ In `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift`
 - [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:112` `reuse/reuse` — The `makeDirectory()` helper function reinvents the same test directory creation logic already defined across multiple other test files. The function creates an InMemorySessionDirectory with identical configuration (launcher with agentID, fixed clock) that other test files implement as separate utilities. Extract `makeDirectory()` to a shared test support file (e.g., in Tests/FoundationModelsMultitoolTests/Fixtures/ or a SessionsGraphTestSupport.swift module) and import it from all test files that need this standard directory setup, rather than redefining it in each test file.
 - [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:173` `swift/immutability` — Accumulates Scene objects using a var accumulator in a loop with append, rather than using map/compactMap. Refactor to use async map if available, or extract the scene-building logic (directory.register + stage operations) into a helper method to isolate the side effects from the collection building.
 - [x] `Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift:224` `swift/immutability` — Collects strings using a var accumulator with append in a loop, rather than using map/compactMap. Extract the fact-string-building logic to a helper method and call it from a map operation: `let lines = try await directory.sessions(...).map { summary in buildFactLine(for: summary, known: known) }.sorted()`. If async I/O constraints prevent direct map, consider wrapping the loop logic in a separate function to isolate the side effects.
+
+## Review Findings (2026-10-21 10:30)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 9 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift:9` `reuse/reuse` — The `asyncMap` function reimplements sequential async transformation that already exists as `mappedInOrder` in the integration tests. High similarity (0.89) indicates the same capability was already implemented elsewhere. Consolidate the implementations by either generalizing the existing `mappedInOrder` to work on both Sequence and Array, or have the Array `asyncMap` delegate to the existing Sequence implementation.

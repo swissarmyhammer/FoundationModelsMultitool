@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModelsMetadataRegistry
 import MCPTestServer
+import MultitoolTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -157,29 +158,4 @@ private func measure(
         scenario: noDescriptionScenarioName,
         line: "correctTotal=\(group.correctCount) wrongTotal=\(group.wrongCount)")
     return group
-}
-
-private extension Sequence {
-
-    /// Maps every element with an asynchronous transform, one element at a
-    /// time and in the order the sequence lists them.
-    ///
-    /// `map` takes no asynchronous transform, and a task group would run the
-    /// elements together. Each element here is one model call over one shared
-    /// searcher, and the printed lines must stand in query order, so this
-    /// walks the head and then the tail and joins the two answers. It builds
-    /// the array from those answers, and never by mutating an empty one.
-    ///
-    /// - Parameter transform: what to make of one element.
-    /// - Returns: what `transform` answered for each element, in sequence
-    ///   order.
-    /// - Throws: whatever `transform` throws, unchanged.
-    func mappedInOrder<Transformed>(
-        by transform: (Element) async throws -> Transformed
-    ) async rethrows -> [Transformed] {
-        let elements = Array(self)
-        guard let head = elements.first else { return [] }
-        let tail = elements.dropFirst()
-        return try await [transform(head)] + tail.mappedInOrder(by: transform)
-    }
 }

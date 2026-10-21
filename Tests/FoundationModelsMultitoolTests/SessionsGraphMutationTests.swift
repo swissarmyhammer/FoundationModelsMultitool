@@ -156,7 +156,7 @@ struct SessionsGraphMutationTests {
         let target = ULID()
         let archived = ULID()
         return try await withOuterRunContext { context in
-            let scenes = try await directories.asyncMap { directory in
+            let scenes = try await directories.mappedInOrder { directory in
                 directory.register(Fixtures.summary(id: context.sessionID))
                 return try await stage(target: target, archived: archived, caller: context.sessionID, in: directory)
             }
@@ -206,7 +206,7 @@ struct SessionsGraphMutationTests {
     private static func facts(of directory: InMemorySessionDirectory, known: Set<ULID>) async throws -> [String] {
         let name: (ULID?) -> String = { id in id.map { known.contains($0) ? $0.ulidString : "new" } ?? "none" }
         let summaries = try await directory.sessions(matching: SessionQuery(includesRecorded: true, limit: .max))
-        return try await summaries.asyncMap { summary in
+        return try await summaries.mappedInOrder { summary in
             try await factLine(of: summary, in: directory, naming: name)
         }
         .sorted()
