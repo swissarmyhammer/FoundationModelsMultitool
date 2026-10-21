@@ -126,12 +126,28 @@ comments:
     - evidence: `swift test` (root): 2676 tests in 227 suites passed, 0 failures, no compiler warnings. The only `warning:` line is SwiftPM's "missing creator for mutated node" on mlx-swift_Cmlx.bundle. `swift build --build-tests` in IntegrationTests/: Build complete, 0 errors, same single SwiftPM bundle warning. Live tests were not run. 5 files: Tests/Support/MultitoolTestSupport/SequenceMappedInOrder.swift (new), Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift (deleted), Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift, Package.swift (doc comment).
     - next: /review (task stays in doing, not committed)
   timestamp: 2026-10-21T15:46:08.714298+00:00
+- actor: claude-code
+  id: 01m5fjecs7p6ra6wdb0a410rkq
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (7a587b2): 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed; 5 files reviewed. Five code-hygiene tool rules declined Tests/FoundationModelsMultitoolTests/Fixtures/ArrayAsyncMap.swift because the commit deleted it. The ArrayAsyncMap reuse finding is resolved by the shared Sequence.mappedInOrder in Tests/Support/MultitoolTestSupport/SequenceMappedInOrder.swift. All 10 prior Review Findings items are checked.
+    - next: done
+  timestamp: 2026-10-21T15:49:26.951206+00:00
+- actor: claude-code
+  id: 01m5fjeytd1n1se3p0qn913v03
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — shared mappedInOrder in MultitoolTestSupport; ArrayAsyncMap deleted
+    - test: green — swift test, 2676 tests / 227 suites; IntegrationTests builds (run by implement)
+    - commit: 7a587b2
+    - review: clean — 0 findings, 10/10 prior checked
+  timestamp: 2026-10-21T15:49:45.421545+00:00
 depends_on:
 - 01M5F23YY9X0YEG7M1D9C0FP9M
 - 01M5F23F0NMKMEXGZESNEZB6S0
 - 01M5F23K19C0N3TH4A2AZJPXDF
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffb580
 title: SessionsGraph mutations (MT-10)
 ---
 ## What
