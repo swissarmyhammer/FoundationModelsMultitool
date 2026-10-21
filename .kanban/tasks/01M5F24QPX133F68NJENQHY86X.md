@@ -1,0 +1,43 @@
+---
+assignees:
+- claude-code
+position_column: todo
+position_ordinal: 8a80
+title: 'Coordinate: GraphQL endpoint conventions across the family (EXTRAS-9, D115)'
+---
+## What
+A standing coordination card for this session. The user asked the Multitool session to keep settings, snapshots, sessions, agents, skills and kanban consistent as they conform to `GraphQLEndpointTool`, so TestudoApp (APP-16) can read them with one client model. The rules: EXTRAS-9/10/11 in `../TestudoApp/features/packages/foundationmodels-extras.md` and D115 in `../TestudoApp/features/decisions.md`.
+
+MT-11 FilesGraph is deferred: not in the user's list of six; it reuses the MultiTool endpoint plumbing of 01M5F200PV1QFFH82EK6197PXX when scheduled.
+
+Owners and peer cards:
+- settings: foundationmodelsacpagent (`^hfw2eqh` mutations, `^sn3pz3s` changes; `^2b2eccw` ACPA-13 viewer, blocked on ACPA-5 agreement)
+- skills: foundationmodelsskills (`01M5F230NX5CY90TNJP53Y1QD6`, `01M5F237DGF69WGB5QSTBWVZ2F`, `01M5F23EYC7GEW1B2BZHPT8953`)
+- kanban: foundationmodelskanban (`jk3fc4g`, `d7sgpaz`, `esc56vk`, `5pf8w1x`, `e60e9sx`)
+- agents: foundationmodelsagents (`^b8w613y`, `^wk71647`, `^20mv6d3`)
+- sessions directory: foundationmodelsrouter (asked to own EXTRAS-3/4; no reply yet)
+- snapshots, sessions graph, MultiTool endpoints: this board
+- No owner yet: EXTRAS-10, EXTRAS-11 (Extras), HOOKS-1, HOOKS-2 (Hooks), APP-16 server registry (TestudoApp)
+
+Steps:
+- [ ] Fold peer feedback into EXTRAS-9 and broadcast each rule change to every owner
+- [ ] Get owners for EXTRAS-10/11 and HOOKS-1/2 (ask the user)
+- [ ] When EXTRAS-11 lands: every endpoint's conformance test passes, or lists exceptions with card ids
+- [ ] Move EXTRAS-9/10/11 and D115 from proposed to agreed when the user approves; commit the TestudoApp doc changes
+
+Per-package conformance record (commit sha where the conformance test passes with no exceptions):
+- settings: pending
+- snapshots: pending
+- sessions: pending
+- agents: pending
+- skills: pending
+- kanban: pending
+
+## Acceptance Criteria
+- [ ] This repo's snapshots and sessions graph tests pass with `swift test`
+- [ ] A per-package checklist in this card records, for each of the six endpoints, the commit sha where its conformance test passes with no exceptions
+
+## Tests
+- [ ] `swift test` passes in this repo
+
+#graphql #coordination

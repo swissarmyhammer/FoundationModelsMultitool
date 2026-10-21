@@ -21,6 +21,11 @@ import Testing
 /// bootstraps an exporter, and this package ships no executable: the one
 /// executable target is the stdio MCP test server of the test support code.
 ///
+/// The suite also pins the GraphQL toolkit and the operation machinery of the
+/// library target: GraphQL and Graphiti with the URLs and the floors of
+/// FoundationModelsExtras, so SwiftPM resolves one copy, and the `Operations`
+/// product of Extras.
+///
 /// The suite reads the CODE of the manifest and not its comments, because the
 /// comments of the manifest tell the history of the Router dependency.
 @Suite("PackageManifestTests")
@@ -92,24 +97,44 @@ struct PackageManifestTests {
 
     @Test("the library target links the swift-log and swift-metrics products")
     func libraryTargetLinksTheTelemetryAPIs() throws {
-        let declaration = try #require(try Self.targetDeclaration(named: Self.libraryTargetName))
-        #expect(
-            declaration.contains(Self.telemetryProductsName),
-            """
-            The library target does not link \(Self.telemetryProductsName). The \
-            library logs through swift-log and records metrics through \
-            swift-metrics:
-            \(declaration)
-            """)
-        let products = try #require(try Self.productGroupDeclaration(named: Self.telemetryProductsName))
-        for product in Self.telemetryProductDeclarations {
+        try Self.expectLibraryTargetLinks(
+            group: Self.telemetryProductsName,
+            listing: Self.telemetryProductDeclarations,
+            because: "The library logs through swift-log and records metrics through swift-metrics.")
+    }
+
+    @Test("the library target links the GraphQL and Graphiti products")
+    func libraryTargetLinksTheGraphQLToolkit() throws {
+        try Self.expectLibraryTargetLinks(
+            group: Self.graphQLProductsName,
+            listing: Self.graphQLProductDeclarations,
+            because: "The snapshots graph and the sessions tool build their schemas with Graphiti.")
+    }
+
+    @Test("the manifest declares GraphQL and Graphiti with the URLs and floors of Extras")
+    func manifestDeclaresTheGraphQLPackagesOfExtras() throws {
+        let lines = try Self.codeLines()
+        for declaration in Self.graphQLPackageDeclarations {
             #expect(
-                products.contains(product),
+                lines.contains(declaration),
                 """
-                \(Self.telemetryProductsName) does not list \(product):
-                \(products)
+                The manifest does not hold \(declaration). The URL and the floor \
+                must equal those of FoundationModelsExtras, so SwiftPM resolves \
+                one copy.
                 """)
         }
+    }
+
+    @Test("the library target links the Operations product of FoundationModelsExtras")
+    func libraryTargetLinksOperations() throws {
+        let declaration = try #require(try Self.targetDeclaration(named: Self.libraryTargetName))
+        #expect(
+            declaration.contains(Self.operationsProductDeclaration),
+            """
+            The library target does not link \(Self.operationsProductDeclaration). \
+            The operation machinery of the library comes from Extras:
+            \(declaration)
+            """)
     }
 
     @Test("no library target links a swift-otel product")
@@ -143,6 +168,60 @@ struct PackageManifestTests {
         #".product(name: "Logging", package: loggingPackage)"#,
         #".product(name: "Metrics", package: metricsPackage)"#,
     ]
+
+    /// The name the manifest gives to the product group of the GraphQL
+    /// toolkit.
+    private static let graphQLProductsName = "graphQLProducts"
+
+    /// The product declarations that the GraphQL product group must hold.
+    private static let graphQLProductDeclarations = [
+        #".product(name: "GraphQL", package: graphQLPackage)"#,
+        #".product(name: "Graphiti", package: graphitiPackage)"#,
+    ]
+
+    /// The code lines that name and declare the GraphQL packages, with the
+    /// URLs and the version floors of FoundationModelsExtras.
+    private static let graphQLPackageDeclarations = [
+        #"private let graphQLPackage = "GraphQL""#,
+        #"private let graphitiPackage = "Graphiti""#,
+        #".package(url: "https://github.com/GraphQLSwift/\(graphQLPackage).git", from: "4.3.0"),"#,
+        #".package(url: "https://github.com/GraphQLSwift/\(graphitiPackage).git", from: "3.1.0"),"#,
+    ]
+
+    /// The dependency declaration of the `Operations` product of
+    /// FoundationModelsExtras, as the manifest writes it.
+    private static let operationsProductDeclaration =
+        #".product(name: "Operations", package: extrasDependencyName),"#
+
+    /// Expects the library target to link one product group, and the group to
+    /// list each of the given products.
+    ///
+    /// - Parameters:
+    ///   - group: the name of the product group.
+    ///   - products: the product declarations that the group must list.
+    ///   - reason: the reason the library links the group, for the message.
+    /// - Throws: an error when the manifest cannot be read, or when it
+    ///   declares no library target or no group with that name.
+    private static func expectLibraryTargetLinks(
+        group: String, listing products: [String], because reason: String
+    ) throws {
+        let declaration = try #require(try targetDeclaration(named: libraryTargetName))
+        #expect(
+            declaration.contains(group),
+            """
+            The library target does not link \(group). \(reason)
+            \(declaration)
+            """)
+        let groupDeclaration = try #require(try productGroupDeclaration(named: group))
+        for product in products {
+            #expect(
+                groupDeclaration.contains(product),
+                """
+                \(group) does not list \(product):
+                \(groupDeclaration)
+                """)
+        }
+    }
 
     /// The text that starts the declaration of a library target.
     private static let libraryDeclarationStart = ".target("

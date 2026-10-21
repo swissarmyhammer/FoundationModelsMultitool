@@ -1,0 +1,1 @@
+{"id":"01M5F200PXT67GWE1AVEH9C0R1","timestamp":"2026-10-21T11:01:58.621815Z","op":"create","item_id":"01M5F200PX9ES0PCVPWTPYPR2G","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 7057ff\n+tag_name: graphql\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 7057ff\n-tag_name: graphql\n","transaction_id":null}

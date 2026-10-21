@@ -1,0 +1,1 @@
+{"id":"01M5F236WARNSZVGNN36ZD530C","timestamp":"2026-10-21T11:03:43.242341Z","op":"create","item_id":"01M5F236WA6VEZGR5869X899JP","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: e4e669\n+tag_name: sessions\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: e4e669\n-tag_name: sessions\n","transaction_id":null}

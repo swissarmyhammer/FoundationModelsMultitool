@@ -52,6 +52,9 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// `OperationEvent` and the `RunPlane` that mints each completion token. The
 /// library target takes each of these from here, and not from Router. The
 /// library target and the unit test target below both link the product.
+///
+/// The library target also links its `Operations` product: the `@Operation`
+/// machinery of the family.
 private let extrasDependencyName = "FoundationModelsExtras"
 
 /// The name of the FoundationModelsCodeContext dependency package.
@@ -313,6 +316,36 @@ private let yamlPackage = "Yams"
 /// because the golden tests compare each parse with the Rust crate.
 private let tomlPackage = "TOMLDecoder"
 
+/// The GraphQL engine package: the parser, the validator and the executor
+/// (GraphQLSwift/GraphQL).
+///
+/// The snapshots graph and the sessions tool of the library run on the
+/// GraphQL toolkit of FoundationModelsExtras. Extras does not re-export the
+/// engine, and a target can link only a product of a package that its own
+/// manifest declares, thus this manifest declares it.
+///
+/// **The URL and the version floor must stay equal to those of
+/// FoundationModelsExtras.** The URL keeps the package identity one, thus
+/// SwiftPM resolves one copy. `PackageManifestTests` reads both.
+private let graphQLPackage = "GraphQL"
+
+/// The schema builder package that makes a GraphQL schema from Swift types
+/// (GraphQLSwift/Graphiti). See `graphQLPackage` for why this manifest
+/// declares it, and for the rule that its URL and floor equal those of
+/// FoundationModelsExtras.
+private let graphitiPackage = "Graphiti"
+
+/// The products of `graphQLPackage` and `graphitiPackage`, linked by the
+/// library target below.
+///
+/// The snapshots graph and the sessions tool are the consumers.
+/// `shellProducts`, `mcpProducts` and `webProducts` group their own products
+/// the same way.
+private let graphQLProducts: [Target.Dependency] = [
+    .product(name: "GraphQL", package: graphQLPackage),
+    .product(name: "Graphiti", package: graphitiPackage),
+]
+
 /// The products of `yamlPackage` and `tomlPackage`, linked by the library
 /// target below.
 ///
@@ -550,6 +583,12 @@ let package = Package(
         // not fit them.
         .package(url: "https://github.com/apple/\(loggingPackage).git", from: "1.15.1"),
         .package(url: "https://github.com/apple/\(metricsPackage).git", from: "2.11.0"),
+        // The packages of `graphQLProducts` — see `graphQLPackage`. They stand
+        // under an organization of their own, so the helper above does not
+        // fit them. The URLs and the floors must stay equal to those of
+        // FoundationModelsExtras.
+        .package(url: "https://github.com/GraphQLSwift/\(graphQLPackage).git", from: "4.3.0"),
+        .package(url: "https://github.com/GraphQLSwift/\(graphitiPackage).git", from: "3.1.0"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
@@ -562,7 +601,10 @@ let package = Package(
         // `codeContextProducts` for the code entities and the content hash of
         // its semantic diff, and `dataFormatProducts` for the YAML and TOML
         // parse of that diff, and the `hooksDependencyName` product for the
-        // snapshot store and the session of the snapshots capability.
+        // snapshot store and the session of the snapshots capability, and
+        // `graphQLProducts` for the GraphQL schemas of the snapshots graph and
+        // the sessions tool, and the `Operations` product of
+        // `extrasDependencyName` for the operation machinery.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -575,9 +617,10 @@ let package = Package(
             dependencies: [
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
+                .product(name: "Operations", package: extrasDependencyName),
                 .product(name: hooksDependencyName, package: hooksDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts
-                + codeContextProducts + dataFormatProducts,
+                + codeContextProducts + dataFormatProducts + graphQLProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
