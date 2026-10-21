@@ -15,6 +15,7 @@
 
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsHooks
 
 /// The snapshots capability: one noun, and the verbs that list, take and
@@ -68,16 +69,42 @@ public struct SnapshotsCapability: Capability {
     /// array and the noun above are the whole of what the surface needs.
     public let tools: [any Tool]
 
+    /// The `snapshots` GraphQL endpoint over the same store, built once for
+    /// this capability.
+    private let graph: SnapshotsGraph
+
+    /// The GraphQL endpoints of the capability: its one `snapshots` endpoint.
+    ///
+    /// The verbs are plain tools, not `GraphQLEndpointTool`s, so the
+    /// `Capability` default would give none.
+    public var graphQLEndpoints: [any GraphQLEndpoint] {
+        [graph]
+    }
+
     /// Makes the snapshots capability over the store that the host gives to
     /// it.
     ///
     /// The initializer builds one `SnapshotsContext` and hands it to each
-    /// verb.
+    /// verb, and builds the one ``SnapshotsGraph`` over the store.
     ///
-    /// - Parameter store: The store that the host also gives to
-    ///   `SnapshotHook`, which takes the snapshots on the tool events.
-    public init(store: SnapshotStore) {
+    /// A GraphQL call names a session by its session ID, and the store takes
+    /// the session key of the session lineage. `sessionKey` maps the one to
+    /// the other. The default treats the session ID as the session key, which
+    /// is right for a host whose session keys are the session IDs; a host with
+    /// lineage keys gives its own resolver.
+    ///
+    /// - Parameters:
+    ///   - store: The store that the host also gives to `SnapshotHook`, which
+    ///     takes the snapshots on the tool events.
+    ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
+    ///     session that the host does not know. The default gives the session
+    ///     ID itself.
+    public init(
+        store: SnapshotStore,
+        sessionKey: @escaping @Sendable (String) async -> String? = { sessionId in sessionId }
+    ) {
         let context = SnapshotsContext(store: store)
         tools = [ListSnapshots(context: context), TakeSnapshot(context: context), RollbackSnapshot(context: context)]
+        graph = SnapshotsGraph(store: store, sessionKey: sessionKey)
     }
 }

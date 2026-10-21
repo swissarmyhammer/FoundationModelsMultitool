@@ -1,0 +1,78 @@
+"""
+A point in time: RFC 3339 text in UTC with milliseconds, like 2026-10-06T14:49:10.690Z.
+"""
+scalar DateTime
+
+"""Any JSON value. The keys of each object are in sorted order."""
+scalar JSON
+
+"""One checkpoint: a recorded change of the work tree of a session."""
+type Checkpoint {
+  """The id of the checkpoint: <sessionId>:<index>."""
+  id: ID!
+
+  """The position of the checkpoint, from 1 for the oldest checkpoint."""
+  index: Int!
+
+  """
+  What took the snapshot: 'tool <name> (call <id>)', 'label <text>', 'manual', 'rollback to <index>', 'pending', or 'changed while closed'.
+  """
+  trigger: String!
+
+  """
+  The tool call that took the snapshot, or null when no tool call took it.
+  """
+  toolCallId: String
+
+  """The files that the checkpoint changed."""
+  files: [String!]!
+
+  """The time of the snapshot."""
+  at: DateTime!
+}
+
+"""The checkpoint to roll the work tree of a session back to."""
+input RollbackTimelineInput {
+  """
+  The id of the session. An external client names only a session that it owns.
+  """
+  sessionId: ID!
+
+  """The index of the checkpoint to restore. 0 is the baseline."""
+  index: Int!
+}
+
+type Query {
+  """
+  The checkpoints of a session, oldest first. An unknown session gives none.
+  """
+  checkpoints(
+    """
+    The id of the session. An external client names only a session that it owns.
+    """
+    sessionId: ID!
+  ): [Checkpoint!]!
+
+  """
+  One checkpoint of a session, or null when the session has no such checkpoint.
+  """
+  checkpoint(
+    """
+    The id of the session. An external client names only a session that it owns.
+    """
+    sessionId: ID!
+
+    """The index of the checkpoint, from 1."""
+    index: Int!
+  ): Checkpoint
+}
+
+type Mutation {
+  """
+  Makes the work tree of a session equal to the tree after a checkpoint. The rollback is a new checkpoint at the end of the timeline, which this gives, and the later checkpoints stay. Null when the work tree already equals that checkpoint. An unknown session gives NOT_FOUND.
+  """
+  rollbackTimeline(
+    """The session and the checkpoint to restore."""
+    input: RollbackTimelineInput!
+  ): Checkpoint
+}
