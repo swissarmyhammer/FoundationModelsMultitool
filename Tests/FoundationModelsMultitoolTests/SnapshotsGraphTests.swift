@@ -123,11 +123,20 @@ struct SnapshotsGraphTests {
         "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) "
         + "\(checkpointSelection) }"
 
-    /// The `checkpoint` query of one index of a session, with the diff of
-    /// each file that the checkpoint changed.
+    /// The `checkpoint` query of one index of a session, with the files that
+    /// the checkpoint changed and the diff of each of them.
     private static let changesQuery =
         "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) "
-        + "{ index changes { path diff } } }"
+        + "{ index files changes { path diff } } }"
+
+    /// The files that one checkpoint of the order test adds, in the order of
+    /// `files` of the checkpoint.
+    private static let orderedFiles = [firstFile, secondFile, thirdFile]
+
+    /// The number of times the diff provider of the order test yields for
+    /// each place a file stands before the last of ``orderedFiles``. Thus
+    /// the diff of the first file is the last to be ready.
+    private static let yieldsPerPlace = 50
 
     /// The `checkpoints` query of a session, with the diff of each file of
     /// each checkpoint.
@@ -224,6 +233,28 @@ struct SnapshotsGraphTests {
     /// An error of a diff provider that is not a ``SnapshotError``, as a
     /// libgit2 failure of the store is.
     private struct DiffReadFailure: Error {}
+
+    /// The diff that ``diffInReverseOrder(_:_:path:)`` gives for a file.
+    ///
+    /// - Parameter path: The path of the file.
+    /// - Returns: A text that names the file.
+    private static func diffText(of path: String) -> String {
+        "diff of \(path)"
+    }
+
+    /// A diff provider that makes the diffs of ``orderedFiles`` ready in
+    /// reverse order: it yields longer for a file that stands earlier. It
+    /// reads no clock.
+    ///
+    /// - Parameter path: The path of the file.
+    /// - Returns: ``diffText(of:)`` of the file.
+    @Sendable private static func diffInReverseOrder(_: String, _: Int, path: String) async -> String {
+        let place = orderedFiles.firstIndex(of: path) ?? orderedFiles.count
+        for _ in 0..<((orderedFiles.count - place) * yieldsPerPlace) {
+            await Task.yield()
+        }
+        return diffText(of: path)
+    }
 
     /// Makes the endpoint over the store of `fixture`, with a diff provider.
     ///
@@ -569,6 +600,29 @@ struct SnapshotsGraphTests {
         #expect(diffLines.contains("+++ b/\(Self.baseFile)"))
         #expect(diffLines.contains("-base"))
         #expect(diffLines.contains("+edited"))
+    }
+
+    /// `changes` lists the files in the order of `files` of the checkpoint,
+    /// even when the diffs of the later files are ready first.
+    @Test("changes keeps the order of the files of the checkpoint")
+    func changesKeepsTheOrderOfTheFiles() async throws {
+        let fixture = try await Self.makeFixture()
+        for file in Self.orderedFiles {
+            try fixture.repository.write("\(file)\n", to: file)
+        }
+        _ = try await fixture.store.take(
+            sessionKey: Self.sessionKey, owner: Self.sessionId, trigger: .manual(label: Self.firstLabel))
+        let graph = Self.graph(over: fixture, diff: Self.diffInReverseOrder)
+
+        let reply = try await Self.changes(of: Self.firstIndex, on: graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let checkpoint = try reply.object("checkpoint")
+        let files = try #require(checkpoint["files"] as? [String])
+        let changes = try #require(checkpoint["changes"] as? [[String: Any]])
+        #expect(files == Self.orderedFiles)
+        #expect(changes.compactMap { $0["path"] as? String } == files)
+        #expect(changes.compactMap { $0["diff"] as? String } == files.map(Self.diffText(of:)))
     }
 
     /// A `checkpoints` query that does not select `changes` reads no diff.

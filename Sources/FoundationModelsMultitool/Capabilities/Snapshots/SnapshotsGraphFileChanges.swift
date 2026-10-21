@@ -29,8 +29,16 @@ struct SnapshotsGraphFileChange: Codable, Sendable {
 }
 
 extension SnapshotsGraphCheckpoint {
+    /// One change of ``changes(context:arguments:)``, with the offset of its
+    /// file in ``files``.
+    private typealias PlacedChange = (offset: Int, change: SnapshotsGraphFileChange)
+
     /// Resolves `Checkpoint.changes`: the diff of each file of ``files``, in
     /// the same order. It reads the diffs only when a query selects the field.
+    ///
+    /// The diffs are independent reads, so one child task reads each of them
+    /// at once. Each child carries the offset of its file, and the changes
+    /// are sorted by that offset, because the children finish in any order.
     ///
     /// - Parameters:
     ///   - context: The context of the call, which gives the diff provider.
@@ -43,12 +51,16 @@ extension SnapshotsGraphCheckpoint {
         -> [SnapshotsGraphFileChange]
     {
         do {
-            var changes: [SnapshotsGraphFileChange] = []
-            for path in files {
-                let diff = try await context.diff(sessionKey, index, path)
-                changes.append(SnapshotsGraphFileChange(path: path, diff: diff))
+            return try await withThrowingTaskGroup(of: PlacedChange.self) { group in
+                for (offset, path) in files.enumerated() {
+                    group.addTask { [sessionKey, index] in
+                        let diff = try await context.diff(sessionKey, index, path)
+                        return (offset, SnapshotsGraphFileChange(path: path, diff: diff))
+                    }
+                }
+                let placed = try await group.reduce(into: [PlacedChange]()) { $0.append($1) }
+                return placed.sorted { $0.offset < $1.offset }.map(\.change)
             }
-            return changes
         } catch let error as SnapshotError {
             throw SnapshotsGraphError.coded(error, sessionId: sessionId)
         }
