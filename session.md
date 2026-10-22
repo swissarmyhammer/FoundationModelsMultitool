@@ -118,7 +118,7 @@ These facts show a pattern: Extras holds the small shared contracts. Other packa
 - `session/new` composes the tools for the `cwd` and makes the Router session (`Agent/SessionSetup.swift:528-600`). The composition is `composeSession` (`:837, 870`). `activateSession` adds the table entry and the projector (`:621-728`).
 - The composition mounts the Multitool registry and, after it, the standalone `skills` and `agents` tools (`Tools/ToolCatalog.swift:312-372`). The standalone tools are not in a snippet, so the risk check does not see them.
 - `session/resume` closes a live entry first and restores the session from disk (`Agent/SessionResume.swift:130-137`). Thus a resume of a session that works now stops its work.
-- ACPAgent keeps the record of past sessions: `SessionIndex` (`Transcripts/SessionIndex.swift`, the file `sessions.jsonl`) and `ProjectRegistry` (`Transcripts/ProjectRegistry.swift`, the file `projects.jsonl`). `TranscriptStore` (`Transcripts/TranscriptStore.swift`) uses them for `session/list` and `session/resume`. These types have no ACP type.
+- ACPAgent keeps the record of past sessions: `SessionIndex` (`Transcripts/SessionIndex.swift`, the file `sessions.jsonl`) and `ProjectRegistry` (`Transcripts/ProjectRegistry.swift`, the file `projects.jsonl`). `TranscriptStore` (`Transcripts/TranscriptStore.swift`) uses them for `session/list` and `session/resume`. These types have no ACP type. (Later: these moved to Router (D72), and D125 replaces both files with the session folders and their `index.md`, and with a projects folder that the host gives.)
 - There is no `_sah` code and no GraphQL tunnel yet.
 
 ### 3.7 FoundationModelsACP and FoundationModelsACPClient
@@ -981,7 +981,7 @@ Use the test support of Router (scripted models, no real model).
 - Loop guards: the chain depth, the length limit, the sends of one turn, the targets of one tag send. A UI sender and a session sender get the same guards.
 - No cap: many sessions start and work at the same time, and no start or delivery waits for a slot.
 - State events: working, needsInput (elicitation), idle with the last summary, archived. A rule denial does not give needsInput.
-- Recorded sessions: `includesRecorded` finds sessions on disk after a new process, through `SessionIndex`. A send to a recorded session restores it, and the message starts a turn.
+- Recorded sessions: `includesRecorded` finds sessions on disk after a new process, by listing the session folders and reading their `index.md` (D125). A send to a recorded session restores it, and the message starts a turn.
 - Archive: a working session stops its turn, leaves the live list, sends `archived`, and has `archivedAt` in its facts after a restart. A send to it gives `refused` with the reason "archived". The launcher does not restore it.
 
 ### 13.4 The `sessions` graph (MT-10)
