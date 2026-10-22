@@ -20,9 +20,6 @@ struct GraphQLViewerScopingTests {
     /// The ID of a device of the user.
     private static let deviceClientId = "client-device"
 
-    /// The ID of a client that is not a device of the user.
-    private static let externalClientId = "client-external"
-
     /// A reader that a call scopes to its viewer, as each endpoint context is.
     private struct Reader: GraphQLViewerScoping {
         /// The client of the call, or `nil` for the agent.
@@ -34,8 +31,7 @@ struct GraphQLViewerScopingTests {
 
     /// A client that is not a device of the user, and that owns
     /// ``ownedSessionId``.
-    private static let external = GraphQLViewer(
-        clientId: externalClientId, trust: .external, ownedSessions: [ownedSessionId])
+    private static let external = GraphQLViewer.external(owning: [ownedSessionId])
 
     /// The agent and a device of the user have no external viewer; an
     /// external client is its own external viewer.
@@ -43,7 +39,7 @@ struct GraphQLViewerScopingTests {
     func onlyAnExternalClientHasAnExternalViewer() {
         #expect(Reader(viewer: nil).externalViewer == nil)
         #expect(Reader(viewer: Self.device).externalViewer == nil)
-        #expect(Reader(viewer: Self.external).externalViewer?.clientId == Self.externalClientId)
+        #expect(Reader(viewer: Self.external).externalViewer?.clientId == GraphQLViewer.externalClientId)
     }
 
     /// A rule for an external client binds only an external client: the

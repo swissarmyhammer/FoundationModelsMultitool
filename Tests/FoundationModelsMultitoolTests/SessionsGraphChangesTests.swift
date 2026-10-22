@@ -31,9 +31,6 @@ struct SessionsGraphChangesTests {
     /// The ID of a device of the user.
     private static let deviceClientId = "client-device"
 
-    /// The ID of a client that is not a device of the user.
-    private static let externalClientId = "client-external"
-
     /// A device of the user, which owns no session.
     private static let deviceViewer = GraphQLViewer(clientId: deviceClientId, trust: .userDevice)
 
@@ -197,14 +194,6 @@ struct SessionsGraphChangesTests {
     /// - Throws: What the directory throws.
     private static func mark(_ marker: SessionSummary, in directory: InMemorySessionDirectory) async throws {
         _ = try await directory.setTitle(markerTitle, of: marker.id)
-    }
-
-    /// A client that is not a device of the user, and that owns `owned`.
-    ///
-    /// - Parameter owned: The session that the client owns.
-    /// - Returns: The viewer.
-    private static func externalViewer(owning owned: SessionSummary) -> GraphQLViewer {
-        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: [owned.id.ulidString])
     }
 
     // MARK: - The change of each action
@@ -429,7 +418,8 @@ struct SessionsGraphChangesTests {
         }
         let graph = SessionsGraph.endpoint(of: directory)
         let before = try await Self.cursor(of: graph)
-        var external = try await Self.subscribe(to: graph, after: before, viewer: Self.externalViewer(owning: owned))
+        var external = try await Self.subscribe(
+            to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
         var device = try await Self.subscribe(to: graph, after: before)
 
         try await Self.mark(stranger, in: directory)
@@ -450,8 +440,8 @@ struct SessionsGraphChangesTests {
         let owned = Fixtures.summary()
         directory.register(owned)
         let graph = SessionsGraph.endpoint(of: directory)
-        var external = try await Self.subscribe(
-            to: graph, after: try await Self.cursor(of: graph), viewer: Self.externalViewer(owning: owned))
+        let viewer = GraphQLViewer.external(owning: [owned.id.ulidString])
+        var external = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph), viewer: viewer)
 
         let started = Fixtures.summary(startedBy: owned.id)
         directory.register(started)

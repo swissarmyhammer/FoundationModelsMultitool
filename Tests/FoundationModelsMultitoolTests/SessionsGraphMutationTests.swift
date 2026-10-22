@@ -31,9 +31,6 @@ struct SessionsGraphMutationTests {
     /// The ID of a device of the user.
     private static let deviceClientId = "client-device"
 
-    /// The ID of a client that is not a device of the user.
-    private static let externalClientId = "client-external"
-
     /// The folder that a start names in its `cwd`.
     private static let namedFolder = URL(fileURLWithPath: "/work/other")
 
@@ -624,16 +621,14 @@ struct SessionsGraphMutationTests {
 
         /// The external client that owns ``owned``.
         var viewer: GraphQLViewer {
-            GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: [owned.ulidString])
+            GraphQLViewer.external(owning: [owned.ulidString])
         }
 
         /// The external client that owns ``owned``, and whose connection
         /// started ``stranger``, which another client owns now: it sees
         /// ``stranger``, but does not own it.
         var starterViewer: GraphQLViewer {
-            GraphQLViewer(
-                clientId: externalClientId, trust: .external, ownedSessions: [owned.ulidString],
-                startedSessions: [stranger.ulidString])
+            GraphQLViewer.external(owning: [owned.ulidString], started: [stranger.ulidString])
         }
     }
 
@@ -820,7 +815,7 @@ struct SessionsGraphMutationTests {
         let inbox = try await directory.inbox(of: scene.owned, markRead: false)
 
         #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
-        #expect(inbox.last?.from == .user(clientID: Self.externalClientId))
+        #expect(inbox.last?.from == .user(clientID: GraphQLViewer.externalClientId))
     }
 
     /// One case for each change of a session that the connection of the
@@ -886,7 +881,7 @@ struct SessionsGraphMutationTests {
     @Test("an external viewer cannot start a session")
     func anExternalViewerCannotStart() async throws {
         let directory = Fixtures.directoryWithLauncher()
-        let viewer = GraphQLViewer(clientId: Self.externalClientId, trust: .external)
+        let viewer = GraphQLViewer.external()
 
         let reply = try await Self.run(
             "mutation { startSession(input: \(Self.startInput)) { id } }", viewer: viewer, on: directory)

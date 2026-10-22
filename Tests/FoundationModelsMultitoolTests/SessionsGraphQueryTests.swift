@@ -23,9 +23,6 @@ struct SessionsGraphQueryTests {
 
     // MARK: - Constants
 
-    /// The ID of a client that is not a device of the user.
-    private static let externalClientId = "client-external"
-
     /// The ID of a device of the user.
     private static let deviceClientId = "client-device"
 
@@ -250,21 +247,6 @@ struct SessionsGraphQueryTests {
         _ query: String, id: String, viewer: GraphQLViewer? = nil, on graph: SessionsGraph
     ) async throws -> GraphQLReply {
         try await run(query, variables: ["id": .string(id)], viewer: viewer, on: graph)
-    }
-
-    /// A client that is not a device of the user, that owns `owned`, and
-    /// whose connection started `started`.
-    ///
-    /// - Parameters:
-    ///   - owned: The sessions that the client owns.
-    ///   - started: The sessions that the connection of the client started.
-    /// - Returns: The viewer.
-    private static func externalViewer(
-        owning owned: [SessionSummary], started: [SessionSummary] = []
-    ) -> GraphQLViewer {
-        GraphQLViewer(
-            clientId: externalClientId, trust: .external, ownedSessions: Set(owned.map(\.id.ulidString)),
-            startedSessions: Set(started.map(\.id.ulidString)))
     }
 
     /// The `ownedByViewer` and `hasOwner` fields of one session.
@@ -550,7 +532,7 @@ struct SessionsGraphQueryTests {
     @Test("an external viewer sees only its sessions, their subagents and the sessions they started")
     func anExternalViewerSeesOnlyItsTree() async throws {
         let tree = Tree()
-        let viewer = Self.externalViewer(owning: [tree.owned])
+        let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
         let ids = try Self.ids(of: await Self.sessions(viewer: viewer, on: tree.graph))
 
@@ -563,7 +545,7 @@ struct SessionsGraphQueryTests {
     func anExternalViewerWithNoSessionSeesNone() async throws {
         let tree = Tree()
 
-        let ids = try Self.ids(of: await Self.sessions(viewer: Self.externalViewer(owning: []), on: tree.graph))
+        let ids = try Self.ids(of: await Self.sessions(viewer: GraphQLViewer.external(), on: tree.graph))
 
         #expect(ids.isEmpty)
     }
@@ -575,7 +557,7 @@ struct SessionsGraphQueryTests {
     func theLimitCountsOnlyVisibleSessions() async throws {
         let tree = Tree()
         Self.registerSessions(Self.crowdSize, in: tree.directory)
-        let viewer = Self.externalViewer(owning: [tree.owned])
+        let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
         let ids = try Self.ids(of: await Self.sessions(viewer: viewer, on: tree.graph))
 
@@ -588,7 +570,7 @@ struct SessionsGraphQueryTests {
     @Test("session(id:) gives a visible session, and null for a hidden one")
     func sessionIsNullWhenHidden() async throws {
         let tree = Tree()
-        let viewer = Self.externalViewer(owning: [tree.owned])
+        let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
         let visible = try await Self.run(
             Self.sessionQuery, id: tree.deepSubagent.id.ulidString, viewer: viewer, on: tree.graph)
@@ -605,7 +587,7 @@ struct SessionsGraphQueryTests {
     @Test("an external viewer sees the sessions that its connection started, and their tree")
     func anExternalViewerSeesTheSessionsItStarted() async throws {
         let tree = Tree()
-        let viewer = Self.externalViewer(owning: [], started: [tree.started])
+        let viewer = GraphQLViewer.external(started: [tree.started.id.ulidString])
         let visibleToStarter = Set([tree.started, tree.startedByStarted, tree.deepSubagent].map(\.id.ulidString))
 
         let ids = try Self.ids(of: await Self.sessions(viewer: viewer, on: tree.graph))
@@ -623,9 +605,8 @@ struct SessionsGraphQueryTests {
     @Test("an external viewer reads ownedByViewer and hasOwner from the owner registry")
     func anExternalViewerReadsTheOwnership() async throws {
         let tree = Tree()
-        let viewer = GraphQLViewer(
-            clientId: Self.externalClientId, trust: .external, ownedSessions: [tree.owned.id.ulidString],
-            clientOwnedSessions: [tree.subagent.id.ulidString])
+        let viewer = GraphQLViewer.external(
+            owning: [tree.owned.id.ulidString], clientOwned: [tree.subagent.id.ulidString])
 
         let ownership = try await Self.ownership(of: [tree.owned, tree.subagent, tree.started], viewer: viewer, on: tree)
 
@@ -748,7 +729,7 @@ struct SessionsGraphQueryTests {
     @Test("a parent or a starter that the external viewer cannot see is null")
     func aHiddenRelativeIsNull() async throws {
         let tree = Tree()
-        let viewer = Self.externalViewer(owning: [tree.subagent, tree.started])
+        let viewer = GraphQLViewer.external(owning: [tree.subagent.id.ulidString, tree.started.id.ulidString])
 
         let subagent = try await Self.run(
             Self.relativesQuery, id: tree.subagent.id.ulidString, viewer: viewer, on: tree.graph)
@@ -914,7 +895,7 @@ struct SessionsGraphQueryTests {
         let tree = Tree()
         try await Self.send(Self.firstText, from: tree.stranger.id, to: tree.owned.id, in: tree.directory)
         try await Self.send(Self.secondText, from: tree.owned.id, to: tree.stranger.id, in: tree.directory)
-        let viewer = Self.externalViewer(owning: [tree.owned])
+        let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
         let owned = try await Self.inbox(of: tree.owned.id, viewer: viewer, on: tree.graph)
         let hidden = try await Self.run(

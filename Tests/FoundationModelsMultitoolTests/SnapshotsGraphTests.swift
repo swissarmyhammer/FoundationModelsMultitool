@@ -52,9 +52,6 @@ struct SnapshotsGraphTests {
     /// checkpoints of a fixture.
     private static let thirdIndex = 3
 
-    /// The ID of a client that is not a device of the user.
-    private static let externalClientId = "client-external"
-
     /// The ID of a device of the user.
     private static let deviceClientId = "client-device"
 
@@ -395,19 +392,6 @@ struct SnapshotsGraphTests {
     ) async throws -> GraphQLReply {
         let input: Map = ["sessionId": .string(id), "index": .number(Number(index))]
         return try await run(rollbackMutation, variables: ["input": input], viewer: viewer, on: graph)
-    }
-
-    /// A client that is not a device of the user, that owns `owned`, and
-    /// whose connection started `started`.
-    ///
-    /// - Parameters:
-    ///   - owned: The session IDs that the client owns.
-    ///   - started: The session IDs that the connection of the client started.
-    /// - Returns: The viewer.
-    private static func externalViewer(
-        owning owned: Set<String> = [], started: Set<String> = []
-    ) -> GraphQLViewer {
-        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: owned, startedSessions: started)
     }
 
     /// The text of `.toolUse` as the `trigger` field gives it.
@@ -907,7 +891,7 @@ struct SnapshotsGraphTests {
     func anExternalViewerSeesOnlyItsOwnSessions() async throws {
         let fixture = try await Self.makeFixture()
         try await Self.makeTwoCheckpoints(in: fixture)
-        let viewer = Self.externalViewer()
+        let viewer = GraphQLViewer.external()
 
         let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph)
         let single = try await Self.checkpoint(Self.firstIndex, viewer: viewer, on: fixture.graph)
@@ -926,7 +910,7 @@ struct SnapshotsGraphTests {
     func anExternalOwnerSeesItsSession() async throws {
         let fixture = try await Self.makeFixture()
         try await Self.makeTwoCheckpoints(in: fixture)
-        let viewer = Self.externalViewer(owning: [Self.sessionId])
+        let viewer = GraphQLViewer.external(owning: [Self.sessionId])
 
         let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph).list("checkpoints")
         let rollback = try await Self.rollback(to: Self.firstIndex, viewer: viewer, on: fixture.graph)
@@ -943,7 +927,7 @@ struct SnapshotsGraphTests {
     func anExternalStarterSeesButCannotRollBack() async throws {
         let fixture = try await Self.makeFixture()
         try await Self.makeTwoCheckpoints(in: fixture)
-        let viewer = Self.externalViewer(started: [Self.sessionId])
+        let viewer = GraphQLViewer.external(started: [Self.sessionId])
 
         let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph).list("checkpoints")
         let single = try await Self.run(
