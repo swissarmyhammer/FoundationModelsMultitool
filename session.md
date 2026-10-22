@@ -273,7 +273,7 @@ Give each target a level. An edge must go from a higher level to a lower level.
 - Router or Extras → ACP or ACPAgent: no edge. Constraint 2: kept. GraphQL and Graphiti are outside the family.
 - The `SessionLauncher` port is in Router. ACPAgent implements it. This is a dependency inversion. The type edge goes from ACPAgent to Router, as today.
 - The `GraphQLViewer` is in Extras. ACPAgent (or the app server, APP-16) fills it from the owner registry. The edge goes from ACPAgent to Extras, as today.
-- At run time, the directory holds the launcher, and the launcher makes surfaces that hold the directory. This is a reference loop at run time, not a module cycle. The host gives the launcher to the directory after it makes both (`directory.useLauncher(_:)`), and it releases it at shutdown. See ROUTER-8.
+- At run time, the directory holds the launcher, and the launcher makes surfaces that hold the directory. This is a reference loop at run time, not a module cycle. The host gives the launcher to the directory after it makes both (`directory.use(launcher:)`), and it releases it at shutdown. See ROUTER-8.
 - Constraint 3: the operations are on the Extras protocol. The tool and the graph call them. ACP only carries GraphQL text through `_sah/graphql/*`.
 
 ## 6. The protocol and the value types (Extras)
@@ -1073,7 +1073,7 @@ Each change has a spec, a reason (Why) and its dependencies. New IDs continue th
 
 #### ROUTER-8 Session launcher port
 
-- **Spec:** `public protocol SessionLauncher: Sendable { func launchRootSession(_ request: SessionStartRequest) async throws -> any RoutedSession; func restoreSession(_ id: ULID) async throws -> any RoutedSession }`. The launcher resolves the agent id and the folder. The host sets it with `directory.useLauncher(_:)`. The directory releases it at shutdown, to break the run-time reference loop. With no launcher, `start` and an agent send throw `noLauncher`.
+- **Spec:** `public protocol SessionLauncher: Sendable { func launchRootSession(for request: SessionStartRequest) async throws -> any RoutedSession; func restoreSession(id: ULID) async throws -> any RoutedSession }`. The launcher resolves the agent id and the folder. The host sets it with `directory.use(launcher:)`. The directory releases it at shutdown, to break the run-time reference loop. With no launcher, `start` and an agent send throw `noLauncher`.
 - **Why:** The Router cannot compose the tools of a session and does not know the agent catalog. A port keeps ACPAgent and Agents out of Router (constraint 2).
 - **Depends on:** ROUTER-3
 
