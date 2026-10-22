@@ -930,6 +930,32 @@ struct SnapshotsGraphTests {
         #expect(try rollback.object("rollbackTimeline")["index"] as? Int == Self.rollbackIndex)
     }
 
+    /// An external client whose connection started the session, and that
+    /// does not own it now, sees its checkpoints and their diffs, but its
+    /// rollback gives `NOT_FOUND` and restores nothing: a rollback stays
+    /// owned-only.
+    @Test("an external viewer sees a session its connection started, but cannot roll it back")
+    func anExternalStarterSeesButCannotRollBack() async throws {
+        let fixture = try await Self.makeFixture()
+        try await Self.makeTwoCheckpoints(in: fixture)
+        let viewer = GraphQLViewer(
+            clientId: Self.externalClientId, trust: .external, startedSessions: [Self.sessionId])
+
+        let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph).list("checkpoints")
+        let single = try await Self.run(
+            Self.changesQuery,
+            variables: ["sessionId": .string(Self.sessionId), "index": .number(Number(Self.firstIndex))],
+            viewer: viewer, on: fixture.graph)
+        let rollback = try await Self.rollback(to: Self.firstIndex, viewer: viewer, on: fixture.graph)
+
+        #expect(list.count == Self.secondIndex)
+        let changes = try #require(try single.object("checkpoint")["changes"] as? [[String: Any]])
+        #expect(changes.map { $0["path"] as? String } == [Self.firstFile])
+        #expect(rollback.codes == [Self.notFoundCode])
+        let stored = try await fixture.store.checkpoints(sessionKey: Self.sessionKey, owner: Self.sessionId)
+        #expect(stored.count == Self.secondIndex)
+    }
+
     /// A device of the user sees each session, also one it does not own.
     @Test("a user device sees each session")
     func aUserDeviceSeesEachSession() async throws {

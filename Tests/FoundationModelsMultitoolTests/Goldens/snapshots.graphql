@@ -50,7 +50,7 @@ type FileChange {
 """The checkpoint to roll the work tree of a session back to."""
 input RollbackTimelineInput {
   """
-  The id of the session. An external client names only a session that it owns.
+  The id of the session. An external client rolls back only a session that it owns.
   """
   sessionId: ID!
 
@@ -89,7 +89,7 @@ type Query {
   """
   checkpoints(
     """
-    The id of the session. An external client names only a session that it owns.
+    The id of the session. An external client names only a session that it owns or that its connection started.
     """
     sessionId: ID!
   ): [Checkpoint!]!
@@ -99,7 +99,7 @@ type Query {
   """
   checkpoint(
     """
-    The id of the session. An external client names only a session that it owns.
+    The id of the session. An external client names only a session that it owns or that its connection started.
     """
     sessionId: ID!
 

@@ -252,12 +252,63 @@ struct SessionsGraphQueryTests {
         try await run(query, variables: ["id": .string(id)], viewer: viewer, on: graph)
     }
 
-    /// A client that is not a device of the user, and that owns `owned`.
+    /// A client that is not a device of the user, that owns `owned`, and
+    /// whose connection started `started`.
     ///
-    /// - Parameter owned: The sessions that the client owns.
+    /// - Parameters:
+    ///   - owned: The sessions that the client owns.
+    ///   - started: The sessions that the connection of the client started.
     /// - Returns: The viewer.
-    private static func externalViewer(owning owned: [SessionSummary]) -> GraphQLViewer {
-        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: Set(owned.map(\.id.ulidString)))
+    private static func externalViewer(
+        owning owned: [SessionSummary], started: [SessionSummary] = []
+    ) -> GraphQLViewer {
+        GraphQLViewer(
+            clientId: externalClientId, trust: .external, ownedSessions: Set(owned.map(\.id.ulidString)),
+            startedSessions: Set(started.map(\.id.ulidString)))
+    }
+
+    /// The `ownedByViewer` and `hasOwner` fields of one session.
+    private struct Ownership: Equatable {
+        /// A session that the viewer owns.
+        static let ownedByViewer = Ownership(ownedByViewer: true, hasOwner: true)
+
+        /// A session that another client owns.
+        static let ownedByOtherClient = Ownership(ownedByViewer: false, hasOwner: true)
+
+        /// A session that no client owns, or a read with no viewer.
+        static let noOwner = Ownership(ownedByViewer: false, hasOwner: false)
+
+        /// The `ownedByViewer` field.
+        let ownedByViewer: Bool?
+
+        /// The `hasOwner` field.
+        let hasOwner: Bool?
+    }
+
+    /// The `session` query of one id, with its two ownership fields.
+    private static let ownershipQuery = "query($id: ID!) { session(id: $id) { ownedByViewer hasOwner } }"
+
+    /// Reads the ownership fields of each session, one `session` query each.
+    ///
+    /// - Parameters:
+    ///   - sessions: The sessions, which the viewer must see.
+    ///   - viewer: The client of the call, or `nil` for the agent.
+    ///   - tree: The tree that holds the sessions.
+    /// - Returns: The fields of each session, in order.
+    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    ///   a response has no `session` object.
+    private static func ownership(
+        of sessions: [SessionSummary], viewer: GraphQLViewer?, on tree: Tree
+    ) async throws -> [Ownership] {
+        var fields: [Ownership] = []
+        // A loop and not a `map`: each read awaits the endpoint.
+        for session in sessions {
+            let object = try await run(ownershipQuery, id: session.id.ulidString, viewer: viewer, on: tree.graph)
+                .object("session")
+            fields.append(
+                Ownership(ownedByViewer: object["ownedByViewer"] as? Bool, hasOwner: object["hasOwner"] as? Bool))
+        }
+        return fields
     }
 
     /// A device of the user, which owns no session.
@@ -546,6 +597,65 @@ struct SessionsGraphQueryTests {
         #expect(try visible.object("session")["id"] as? String == tree.deepSubagent.id.ulidString)
         #expect(hidden.codes.isEmpty)
         #expect(hidden.isNull("session"))
+    }
+
+    /// An external client also sees the sessions that its connection
+    /// started and no longer owns, their subagents, and the sessions that
+    /// they started; no other session.
+    @Test("an external viewer sees the sessions that its connection started, and their tree")
+    func anExternalViewerSeesTheSessionsItStarted() async throws {
+        let tree = Tree()
+        let viewer = Self.externalViewer(owning: [], started: [tree.started])
+        let visibleToStarter = Set([tree.started, tree.startedByStarted, tree.deepSubagent].map(\.id.ulidString))
+
+        let ids = try Self.ids(of: await Self.sessions(viewer: viewer, on: tree.graph))
+
+        #expect(Set(ids) == visibleToStarter)
+        #expect(ids.count == visibleToStarter.count)
+    }
+
+    // MARK: - Ownership of each viewer kind
+
+    /// An external client reads `ownedByViewer` from the sessions that it
+    /// owns, and `hasOwner` from the sessions that any client owns: its own
+    /// session, a subagent that another client owns, and a session that no
+    /// client owns.
+    @Test("an external viewer reads ownedByViewer and hasOwner from the owner registry")
+    func anExternalViewerReadsTheOwnership() async throws {
+        let tree = Tree()
+        let viewer = GraphQLViewer(
+            clientId: Self.externalClientId, trust: .external, ownedSessions: [tree.owned.id.ulidString],
+            clientOwnedSessions: [tree.subagent.id.ulidString])
+
+        let ownership = try await Self.ownership(of: [tree.owned, tree.subagent, tree.started], viewer: viewer, on: tree)
+
+        #expect(ownership == [.ownedByViewer, .ownedByOtherClient, .noOwner])
+    }
+
+    /// A device of the user reads the same two fields from the owner
+    /// registry, also for a session that it does not own.
+    @Test("a device of the user reads ownedByViewer and hasOwner from the owner registry")
+    func aUserDeviceReadsTheOwnership() async throws {
+        let tree = Tree()
+        let viewer = GraphQLViewer(
+            clientId: Self.deviceClientId, trust: .userDevice, ownedSessions: [tree.owned.id.ulidString],
+            clientOwnedSessions: [tree.stranger.id.ulidString])
+
+        let ownership = try await Self.ownership(of: [tree.owned, tree.stranger, tree.fork], viewer: viewer, on: tree)
+
+        #expect(ownership == [.ownedByViewer, .ownedByOtherClient, .noOwner])
+    }
+
+    /// The agent, a call with no viewer, is no client and reads no owner
+    /// registry: each session reads `ownedByViewer: false` and
+    /// `hasOwner: false`.
+    @Test("the agent reads ownedByViewer and hasOwner as false")
+    func theAgentReadsNoOwnership() async throws {
+        let tree = Tree()
+
+        let ownership = try await Self.ownership(of: [tree.owned, tree.stranger], viewer: nil, on: tree)
+
+        #expect(ownership == [.noOwner, .noOwner])
     }
 
     // MARK: - session(id:)

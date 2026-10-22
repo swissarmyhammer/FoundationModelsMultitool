@@ -570,4 +570,23 @@ struct SnapshotsGraphChangesTests {
         #expect(deviceChanges.map(\.sessionId) == [Self.firstSessionId, Self.secondSessionId])
         #expect(externalChange.cursor == deviceChanges.last?.cursor)
     }
+
+    /// An external client also gets the changes of a session that its
+    /// connection started and that another client owns now, and no change
+    /// of another session.
+    @Test("an external client receives the changes of a session that its connection started")
+    func anExternalClientGetsTheSessionsItStarted() async throws {
+        let fixture = try await Fixture()
+        let graph = Self.graph(of: fixture)
+        let before = try await Self.cursor(of: graph)
+        let starter = GraphQLViewer(
+            clientId: Self.externalClientId, trust: .external, startedSessions: [Self.secondSessionId])
+        var external = try await Self.subscribe(to: graph, after: before, viewer: starter)
+
+        try await fixture.takeFirst()
+        try await fixture.takeSecond()
+        let externalChange = try await external.nextChange()
+
+        #expect(externalChange.sessionId == Self.secondSessionId)
+    }
 }

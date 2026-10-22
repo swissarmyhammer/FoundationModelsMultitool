@@ -140,17 +140,33 @@ struct SnapshotsGraphContext: GraphQLRunContext {
 
     /// Tells if the client of the call can see a session (EXTRAS-9 rule 4):
     /// the agent and a device of the user see each session, and an external
-    /// client sees only the sessions that it owns.
+    /// client sees only the sessions that it owns or that its connection
+    /// started. The queries, `Checkpoint.changes` and the `changes`
+    /// subscription read this rule.
     ///
     /// - Parameter sessionId: The session ID.
     /// - Returns: `true` when the client can see the session.
     func canSee(_ sessionId: String) -> Bool {
-        switch viewer?.trust {
-        case nil, .userDevice:
-            true
-        case .external:
-            viewer?.owns(sessionId) == true
-        }
+        externalViewer.map { $0.isOwnerOrStarter(of: sessionId) } ?? true
+    }
+
+    /// Tells if the client of the call can roll a session back: the agent
+    /// and a device of the user roll back each session, and an external
+    /// client only the sessions that it owns now. A session that its
+    /// connection started and another client took over stays visible, but
+    /// the rollback is not its own to make.
+    ///
+    /// - Parameter sessionId: The session ID.
+    /// - Returns: `true` when the client can roll the session back.
+    func canRollBack(_ sessionId: String) -> Bool {
+        externalViewer.map { $0.owns(sessionId) } ?? true
+    }
+
+    /// The client of the call when it is not a device of the user, or `nil`
+    /// when the caller sees and changes each session: the agent or a device
+    /// of the user.
+    private var externalViewer: GraphQLViewer? {
+        viewer?.externalClient
     }
 }
 
@@ -206,13 +222,14 @@ struct SnapshotsGraphResolver: Sendable {
     /// - Returns: The new rollback checkpoint, or `nil` when the work tree
     ///   already equals the checkpoint: then the store adds no checkpoint.
     /// - Throws: `NOT_FOUND` of the toolkit for a session that the viewer
-    ///   cannot see, that the host does not know, or that has its session key
-    ///   not open; a ``SnapshotsGraphError`` for each other store error.
+    ///   cannot roll back, that the host does not know, or that has its
+    ///   session key not open; a ``SnapshotsGraphError`` for each other store
+    ///   error.
     func rollbackTimeline(
         context: SnapshotsGraphContext, arguments: SnapshotsGraphRollbackArguments
     ) async throws -> SnapshotsGraphCheckpoint? {
         let sessionId = arguments.input.sessionId.text
-        guard context.canSee(sessionId), let key = await sessionKey(sessionId) else {
+        guard context.canRollBack(sessionId), let key = await sessionKey(sessionId) else {
             throw GraphQLToolkitError.notFound(kind: Self.sessionKind, id: sessionId)
         }
         do {
@@ -260,9 +277,14 @@ struct SnapshotsGraphAPI: API {
     /// the resolver that a call gives holds the store.
     static let builtSchema = Result { try makeSchema() }
 
-    /// The text of the description of a `sessionId` argument.
+    /// The text of the description of the `sessionId` argument of a query.
     private static let sessionIdDescription =
-        "The id of the session. An external client names only a session that it owns."
+        "The id of the session. An external client names only a session that it owns or that its connection "
+        + "started."
+
+    /// The text of the description of the `sessionId` of a rollback.
+    private static let rollbackSessionIdDescription =
+        "The id of the session. An external client rolls back only a session that it owns."
 
     /// The root resolver.
     let resolver: SnapshotsGraphResolver
@@ -302,7 +324,7 @@ struct SnapshotsGraphAPI: API {
                 .description("One checkpoint: a recorded change of the work tree of a session.")
                 fileChangeType()
                 Input(SnapshotsGraphRollbackInput.self, as: "RollbackTimelineInput") {
-                    InputField("sessionId", at: \.sessionId).description(Self.sessionIdDescription)
+                    InputField("sessionId", at: \.sessionId).description(Self.rollbackSessionIdDescription)
                     InputField("index", at: \.index)
                         .description("The index of the checkpoint to restore. 0 is the baseline.")
                 }

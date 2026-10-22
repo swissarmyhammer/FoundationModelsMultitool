@@ -122,6 +122,16 @@ type Session {
 
   """The count of the unread messages to this session."""
   unreadCount: Int!
+
+  """
+  True when your client owns the session now. False for a call with no client.
+  """
+  ownedByViewer: Boolean!
+
+  """
+  True when a client owns the session now, your client or another one. False for a call with no client.
+  """
+  hasOwner: Boolean!
 }
 
 """The session or the user that sent a message."""
@@ -329,7 +339,7 @@ type SessionChange {
 
 type Query {
   """
-  The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns, their subagents, and the sessions that they started.
+  The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns or that its connection started, their subagents, and the sessions that they started.
   """
   sessions(
     """The filter. With no filter, each live session."""

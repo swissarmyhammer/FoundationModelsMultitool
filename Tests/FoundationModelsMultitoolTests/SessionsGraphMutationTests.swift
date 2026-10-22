@@ -626,6 +626,15 @@ struct SessionsGraphMutationTests {
         var viewer: GraphQLViewer {
             GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: [owned.ulidString])
         }
+
+        /// The external client that owns ``owned``, and whose connection
+        /// started ``stranger``, which another client owns now: it sees
+        /// ``stranger``, but does not own it.
+        var starterViewer: GraphQLViewer {
+            GraphQLViewer(
+                clientId: externalClientId, trust: .external, ownedSessions: [owned.ulidString],
+                startedSessions: [stranger.ulidString])
+        }
     }
 
     /// Stages an external scene in `directory`.
@@ -812,6 +821,63 @@ struct SessionsGraphMutationTests {
 
         #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
         #expect(inbox.last?.from == .user(clientID: Self.externalClientId))
+    }
+
+    /// One case for each change of a session that the connection of the
+    /// external client started, and that another client owns now.
+    static let startedChanges: [HiddenCase] = [
+        HiddenCase(action: "tag a session that its connection started") { scene in
+            "mutation { tagSession(input: {id: \"\(scene.stranger.ulidString)\", tags: [\"\(reviewTag)\"]}) { id } }"
+        },
+        HiddenCase(action: "untag a session that its connection started") { scene in
+            "mutation { untagSession(input: {id: \"\(scene.stranger.ulidString)\", tags: [\"\(keptTag)\"]}) { id } }"
+        },
+        HiddenCase(action: "rename a session that its connection started") { scene in
+            "mutation { renameSession(input: {id: \"\(scene.stranger.ulidString)\", title: \"\(title)\"}) { id } }"
+        },
+    ]
+
+    /// An external client sees a session that its connection started after
+    /// another client takes it over, but tags, untags and renames stay
+    /// owned-only (section 11.3): a change of it is `NOT_FOUND`, and nothing
+    /// changes.
+    @Test(
+        "an external viewer gets NOT_FOUND for a change of a session its connection started but does not own",
+        arguments: startedChanges)
+    func anExternalViewerChangesNoStartedSession(_ started: HiddenCase) async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let scene = try await Self.stageExternal(in: directory)
+        let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
+        let staged = try await Self.facts(of: directory, known: known)
+
+        let seen = try await Self.run(
+            "{ session(id: \"\(scene.stranger.ulidString)\") { id } }", viewer: scene.starterViewer, on: directory)
+        let reply = try await Self.run(started.mutation(scene), viewer: scene.starterViewer, on: directory)
+
+        #expect(try seen.object("session")["id"] as? String == scene.stranger.ulidString)
+        #expect(reply.codes == [Self.notFound])
+        #expect(try await Self.facts(of: directory, known: known) == staged)
+    }
+
+    /// An external client sends only to the sessions that it owns: a message
+    /// to a session that its connection started, and that another client
+    /// owns now, gives a refused receipt, and no message goes.
+    @Test("an external viewer's message to a session its connection started but does not own is refused")
+    func anExternalViewerMessagesNoStartedSession() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let scene = try await Self.stageExternal(in: directory)
+        let staged = try await directory.inbox(of: scene.stranger, markRead: false)
+
+        let reply = try await Self.run(
+            "mutation { sendMessage(input: {to: \"\(scene.stranger.ulidString)\", message: \"\(Self.messageText)\"}) "
+                + "{ outcome reason } }",
+            viewer: scene.starterViewer, on: directory)
+
+        let receipts = try reply.list("sendMessage")
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(receipts.map { $0["outcome"] as? String } == ["REFUSED"])
+        #expect(receipts.map { $0["reason"] as? String } == [SessionsGraphText.notOwnedReason])
+        #expect(try await directory.inbox(of: scene.stranger, markRead: false).map(\.id) == staged.map(\.id))
     }
 
     /// An external client cannot start a session: only a device of the user

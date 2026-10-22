@@ -146,6 +146,31 @@ extension SessionsGraphSession {
         return try await context.sessions.sessions(matching: query).map(SessionsGraphSession.init)
     }
 
+    /// Resolves `Session.ownedByViewer` (D11): the client of the call owns
+    /// the session now, in the owner registry that the host reads into the
+    /// viewer. The agent, a call with no viewer, is no client: it owns no
+    /// session.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: No argument.
+    /// - Returns: `true` when the viewer owns the session.
+    func ownedByViewer(context: SessionsGraphContext, arguments _: NoArguments) -> Bool {
+        context.sessions.viewer?.owns(sessionID.ulidString) ?? false
+    }
+
+    /// Resolves `Session.hasOwner`: a client, the client of the call or
+    /// another one, owns the session now. The agent, a call with no viewer,
+    /// reads no owner registry: it reads `false`.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: No argument.
+    /// - Returns: `true` when a client owns the session.
+    func hasOwner(context: SessionsGraphContext, arguments _: NoArguments) -> Bool {
+        context.sessions.viewer?.clientOwnedSessions.contains(sessionID.ulidString) ?? false
+    }
+
     /// Resolves `Session.unreadCount`: the count of the unread messages to
     /// this session. It marks none read.
     ///
@@ -289,7 +314,8 @@ struct SessionsGraphAPI: API {
         }
         .description(
             "The sessions on this server that match the filter, the newest first. An external client sees only "
-                + "the sessions that it owns, their subagents, and the sessions that they started.")
+                + "the sessions that it owns or that its connection started, their subagents, and the sessions "
+                + "that they started.")
     }
 
     /// The `Query.session` field.
@@ -386,6 +412,12 @@ struct SessionsGraphAPI: API {
             Field("isLive", at: \.isLive).description("True when the session is in memory now.")
             Field("unreadCount", at: SessionsGraphSession.unreadCount)
                 .description("The count of the unread messages to this session.")
+            Field("ownedByViewer", at: SessionsGraphSession.ownedByViewer)
+                .description("True when your client owns the session now. False for a call with no client.")
+            Field("hasOwner", at: SessionsGraphSession.hasOwner)
+                .description(
+                    "True when a client owns the session now, your client or another one. False for a call with "
+                        + "no client.")
         }
         .description("One session on this server.")
     }

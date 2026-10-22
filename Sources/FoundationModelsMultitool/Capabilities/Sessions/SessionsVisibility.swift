@@ -11,13 +11,16 @@ import ULID
 /// |--------|------|
 /// | none: the agent of the session | each session |
 /// | `userDevice` | each session |
-/// | `external` | the sessions that it owns, their subagents, and the sessions that they started, to any depth |
+/// | `external` | the sessions that it owns or that its connection started, their subagents, and the sessions that they started, to any depth |
 ///
-/// A session is thus visible to an external client when the client owns it,
-/// or owns a session up its chain of anchors: the anchor of a subagent is its
-/// parent, and the anchor of each other session is the session that started
-/// it. A fork has the original as its parent, but it is not a subagent, thus
-/// the original does not make it visible.
+/// A session is thus visible to an external client when the client owns it or
+/// its connection started it, or the same holds for a session up its chain of
+/// anchors: the anchor of a subagent is its parent, and the anchor of each
+/// other session is the session that started it. A fork has the original as
+/// its parent, but it is not a subagent, thus the original does not make it
+/// visible. A session that the connection started stays visible after another
+/// client takes it over; a tag, an untag, a rename, a send and a reply still
+/// need the client to own it.
 ///
 /// The `sessions` tool reads the directory through it with no viewer: the
 /// agent of the session sees each session. The `sessions` endpoint reads it
@@ -36,12 +39,7 @@ struct SessionsVisibility: Sendable {
     /// The external client that reads the directory, or `nil` when the
     /// reader sees each session.
     private var externalViewer: GraphQLViewer? {
-        switch viewer?.trust {
-        case nil, .userDevice:
-            nil
-        case .external:
-            viewer
-        }
+        viewer?.externalClient
     }
 
     /// The summaries of the sessions that match `query` and that the viewer
@@ -93,7 +91,7 @@ struct SessionsVisibility: Sendable {
     /// that holds the chain, for example the change feed of the `sessions`
     /// endpoint, applies it at once. The agent and a device of the user see
     /// each session; an external client sees a session when it owns a
-    /// session of the chain.
+    /// session of the chain, or its connection started one.
     ///
     /// - Parameter chain: The session and its anchors, as
     ///   ``anchorChain(of:)`` gives them.
@@ -102,7 +100,7 @@ struct SessionsVisibility: Sendable {
         guard let externalViewer else {
             return true
         }
-        return chain.contains { externalViewer.owns($0.ulidString) }
+        return chain.contains { externalViewer.isOwnerOrStarter(of: $0.ulidString) }
     }
 
     /// The chain of anchors of a session: the session first, then its
@@ -127,7 +125,8 @@ struct SessionsVisibility: Sendable {
     }
 
     /// Tells if the viewer can see a session: an external client sees it
-    /// when it owns the session, or a session up its chain of anchors.
+    /// when it owns or started the session, or a session up its chain of
+    /// anchors.
     ///
     /// - Parameter summary: The session.
     /// - Returns: `true` when the viewer can see the session.

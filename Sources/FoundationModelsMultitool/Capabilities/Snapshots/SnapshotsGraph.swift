@@ -46,9 +46,10 @@ import GraphQL
 /// gives its checkpoints and their diffs. A session that the resolver does not
 /// know, or whose session key has no timeline, gives no checkpoint. A rollback
 /// needs the session key open for the session: a released or unknown session
-/// gives the `NOT_FOUND` of the toolkit. An external client sees, rolls back
-/// and gets the changes of only the sessions that it owns; the agent and a
-/// device of the user see each session.
+/// gives the `NOT_FOUND` of the toolkit. An external client sees and gets the
+/// changes of only the sessions that it owns or that its connection started,
+/// and rolls back only the sessions that it owns; the agent and a device of
+/// the user see and roll back each session.
 ///
 /// The name rewrite takes `rollback` for `rollbackTimeline`, `snapshotChanges`
 /// for `changes`, and the general query verbs, for example `listCheckpoints`
