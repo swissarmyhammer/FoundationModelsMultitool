@@ -18,8 +18,42 @@ comments:
   id: 01m5g2ntx5z3fbhjwk4pt7f22t
   text: 'skills: the subscription alias probe cleanup is done (Skills 325045e, test b9270e9). The conformance check covers both the query and the subscription alias probes and reports no problems, with no exceptions.'
   timestamp: 2026-10-21T20:33:08.005230+00:00
-position_column: todo
-position_ordinal: 8a80
+- actor: claude-code
+  id: 01m5hk9h1swbqjn2n0hhhs4b09
+  text: |-
+    Conformance checklist (2026-10-22). Each line is the commit where the endpoint's conformance passes with exceptions: [].
+    - [x] skills: Skills d694b08, with the subscription probe added in 325045e
+    - [x] agents: Agents 712bcbb
+    - [x] kanban: Kanban bd01871 (endpoint v2, EndpointConventionTests exceptions: [])
+    - [x] sessions: Multitool 64f159f, ownership fields in f39b153
+    - [x] snapshots: Multitool 31943bf (the rule-9 exception was removed), latest is 94c992c
+    - [ ] settings: waiting for the ACPAgent sha
+
+    HOOKS-1/2 are owned and done (Hooks 226bb35, 80e0250). EXTRAS-10/11 are done. D115 is agreed (TestudoApp 75e32b3).
+  timestamp: 2026-10-22T10:42:44.921753+00:00
+- actor: claude-code
+  id: 01m5hkkbs5644pkshvhrt79p5e
+  text: |-
+    Checklist update, 2026-10-22:
+    - [x] settings: ACPAgent 88bcfa0 passes conformance with no exceptions, with query and subscription probes (`settingsChanges` → `changes`).
+    - [x] agents: 712bcbb plus later commits; probes cover both a query (agentNameProbe) and a subscription (changes).
+    - [ ] kanban: bd01871 has no exceptions, but it probes only a mutation alias (`createTask` → `addTask`). It has no subscription alias probe, and possibly no `kanbanChanges` alias. The Kanban session is gone, so this needs an owner (asked the user).
+  timestamp: 2026-10-22T10:48:07.205506+00:00
+- actor: claude-code
+  id: 01m5hm6navswsbk2mt8jcmqz8c
+  text: |-
+    Final checklist, 2026-10-22. All six endpoints pass conformance with no exceptions, and each has both a query/mutation alias probe and a subscription alias probe:
+    - [x] skills: Skills d694b08 / 325045e
+    - [x] agents: Agents 712bcbb
+    - [x] kanban: Kanban 577850d (kanbanChanges → changes; Extras pinned at 34b7783)
+    - [x] settings: ACPAgent 88bcfa0 (settingsChanges → changes)
+    - [x] sessions: Multitool 64f159f (sessionChanges), ownership fields in f39b153
+    - [x] snapshots: Multitool 31943bf (snapshotChanges), latest 94c992c
+
+    Note from Kanban: `swift package update FoundationModelsExtras` fails there with "swift-case-paths unresolved" (a trait-disabled dependency of swift-parsing), so Kanban pinned Package.resolved by hand. Other packages may hit the same error.
+  timestamp: 2026-10-22T10:58:39.579598+00:00
+position_column: done
+position_ordinal: ffffffbc80
 title: 'Coordinate: GraphQL endpoint conventions across the family (EXTRAS-9, D115)'
 ---
 ## What
