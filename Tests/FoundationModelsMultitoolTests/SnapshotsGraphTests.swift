@@ -397,12 +397,17 @@ struct SnapshotsGraphTests {
         return try await run(rollbackMutation, variables: ["input": input], viewer: viewer, on: graph)
     }
 
-    /// A client that is not a device of the user, and that owns `owned`.
+    /// A client that is not a device of the user, that owns `owned`, and
+    /// whose connection started `started`.
     ///
-    /// - Parameter owned: The session IDs that the client owns.
+    /// - Parameters:
+    ///   - owned: The session IDs that the client owns.
+    ///   - started: The session IDs that the connection of the client started.
     /// - Returns: The viewer.
-    private static func externalViewer(owning owned: Set<String> = []) -> GraphQLViewer {
-        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: owned)
+    private static func externalViewer(
+        owning owned: Set<String> = [], started: Set<String> = []
+    ) -> GraphQLViewer {
+        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: owned, startedSessions: started)
     }
 
     /// The text of `.toolUse` as the `trigger` field gives it.
@@ -938,8 +943,7 @@ struct SnapshotsGraphTests {
     func anExternalStarterSeesButCannotRollBack() async throws {
         let fixture = try await Self.makeFixture()
         try await Self.makeTwoCheckpoints(in: fixture)
-        let viewer = GraphQLViewer(
-            clientId: Self.externalClientId, trust: .external, startedSessions: [Self.sessionId])
+        let viewer = Self.externalViewer(started: [Self.sessionId])
 
         let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph).list("checkpoints")
         let single = try await Self.run(

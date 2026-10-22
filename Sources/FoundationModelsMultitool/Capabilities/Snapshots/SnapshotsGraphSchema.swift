@@ -124,7 +124,7 @@ struct SnapshotsGraphRollbackArguments: Codable, Sendable {
 // MARK: - Resolver and context
 
 /// The context of one call of the `snapshots` endpoint.
-struct SnapshotsGraphContext: GraphQLRunContext {
+struct SnapshotsGraphContext: GraphQLRunContext, GraphQLViewerScoping {
     /// The warnings of the call.
     let warnings = ResponseWarnings()
 
@@ -147,7 +147,7 @@ struct SnapshotsGraphContext: GraphQLRunContext {
     /// - Parameter sessionId: The session ID.
     /// - Returns: `true` when the client can see the session.
     func canSee(_ sessionId: String) -> Bool {
-        externalViewer.map { $0.isOwnerOrStarter(of: sessionId) } ?? true
+        admits { $0.isOwnerOrStarter(of: sessionId) }
     }
 
     /// Tells if the client of the call can roll a session back: the agent
@@ -159,14 +159,7 @@ struct SnapshotsGraphContext: GraphQLRunContext {
     /// - Parameter sessionId: The session ID.
     /// - Returns: `true` when the client can roll the session back.
     func canRollBack(_ sessionId: String) -> Bool {
-        externalViewer.map { $0.owns(sessionId) } ?? true
-    }
-
-    /// The client of the call when it is not a device of the user, or `nil`
-    /// when the caller sees and changes each session: the agent or a device
-    /// of the user.
-    private var externalViewer: GraphQLViewer? {
-        viewer?.externalClient
+        admits { $0.owns(sessionId) }
     }
 }
 

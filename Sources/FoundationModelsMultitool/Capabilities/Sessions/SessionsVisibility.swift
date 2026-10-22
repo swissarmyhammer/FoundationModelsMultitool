@@ -25,7 +25,7 @@ import ULID
 /// The `sessions` tool reads the directory through it with no viewer: the
 /// agent of the session sees each session. The `sessions` endpoint reads it
 /// with the viewer of each call.
-struct SessionsVisibility: Sendable {
+struct SessionsVisibility: Sendable, GraphQLViewerScoping {
     /// The limit of a directory query that must give each match: a list for
     /// an external client is cut after the visibility rule, not before.
     static let unboundedLimit = Int.max
@@ -35,12 +35,6 @@ struct SessionsVisibility: Sendable {
 
     /// The client that reads the directory, or `nil` for the agent.
     let viewer: GraphQLViewer?
-
-    /// The external client that reads the directory, or `nil` when the
-    /// reader sees each session.
-    private var externalViewer: GraphQLViewer? {
-        viewer?.externalClient
-    }
 
     /// The summaries of the sessions that match `query` and that the viewer
     /// can see, at most ``SessionQuery/limit`` of them, the newest first.
@@ -97,10 +91,7 @@ struct SessionsVisibility: Sendable {
     ///   ``anchorChain(of:)`` gives them.
     /// - Returns: `true` when the viewer can see the session.
     func sees(anchorChain chain: [ULID]) -> Bool {
-        guard let externalViewer else {
-            return true
-        }
-        return chain.contains { externalViewer.isOwnerOrStarter(of: $0.ulidString) }
+        admits { client in chain.contains { client.isOwnerOrStarter(of: $0.ulidString) } }
     }
 
     /// The chain of anchors of a session: the session first, then its

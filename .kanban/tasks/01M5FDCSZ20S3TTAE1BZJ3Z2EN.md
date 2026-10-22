@@ -54,7 +54,38 @@ comments:
     - evidence: 13 files — Sources/.../Capabilities/GraphQLViewerSessions.swift (new), Sessions/SessionsVisibility.swift, Sessions/SessionsGraphSchema.swift, Snapshots/SnapshotsGraphSchema.swift, Snapshots/SnapshotsGraph.swift, Tests/.../SessionsGraphQueryTests.swift, SessionsGraphMutationTests.swift, SnapshotsGraphTests.swift, SnapshotsGraphChangesTests.swift, Goldens/sessions.graphql, Goldens/snapshots.graphql (+ .kanban card files). `swift test --filter "Sessions|Snapshots"`: 213 tests, 10 suites, 0 failures. `swift test`: 2715 tests, 229 suites, 0 failures. The only build warning is the pre-existing SwiftPM "missing creator for mutated node" for the mlx-swift_Cmlx bundle (dependency build graph, not project code).
     - next: /review. Open question on the archive rule (see the comment above).
   timestamp: 2026-10-22T00:21:02.949373+00:00
-position_column: doing
+- actor: claude-code
+  id: 01m5gg4pt533ww7vgebqze4waj
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (b78c88a): 3 findings (3 confirmed, 0 refuted) — Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsGraphSchema.swift:168, Tests/FoundationModelsMultitoolTests/SnapshotsGraphChangesTests.swift:582, Tests/FoundationModelsMultitoolTests/SnapshotsGraphTests.swift:941
+    - next: implement the three open items in "Review Findings (2026-10-21 19:21)"; task stays in review
+  timestamp: 2026-10-22T00:28:26.821789+00:00
+- actor: claude-code
+  id: 01m5gg58tavz4mxb0n949ds9wk
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 11 files
+    - test: green — swift test, 2715 passed
+    - commit: b78c88a
+    - review: findings — SnapshotsGraphSchema.swift:168, SnapshotsGraphChangesTests.swift:582, SnapshotsGraphTests.swift:941
+  timestamp: 2026-10-22T00:28:45.258006+00:00
+- actor: claude-code
+  id: 01m5gge76w51xn0ttk4hm866pg
+  text: |-
+    Review findings fixed (implement, iteration 2):
+    1. duplication: added `protocol GraphQLViewerScoping { var viewer: GraphQLViewer? { get } }` to Capabilities/GraphQLViewerSessions.swift. Its extension owns `externalViewer` (viewer?.externalClient) and `admits(_ externalRule:)`, which applies a rule to an external client only (`externalViewer.map(rule) ?? true`). SessionsVisibility and SnapshotsGraphContext both conform and drop their private `externalViewer` copies. The same `map { } ?? true` / `guard let externalViewer else { return true }` shape is gone from both files: canSee, canRollBack and sees(anchorChain:) all call `admits`. Behavior is unchanged: the owned-only rollback, owned ∪ started visibility, and archive are as before. The archive decision is still pending with the user.
+    2./3. The `externalViewer` helpers in SnapshotsGraphChangesTests and SnapshotsGraphTests now take `owning owned: Set<String> = [], started: Set<String> = []`, matching SessionsGraphQueryTests. The two started-session tests call `Self.externalViewer(started: [...])`. The existing changes-test call now passes `owning: [Self.secondSessionId]`.
+    New unit suite GraphQLViewerScopingTests (2 tests): RED was a compile failure (missing type), then GREEN.
+  timestamp: 2026-10-22T00:33:38.524003+00:00
+- actor: claude-code
+  id: 01m5ggeab2xvrzzsy5crsmh5a2
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/GraphQLViewerSessions.swift, Capabilities/Sessions/SessionsVisibility.swift, Capabilities/Snapshots/SnapshotsGraphSchema.swift, Tests/FoundationModelsMultitoolTests/GraphQLViewerScopingTests.swift (new), SnapshotsGraphTests.swift, SnapshotsGraphChangesTests.swift. `swift test --filter "Sessions|Snapshots"`: 213 tests, 10 suites, 0 failures. `swift test`: 2717 tests, 230 suites, 0 failures. The only warning is the pre-existing SwiftPM "missing creator for mutated node" for the mlx-swift_Cmlx bundle. All 3 findings are checked.
+    - next: /review. The archive question in the earlier comment is still open for the user.
+  timestamp: 2026-10-22T00:33:41.730055+00:00
+position_column: review
 position_ordinal: '80'
 title: 'SessionsGraph: Session.ownedByViewer and hasOwner (session.md 11.2)'
 ---
@@ -66,3 +97,18 @@ session.md section 11.2 sketches `ownedByViewer: Boolean!` (D11: this client own
 ## Tests
 - [x] Case in `SessionsGraphQueryTests`: an external viewer that owns a session reads `ownedByViewer: true`, `hasOwner: true`; a session owned by another client reads `ownedByViewer: false`, `hasOwner: true`.
 - [x] `swift test --filter SessionsGraph` passes. #graphql #sessions
+
+## Review Findings (2026-10-21 19:21)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 9 file(s) reviewed, 4 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/Goldens/snapshots.graphql` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Snapshots/SnapshotsGraphSchema.swift:168` `duplication/duplication` — Verbatim duplicate of the `externalViewer` computed property from SessionsVisibility.swift — both types implement identical logic to extract the external client from their viewer property. Extract the `externalViewer` computation into a shared protocol extension or helper method that both `SessionsVisibility` and `SnapshotsGraphContext` can use, eliminating the duplicate property.
+- [x] `Tests/FoundationModelsMultitoolTests/SnapshotsGraphChangesTests.swift:582` `completeness/invariant-propagation` — New test creates GraphQLViewer directly with startedSessions instead of using the externalViewer helper. SessionsGraphQueryTests updated its externalViewer to accept a started parameter (line 262-268), but SnapshotsGraphChangesTests's externalViewer (used in the existing test at line 561) was not similarly updated, forcing this new test to bypass the helper. Update the externalViewer helper in SnapshotsGraphChangesTests to accept a started parameter with a default value, matching the signature at SessionsGraphQueryTests line 262, so the new test can use the helper for consistency.
+- [x] `Tests/FoundationModelsMultitoolTests/SnapshotsGraphTests.swift:941` `completeness/invariant-propagation` — New test creates GraphQLViewer directly with startedSessions instead of using the externalViewer helper. SessionsGraphQueryTests updated its externalViewer to accept a started parameter (line 262-268), but SnapshotsGraphTests's externalViewer (used in the existing test at line 924) was not similarly updated, forcing this new test to bypass the helper. Update the externalViewer helper in SnapshotsGraphTests to accept a started parameter with a default value, matching the signature at SessionsGraphQueryTests line 262, so the new test can use the helper for consistency.

@@ -31,3 +31,31 @@ extension GraphQLViewer {
         owns(sessionId) || startedSessions.contains(sessionId)
     }
 }
+
+/// A reader that one call scopes to the client of the call: the visibility of
+/// the `sessions` endpoint and the context of the `snapshots` endpoint. Both
+/// read the one viewer rule here, so the two endpoints never disagree on
+/// which caller a rule binds.
+protocol GraphQLViewerScoping {
+    /// The client of the call, or `nil` for the agent.
+    var viewer: GraphQLViewer? { get }
+}
+
+extension GraphQLViewerScoping {
+    /// The client of the call when it is not a device of the user, or `nil`
+    /// when the caller sees and changes each session: the agent or a device
+    /// of the user.
+    var externalViewer: GraphQLViewer? {
+        viewer?.externalClient
+    }
+
+    /// Tells if the caller passes a rule that binds only an external client.
+    /// The agent and a device of the user pass each such rule.
+    ///
+    /// - Parameter externalRule: The rule, which reads the external client.
+    /// - Returns: `true` when the caller is no external client, or when the
+    ///   external client passes `externalRule`.
+    func admits(_ externalRule: (GraphQLViewer) -> Bool) -> Bool {
+        externalViewer.map(externalRule) ?? true
+    }
+}

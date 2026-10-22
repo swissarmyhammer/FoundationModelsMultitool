@@ -331,12 +331,17 @@ struct SnapshotsGraphChangesTests {
         Change(cursor: cursor, sessionId: sessionId, added: [id], changed: [], removed: [])
     }
 
-    /// A client that is not a device of the user, and that owns `owned`.
+    /// A client that is not a device of the user, that owns `owned`, and
+    /// whose connection started `started`.
     ///
-    /// - Parameter owned: The session ID that the client owns.
+    /// - Parameters:
+    ///   - owned: The session IDs that the client owns.
+    ///   - started: The session IDs that the connection of the client started.
     /// - Returns: The viewer.
-    private static func externalViewer(owning owned: String) -> GraphQLViewer {
-        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: [owned])
+    private static func externalViewer(
+        owning owned: Set<String> = [], started: Set<String> = []
+    ) -> GraphQLViewer {
+        GraphQLViewer(clientId: externalClientId, trust: .external, ownedSessions: owned, startedSessions: started)
     }
 
     // MARK: - The change of each checkpoint
@@ -558,7 +563,7 @@ struct SnapshotsGraphChangesTests {
         let graph = Self.graph(of: fixture)
         let before = try await Self.cursor(of: graph)
         var external = try await Self.subscribe(
-            to: graph, after: before, viewer: Self.externalViewer(owning: Self.secondSessionId))
+            to: graph, after: before, viewer: Self.externalViewer(owning: [Self.secondSessionId]))
         var device = try await Self.subscribe(to: graph, after: before)
 
         try await fixture.takeFirst()
@@ -579,9 +584,8 @@ struct SnapshotsGraphChangesTests {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
         let before = try await Self.cursor(of: graph)
-        let starter = GraphQLViewer(
-            clientId: Self.externalClientId, trust: .external, startedSessions: [Self.secondSessionId])
-        var external = try await Self.subscribe(to: graph, after: before, viewer: starter)
+        var external = try await Self.subscribe(
+            to: graph, after: before, viewer: Self.externalViewer(started: [Self.secondSessionId]))
 
         try await fixture.takeFirst()
         try await fixture.takeSecond()
