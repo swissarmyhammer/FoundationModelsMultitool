@@ -119,8 +119,24 @@ comments:
     - evidence: 7 files — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLViewerFixtures.swift (new), SnapshotsGraphTests.swift, SnapshotsGraphChangesTests.swift, SessionsGraphQueryTests.swift, SessionsGraphChangesTests.swift, SessionsGraphMutationTests.swift, GraphQLViewerScopingTests.swift. `swift test --filter "Sessions|Snapshots|GraphQLViewerScoping"`: 215 tests, 11 suites, 0 failures. `swift test`: 2717 tests, 230 suites, 0 failures. The only warning is the SwiftPM "missing creator for mutated node" for the mlx-swift_Cmlx bundle, which earlier runs also showed. Both 19:34 findings are checked.
     - next: /review. The archive question in the earlier comment is still open for the user.
   timestamp: 2026-10-22T00:42:24.305481+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m5gh4f00v3j9reexa7yjvjf8
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (f39b153) — 0 findings, 0 confirmed, 0 refuted; 14 attempted, 0 failed; 7 files reviewed, 2 .kanban files excluded by .reviewignore; all 5 prior findings checked
+    - next: none — task moved to done
+  timestamp: 2026-10-22T00:45:47.392388+00:00
+- actor: claude-code
+  id: 01m5gh4wzzgedvsg9e3s7nxze9
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 7 files
+    - test: green — swift test, 2717 passed
+    - commit: f39b153
+    - review: clean
+  timestamp: 2026-10-22T00:46:01.727555+00:00
+position_column: done
+position_ordinal: ffffffbb80
 title: 'SessionsGraph: Session.ownedByViewer and hasOwner (session.md 11.2)'
 ---
 ## What
