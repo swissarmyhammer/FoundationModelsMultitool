@@ -108,12 +108,39 @@ public struct ShellCapability: Capability {
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) throws {
-        let state: ShellState
-        if let storeDirectory {
-            state = try ShellState(preferredDirectory: storeDirectory)
-        } else {
-            state = try ShellState()
-        }
+        self.init(
+            store: try ShellStore(storeDirectory: storeDirectory),
+            sandbox: sandbox,
+            outputChunkStream: outputChunkStream,
+            defaultWorkingDirectory: defaultWorkingDirectory)
+    }
+
+    /// Makes the shell capability over a store that other capabilities may
+    /// share, with its own confinement, live view and default working
+    /// directory.
+    ///
+    /// A host that runs several sessions in one working directory makes one
+    /// `ShellStore` and hands it to the capability of each session. Then each
+    /// session's `tools.shell.getLines` and `tools.shell.grepHistory` see every
+    /// command of the store, whichever session ran it. The store already
+    /// prepared its directory, thus this initializer does not throw.
+    ///
+    /// - Parameters:
+    ///   - store: The history and output store this capability records into.
+    ///   - sandbox: The confinement each command spawns under — see
+    ///     `init(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`.
+    ///   - outputChunkStream: The live view of the output a subscribed host
+    ///     reads. The default, `nil`, tees nothing.
+    ///   - defaultWorkingDirectory: The directory a `tools.shell.execute` call
+    ///     runs in when it omits `workingDirectory`. The default, `nil`, keeps
+    ///     the current directory of this process.
+    public init(
+        store: ShellStore,
+        sandbox: (any CommandSandbox)? = nil,
+        outputChunkStream: ShellOutputChunkStream? = nil,
+        defaultWorkingDirectory: URL? = nil
+    ) {
+        let state = store.state
 
         // The runner carries the store, the confinement, the live view and the
         // default directory to the run plane. `Execute` is configured with a

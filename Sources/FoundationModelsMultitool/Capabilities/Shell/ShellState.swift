@@ -16,11 +16,12 @@
 // identifier of a kind of its own: the one string joins the run plane, which
 // `RunPlane` of FoundationModelsExtras owns, to the content plane, which this store owns.
 //
-// The history belongs to one session, thus to one process. Each stored log
-// line opens with the `sessionID` of this process, and each reader keeps the
-// lines with the prefix `{sessionID}:{commandID}:` only. Thus a question sees
-// the lines of this session, also when several sessions share one `.shell`
-// folder.
+// The history belongs to one `ShellStore`, which every capability handed that
+// store shares. Each stored log line opens with the `sessionID` of this store,
+// and each reader keeps the lines with the prefix `{sessionID}:{commandID}:`
+// only. Thus a question sees the lines of this store, also when other stores
+// append to the same `.shell` folder; each append is one `O_APPEND` write, so
+// no store overwrites a line of another.
 
 import Foundation
 
@@ -155,7 +156,7 @@ enum ShellStateError: Error, CustomStringConvertible, Sendable {
 }
 
 /// The history and output store of the virtual shell — one instance for each
-/// process.
+/// `ShellStore`, which any number of capabilities share.
 actor ShellState {
     /// The session identifier of this process, which no other process shares.
     nonisolated let sessionID: String
@@ -496,11 +497,40 @@ actor ShellState {
         }
         guard !buffer.isEmpty else { return }
 
-        let handle = try FileHandle(forWritingTo: logURL)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        try handle.write(contentsOf: buffer)
+        try Self.append(buffer, to: logURL)
         resolveLineCountWaiters(commandID: commandID, commandEnded: false)
+    }
+
+    /// Appends `buffer` to the end of the log at `url` in one `O_APPEND` write.
+    ///
+    /// Every write of this actor is already serial, but a second store — in
+    /// this process or in another — can append to the same log at the same
+    /// time. A seek to the end followed by a write lets both land at one
+    /// offset, thus one overwrites the lines of the other. Under `O_APPEND`
+    /// the kernel moves to the end and writes in one step, thus each append
+    /// lands whole after every other.
+    ///
+    /// - Parameters:
+    ///   - buffer: The framed lines to append.
+    ///   - url: The log file.
+    /// - Throws: A POSIX error when the log does not open or the write fails.
+    private static func append(_ buffer: Data, to url: URL) throws {
+        let descriptor = open(url.path, O_WRONLY | O_APPEND | O_CLOEXEC)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { close(descriptor) }
+        try buffer.withUnsafeBytes { bytes in
+            var offset = 0
+            while offset < bytes.count {
+                let written = write(descriptor, bytes.baseAddress! + offset, bytes.count - offset)
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+                offset += written
+            }
+        }
     }
 
     /// Waits until the store holds at least `count` lines of the command

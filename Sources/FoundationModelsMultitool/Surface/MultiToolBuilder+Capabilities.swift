@@ -47,6 +47,38 @@ extension MultiTool.Builder {
         return withCapability(capability)
     }
 
+    /// Queues the three verbs of the shell capability over a store that other
+    /// capabilities may share — the short form of
+    /// `withCapability(ShellCapability(store:...))`.
+    ///
+    /// A host that runs several sessions in one working directory hands each
+    /// session's builder the one `ShellStore` of that directory, thus each
+    /// session reads the history of every other.
+    ///
+    /// - Parameters:
+    ///   - store: the history and output store the verbs record into.
+    ///   - sandbox: the confinement each command spawns under. Defaults to
+    ///     no confinement at all.
+    ///   - outputChunkStream: the live view of the output a subscribed host
+    ///     reads. Defaults to teeing nothing.
+    ///   - defaultWorkingDirectory: the directory a `tools.shell.execute`
+    ///     call runs in when it omits `workingDirectory`. Defaults to the
+    ///     current directory of this process.
+    @discardableResult
+    public func withShell(
+        store: ShellStore,
+        sandbox: (any CommandSandbox)? = nil,
+        outputChunkStream: ShellOutputChunkStream? = nil,
+        defaultWorkingDirectory: URL? = nil
+    ) -> Self {
+        withCapability(
+            ShellCapability(
+                store: store,
+                sandbox: sandbox,
+                outputChunkStream: outputChunkStream,
+                defaultWorkingDirectory: defaultWorkingDirectory))
+    }
+
     /// Queues the eight verbs of the files capability — `tools.files.read`,
     /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.removeDirectory`,
     /// `tools.files.edit`, `tools.files.patch`, `tools.files.glob` and
