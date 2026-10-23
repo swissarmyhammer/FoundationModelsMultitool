@@ -590,6 +590,15 @@ public struct MultiTool: GraphQLEndpointTool {
         // the outer run. A headless session gets no `elicit` global, and its
         // `docs()` does not declare one (see `MultiTool+SandboxGlobals.swift`).
         let asksUser = Self.asksUser(binding)
+        // A snippet that only stands by while other background work of the
+        // session is still going is the model's way of waiting: answer it
+        // with the text that ends the answer, not with a value that invites
+        // the next call (SWE-bench run bench24-1023b — see `standbyAnswer`).
+        if let binding, enclosingRun == nil, Self.isStandbySnippet(arguments.code),
+            await Self.hasOtherBackgroundWork(in: binding.context)
+        {
+            return Self.standbyAnswer
+        }
         // One notice chain per invocation, for the same reason: `notify()`
         // and `progress()` post through the captured context, never an
         // inherited one. `nil` when this run has no session — both globals

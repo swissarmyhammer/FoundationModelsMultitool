@@ -6,7 +6,12 @@
 // (`await new Promise(() => {});`) never settles. A host must know that a call
 // is a no-op before it runs the call, so the check reads the snippet text and
 // never runs it (task `^9pnyvyp`). The check only gives information: the
-// Multitool does not block or change a call because of it.
+// Multitool does not block or change a call because of it, with one
+// exception: ``isStandbySnippet(_:)`` while other background work runs gets
+// ``standbyAnswer`` (SWE-bench run bench24-1023b).
+
+import Foundation
+import FoundationModelsExtras
 
 extension MultiTool {
     /// The identifier through which a snippet reaches every `tools.*` verb,
@@ -50,6 +55,97 @@ extension MultiTool {
         guard bytes.firstRange(of: unicodeEscapeOpener) == nil else { return false }
         let matches = bytes.ranges(of: toolsIdentifier)
         return !matches.contains { isWholeIdentifier($0, in: bytes) }
+    }
+
+    /// The answer a standby snippet gets while background work of the session
+    /// is still going — see ``isStandbySnippet(_:)``.
+    ///
+    /// SWE-bench run bench24-1023b, django__django-13925: the model knew to
+    /// wait for a background command, and waited by sending `return
+    /// "standby"` 28 times in two minutes. Each answer of "standby" gave it a
+    /// new turn, so it called again. This answer says the call did nothing,
+    /// that the result comes as a new message, and to end the answer now; it
+    /// never asks for another call.
+    public static let standbyAnswer =
+        "Nothing to run: this snippet calls no tools.* function and only returns a fixed value, "
+        + "and background work of this session is still going. Its result comes into this "
+        + "conversation as a new message, and that message starts you working again. "
+        + "End your answer now: write no text and call no tool."
+
+    /// Tells if a `runCode` snippet only stands by: it calls no `tools.*`
+    /// verb, and after its comments it is empty, `return;`, or `return` of
+    /// one constant — a string with no `${`, a number, `true`, `false`,
+    /// `null` or `undefined`.
+    ///
+    /// Static and pure, as ``callsNoTool(snippet:)`` is. It is strict in one
+    /// direction only: a snippet that computes anything (`return 1 + 1`,
+    /// `return a`) is not a standby, and runs as before.
+    ///
+    /// - Parameter snippet: The raw JavaScript text of the call.
+    /// - Returns: `true` when the snippet only returns a constant, or nothing.
+    public static func isStandbySnippet(_ snippet: String) -> Bool {
+        guard callsNoTool(snippet: snippet), let code = withoutComments(snippet) else { return false }
+        let body = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let constant =
+            #"(?:"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$]|\\.|\$(?!\{))*`|-?\d+(?:\.\d+)?|true|false|null|undefined)"#
+        let pattern = #"^(?:return(?:\s+"# + constant + #")?\s*;?)?$"#
+        return body.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// Whether the session of `context` has a background run open other than
+    /// the run of this `runCode` call itself.
+    ///
+    /// Each mounted `runCode` call is a background run of its own (see
+    /// ``mount``), thus the run of `context` does not count, nor the run that
+    /// holds it (`holdingRunToken`) when the call is mounted inside one.
+    ///
+    /// - Parameter context: The session context the call runs under.
+    /// - Returns: `true` when other work of the session is still going.
+    static func hasOtherBackgroundWork(in context: ToolContext) async -> Bool {
+        let own: Set = [context.completionToken, context.holdingRunToken]
+        return await context.backgroundRuns().contains { !own.contains($0.completionToken) }
+    }
+
+    /// `snippet` with each `//` and `/* */` comment taken out, or `nil` when a
+    /// string or a comment does not close.
+    ///
+    /// A comment marker inside a string literal stays, thus `return "a // b"`
+    /// keeps its string.
+    ///
+    /// - Parameter snippet: The raw JavaScript text.
+    /// - Returns: The text without comments, or `nil`.
+    private static func withoutComments(_ snippet: String) -> String? {
+        let characters = Array(snippet)
+        var output = ""
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            let next = index + 1 < characters.count ? characters[index + 1] : nil
+            if character == "/", next == "/" {
+                while index < characters.count, characters[index] != "\n" { index += 1 }
+            } else if character == "/", next == "*" {
+                index += 2
+                while index + 1 < characters.count, !(characters[index] == "*" && characters[index + 1] == "/") {
+                    index += 1
+                }
+                guard index + 1 < characters.count else { return nil }
+                index += 2
+                output.append(" ")
+            } else if character == "\"" || character == "'" || character == "`" {
+                let start = index
+                index += 1
+                while index < characters.count, characters[index] != character {
+                    index += characters[index] == "\\" ? 2 : 1
+                }
+                guard index < characters.count else { return nil }
+                index += 1
+                output.append(contentsOf: characters[start..<index])
+            } else {
+                output.append(character)
+                index += 1
+            }
+        }
+        return output
     }
 
     /// Tells if the bytes in `range` are a whole identifier: no identifier
