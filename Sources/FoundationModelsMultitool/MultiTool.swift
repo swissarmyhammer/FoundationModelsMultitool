@@ -662,7 +662,11 @@ public struct MultiTool: GraphQLEndpointTool {
                 limits: limits,
                 notice: runNotice(from: ledger, naming: pendingCalls, for: result.returnValue)
             )
-        case .failure(let interpreterError as InterpreterError):
+        case .failure(let wrappedError as InterpreterError):
+            // The line counts the lines of the model's own snippet.
+            let interpreterError = InterpreterError(
+                kind: wrappedError.kind, message: wrappedError.message,
+                line: Self.snippetLine(ofWrappedLine: wrappedError.line, code: arguments.code, preamble: bundle.preamble))
             // A snippet that does not parse never ran, thus one small repair
             // that makes it parse can run with nothing counted twice (see
             // `SnippetRepair`). The repaired code parses, thus it is never
@@ -1107,6 +1111,24 @@ public struct MultiTool: GraphQLEndpointTool {
             + "return (async () => {"
         let closing = "})().finally(() => { \(snippetEndLocalName)(); });"
         return "\(preamble)\n\(opening)\(code)\n\(closing)"
+    }
+
+    /// The line of `code` that `line` of ``wrappingSnippet(_:after:)`` is, or
+    /// `nil` when `line` is in the preamble or the closing line, which the
+    /// model never wrote: a line left out is better than one that does not
+    /// exist in its code (bench24-1023b: "(line 116)" for a 4-line snippet).
+    ///
+    /// - Parameters:
+    ///   - line: the 1-based line of the wrapped source, or `nil`.
+    ///   - code: the snippet source of the model.
+    ///   - preamble: the preamble the snippet was wrapped after.
+    /// - Returns: the 1-based line of `code`, or `nil`.
+    static func snippetLine(ofWrappedLine line: Int?, code: String, preamble: String) -> Int? {
+        guard let line else { return nil }
+        let preambleLines = preamble.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+        let codeLines = code.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+        let mapped = line - preambleLines
+        return (1...codeLines).contains(mapped) ? mapped : nil
     }
 
     /// The error `tools.runCode` throws when a snippet nests past
