@@ -28,12 +28,20 @@ import Foundation
 
 extension MultiTool {
 
-    /// How a result of one files verb also acts as its main value.
+    /// How a result of one verb also acts as its main value.
+    ///
+    /// The `code_context` symbol verbs answer `{ file, symbols: [...] }`
+    /// since FoundationModelsCodeContext 502d26d, and `listSymbol` answered a
+    /// bare array before; the model writes both `syms.symbols.filter(...)`
+    /// and `syms.filter(...)` (SWE-bench run bench24-1023b). A path that a
+    /// surface does not hold is skipped.
     private static let resultShapes: [String: String] = [
         "files.read": "text",
         "files.glob": "files",
         "files.grep": "matches",
         "files.list": "entries",
+        "code_context.listSymbol": "symbols",
+        "code_context.getSymbol": "symbols",
     ]
 
     /// The JS object, as source, that maps each bound synonym to its path.
