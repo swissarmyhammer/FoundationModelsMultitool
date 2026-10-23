@@ -1,0 +1,1 @@
+{"id":"01M5NG8S23K3D2A14TGEW42HWF","timestamp":"2026-10-23T23:06:52.355475Z","op":"create","item_id":"01M5NG8S23HJQDC75WRTJX7VHY","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 0075ca\n+tag_name: bench\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 0075ca\n-tag_name: bench\n","transaction_id":null}

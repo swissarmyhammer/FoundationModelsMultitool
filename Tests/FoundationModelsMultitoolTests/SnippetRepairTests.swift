@@ -33,6 +33,33 @@ struct RepairGrepCodeTool: Tool {
     }
 }
 
+/// One match of the stand-in `code_context.grepCode` that answers matches.
+@Generable
+struct RepairMatch {
+    @Guide(description: "The file.")
+    var filePath: String
+    @Guide(description: "The line.")
+    var startLine: Int
+    @Guide(description: "The text.")
+    var text: String
+}
+
+/// The result of the stand-in `code_context.grepCode` that answers matches.
+@Generable
+struct RepairMatchesResult {
+    @Guide(description: "The matches.")
+    var matches: [RepairMatch]
+}
+
+/// A stand-in for `code_context.grepCode` that answers one match per call.
+struct RepairMatchesTool: Tool {
+    let name = "grepCode"
+    let description = "Searches the indexed code with a regular expression."
+    func call(arguments: RepairGrepCodeArguments) async throws -> RepairMatchesResult {
+        RepairMatchesResult(matches: [RepairMatch(filePath: "tests/x.py", startLine: 1, text: arguments.pattern)])
+    }
+}
+
 @Suite("SnippetRepairTests")
 struct SnippetRepairTests {
 
@@ -96,6 +123,29 @@ struct SnippetRepairTests {
         #expect(split(extra).note == "Repaired: removed an extra ')' at the end.", "output was: \(extra)")
         #expect(try RunOutput.decoded(String.self, from: split(missing).value) == "a in *", "output was: \(missing)")
         #expect(split(missing).note == "Repaired: added a missing ')' at the end.", "output was: \(missing)")
+    }
+
+    /// The snippet of bench24-1023b, django__django-14017 (child session, seq
+    /// 7751), byte for byte: line 2 is missing its ')' before the ';'.
+    private static let missingMidCloserSnippet = """
+        const r1 = await tools.code_context.grepCode({ pattern: "class CombinableTests", filePattern: "tests/*", maxResults: 10 });
+        const r2 = await tools.code_context.grepCode({ pattern: "NotImplementedError", filePattern: "tests/*", maxResults: 30 };
+        const fmt = (m) => ({ f: m.filePath, l: m.startLine, t: m.text.replace(/\\n/g, " ").slice(0, 140) });
+        return { r1: r1.matches.map(fmt), r2: r2.matches.map(fmt) };
+        """
+
+    @Test("a closer missing before the ';' of a middle line is added there")
+    func aMissingCloserInTheMiddleIsRepaired() async throws {
+        let registry = try MultiTool.Builder()
+            .addGroup(named: "code_context", [RepairMatchesTool()])
+            .buildRegistry()
+        let output = try await MultiTool(registry: registry).call(
+            arguments: RunCodeArguments(code: Self.missingMidCloserSnippet))
+        let value = split(output).value
+
+        #expect(!output.contains("The snippet failed"), "output was: \(output)")
+        #expect(value.contains("CombinableTests") && value.contains("NotImplementedError"), "output was: \(output)")
+        #expect(split(output).note == "Repaired: added a missing ')' at the end of line 2.", "output was: \(output)")
     }
 
     @Test("a snippet no single repair makes parse gives the parse error as before")

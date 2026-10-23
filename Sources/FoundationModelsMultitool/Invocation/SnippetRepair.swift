@@ -71,6 +71,7 @@ enum SnippetRepair {
     /// - Returns: the candidates, which may not parse.
     static func candidates(for code: String) -> [Candidate] {
         missingColonCandidates(code) + missingCommaCandidates(code) + closerCandidates(code)
+            + lineCloserCandidates(code)
     }
 
     /// The 1-based line of the character at `offset` (a UTF-16 offset).
@@ -136,6 +137,33 @@ enum SnippetRepair {
         }
         for closer in closers {
             candidates.append(Candidate(code: body + String(closer) + end, note: "added a missing '\(closer)' at the end"))
+        }
+        return candidates
+    }
+
+    /// A missing closer added at the end of one line, before its final `;`
+    /// when it has one: `f({ a: 1 };` → `f({ a: 1 });` on any line, not only
+    /// the last (bench24-1023b, django__django-14017, seq 7751).
+    private static func lineCloserCandidates(_ code: String) -> [Candidate] {
+        var lines = code.components(separatedBy: "\n")
+        var candidates: [Candidate] = []
+        for index in lines.indices {
+            let original = lines[index]
+            var body = Substring(original)
+            while let last = body.last, last.isWhitespace { body.removeLast() }
+            guard !body.isEmpty else { continue }
+            let tail = original.dropFirst(body.count)
+            let semicolon = body.hasSuffix(";")
+            if semicolon { body.removeLast() }
+            let end = (semicolon ? ";" : "") + tail
+            for closer in closers {
+                lines[index] = body + String(closer) + end
+                candidates.append(
+                    Candidate(
+                        code: lines.joined(separator: "\n"),
+                        note: "added a missing '\(closer)' at the end of line \(index + 1)"))
+            }
+            lines[index] = original
         }
         return candidates
     }
