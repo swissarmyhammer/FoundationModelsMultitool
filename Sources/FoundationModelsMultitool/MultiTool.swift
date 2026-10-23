@@ -1312,6 +1312,9 @@ public struct MultiTool: GraphQLEndpointTool {
                 lines.append("tools.\(entry.path) = \(hostName);")
             }
         }
+        // Last, because it wraps the bindings above (see
+        // `MultiTool+ForgivingBindings.swift`).
+        lines.append(forgivingBindingsLine)
         return lines.joined(separator: "\n")
     }
 
@@ -1517,7 +1520,12 @@ public struct MultiTool: GraphQLEndpointTool {
         binding: RunBinding?,
         journalOp: String? = nil
     ) async throws -> InterpreterValue {
-        let argumentObject = arguments.first ?? .object([:])
+        var argumentObject = arguments.first ?? .object([:])
+        // `tools.files.read("tox.ini")`: a single string is the main argument
+        // of the verb (SWE-bench run bench24-1023b, `tools.ls(".")`).
+        if case .string = argumentObject, let field = ToolInvoker.mainArgumentName(of: tool) {
+            argumentObject = .object([field: argumentObject])
+        }
         let content = try ArgumentMarshaler.marshalArguments(argumentObject)
         let output = try await ToolInvoker.invoke(
             tool, content: content, binding: binding, journalOp: journalOp)

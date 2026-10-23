@@ -73,14 +73,16 @@ import Logging
 /// the verb alone.
 ///
 /// The research of that task chose a small alias table for this case —
-/// ``verbAliases``, see ``verbAliasResolution(for:in:snippet:knownPaths:)``.
+/// ``VerbSynonyms``, see ``verbAliasResolution(for:in:snippet:knownPaths:)``.
 /// It rejected a cross-group tier 2 on the verb words: with no embedder,
 /// "list files" ranked `code_context.listSymbols` and then `files.grep`
 /// above `files.glob`, and "find" ranked `files.edit` first, because its
-/// description speaks of find and replace. The alias only names the real
-/// path. It never calls it, because a call would hide the mistake from the
-/// model and from the `imaginedTool` record. A guess under a group that does
-/// not exist (`bash.run`) keeps the ranked tiers.
+/// description speaks of find and replace. Since SWE-bench run bench24-1023b
+/// the `tools.*` preamble also binds most rows as callable aliases ("Postel's
+/// rule"), thus a hint answers only a row that is not bound — a verb that
+/// deletes or rolls back — or a host whose snippet reached a name another
+/// way. A guess under a group that does not exist (`bash.run`) keeps the
+/// ranked tiers.
 ///
 /// Alongside the suggestions, a resolution carries a ``RepairDirective`` —
 /// what the error's closing line should tell the model to do next. The
@@ -124,8 +126,9 @@ enum UnknownToolHint {
         /// called the group object instead of one of its functions.
         case groupCall = "group"
 
-        /// No ranking tier ran: the path is a real group and a verb that the
-        /// group does not have, and the verb is a name of ``verbAliases``.
+        /// No ranking tier ran: the meaning of the guessed verb named the
+        /// path — a name of ``VerbSynonyms``, or a bare verb that one group
+        /// holds.
         case verbAlias = "alias"
     }
 
@@ -221,47 +224,6 @@ enum UnknownToolHint {
 
     /// The character between the group and the verb of a `tools.*` path.
     private static let pathSeparator: Character = "."
-
-    /// One row of ``verbAliases``: a real path, and the verb names a model
-    /// uses for it.
-    private struct VerbAlias {
-        /// The catalog path that does the work, without its `tools.` prefix.
-        let path: String
-
-        /// The verb names a model calls for that work, in lowercase.
-        let verbs: Set<String>
-    }
-
-    /// The verb names a model uses for a verb of a package-owned capability,
-    /// mapped to the real path.
-    ///
-    /// Each row is one path of a capability this package owns, so the path
-    /// and the work it does are known here. A row answers only when its path
-    /// is in the surface. The verbs are in lowercase, because
-    /// ``verbAliasResolution(for:in:snippet:knownPaths:)`` compares the verb
-    /// of the guess in lowercase.
-    ///
-    /// The SWE-bench run of 2026-10-05 is the evidence for the first rows:
-    /// the model called `listFiles` and `find` for `files.glob`, and `run`
-    /// for `shell.execute`. The other names of those rows are the same intent
-    /// in the words of a shell.
-    ///
-    /// The `files.makeDirectory` and `files.removeDirectory` rows have no run
-    /// as evidence. Their source is the same intent in the words of a shell:
-    /// `mkdir` and `rmdir`, and the spelled-out forms of those two commands.
-    ///
-    /// The `snapshots.rollback` row has no run as evidence. The user named
-    /// `reset` and `rewind` as the other names of a rollback (task
-    /// `^f4d43vr`).
-    private static let verbAliases = [
-        VerbAlias(path: "files.glob", verbs: ["find", "findfiles", "listfiles", "ls"]),
-        VerbAlias(path: "shell.execute", verbs: ["run", "exec", "runcommand"]),
-        VerbAlias(
-            path: "files.makeDirectory",
-            verbs: ["mkdir", "makedir", "createdirectory", "createdir", "newdirectory"]),
-        VerbAlias(path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"]),
-        VerbAlias(path: "snapshots.rollback", verbs: ["reset", "rewind"]),
-    ]
 
     /// Resolves one failed snippet's unknown `tools.*` path, or nil when the
     /// failure has nothing to do with an unknown path.
@@ -372,18 +334,23 @@ enum UnknownToolHint {
         return ([opening] + lines + closing).joined(separator: "\n")
     }
 
-    /// Resolves a made-up verb in a real group through ``verbAliases``, or
-    /// nil when no row answers it.
+    /// Resolves a made-up verb through the meaning of its name, or nil when
+    /// nothing answers it.
     ///
-    /// A row answers only when all of these are true: the group of
-    /// `failedPath` is a group of `surface`, the verb of `failedPath` in
-    /// lowercase is a verb of the row, and the path of the row is an entry of
-    /// `surface`. A guess under a group that does not exist keeps the
-    /// ranked tiers, because tier 1 and tier 2 already read it without the
-    /// group prefix in the way.
+    /// Two guesses are answered, before any name distance is measured:
     ///
-    /// The hint names the path of the row and never calls it. A call would
-    /// hide the mistake from the model and from the `imaginedTool` record.
+    /// - A real group and a verb that the group does not have, such as
+    ///   `files.search`: a row of ``VerbSynonyms`` whose verbs hold the verb
+    ///   (in any letter case, `_` and `-` ignored) answers, when its path is
+    ///   in `surface`. Thus `files.search` names `files.grep` and never
+    ///   `web.search`, whose name is closer.
+    /// - A bare verb with no group, such as `ls` or `execute`: a real verb
+    ///   that exactly one group holds answers first, and a row of
+    ///   ``VerbSynonyms`` next.
+    ///
+    /// A guess under a group that does not exist keeps the ranked tiers,
+    /// because tier 1 and tier 2 already read it without the group prefix in
+    /// the way.
     ///
     /// - Parameters:
     ///   - failedPath: the unknown dotted path the snippet called.
@@ -391,20 +358,14 @@ enum UnknownToolHint {
     ///   - snippet: the model's own `runCode` source, read to decide the
     ///     directive.
     ///   - knownPaths: every valid `APISurface.Entry.path`.
-    /// - Returns: the resolution, or nil when no row answers `failedPath`.
+    /// - Returns: the resolution, or nil when nothing answers `failedPath`.
     private static func verbAliasResolution(
         for failedPath: String,
         in surface: APISurface,
         snippet: String,
         knownPaths: Set<String>
     ) -> Resolution? {
-        guard let separatorIndex = failedPath.lastIndex(of: pathSeparator) else { return nil }
-        let group = String(failedPath[..<separatorIndex])
-        let verb = failedPath[failedPath.index(after: separatorIndex)...].lowercased()
-        guard surface.entries.contains(where: { $0.group == group }),
-            let row = verbAliases.first(where: { $0.verbs.contains(verb) }),
-            let entry = surface.entries.first(where: { $0.path == row.path })
-        else { return nil }
+        guard let entry = meaningMatch(for: failedPath, in: surface) else { return nil }
         let directive = repairDirective(tier: .verbAlias, snippet: snippet, knownPaths: knownPaths)
         return Resolution(
             imaginedPath: failedPath,
@@ -413,6 +374,32 @@ enum UnknownToolHint {
             directive: directive,
             text: text(forFailed: failedPath, suggesting: [entry], directive: directive)
         )
+    }
+
+    /// The entry that the meaning of `failedPath` names, or nil — see
+    /// ``verbAliasResolution(for:in:snippet:knownPaths:)``.
+    ///
+    /// - Parameters:
+    ///   - failedPath: the unknown dotted path the snippet called.
+    ///   - surface: the catalog to read.
+    /// - Returns: the entry, or nil.
+    private static func meaningMatch(for failedPath: String, in surface: APISurface) -> APISurface.Entry? {
+        let synonymEntry = { (verb: String) -> APISurface.Entry? in
+            guard let row = VerbSynonyms.row(for: verb) else { return nil }
+            return surface.entries.first(where: { $0.path == row.path })
+        }
+        guard let separatorIndex = failedPath.lastIndex(of: pathSeparator) else {
+            let name = VerbSynonyms.normalized(failedPath)
+            let sameVerb = surface.entries.filter {
+                $0.group != nil && VerbSynonyms.normalized($0.descriptor.name) == name
+            }
+            if sameVerb.count == 1 { return sameVerb.first }
+            return synonymEntry(failedPath)
+        }
+        let group = String(failedPath[..<separatorIndex])
+        let verb = String(failedPath[failedPath.index(after: separatorIndex)...])
+        guard surface.entries.contains(where: { $0.group == group }) else { return nil }
+        return synonymEntry(verb)
     }
 
     /// Decides what the repairable error should tell the model to do next.

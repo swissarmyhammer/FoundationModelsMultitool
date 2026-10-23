@@ -194,7 +194,8 @@ public enum ToolInvoker {
         journalOp: String? = nil
     ) async throws -> T.Output {
         let schema = try decodeArgumentsSchema(tool.parameters, toolName: tool.name)
-        let normalized = wrappingStringsInStringArrays(content, against: schema)
+        let normalized = wrappingStringsInStringArrays(
+            renamingArgumentSynonyms(content, against: schema), against: schema)
         try validate(normalized, against: schema, toolName: tool.name)
         let arguments: T.Arguments
         do {
@@ -347,6 +348,88 @@ public enum ToolInvoker {
             }
         }
         return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys))
+    }
+
+    /// The usual other names of an argument, by the name the schema gives it.
+    ///
+    /// SWE-bench run bench24-1023 is the evidence: the model called
+    /// `tools.files.read({ file: "…" })` and got "missing its required
+    /// argument \"path\"". Each name here is lowercase with no `_` or `-`,
+    /// the form ``normalizedArgumentName(_:)`` compares in.
+    private static let argumentSynonyms: [String: Set<String>] = [
+        "path": ["file", "filepath", "filename", "dir", "directory", "folder", "dirpath", "pathname"],
+        "pattern": ["query", "regex", "regexp", "search", "expression"],
+        "command": ["cmd", "script", "commandline"],
+    ]
+
+    /// `name` lowercased, with each `_` and `-` removed — thus `file_path`,
+    /// `filePath` and `FilePath` read as one name.
+    private static func normalizedArgumentName(_ name: String) -> String {
+        String(name.lowercased().filter { $0 != "_" && $0 != "-" })
+    }
+
+    /// Renames each argument of `content` that the schema does not have to
+    /// the property it evidently means ("Postel's rule": be liberal in what
+    /// you accept).
+    ///
+    /// A name stands for a property when the property is absent from
+    /// `content` and the name is that property in another letter case or
+    /// with `_` or `-` (`file_path` for `filePath`), or a name of
+    /// ``argumentSynonyms`` (`file` for `path`). A name that stands for two
+    /// properties, or a property that two names stand for, is not renamed:
+    /// the meaning is not clear, and validation reports it as before.
+    ///
+    /// - Parameters:
+    ///   - content: the marshaled call arguments.
+    ///   - schema: the decoded argument schema of the tool.
+    /// - Returns: `content` with each such name renamed, or `content`
+    ///   unchanged.
+    private static func renamingArgumentSynonyms(
+        _ content: GeneratedContent,
+        against schema: ArgumentsSchema
+    ) -> GeneratedContent {
+        guard let properties = schema.properties,
+            case .structure(var contentProperties, let orderedKeys) = content.kind
+        else { return content }
+        let absent = properties.keys.filter { contentProperties[$0] == nil }
+        var renames: [String: String] = [:]
+        var claimed: [String: Int] = [:]
+        for key in contentProperties.keys where properties[key] == nil {
+            let name = normalizedArgumentName(key)
+            let targets = absent.filter {
+                normalizedArgumentName($0) == name || argumentSynonyms[$0]?.contains(name) == true
+            }
+            guard targets.count == 1, let target = targets.first else { continue }
+            renames[key] = target
+            claimed[target, default: 0] += 1
+        }
+        var keys = orderedKeys
+        for (key, target) in renames where claimed[target] == 1 {
+            contentProperties[target] = contentProperties.removeValue(forKey: key)
+            keys = keys.map { $0 == key ? target : $0 }
+        }
+        return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: keys))
+    }
+
+    /// The argument a single string stands for in a call of `tool`, or `nil`.
+    ///
+    /// `tools.files.read("tox.ini")` means `{ path: "tox.ini" }`: the main
+    /// argument is the one required string property, or, with no required
+    /// property, the one string property (`path` of `files.list`).
+    ///
+    /// - Parameter tool: the tool the call goes to.
+    /// - Returns: the property name, or `nil` when no one property is the
+    ///   main argument.
+    static func mainArgumentName(of tool: any Tool) -> String? {
+        guard let schema = try? decodeArgumentsSchema(tool.parameters, toolName: tool.name),
+            let properties = schema.properties
+        else { return nil }
+        let strings = properties.filter { $0.value.type == ArgumentPropertySchema.stringType }.map(\.key)
+        let required = Set(schema.required ?? [])
+        let requiredStrings = strings.filter { required.contains($0) }
+        if requiredStrings.count == 1 { return requiredStrings.first }
+        if required.isEmpty, strings.count == 1 { return strings.first }
+        return nil
     }
 
     /// Validates `content` — a marshaled call's arguments — against

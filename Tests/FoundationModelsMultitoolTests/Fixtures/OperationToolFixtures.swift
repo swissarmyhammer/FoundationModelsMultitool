@@ -155,9 +155,11 @@ final class NotesOperationTool: OperationDescribing, Sendable {
     /// ``namespaceCallSnippet``, byte for byte. `OperationRunCodeTests` read
     /// it from a run, and card `^sza6zja` records it. `UnknownToolHintTests`
     /// takes it as the input of the group-call hint, thus the two suites
-    /// read one text.
+    /// read one text. Each group is a `Proxy` since SWE-bench run
+    /// bench24-1023b (see `MultiTool+ForgivingBindings.swift`), thus the text
+    /// names a `ProxyObject`.
     static let namespaceCallTypeErrorMessage =
-        #"tools.notes is not a function. (In 'tools.notes({ op: "add note", title: "x" })', 'tools.notes' is an instance of Object)"#
+        #"tools.notes is not a function. (In 'tools.notes({ op: "add note", title: "x" })', 'tools.notes' is an instance of ProxyObject)"#
 
     /// The prefix of every note id; the store appends a counter.
     private static let noteIDPrefix = "n"

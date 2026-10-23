@@ -117,7 +117,9 @@ struct CoreLogRecordTests {
     @Test("a tools.* call with an argument that is not an object logs a warning with the error type")
     func marshalingFailureLogsAWarning() async throws {
         let records = try await Self.records(
-            runningSnippet: "return await tools.getTemperature('\(Self.argumentMarker)');",
+            // An array: a single string is the main argument of the verb
+            // since SWE-bench run bench24-1023b, thus it marshals.
+            runningSnippet: "return await tools.getTemperature(['\(Self.argumentMarker)']);",
             forbidding: [Self.argumentMarker]
         )
 

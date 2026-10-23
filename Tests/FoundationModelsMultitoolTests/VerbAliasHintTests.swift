@@ -67,12 +67,16 @@ struct VerbAliasHintTests {
     /// - Returns: the registry, and the bundle built over it.
     /// - Throws: when the directory or the registry does not prepare.
     private func makeBundle(
-        includesFiles: Bool = true
+        includesFiles: Bool = true, includesWeb: Bool = false
     ) throws -> (registry: MultiTool.Registry, bundle: MultiTool.RegistryBundle) {
         let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         let builder = MultiTool.Builder()
         if includesFiles {
             builder.withFiles(root: root, readOnly: false)
+        }
+        if includesWeb {
+            builder.addGroup(
+                named: "web", [CatalogEntryTool(name: "search", description: "Searches the web for a query.")])
         }
         let registry =
             try builder
@@ -91,8 +95,10 @@ struct VerbAliasHintTests {
     ///   - includesFiles: whether the files capability is mounted.
     /// - Returns: the resolution.
     /// - Throws: when the surface does not prepare, or the guess gets no hint.
-    private func resolve(_ guess: String, includesFiles: Bool = true) async throws -> UnknownToolHint.Resolution {
-        let (registry, bundle) = try makeBundle(includesFiles: includesFiles)
+    private func resolve(
+        _ guess: String, includesFiles: Bool = true, includesWeb: Bool = false
+    ) async throws -> UnknownToolHint.Resolution {
+        let (registry, bundle) = try makeBundle(includesFiles: includesFiles, includesWeb: includesWeb)
         return try #require(
             await UnknownToolHint.hint(
                 message: "TypeError: tools.\(guess) is not a function",
@@ -187,5 +193,39 @@ struct VerbAliasHintTests {
             ImaginedToolLogRecord(metadata: resolution.logMetadata)
                 == ImaginedToolLogRecord(imagined: guess, tier: "alias", suggested: [Self.globPath])
         )
+    }
+
+    // MARK: - Meaning before name distance (SWE-bench run bench24-1023b)
+
+    @Test("files.search is answered with files.grep, not with web.search")
+    func filesSearchIsAnsweredWithGrep() async throws {
+        let resolution = try await resolve("files.search", includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["files.grep"])
+    }
+
+    @Test("a bare ls is answered with files.list")
+    func bareLsIsAnsweredWithList() async throws {
+        let resolution = try await resolve("ls", includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["files.list"])
+    }
+
+    @Test("files.view and a bare cat are answered with files.read", arguments: ["files.view", "cat", "files.Show"])
+    func viewAndCatAreAnsweredWithRead(guess: String) async throws {
+        let resolution = try await resolve(guess, includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["files.read"])
+    }
+
+    @Test("a bare verb that one group holds is answered with that verb")
+    func aBareRealVerbIsAnsweredWithItsPath() async throws {
+        let resolution = try await resolve("execute", includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["shell.execute"])
     }
 }

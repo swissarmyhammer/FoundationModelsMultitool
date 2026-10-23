@@ -180,6 +180,11 @@ private struct ScalarValues {
             insert(ResultRenderer.serialize(value))
         case .string(let text):
             insert(text)
+            // A line of `tools.files.read` carries its `N:HH|` tag, and a
+            // snippet that used the result as its text (SWE-bench run
+            // bench24-1023b, `py.slice(0, 2000)`) returns the line without
+            // it, which still carries what the call returned.
+            if let entry = Hashline.blockEntry(of: text) { insert(entry.text) }
         case .array(let elements):
             for element in elements { collect(from: element) }
         case .object(let fields):
