@@ -241,6 +241,57 @@ import Testing
                 .strings(["contrib", "utils"]), .strings(["contrib/", "utils/"]), .bool(true), .bool(true),
             ])
     }
+
+    // MARK: - 7. A field name the model guessed for the main value
+
+    /// The value of the django__django-14238 snippet.
+    private struct ToxValue: Decodable {
+        let files: GlobFiles
+        let tox: String
+    }
+
+    /// The part of a glob result the snippet returns.
+    private struct GlobFiles: Decodable {
+        let files: [String]
+    }
+
+    @Test("a read result's content, text, body, and data give its text without tags")
+    func aReadResultHasContent() async throws {
+        // bench24-1023b, django__django-14238 (seq 8967), with the root of
+        // this test for the run's checkout.
+        let root = try Self.makeRoot().path
+        let registry = try MultiTool.Builder().withFiles(root: URL(fileURLWithPath: root)).buildRegistry()
+        let output = try await MultiTool(registry: registry).call(
+            arguments: RunCodeArguments(
+                code: """
+                    const files = await tools.files.glob({ pattern: "tests/runtests.py", path: "\(root)" });
+                    const tox = await tools.files.read({ path: "\(root)/tox.ini" });
+                    return { files, tox: tox.content.slice(0, 15) };
+                    """))
+
+        #expect(!output.contains("undefined is not an object"), "output was: \(output)")
+        #expect(try RunOutput.decoded(ToxValue.self, from: output).tox == "[tox]\nenvlist =", "output was: \(output)")
+
+        let aliases = try await Self.run(
+            #"const r = await tools.files.read({ path: "tox.ini" }); return [r.text, r.body, r.data];"#)
+        let text = String(Self.toxContent.dropLast())
+        #expect(try RunOutput.decoded([String].self, from: aliases) == [text, text, text], "output was: \(aliases)")
+    }
+
+    @Test("a list result answers items, results, entries, files, and matches with its list")
+    func aListResultAnswersEachListName() async throws {
+        let output = try await Self.run(
+            #"""
+            const g = await tools.files.glob({ pattern: "django/utils/*" });
+            const l = await tools.files.list({ path: "django/utils" });
+            return [g.items.length, g.results.length, g.entries.length, g.matches.length, l.files.length, l.items.map(String)];
+            """#)
+
+        #expect(
+            try RunOutput.decoded([AnyNested].self, from: output) == [
+                .number(2), .number(2), .number(2), .number(2), .number(2), .strings(["html.py", "text.py"]),
+            ], "output was: \(output)")
+    }
 }
 
 /// One scalar of a mixed JSON array a snippet returns.

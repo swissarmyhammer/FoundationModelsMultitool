@@ -12,7 +12,11 @@
 //    it does not have reads from the text (`files.read`) or from the list
 //    (`files.glob`, `files.grep`, `files.list`). Each entry of a list result
 //    is a `String` object with a `name`, thus `e.name` and `e.endsWith("/")`
-//    both work, and it still serializes as the plain string.
+//    both work, and it still serializes as the plain string. A field name the
+//    model guessed for that value answers it too, unless the result has a
+//    real field of that name: `content`, `text`, `body`, `data` give the text
+//    (`tox.content.slice(0, 1500)`, bench24-1023b django__django-14238), and
+//    `items`, `results`, `entries`, `files`, `matches` give the list.
 // 2. **A name that is not there finds the verb it means.** `tools` and each
 //    group are `Proxy` objects: a missing name is read in any letter case
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
@@ -66,6 +70,8 @@ extension MultiTool {
             const synonyms = \(synonymTableSource); const shapes = \(shapes); \
             const norm = (k) => String(k).toLowerCase().replace(/[_-]/g, ""); \
             const tag = /^\\d+:[0-9a-f]{2}\\|/; \
+            const textNames = ["content", "text", "body", "data"]; \
+            const listNames = ["items", "results", "entries", "files", "matches"]; \
             const textOf = (v) => { if (!v || typeof v !== "object") { return String(v); } \
             if (Array.isArray(v.lines) && (v.lines.length > 0 || !v.correction)) { return v.lines.map((l) => String(l).replace(tag, "")).join("\\n"); } \
             return v.correction ? String(v.correction) : ""; }; \
@@ -75,6 +81,7 @@ extension MultiTool {
             if (k === Symbol.toPrimitive) { return () => t(); } \
             if (k === "toString" || k === "valueOf") { return () => t(); } \
             if (Reflect.has(target, k)) { return Reflect.get(target, k); } \
+            if (textNames.includes(k)) { return t(); } \
             if (k === "length") { return t().length; } \
             if (isIndex(k)) { return t()[k]; } \
             const m = String.prototype[k]; if (typeof m === "function") { return m.bind(t()); } \
@@ -87,10 +94,12 @@ extension MultiTool {
             Object.defineProperty(out, "indexOf", { value: (x) => out.findIndex((e) => sameString(e, x)) }); return out; }; \
             const asArray = (v, field) => { if (!v || typeof v !== "object") { return v; } \
             if (field === "entries" && Array.isArray(v.entries)) { v.entries = named(v.entries); } \
-            const list = () => { const a = v[field]; if (Array.isArray(a)) { return a; } return Array.isArray(v.files) ? v.files : []; }; \
+            const list = () => { const a = v[field]; if (Array.isArray(a)) { return a; } \
+            const other = listNames.find((n) => Array.isArray(v[n])); return other ? v[other] : []; }; \
             return new Proxy(v, { get(target, k) { \
             if (Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const a = list(); \
+            if (listNames.includes(k)) { return a; } \
             if (k === "length") { return a.length; } \
             if (k === Symbol.iterator) { return a[Symbol.iterator].bind(a); } \
             if (isIndex(k)) { return a[k]; } \
