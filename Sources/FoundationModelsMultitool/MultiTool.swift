@@ -663,6 +663,18 @@ public struct MultiTool: GraphQLEndpointTool {
                 notice: runNotice(from: ledger, naming: pendingCalls, for: result.returnValue)
             )
         case .failure(let interpreterError as InterpreterError):
+            // A snippet that does not parse never ran, thus one small repair
+            // that makes it parse can run with nothing counted twice (see
+            // `SnippetRepair`). The repaired code parses, thus it is never
+            // repaired again. A nested run's result is decoded by a snippet,
+            // thus only a run the model started carries the note.
+            if (try? interpreter.checkSyntax(of: arguments.code)) == nil,
+                let repaired = SnippetRepair.repair(
+                    arguments.code, parses: { (try? interpreter.checkSyntax(of: $0)) != nil })
+            {
+                let rendered = try await runSnippet(arguments: RunCodeArguments(code: repaired.code))
+                return enclosingRun == nil ? rendered + "\n\n" + SnippetRepair.note(for: repaired) : rendered
+            }
             let resolution = await UnknownToolHint.hint(
                 message: interpreterError.message,
                 // `arguments.code`, never `code`: the preamble prepended above
