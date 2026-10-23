@@ -5,11 +5,12 @@
 //
 // Each change of the store is one new checkpoint of one session key: a take,
 // a pending or rollback checkpoint of a rollback, or a change made while the
-// key was closed. The feed records it as one change that adds the checkpoint,
-// with the session ID that the host gives for the key. The filters of a
-// subscription read only that session ID, so a subscription filters each
-// change for its viewer at once, and a change that the viewer cannot see is
-// never sent.
+// key was closed. Sessions that share a working directory share one key, so
+// the feed records one change for EACH owner of the key that the host knows,
+// whoever made the checkpoint, and each change names that maker as its
+// `owner`. The filters of a subscription read only the session ID of a
+// change, so a subscription filters each change for its viewer at once, and a
+// change that the viewer cannot see is never sent.
 
 import Foundation
 import FoundationModelsExtras
@@ -28,6 +29,10 @@ struct SnapshotsGraphChangeEvent: Sendable {
 
     /// The index of the new checkpoint.
     let index: Int
+
+    /// The session that made the checkpoint: ``sessionId`` itself, or another
+    /// session of the same key.
+    let owner: String
 }
 
 /// The change log of one ``SnapshotStore``, and the task that feeds it with
@@ -40,7 +45,7 @@ struct SnapshotsGraphChangeEvent: Sendable {
 /// in the log. The log has a random epoch, so a cursor of another feed, for
 /// example of an earlier run, gives `RESYNC_REQUIRED`.
 ///
-/// One store has one feed (EXTRAS-9 rule 1): ``feed(of:sessionId:capacity:)``
+/// One store has one feed (EXTRAS-9 rule 1): ``feed(of:sessionKey:capacity:)``
 /// gives the same instance for each endpoint over the same store. Each
 /// endpoint and the context of each call hold the feed, so a running
 /// subscription keeps its feed. The task holds the log
@@ -59,21 +64,21 @@ final class SnapshotsGraphChangeFeed: Sendable {
 
     /// Makes the feed of a store, subscribes to the change stream of the
     /// store, and starts to read it. A caller outside this type gets the feed
-    /// with ``feed(of:sessionId:capacity:)``, which makes one for each store.
+    /// with ``feed(of:sessionKey:capacity:)``, which makes one for each store.
     ///
     /// - Parameters:
     ///   - store: The store.
-    ///   - sessionId: Gives the session ID of a session key, or `nil` for a
-    ///     key that the host does not know.
+    ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
+    ///     session that the host does not know.
     ///   - capacity: The number of the newest changes that the log holds, so
     ///     that a subscription resumes after a cursor at most this many
     ///     changes old.
-    private init(store: SnapshotStore, sessionId: @escaping @Sendable (String) async -> String?, capacity: Int) {
+    private init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?, capacity: Int) {
         let log = ChangeLog<SnapshotsGraphChangeEvent>(capacity: capacity)
         let subscription = Task { await store.changes() }
         self.log = log
         self.subscription = subscription
-        task = Task { await Self.record(await subscription.value, into: log, naming: sessionId) }
+        task = Task { await Self.record(await subscription.value, into: log, knowing: sessionKey) }
     }
 
     /// Cancels the task, which then stops reading the change stream.
@@ -89,26 +94,27 @@ final class SnapshotsGraphChangeFeed: Sendable {
         }
     }
 
-    /// Records each new checkpoint of a session key that the host knows as
-    /// one change, until the stream ends or the task is cancelled.
+    /// Records each new checkpoint as one change for each owner of its key
+    /// that the host knows, in the order of the session IDs, until the stream
+    /// ends or the task is cancelled.
     ///
-    /// A checkpoint of a session key that the host does not know gives no
-    /// change, as `checkpoints` gives no checkpoint of that key.
+    /// An owner that the host does not know gives no change, as `checkpoints`
+    /// gives no checkpoint of a session that the host does not know.
     ///
     /// - Parameters:
     ///   - changes: The change stream of the store.
     ///   - log: The change log.
-    ///   - sessionId: Gives the session ID of a session key, or `nil`.
+    ///   - sessionKey: Gives the session key of a session ID, or `nil`.
     private static func record(
         _ changes: AsyncStream<SnapshotChange>,
         into log: ChangeLog<SnapshotsGraphChangeEvent>,
-        naming sessionId: @Sendable (String) async -> String?
+        knowing sessionKey: @Sendable (String) async -> String?
     ) async {
         for await change in changes {
-            guard let id = await sessionId(change.sessionKey) else {
-                continue
+            for owner in change.owners.sorted() where await sessionKey(owner) != nil {
+                await log.append(
+                    SnapshotsGraphChangeEvent(sessionId: owner, index: change.checkpoint.index, owner: change.owner))
             }
-            await log.append(SnapshotsGraphChangeEvent(sessionId: id, index: change.checkpoint.index))
         }
     }
 
@@ -116,20 +122,20 @@ final class SnapshotsGraphChangeFeed: Sendable {
 
     /// Gives the one feed of `store` (EXTRAS-9 rule 1).
     ///
-    /// The first call for a store makes the feed with `sessionId` and
+    /// The first call for a store makes the feed with `sessionKey` and
     /// `capacity`, and each later call gives the same instance while a caller
-    /// holds it; the later call's `sessionId` and `capacity` are not read. A
-    /// host gives each endpoint over one store the same resolvers. This call
+    /// holds it; the later call's `sessionKey` and `capacity` are not read. A
+    /// host gives each endpoint over one store the same resolver. This call
     /// does no I/O.
     ///
     /// - Parameters:
     ///   - store: The store.
-    ///   - sessionId: Gives the session ID of a session key, or `nil` for a
-    ///     key that the host does not know.
+    ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
+    ///     session that the host does not know.
     ///   - capacity: The number of the newest changes that the log holds.
     /// - Returns: The feed.
     static func feed(
-        of store: SnapshotStore, sessionId: @escaping @Sendable (String) async -> String?, capacity: Int
+        of store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?, capacity: Int
     ) -> SnapshotsGraphChangeFeed {
         let key = ObjectIdentifier(store)
         return feeds.withLock { feeds in
@@ -137,7 +143,7 @@ final class SnapshotsGraphChangeFeed: Sendable {
             if let entry = feeds[key], entry.store === store, let feed = entry.feed {
                 return feed
             }
-            let feed = SnapshotsGraphChangeFeed(store: store, sessionId: sessionId, capacity: capacity)
+            let feed = SnapshotsGraphChangeFeed(store: store, sessionKey: sessionKey, capacity: capacity)
             feeds[key] = WeakFeed(feed: feed, store: store)
             return feed
         }
@@ -182,6 +188,10 @@ struct SnapshotsGraphChange: Sendable {
     /// The session whose timeline changed.
     let sessionId: ToolkitID
 
+    /// The session that made the checkpoint: ``sessionId`` itself, or another
+    /// session of the same working directory.
+    let owner: ToolkitID
+
     /// The checkpoint that the change added.
     let added: [ToolkitID]
 
@@ -205,6 +215,7 @@ struct SnapshotsGraphChange: Sendable {
         cursor = entry.cursor
         at = DateTime(entry.at)
         sessionId = ToolkitID(entry.event.sessionId)
+        owner = ToolkitID(entry.event.owner)
         added = [SnapshotsGraphCheckpoint.id(sessionId: entry.event.sessionId, index: entry.event.index)]
     }
 }
@@ -268,6 +279,10 @@ extension SnapshotsGraphAPI {
             Field("cursor", at: \.cursor).description("The cursor that resumes the subscription after this change.")
             Field("at", at: \.at).description("The time of the change.")
             Field("sessionId", at: \.sessionId).description("The session whose checkpoints changed.")
+            Field("owner", at: \.owner)
+                .description(
+                    "The session that made the checkpoint: sessionId itself, or another session of the same working "
+                        + "directory.")
             Field("added", at: \.added)
                 .description("The new checkpoint: query checkpoint(sessionId:index:) for its files and trigger.")
             Field("changed", at: \.changed)
@@ -275,7 +290,9 @@ extension SnapshotsGraphAPI {
             Field("removed", at: \.removed)
                 .description("The checkpoints that left the timeline: none, a rollback is a new checkpoint.")
         }
-        .description("One new checkpoint of one session that you can see.")
+        .description(
+            "One new checkpoint of one session that you can see. Sessions of one working directory share their "
+                + "checkpoints, so each of them gets a change for each new checkpoint.")
     }
 
     /// The `Query.cursor` field.

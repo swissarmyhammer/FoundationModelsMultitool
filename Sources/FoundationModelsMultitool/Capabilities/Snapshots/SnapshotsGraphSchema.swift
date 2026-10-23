@@ -40,6 +40,10 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
     /// The time of the snapshot.
     let at: DateTime
 
+    /// The session that made the checkpoint: ``sessionId`` itself, or another
+    /// session of the same working directory, whose sessions share one key.
+    let owner: ToolkitID
+
     /// The session whose timeline holds the checkpoint. Not a field: the
     /// `changes` resolver codes its errors for this session.
     let sessionId: String
@@ -63,6 +67,7 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
         toolCallId = Self.toolCallId(of: checkpoint.trigger)
         files = checkpoint.files
         at = DateTime(checkpoint.date)
+        owner = ToolkitID(checkpoint.owner)
     }
 
     /// The id of a checkpoint: `<sessionId>:<index>`.
@@ -309,6 +314,10 @@ struct SnapshotsGraphAPI: API {
                         .description("The tool call that took the snapshot, or null when no tool call took it.")
                     Field("files", at: \.files).description("The files that the checkpoint changed.")
                     Field("at", at: \.at).description("The time of the snapshot.")
+                    Field("owner", at: \.owner)
+                        .description(
+                            "The session that made the checkpoint: this session, or another session of the same "
+                                + "working directory, which shares its checkpoints.")
                     Field("changes", at: SnapshotsGraphCheckpoint.changes)
                         .description(
                             "Each file that the checkpoint changed, with its unified diff. Select it only when you "

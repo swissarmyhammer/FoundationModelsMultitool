@@ -31,6 +31,11 @@ type Checkpoint {
   at: DateTime!
 
   """
+  The session that made the checkpoint: this session, or another session of the same working directory, which shares its checkpoints.
+  """
+  owner: ID!
+
+  """
   Each file that the checkpoint changed, with its unified diff. Select it only when you need the diffs: each one is read from disk.
   """
   changes: [FileChange!]!
@@ -58,7 +63,9 @@ input RollbackTimelineInput {
   index: Int!
 }
 
-"""One new checkpoint of one session that you can see."""
+"""
+One new checkpoint of one session that you can see. Sessions of one working directory share their checkpoints, so each of them gets a change for each new checkpoint.
+"""
 type SnapshotChange {
   """The cursor that resumes the subscription after this change."""
   cursor: String!
@@ -68,6 +75,11 @@ type SnapshotChange {
 
   """The session whose checkpoints changed."""
   sessionId: ID!
+
+  """
+  The session that made the checkpoint: sessionId itself, or another session of the same working directory.
+  """
+  owner: ID!
 
   """
   The new checkpoint: query checkpoint(sessionId:index:) for its files and trigger.

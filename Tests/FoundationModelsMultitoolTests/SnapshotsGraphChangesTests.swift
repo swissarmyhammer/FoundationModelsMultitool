@@ -65,7 +65,18 @@ struct SnapshotsGraphChangesTests {
     /// The subscription of each case, with every field of a change.
     private static let changesDocument =
         "subscription($after: String, $sessionId: ID) { changes(after: $after, sessionId: $sessionId) "
-        + "{ cursor at sessionId added changed removed } }"
+        + "{ cursor at sessionId owner added changed removed } }"
+
+    /// The one session key that the two sessions of a shared-key case open:
+    /// two sessions that stand in one working directory.
+    private static let sharedSessionKey = "lineage-shared"
+
+    /// The session key of each session of a shared-key case, by session ID.
+    private static let sharedKeys = [firstSessionId: sharedSessionKey, secondSessionId: sharedSessionKey]
+
+    /// The `checkpoint` query of the owner of one index of a session.
+    private static let checkpointOwnerQuery =
+        "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) { id owner } }"
 
     /// The subscription with the alias `snapshotChanges` of `changes`.
     private static let aliasDocument =
@@ -97,6 +108,9 @@ struct SnapshotsGraphChangesTests {
 
         /// The session whose timeline changed.
         let sessionId: String
+
+        /// The session that made the checkpoint.
+        let owner: String
 
         /// The ids that the change added.
         let added: [String]
@@ -135,6 +149,7 @@ struct SnapshotsGraphChangesTests {
             return Change(
                 cursor: try #require(change["cursor"] as? String),
                 sessionId: try #require(change["sessionId"] as? String),
+                owner: try #require(change["owner"] as? String),
                 added: try #require(change["added"] as? [String]),
                 changed: try #require(change["changed"] as? [String]),
                 removed: try #require(change["removed"] as? [String]))
@@ -215,34 +230,18 @@ struct SnapshotsGraphChangesTests {
     /// The session key of each session of the stub resolvers, by session ID.
     private static let stubKeys = [firstSessionId: firstSessionKey, secondSessionId: secondSessionKey]
 
-    /// The stub resolver: the session key of a session ID, or `nil`.
-    ///
-    /// - Parameter id: The session ID.
-    /// - Returns: The session key, or `nil` for an unknown session ID.
-    @Sendable private static func stubSessionKey(_ id: String) async -> String? {
-        stubKeys[id]
-    }
-
-    /// The inverse of ``stubSessionKey(_:)``: the session ID of a session
-    /// key, or `nil`.
-    ///
-    /// - Parameter key: The session key.
-    /// - Returns: The session ID, or `nil` for an unknown session key.
-    @Sendable private static func stubSessionId(_ key: String) async -> String? {
-        stubKeys.first { $0.value == key }?.key
-    }
-
-    /// The endpoint over the store of `fixture`, with the stub resolvers.
+    /// The endpoint over the store of `fixture`.
     ///
     /// - Parameters:
     ///   - fixture: The fixture.
     ///   - capacity: The capacity of the change log of the store.
+    ///   - keys: The session key of each session the host knows, by session
+    ///     ID. The default is the stub resolver.
     /// - Returns: The endpoint.
     private static func graph(
-        of fixture: Fixture, capacity: Int = SnapshotsGraph.changeLogCapacity
+        of fixture: Fixture, capacity: Int = SnapshotsGraph.changeLogCapacity, keys: [String: String] = stubKeys
     ) -> SnapshotsGraph {
-        SnapshotsGraph(
-            store: fixture.store, sessionKey: stubSessionKey, sessionId: stubSessionId, changeLogCapacity: capacity)
+        SnapshotsGraph(store: fixture.store, sessionKey: { keys[$0] }, changeLogCapacity: capacity)
     }
 
     /// Runs one document on `graph`.
@@ -322,10 +321,15 @@ struct SnapshotsGraphChangesTests {
     /// - Parameters:
     ///   - cursor: The cursor of the change, as the response gave it.
     ///   - sessionId: The session of the checkpoint.
+    ///   - owner: The session that made the checkpoint, or `nil` for
+    ///     `sessionId`.
     ///   - id: The id of the checkpoint.
     /// - Returns: The change.
-    private static func added(cursor: String, sessionId: String = firstSessionId, id: String) -> Change {
-        Change(cursor: cursor, sessionId: sessionId, added: [id], changed: [], removed: [])
+    private static func added(
+        cursor: String, sessionId: String = firstSessionId, owner: String? = nil, id: String
+    ) -> Change {
+        Change(
+            cursor: cursor, sessionId: sessionId, owner: owner ?? sessionId, added: [id], changed: [], removed: [])
     }
 
     // MARK: - The change of each checkpoint
@@ -576,5 +580,56 @@ struct SnapshotsGraphChangesTests {
         let externalChange = try await external.nextChange()
 
         #expect(externalChange.sessionId == Self.secondSessionId)
+    }
+
+    // MARK: - Sessions that share one key
+
+    /// Two sessions in one working directory share one session key. A take of
+    /// either one gives one change to EACH session of the key, and each change
+    /// names the session that made the checkpoint as its owner.
+    @Test("a take on a shared key gives a change to each session of the key, with its owner")
+    func aTakeOnASharedKeyGivesEachSessionAChange() async throws {
+        let fixture = try await Fixture(keys: Self.sharedKeys)
+        let graph = Self.graph(of: fixture, keys: Self.sharedKeys)
+        let before = try await Self.cursor(of: graph)
+        var all = try await Self.subscribe(to: graph, after: before)
+        var second = try await Self.subscribe(to: graph, after: before, sessionId: Self.secondSessionId)
+
+        let index = try await fixture.take(owner: Self.firstSessionId, key: Self.sharedSessionKey)
+        let changes = [try await all.nextChange(), try await all.nextChange()]
+        let secondChange = try await second.nextChange()
+
+        let firstId = try await Self.checkpointId(index, of: Self.firstSessionId, on: graph)
+        let secondId = try await Self.checkpointId(index, of: Self.secondSessionId, on: graph)
+        // The fan-out goes in the order of the session IDs.
+        #expect(
+            changes == [
+                Self.added(cursor: changes[0].cursor, owner: Self.firstSessionId, id: firstId),
+                Self.added(
+                    cursor: changes[1].cursor, sessionId: Self.secondSessionId, owner: Self.firstSessionId,
+                    id: secondId),
+            ])
+        #expect(
+            secondChange
+                == Self.added(
+                    cursor: secondChange.cursor, sessionId: Self.secondSessionId, owner: Self.firstSessionId,
+                    id: secondId))
+    }
+
+    /// The `owner` of a checkpoint names the session that made it, read
+    /// through either session of the shared key.
+    @Test("a checkpoint of a shared key names its owner through each session")
+    func aCheckpointOfASharedKeyNamesItsOwner() async throws {
+        let fixture = try await Fixture(keys: Self.sharedKeys)
+        let graph = Self.graph(of: fixture, keys: Self.sharedKeys)
+
+        let index = try await fixture.take(owner: Self.secondSessionId, key: Self.sharedSessionKey)
+
+        for sessionId in [Self.firstSessionId, Self.secondSessionId] {
+            let variables: [String: Map] = ["sessionId": .string(sessionId), "index": .number(Number(index))]
+            let reply = try await Self.run(Self.checkpointOwnerQuery, variables: variables, on: graph)
+            #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+            #expect(try reply.object("checkpoint")["owner"] as? String == Self.secondSessionId)
+        }
     }
 }

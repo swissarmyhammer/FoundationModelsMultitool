@@ -83,40 +83,34 @@ public struct SnapshotsCapability: Capability {
 
     /// Makes the snapshots capability over the store that the host gives to
     /// it, for a host whose session keys are the session IDs: the GraphQL
-    /// endpoint treats a session ID as its session key, and a session key as
-    /// its session ID.
+    /// endpoint treats a session ID as its session key.
     ///
     /// - Parameter store: The store that the host also gives to
     ///   `SnapshotHook`, which takes the snapshots on the tool events.
     public init(store: SnapshotStore) {
-        self.init(store: store, sessionKey: { sessionId in sessionId }, sessionId: { sessionKey in sessionKey })
+        self.init(store: store, sessionKey: { sessionId in sessionId })
     }
 
     /// Makes the snapshots capability over the store that the host gives to
-    /// it, for a host with lineage session keys.
+    /// it, for a host whose session keys are not the session IDs — lineage
+    /// keys, or one key that the sessions of a working directory share.
     ///
     /// The initializer builds one `SnapshotsContext` and hands it to each
     /// verb, and builds the ``SnapshotsGraph`` over the store.
     ///
     /// A GraphQL call names a session by its session ID, and the store takes
-    /// the session key of the session lineage. `sessionKey` maps the one to
-    /// the other, and `sessionId` maps a session key of a change of the store
-    /// back to the session ID that the change names.
+    /// the session key. `sessionKey` maps the one to the other. A change of
+    /// the store names the sessions of its key itself (`SnapshotChange.owners`),
+    /// so the endpoint needs no map back from a key to a session.
     ///
     /// - Parameters:
     ///   - store: The store that the host also gives to `SnapshotHook`, which
     ///     takes the snapshots on the tool events.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
     ///     session that the host does not know.
-    ///   - sessionId: The inverse of `sessionKey`: gives the session ID of a
-    ///     session key, or `nil` for a key that the host does not know.
-    public init(
-        store: SnapshotStore,
-        sessionKey: @escaping @Sendable (String) async -> String?,
-        sessionId: @escaping @Sendable (String) async -> String?
-    ) {
+    public init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?) {
         let context = SnapshotsContext(store: store)
         tools = [ListSnapshots(context: context), TakeSnapshot(context: context), RollbackSnapshot(context: context)]
-        graph = SnapshotsGraph(store: store, sessionKey: sessionKey, sessionId: sessionId)
+        graph = SnapshotsGraph(store: store, sessionKey: sessionKey)
     }
 }

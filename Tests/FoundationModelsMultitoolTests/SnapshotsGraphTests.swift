@@ -187,15 +187,6 @@ struct SnapshotsGraphTests {
         id == sessionId ? sessionKey : nil
     }
 
-    /// The inverse of ``stubSessionKey(_:)``: it gives ``sessionId`` for
-    /// ``sessionKey``, and no session ID for each other key.
-    ///
-    /// - Parameter key: The session key.
-    /// - Returns: The session ID, or `nil`.
-    @Sendable private static func stubSessionId(_ key: String) async -> String? {
-        key == sessionKey ? sessionId : nil
-    }
-
     /// Makes a repository with one base commit, a store, the session key
     /// open on the store for ``sessionId``, and the endpoint over the store.
     ///
@@ -216,7 +207,7 @@ struct SnapshotsGraphTests {
         try await store.open(sessionKey: key, owner: sessionId, workingDirectory: repository.workDirectory)
         return Fixture(
             repository: repository, storeDirectory: storeDirectory, store: store,
-            graph: SnapshotsGraph(store: store, sessionKey: resolver, sessionId: stubSessionId))
+            graph: SnapshotsGraph(store: store, sessionKey: resolver))
     }
 
     /// The number of the calls of a diff provider.
@@ -273,8 +264,7 @@ struct SnapshotsGraphTests {
     /// - Returns: The endpoint.
     private static func graph(over fixture: Fixture, diff: @escaping SnapshotsGraphDiffProvider) -> SnapshotsGraph {
         SnapshotsGraph(
-            store: fixture.store, sessionKey: stubSessionKey, sessionId: stubSessionId,
-            changeLogCapacity: SnapshotsGraph.changeLogCapacity, diff: diff)
+            store: fixture.store, sessionKey: stubSessionKey, changeLogCapacity: SnapshotsGraph.changeLogCapacity, diff: diff)
     }
 
     /// Makes the endpoint over the store of `fixture`, with a resolver that
@@ -285,7 +275,7 @@ struct SnapshotsGraphTests {
     ///   - key: The session key of each session ID.
     /// - Returns: The endpoint.
     private static func graph(over fixture: Fixture, resolvingTo key: String) -> SnapshotsGraph {
-        SnapshotsGraph(store: fixture.store, sessionKey: { _ in key }, sessionId: stubSessionId)
+        SnapshotsGraph(store: fixture.store, sessionKey: { _ in key })
     }
 
     /// Runs the `changes` query of checkpoint `index` of ``sessionId``.

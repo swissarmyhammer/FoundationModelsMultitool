@@ -96,25 +96,20 @@ public struct SnapshotsGraph: GraphQLEndpoint {
 
     /// Makes the endpoint over a store.
     ///
-    /// The change log of a store maps each session key of a change to its
-    /// session ID with the `sessionId` resolver of the first endpoint over
-    /// the store, so a host gives each endpoint over one store the same
-    /// resolvers.
+    /// Each change of the store goes to every session of its key — the
+    /// owners that `SnapshotChange.owners` names — that `sessionKey` knows.
+    /// The change log of a store reads the `sessionKey` resolver of the first
+    /// endpoint over the store, so a host gives each endpoint over one store
+    /// the same resolver.
     ///
     /// - Parameters:
     ///   - store: The store that the host also gives to the snapshots
     ///     capability and to `SnapshotHook`.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
-    ///     session that the host does not know.
-    ///   - sessionId: The inverse of `sessionKey`: gives the session ID of a
-    ///     session key, or `nil` for a key that the host does not know. A
-    ///     checkpoint of an unknown key gives no change.
-    public init(
-        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
-        sessionId: @escaping @Sendable (String) async -> String?
-    ) {
-        self.init(
-            store: store, sessionKey: sessionKey, sessionId: sessionId, changeLogCapacity: Self.changeLogCapacity)
+    ///     session that the host does not know. Sessions that share a working
+    ///     directory may share one key.
+    public init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?) {
+        self.init(store: store, sessionKey: sessionKey, changeLogCapacity: Self.changeLogCapacity)
     }
 
     /// Makes the endpoint over a store, with a change log of a given
@@ -123,19 +118,17 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     /// - Parameters:
     ///   - store: The store.
     ///   - sessionKey: Gives the session key of a session ID, or `nil`.
-    ///   - sessionId: Gives the session ID of a session key, or `nil`.
     ///   - changeLogCapacity: The number of the newest changes that a new
     ///     change log of the store keeps.
     ///   - diff: Reads the diff of one file of one checkpoint for
     ///     `Checkpoint.changes`, or `nil` for
     ///     `SnapshotStore.diff(sessionKey:index:path:)` of `store`.
     init(
-        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
-        sessionId: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int,
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int,
         diff: SnapshotsGraphDiffProvider? = nil
     ) {
         resolver = SnapshotsGraphResolver(store: store, sessionKey: sessionKey)
-        changes = SnapshotsGraphChangeFeed.feed(of: store, sessionId: sessionId, capacity: changeLogCapacity)
+        changes = SnapshotsGraphChangeFeed.feed(of: store, sessionKey: sessionKey, capacity: changeLogCapacity)
         self.diff = diff ?? { key, index, path in try await store.diff(sessionKey: key, index: index, path: path) }
     }
 
