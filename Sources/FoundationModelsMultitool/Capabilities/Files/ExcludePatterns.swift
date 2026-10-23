@@ -79,6 +79,22 @@ struct ExcludePatterns: Sendable {
             || isExcluded(relativePath, isFolder: false)
     }
 
+    /// Whether the patterns exclude a folder.
+    ///
+    /// The folder is excluded when the patterns exclude it or one of its
+    /// parent folders — thus `.acp-agent/` hides the `.acp-agent` folder
+    /// itself from a directory listing, not only the files inside it.
+    ///
+    /// - Parameter relativePath: the path of a folder, relative to the session
+    ///   root, with `/` between its components.
+    /// - Returns: `true` when a listing must skip the folder.
+    func excludes(folderPath relativePath: String) -> Bool {
+        guard !rules.isEmpty else { return false }
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        return components.indices.map { components[...$0].joined(separator: "/") }
+            .contains { isExcluded($0, isFolder: true) }
+    }
+
     /// Whether the last pattern that matches a path excludes it.
     ///
     /// - Parameters:
