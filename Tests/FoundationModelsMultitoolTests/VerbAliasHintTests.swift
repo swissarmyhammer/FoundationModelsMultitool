@@ -228,4 +228,22 @@ struct VerbAliasHintTests {
         #expect(resolution.tier == .verbAlias)
         #expect(resolution.suggestedPaths == ["shell.execute"])
     }
+
+    // MARK: - A delete-like name (SWE-bench run bench24-1023b, django__django-13933)
+
+    @Test("a delete-like verb is answered with files.delete, never files.read", arguments: ["files.erase", "files.Remove", "unlink"])
+    func aDeleteLikeVerbIsAnsweredWithDelete(guess: String) async throws {
+        let resolution = try await resolve(guess, includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["files.delete"])
+    }
+
+    @Test("a made-up delete name the table does not hold names files.delete first")
+    func aMadeUpDeleteNameNamesDeleteFirst() async throws {
+        let resolution = try await resolve("files.deleteFiles", includesWeb: true)
+
+        #expect(resolution.suggestedPaths.first == "files.delete")
+        #expect(!resolution.suggestedPaths.contains("files.read"))
+    }
 }

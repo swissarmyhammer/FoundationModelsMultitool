@@ -96,7 +96,7 @@ extension RemoveDirectory {
 
     /// The description of a path that is a regular file, before the `: path` suffix.
     private static let regularFileDescription =
-        "The path is a file, not a directory. To delete a file, use tools.files.patch with a `*** Delete File:` hunk"
+        "The path is a file, not a directory. To delete a file, use tools.files.delete"
 
     /// The description of a path that is a root of the session, before the `: path` suffix.
     private static let rootDescription =
@@ -329,7 +329,7 @@ struct RemoveDirectory: Tool {
         needs recursive: true, which removes the whole tree. A symlink to a directory is removed \
         as a link only, and its target stays. The result carries the absolute path, removed, and \
         filesRemoved — the number of files that the removal deleted. To delete one file, use \
-        tools.files.patch. A missing path, a file at the path, the session root, a path outside \
+        tools.files.delete. A missing path, a file at the path, the session root, a path outside \
         the session root, a read-only session, and a failed removal each come back as a \
         correction rather than as an error — read it, correct the call, and ask again.
         """

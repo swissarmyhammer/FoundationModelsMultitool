@@ -79,9 +79,9 @@ import Logging
 /// above `files.glob`, and "find" ranked `files.edit` first, because its
 /// description speaks of find and replace. Since SWE-bench run bench24-1023b
 /// the `tools.*` preamble also binds most rows as callable aliases ("Postel's
-/// rule"), thus a hint answers only a row that is not bound — a verb that
-/// deletes or rolls back — or a host whose snippet reached a name another
-/// way. A guess under a group that does not exist (`bash.run`) keeps the
+/// rule"), thus a hint answers only a row that is not bound — a rollback —
+/// a made-up verb that holds a real one (`files.deleteFiles`), or a host
+/// whose snippet reached a name another way. A guess under a group that does not exist (`bash.run`) keeps the
 /// ranked tiers.
 ///
 /// Alongside the suggestions, a resolution carries a ``RepairDirective`` —
@@ -399,7 +399,42 @@ enum UnknownToolHint {
         let group = String(failedPath[..<separatorIndex])
         let verb = String(failedPath[failedPath.index(after: separatorIndex)...])
         guard surface.entries.contains(where: { $0.group == group }) else { return nil }
-        return synonymEntry(verb)
+        return synonymEntry(verb) ?? containedVerbEntry(in: verb, group: group, surface: surface)
+    }
+
+    /// The shortest name a verb or a synonym of ``VerbSynonyms`` must have
+    /// for ``containedVerbEntry(in:group:surface:)`` to read it inside a
+    /// guess. Shorter names (`rm`, `del`) stand inside too many words.
+    private static let containedVerbMinimumLength = 4
+
+    /// The entry whose verb, or a synonym of it, the guessed verb holds — the
+    /// longest such name wins — or nil.
+    ///
+    /// SWE-bench run bench24-1023b: a delete-like guess was told to call
+    /// `tools.files.read`, because the group prefix makes every verb of the
+    /// group resemble the guess. A guess such as `files.deleteFiles` holds
+    /// the real verb `delete`, which is the meaning to answer with.
+    ///
+    /// - Parameters:
+    ///   - verb: the guessed verb.
+    ///   - group: the real group of the guess.
+    ///   - surface: the catalog to read.
+    /// - Returns: the entry, or nil.
+    private static func containedVerbEntry(
+        in verb: String, group: String, surface: APISurface
+    ) -> APISurface.Entry? {
+        let guess = VerbSynonyms.normalized(verb)
+        var candidates: [(name: String, entry: APISurface.Entry)] = []
+        for entry in surface.entries where entry.group == group {
+            candidates.append((VerbSynonyms.normalized(entry.descriptor.name), entry))
+            for row in VerbSynonyms.rows where row.path == entry.path {
+                candidates += row.verbs.map { ($0, entry) }
+            }
+        }
+        return
+            candidates
+            .filter { $0.name.count >= containedVerbMinimumLength && guess.contains($0.name) }
+            .max { $0.name.count < $1.name.count }?.entry
     }
 
     /// Decides what the repairable error should tell the model to do next.

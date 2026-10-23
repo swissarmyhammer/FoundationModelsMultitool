@@ -27,7 +27,7 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// The registry path of the write verb, through which a test reaches the
-/// change journal the nine files verbs share.
+/// change journal the ten files verbs share.
 private let writeVerbPath = "files.write"
 
 /// A stub run beside a files registry rooted in a canonical directory the
@@ -36,7 +36,7 @@ struct FilesRun {
     /// The stub session and its context.
     let run: StubRun
 
-    /// The registry that holds the nine files verbs.
+    /// The registry that holds the ten files verbs.
     let registry: MultiTool.Registry
 
     /// The canonical session root.

@@ -84,8 +84,8 @@ extension MultiTool.Builder {
                 defaultWorkingDirectory: defaultWorkingDirectory))
     }
 
-    /// Queues the nine verbs of the files capability — `tools.files.read`,
-    /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.removeDirectory`,
+    /// Queues the ten verbs of the files capability — `tools.files.read`,
+    /// `tools.files.write`, `tools.files.makeDirectory`, `tools.files.removeDirectory`, `tools.files.delete`,
     /// `tools.files.edit`, `tools.files.patch`, `tools.files.list`, `tools.files.glob` and
     /// `tools.files.grep` — under the noun `files`,
     /// through `withCapability(_:)`.

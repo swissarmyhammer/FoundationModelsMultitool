@@ -50,7 +50,9 @@ import Testing
     /// The files that carry exactly one ``ambientContextCapture`` each: the
     /// four verbs that record changes, which deliver their change set through
     /// it. No other file of the capability reads the ambient context at all.
-    private static let capturingVerbFiles = ["Edit.swift", "Patch.swift", "RemoveDirectory.swift", "Write.swift"]
+    private static let capturingVerbFiles = [
+        "Delete.swift", "Edit.swift", "Patch.swift", "RemoveDirectory.swift", "Write.swift",
+    ]
         .map { "\(filesCapabilityDirectory)/\($0)" }
 
     /// The separator `RepositoryFile.sightings` writes between the location

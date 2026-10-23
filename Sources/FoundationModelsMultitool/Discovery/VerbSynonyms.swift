@@ -19,8 +19,10 @@ struct VerbSynonym: Sendable {
 
     /// Whether the preamble binds the names as callable aliases.
     ///
-    /// `false` for a verb that deletes or rolls back: a guess at such a verb
-    /// gets the hint, and never runs the work unasked.
+    /// `false` for a verb whose guess must never run the work unasked: a
+    /// rollback, which undoes other work of the session. A delete binds since
+    /// SWE-bench run bench24-1023b (django__django-13933): it is bounded to
+    /// one file, or to an empty directory, inside the root.
     let binds: Bool
 }
 
@@ -50,7 +52,10 @@ enum VerbSynonyms {
             path: "files.makeDirectory",
             verbs: ["mkdir", "makedir", "createdirectory", "createdir", "newdirectory"], binds: true),
         VerbSynonym(
-            path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"], binds: false),
+            path: "files.delete",
+            verbs: ["remove", "rm", "unlink", "del", "deletefile", "removefile", "erase", "trash"], binds: true),
+        VerbSynonym(
+            path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"], binds: true),
         VerbSynonym(path: "snapshots.rollback", verbs: ["reset", "rewind"], binds: false),
     ]
 
