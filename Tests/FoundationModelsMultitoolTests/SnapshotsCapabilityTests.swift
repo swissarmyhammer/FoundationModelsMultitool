@@ -1063,4 +1063,40 @@ struct SnapshotsCapabilityTests {
         #expect(resolution.suggestedPaths == [Self.rollbackPath])
         #expect(resolution.text.contains("Call tools.\(Self.rollbackPath) instead."), "text was: \(resolution.text)")
     }
+
+    // MARK: - The owner of each checkpoint
+
+    /// Two sessions of one working directory share one key. `list` names the
+    /// session that made each checkpoint, and `take` and `rollback` name the
+    /// session that called them.
+    @Test("list, take and rollback name the session that made each checkpoint")
+    func theVerbsNameTheOwnerOfEachCheckpoint() async throws {
+        let fixture = try await Self.makeFixture()
+        let other = Self.makeSession(
+            id: "session-other", key: fixture.session.sessionKey, workingDirectory: fixture.repository.workDirectory)
+        try await fixture.store.open(
+            sessionKey: other.sessionKey, owner: other.sessionID, workingDirectory: fixture.repository.workDirectory)
+
+        try fixture.repository.write("one\n", to: Self.firstFile)
+        let taken = try await HookSession.$current.withValue(fixture.session) {
+            try await TakeSnapshot(context: fixture.context).call(arguments: TakeSnapshotArguments(label: nil))
+        }
+        try fixture.repository.write("two\n", to: Self.secondFile)
+        _ = try await fixture.store.take(
+            sessionKey: other.sessionKey, owner: other.sessionID, trigger: .manual(label: nil))
+        let rolledBack = try await HookSession.$current.withValue(other) {
+            try await RollbackSnapshot(context: fixture.context).call(
+                arguments: RollbackSnapshotArguments(index: Self.firstIndexOfTimeline))
+        }
+
+        #expect(taken.checkpoint?.owner == fixture.session.sessionID)
+        #expect(rolledBack.checkpoint?.owner == other.sessionID)
+        let listed = try await Self.list(as: fixture.session, with: fixture.context)
+        #expect(
+            listed.checkpoints.map(\.owner) == [fixture.session.sessionID, other.sessionID, other.sessionID],
+            "listed: \(listed.checkpoints)")
+    }
+
+    /// The index of the first checkpoint of a timeline.
+    private static let firstIndexOfTimeline = 1
 }
