@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsRouter
 import Testing
+import os
 
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
@@ -263,8 +264,8 @@ struct ShellStoreSharingTests {
     @Test("each shell result names the session that ran the command")
     func eachResultNamesTheSessionThatRanTheCommand() async throws {
         let store = try ShellStore(storeDirectory: makeStoreDirectory())
-        let capabilityA = ShellCapability(store: store, sessionID: Self.sessionA)
-        let capabilityB = ShellCapability(store: store, sessionID: Self.sessionB)
+        let capabilityA = ShellCapability(store: store, sessionID: { Self.sessionA })
+        let capabilityB = ShellCapability(store: store, sessionID: { Self.sessionB })
 
         let token = try await Self.run(
             "echo \(Self.sharedMarker)", with: Self.runner(of: capabilityA))
@@ -299,15 +300,44 @@ struct ShellStoreSharingTests {
         #expect(read.sessionID == nil)
     }
 
+    /// The session ID is read each time a command runs, not when the
+    /// capability is made: a host builds its tools before it knows the
+    /// session, and a session can be replaced under the same tools. Each
+    /// command records the value at its run, and each result gives it back.
+    @Test("the session ID is read when each command runs, not at init")
+    func theSessionIDIsReadWhenEachCommandRuns() async throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let current = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let capability = ShellCapability(store: store, sessionID: { current.withLock { $0 } })
+        let runner = try Self.runner(of: capability)
+
+        current.withLock { $0 = Self.sessionA }
+        let first = try await Self.run("echo \(Self.sharedMarker)", with: runner)
+        current.withLock { $0 = Self.sessionB }
+        let second = try await Self.run("echo \(Self.sharedMarker)", with: runner)
+
+        #expect(await store.state.listCommands().map(\.owner) == [Self.sessionA, Self.sessionB])
+        #expect(await Execute.reportFields(of: first, in: store.state)["sessionID"] == .string(Self.sessionA))
+        #expect(await Execute.reportFields(of: second, in: store.state)["sessionID"] == .string(Self.sessionB))
+
+        let getLines = try Self.verb(GetLines.self, in: capability)
+        #expect(try await getLines.call(arguments: GetLinesArguments(commandID: first)).sessionID == Self.sessionA)
+        #expect(try await getLines.call(arguments: GetLinesArguments(commandID: second)).sessionID == Self.sessionB)
+
+        let found = try await Self.verb(GrepHistory.self, in: capability)
+            .call(arguments: GrepHistoryArguments(pattern: Self.sharedMarker, literal: true))
+        #expect(found.matches.map(\.sessionID) == [Self.sessionA, Self.sessionB])
+    }
+
     /// `withShell(store:sessionID:)` gives the session ID to the runner.
     @Test("withShell(store:sessionID:) gives the session ID to the runner")
     func withShellStoreSessionIDReachesTheRunner() throws {
         let store = try ShellStore(storeDirectory: makeStoreDirectory())
 
-        let registry = try MultiTool.Builder().withShell(store: store, sessionID: Self.sessionA).buildRegistry()
+        let registry = try MultiTool.Builder().withShell(store: store, sessionID: { Self.sessionA }).buildRegistry()
 
         let execute = try #require(registry.tools["shell.execute"] as? Execute)
-        #expect(execute.runner.sessionID == Self.sessionA)
+        #expect(execute.runner.sessionID() == Self.sessionA)
     }
 
     // MARK: - Separate stores
