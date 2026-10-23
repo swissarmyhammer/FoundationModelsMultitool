@@ -50,11 +50,14 @@ extension SnapshotCheckpoint {
 
     /// Makes the value that the model reads from a checkpoint of the store.
     ///
-    /// - Parameter checkpoint: The checkpoint of the store.
-    init(_ checkpoint: Checkpoint) {
+    /// - Parameters:
+    ///   - checkpoint: The checkpoint of the store.
+    ///   - owner: The session the model reads as the maker: the host session
+    ///     of the owner of the store — see `SnapshotsContext.hostSession`.
+    init(_ checkpoint: Checkpoint, owner: String) {
         self.init(
             index: checkpoint.index, trigger: Self.text(of: checkpoint.trigger), files: checkpoint.files,
-            date: Self.dateStyle.format(checkpoint.date), owner: checkpoint.owner)
+            date: Self.dateStyle.format(checkpoint.date), owner: owner)
     }
 
     /// The text of a trigger, as the model reads it.

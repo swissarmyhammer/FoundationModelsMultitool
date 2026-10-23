@@ -1099,4 +1099,26 @@ struct SnapshotsCapabilityTests {
 
     /// The index of the first checkpoint of a timeline.
     private static let firstIndexOfTimeline = 1
+
+    /// With a `hostSession` map, the verbs name the host session of the
+    /// Router session that made each checkpoint, not the Router session.
+    @Test("list, take and rollback name the host session of each owner")
+    func theVerbsNameTheHostSessionOfEachOwner() async throws {
+        let fixture = try await Self.makeFixture()
+        let host = "host-session"
+        let context = SnapshotsContext(store: fixture.store, hostSession: { _ in host })
+
+        try fixture.repository.write("one\n", to: Self.firstFile)
+        let taken = try await HookSession.$current.withValue(fixture.session) {
+            try await TakeSnapshot(context: context).call(arguments: TakeSnapshotArguments(label: nil))
+        }
+        let rolledBack = try await HookSession.$current.withValue(fixture.session) {
+            try await RollbackSnapshot(context: context).call(arguments: RollbackSnapshotArguments(index: 0))
+        }
+        let listed = try await Self.list(as: fixture.session, with: context)
+
+        #expect(taken.checkpoint?.owner == host)
+        #expect(rolledBack.checkpoint?.owner == host)
+        #expect(listed.checkpoints.map(\.owner) == [host, host], "listed: \(listed.checkpoints)")
+    }
 }

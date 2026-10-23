@@ -237,11 +237,18 @@ struct SnapshotsGraphChangesTests {
     ///   - capacity: The capacity of the change log of the store.
     ///   - keys: The session key of each session the host knows, by session
     ///     ID. The default is the stub resolver.
+    ///   - hostSessions: The host session of each owner of the store. The
+    ///     default maps none.
+    ///   - storeOwners: The live owner of the store of each host session.
+    ///     The default maps none.
     /// - Returns: The endpoint.
     private static func graph(
-        of fixture: Fixture, capacity: Int = SnapshotsGraph.changeLogCapacity, keys: [String: String] = stubKeys
+        of fixture: Fixture, capacity: Int = SnapshotsGraph.changeLogCapacity, keys: [String: String] = stubKeys,
+        hostSessions: [String: String] = [:], storeOwners: [String: String] = [:]
     ) -> SnapshotsGraph {
-        SnapshotsGraph(store: fixture.store, sessionKey: { keys[$0] }, changeLogCapacity: capacity)
+        SnapshotsGraph(
+            store: fixture.store, sessionKey: { keys[$0] }, hostSession: { hostSessions[$0] },
+            storeOwner: { storeOwners[$0] }, changeLogCapacity: capacity)
     }
 
     /// Runs one document on `graph`.
@@ -631,5 +638,66 @@ struct SnapshotsGraphChangesTests {
             #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
             #expect(try reply.object("checkpoint")["owner"] as? String == Self.secondSessionId)
         }
+    }
+
+    // MARK: - Host sessions over Router sessions
+
+    /// The host session that two Router sessions serve: the first, and the
+    /// one that replaced it on a switch of the model.
+    private static let hostSessionId = "host-session"
+
+    /// The key of the host session, which both Router sessions open.
+    private static let hostKeys = [hostSessionId: sharedSessionKey]
+
+    /// The two Router sessions, as owners of the store, by session ID.
+    private static let routerKeys = [firstSessionId: sharedSessionKey, secondSessionId: sharedSessionKey]
+
+    /// The host session of each Router session.
+    private static let hostOfRouter = [firstSessionId: hostSessionId, secondSessionId: hostSessionId]
+
+    /// Two Router owners of one key that map to one host session give ONE
+    /// change of each take, under the host session, whose owner is the host
+    /// session; the checkpoint names the host session as its owner too.
+    @Test("two Router owners of one host session give one change under the host session")
+    func twoRouterOwnersOfOneHostSessionGiveOneChange() async throws {
+        let fixture = try await Fixture(keys: Self.routerKeys)
+        let graph = Self.graph(of: fixture, keys: Self.hostKeys, hostSessions: Self.hostOfRouter)
+        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+
+        let index = try await fixture.take(owner: Self.secondSessionId, key: Self.sharedSessionKey)
+        let marker = try await fixture.take(owner: Self.firstSessionId, key: Self.sharedSessionKey)
+        let change = try await subscription.nextChange()
+        let next = try await subscription.nextChange()
+
+        let id = try await Self.checkpointId(index, of: Self.hostSessionId, on: graph)
+        let markerId = try await Self.checkpointId(marker, of: Self.hostSessionId, on: graph)
+        #expect(change == Self.added(cursor: change.cursor, sessionId: Self.hostSessionId, id: id))
+        #expect(next == Self.added(cursor: next.cursor, sessionId: Self.hostSessionId, id: markerId))
+        let variables: [String: Map] = ["sessionId": .string(Self.hostSessionId), "index": .number(Number(index))]
+        let reply = try await Self.run(Self.checkpointOwnerQuery, variables: variables, on: graph)
+        #expect(try reply.object("checkpoint")["owner"] as? String == Self.hostSessionId)
+    }
+
+    /// After a switch of the model, only the replacement Router session owns
+    /// the key. A rollback through the host session acts as that live owner,
+    /// and the new checkpoint names the host session as its owner.
+    @Test("a rollback through the host session works when only the replacement owns the key")
+    func aRollbackThroughTheHostSessionActsAsTheLiveOwner() async throws {
+        let fixture = try await Fixture(keys: Self.routerKeys)
+        try await fixture.take(owner: Self.firstSessionId, key: Self.sharedSessionKey)
+        await fixture.store.release(sessionKey: Self.sharedSessionKey, owner: Self.firstSessionId)
+        let graph = Self.graph(
+            of: fixture, keys: Self.hostKeys, hostSessions: Self.hostOfRouter,
+            storeOwners: [Self.hostSessionId: Self.secondSessionId])
+
+        let input: Map = ["sessionId": .string(Self.hostSessionId), "index": .number(0)]
+        let reply = try await Self.run(
+            "mutation($input: RollbackTimelineInput!) { rollbackTimeline(input: $input) { id owner } }",
+            variables: ["input": input], on: graph)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let checkpoint = try reply.object("rollbackTimeline")
+        #expect(checkpoint["id"] as? String == "\(Self.hostSessionId):2")
+        #expect(checkpoint["owner"] as? String == Self.hostSessionId)
     }
 }

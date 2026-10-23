@@ -52,8 +52,8 @@ extension TakeSnapshot {
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: TakeSnapshotArguments) async throws -> TakeSnapshotResult {
         let trigger = SnapshotTrigger.manual(label: arguments.label)
-        return try await context.perform { store, sessionKey, owner in
-            try await store.take(sessionKey: sessionKey, owner: owner, trigger: trigger)
+        return try await context.perform { [context] store, sessionKey, owner in
+            await context.modelCheckpoint(try await store.take(sessionKey: sessionKey, owner: owner, trigger: trigger))
         }.resolve(corrective: TakeSnapshotResult.corrective, then: TakeSnapshotResult.result(of:))
     }
 }

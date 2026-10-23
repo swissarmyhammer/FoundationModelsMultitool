@@ -49,8 +49,8 @@ extension ListSnapshots {
     /// - Returns: The checkpoints, or the correction.
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: ListSnapshotsArguments) async throws -> ListSnapshotsResult {
-        try await context.perform { store, sessionKey, owner in
-            try await store.checkpoints(sessionKey: sessionKey, owner: owner)
+        try await context.perform { [context] store, sessionKey, owner in
+            await context.modelCheckpoints(try await store.checkpoints(sessionKey: sessionKey, owner: owner))
         }.resolve(corrective: ListSnapshotsResult.corrective, then: Self.result(of:))
     }
 
@@ -58,10 +58,10 @@ extension ListSnapshots {
 
     /// The result of a list.
     ///
-    /// - Parameter checkpoints: The checkpoints of the store, oldest first.
+    /// - Parameter checkpoints: The checkpoints, oldest first.
     /// - Returns: The result.
-    private static func result(of checkpoints: [Checkpoint]) -> ListSnapshotsResult {
-        ListSnapshotsResult(checkpoints: checkpoints.map(SnapshotCheckpoint.init), correction: nil)
+    private static func result(of checkpoints: [SnapshotCheckpoint]) -> ListSnapshotsResult {
+        ListSnapshotsResult(checkpoints: checkpoints, correction: nil)
     }
 }
 

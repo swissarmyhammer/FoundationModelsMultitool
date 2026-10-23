@@ -71,8 +71,8 @@ extension RollbackSnapshot {
     /// - Throws: `CancellationError` when the call is cancelled.
     func call(arguments: RollbackSnapshotArguments) async throws -> RollbackSnapshotResult {
         let index = arguments.index
-        return try await context.perform { store, sessionKey, owner in
-            try await store.rollback(sessionKey: sessionKey, owner: owner, to: index)
+        return try await context.perform { [context] store, sessionKey, owner in
+            await context.modelCheckpoint(try await store.rollback(sessionKey: sessionKey, owner: owner, to: index))
         }.resolve(corrective: RollbackSnapshotResult.corrective, then: RollbackSnapshotResult.result(of:))
     }
 }

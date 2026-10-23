@@ -58,7 +58,7 @@ extension SnapshotCheckpointResult {
     /// - Parameter checkpoint: The new checkpoint, or `nil` when the store
     ///   found no change.
     /// - Returns: The new checkpoint, or "no change".
-    static func result(of checkpoint: Checkpoint?) -> Self {
-        Self(checkpoint: checkpoint.map(SnapshotCheckpoint.init), isUnchanged: checkpoint == nil, correction: nil)
+    static func result(of checkpoint: SnapshotCheckpoint?) -> Self {
+        Self(checkpoint: checkpoint, isUnchanged: checkpoint == nil, correction: nil)
     }
 }

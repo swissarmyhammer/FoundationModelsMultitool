@@ -23,6 +23,43 @@ struct SnapshotsContext: Sendable {
     /// The store that the capability and `SnapshotHook` share.
     let store: SnapshotStore
 
+    /// Gives the host session of an owner of the store, or `nil` to keep the
+    /// owner. The owners of the store are the sessions of Router, and a host
+    /// can replace the Router session of one of its own sessions (a switch
+    /// of the model), so the model reads the host session as the maker of a
+    /// checkpoint.
+    var hostSession: @Sendable (String) async -> String? = { _ in nil }
+
+    /// The checkpoint that the model reads, with its owner mapped to the host
+    /// session.
+    ///
+    /// - Parameter checkpoint: The checkpoint of the store.
+    /// - Returns: The checkpoint for the model.
+    func modelCheckpoint(_ checkpoint: Checkpoint) async -> SnapshotCheckpoint {
+        SnapshotCheckpoint(checkpoint, owner: await hostSession(checkpoint.owner) ?? checkpoint.owner)
+    }
+
+    /// The checkpoint that the model reads, or `nil` for no checkpoint.
+    ///
+    /// - Parameter checkpoint: The checkpoint of the store, or `nil`.
+    /// - Returns: The checkpoint for the model, or `nil`.
+    func modelCheckpoint(_ checkpoint: Checkpoint?) async -> SnapshotCheckpoint? {
+        guard let checkpoint else { return nil }
+        return await modelCheckpoint(checkpoint)
+    }
+
+    /// The checkpoints that the model reads, in the same order.
+    ///
+    /// - Parameter checkpoints: The checkpoints of the store.
+    /// - Returns: The checkpoints for the model.
+    func modelCheckpoints(_ checkpoints: [Checkpoint]) async -> [SnapshotCheckpoint] {
+        var mapped: [SnapshotCheckpoint] = []
+        for checkpoint in checkpoints {
+            mapped.append(await modelCheckpoint(checkpoint))
+        }
+        return mapped
+    }
+
     /// Runs `operation` on the store for the session key and the owner of
     /// the bound session.
     ///

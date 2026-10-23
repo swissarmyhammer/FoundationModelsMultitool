@@ -103,14 +103,31 @@ public struct SnapshotsCapability: Capability {
     /// the store names the sessions of its key itself (`SnapshotChange.owners`),
     /// so the endpoint needs no map back from a key to a session.
     ///
+    /// The owners of the store are the Router sessions that open the key.
+    /// A host whose own session outlives its Router session (a switch of the
+    /// model makes a new Router session under the same host session) gives
+    /// `hostSession` and `storeOwner`, which map between the two. Then each
+    /// `owner` that the verbs and the endpoint give, and each `sessionId` of
+    /// a change, is the host session, and a rollback through the host session
+    /// acts as its live Router session.
+    ///
     /// - Parameters:
     ///   - store: The store that the host also gives to `SnapshotHook`, which
     ///     takes the snapshots on the tool events.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
     ///     session that the host does not know.
-    public init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?) {
-        let context = SnapshotsContext(store: store)
+    ///   - hostSession: Gives the host session of an owner of the store, or
+    ///     `nil` — the default — to keep the owner.
+    ///   - storeOwner: Gives the live owner of the store of a host session,
+    ///     or `nil` — the default — to use the host session as the owner.
+    public init(
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
+        hostSession: @escaping @Sendable (String) async -> String? = { _ in nil },
+        storeOwner: @escaping @Sendable (String) async -> String? = { _ in nil }
+    ) {
+        let context = SnapshotsContext(store: store, hostSession: hostSession)
         tools = [ListSnapshots(context: context), TakeSnapshot(context: context), RollbackSnapshot(context: context)]
-        graph = SnapshotsGraph(store: store, sessionKey: sessionKey)
+        graph = SnapshotsGraph(
+            store: store, sessionKey: sessionKey, hostSession: hostSession, storeOwner: storeOwner)
     }
 }

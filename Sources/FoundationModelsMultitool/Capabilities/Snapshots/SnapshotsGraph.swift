@@ -102,14 +102,34 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     /// endpoint over the store, so a host gives each endpoint over one store
     /// the same resolver.
     ///
+    /// The owners of the store are the Router sessions that open a key, and
+    /// a host can replace the Router session under one of its own sessions (a
+    /// switch of the model). `hostSession` maps an owner to its host session:
+    /// a change goes to each distinct host session of the owners of its key,
+    /// and each `owner` is a host session. `storeOwner` maps a host session
+    /// to its live owner for a rollback. A call names a session by its host
+    /// session, and `sessionKey` takes that host session. Like `sessionKey`,
+    /// the change log reads the `hostSession` of the first endpoint over the
+    /// store.
+    ///
     /// - Parameters:
     ///   - store: The store that the host also gives to the snapshots
     ///     capability and to `SnapshotHook`.
     ///   - sessionKey: Gives the session key of a session ID, or `nil` for a
     ///     session that the host does not know. Sessions that share a working
     ///     directory may share one key.
-    public init(store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?) {
-        self.init(store: store, sessionKey: sessionKey, changeLogCapacity: Self.changeLogCapacity)
+    ///   - hostSession: Gives the host session of an owner of the store, or
+    ///     `nil` — the default — to keep the owner.
+    ///   - storeOwner: Gives the live owner of the store of a host session,
+    ///     or `nil` — the default — to use the host session as the owner.
+    public init(
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
+        hostSession: @escaping @Sendable (String) async -> String? = { _ in nil },
+        storeOwner: @escaping @Sendable (String) async -> String? = { _ in nil }
+    ) {
+        self.init(
+            store: store, sessionKey: sessionKey, hostSession: hostSession, storeOwner: storeOwner,
+            changeLogCapacity: Self.changeLogCapacity)
     }
 
     /// Makes the endpoint over a store, with a change log of a given
@@ -118,17 +138,25 @@ public struct SnapshotsGraph: GraphQLEndpoint {
     /// - Parameters:
     ///   - store: The store.
     ///   - sessionKey: Gives the session key of a session ID, or `nil`.
+    ///   - hostSession: Gives the host session of an owner of the store, or
+    ///     `nil` to keep the owner.
+    ///   - storeOwner: Gives the live owner of the store of a host session,
+    ///     or `nil` to use the host session.
     ///   - changeLogCapacity: The number of the newest changes that a new
     ///     change log of the store keeps.
     ///   - diff: Reads the diff of one file of one checkpoint for
     ///     `Checkpoint.changes`, or `nil` for
     ///     `SnapshotStore.diff(sessionKey:index:path:)` of `store`.
     init(
-        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?, changeLogCapacity: Int,
-        diff: SnapshotsGraphDiffProvider? = nil
+        store: SnapshotStore, sessionKey: @escaping @Sendable (String) async -> String?,
+        hostSession: @escaping @Sendable (String) async -> String? = { _ in nil },
+        storeOwner: @escaping @Sendable (String) async -> String? = { _ in nil },
+        changeLogCapacity: Int, diff: SnapshotsGraphDiffProvider? = nil
     ) {
-        resolver = SnapshotsGraphResolver(store: store, sessionKey: sessionKey)
-        changes = SnapshotsGraphChangeFeed.feed(of: store, sessionKey: sessionKey, capacity: changeLogCapacity)
+        resolver = SnapshotsGraphResolver(
+            store: store, sessionKey: sessionKey, hostSession: hostSession, storeOwner: storeOwner)
+        changes = SnapshotsGraphChangeFeed.feed(
+            of: store, sessionKey: sessionKey, hostSession: hostSession, capacity: changeLogCapacity)
         self.diff = diff ?? { key, index, path in try await store.diff(sessionKey: key, index: index, path: path) }
     }
 

@@ -58,7 +58,8 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
     ///   - checkpoint: The checkpoint of the store.
     ///   - sessionId: The session whose timeline holds the checkpoint.
     ///   - sessionKey: The session key of `sessionId`.
-    init(_ checkpoint: Checkpoint, sessionId: String, sessionKey: String) {
+    ///   - owner: The host session of the owner of `checkpoint`.
+    init(_ checkpoint: Checkpoint, sessionId: String, sessionKey: String, owner: String) {
         self.sessionId = sessionId
         self.sessionKey = sessionKey
         id = Self.id(sessionId: sessionId, index: checkpoint.index)
@@ -67,7 +68,7 @@ struct SnapshotsGraphCheckpoint: Codable, Sendable {
         toolCallId = Self.toolCallId(of: checkpoint.trigger)
         files = checkpoint.files
         at = DateTime(checkpoint.date)
-        owner = ToolkitID(checkpoint.owner)
+        self.owner = ToolkitID(owner)
     }
 
     /// The id of a checkpoint: `<sessionId>:<index>`.
@@ -180,6 +181,30 @@ struct SnapshotsGraphResolver: Sendable {
     /// host does not know.
     let sessionKey: @Sendable (String) async -> String?
 
+    /// Gives the host session of an owner of the store, or `nil` to keep the
+    /// owner.
+    let hostSession: @Sendable (String) async -> String?
+
+    /// Gives the live owner of the store of a host session, or `nil` to use
+    /// the host session as the owner.
+    let storeOwner: @Sendable (String) async -> String?
+
+    /// The object of a checkpoint of the store, with its owner mapped to the
+    /// host session.
+    ///
+    /// - Parameters:
+    ///   - checkpoint: The checkpoint of the store.
+    ///   - sessionId: The session whose timeline holds the checkpoint.
+    ///   - sessionKey: The session key of `sessionId`.
+    /// - Returns: The object.
+    private func object(of checkpoint: Checkpoint, sessionId: String, sessionKey: String) async
+        -> SnapshotsGraphCheckpoint
+    {
+        SnapshotsGraphCheckpoint(
+            checkpoint, sessionId: sessionId, sessionKey: sessionKey,
+            owner: await hostSession(checkpoint.owner) ?? checkpoint.owner)
+    }
+
     /// Resolves `Query.checkpoints`.
     ///
     /// - Parameters:
@@ -230,9 +255,15 @@ struct SnapshotsGraphResolver: Sendable {
         guard context.canRollBack(sessionId), let key = await sessionKey(sessionId) else {
             throw GraphQLToolkitError.notFound(kind: Self.sessionKind, id: sessionId)
         }
+        // The host session acts as its live owner of the store: after a switch
+        // of the model, the Router session that replaced the first one.
+        let owner = await storeOwner(sessionId) ?? sessionId
         do {
-            let checkpoint = try await store.rollback(sessionKey: key, owner: sessionId, to: arguments.input.index)
-            return checkpoint.map { SnapshotsGraphCheckpoint($0, sessionId: sessionId, sessionKey: key) }
+            guard let checkpoint = try await store.rollback(sessionKey: key, owner: owner, to: arguments.input.index)
+            else {
+                return nil
+            }
+            return await object(of: checkpoint, sessionId: sessionId, sessionKey: key)
         } catch let error as SnapshotError {
             throw SnapshotsGraphError.coded(error, sessionId: sessionId)
         }
@@ -256,9 +287,11 @@ struct SnapshotsGraphResolver: Sendable {
             return nil
         }
         do {
-            return try await store.timelineCheckpoints(sessionKey: key).map { checkpoint in
-                SnapshotsGraphCheckpoint(checkpoint, sessionId: sessionId, sessionKey: key)
+            var objects: [SnapshotsGraphCheckpoint] = []
+            for checkpoint in try await store.timelineCheckpoints(sessionKey: key) {
+                objects.append(await object(of: checkpoint, sessionId: sessionId, sessionKey: key))
             }
+            return objects
         } catch SnapshotError.noTimeline {
             return nil
         } catch let error as SnapshotError {
