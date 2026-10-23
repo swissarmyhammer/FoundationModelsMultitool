@@ -127,6 +127,11 @@ public struct ShellCapability: Capability {
     ///
     /// - Parameters:
     ///   - store: The history and output store this capability records into.
+    ///   - sessionID: The session this capability runs commands for, or `nil`
+    ///     — the default — for none. Each command it runs records it, and
+    ///     the `sessionID` field of the `execute`, `getLines` and
+    ///     `grepHistory` results gives it back, thus each session on a shared
+    ///     store can tell whose command it reads.
     ///   - sandbox: The confinement each command spawns under — see
     ///     `init(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`.
     ///   - outputChunkStream: The live view of the output a subscribed host
@@ -136,6 +141,7 @@ public struct ShellCapability: Capability {
     ///     the current directory of this process.
     public init(
         store: ShellStore,
+        sessionID: String? = nil,
         sandbox: (any CommandSandbox)? = nil,
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
@@ -150,6 +156,7 @@ public struct ShellCapability: Capability {
         var runner = ShellRunner(
             state: state, outputChunkStream: outputChunkStream, sandbox: sandbox)
         runner.defaultWorkingDirectory = defaultWorkingDirectory?.path
+        runner.sessionID = sessionID
 
         self.tools = [
             Execute(runner: runner),

@@ -249,6 +249,67 @@ struct ShellStoreSharingTests {
         #expect(lines == expected, "command \(tag) stored \(lines.count) lines")
     }
 
+    // MARK: - The session that ran each command
+
+    /// The session ID of capability A in the attribution tests.
+    private static let sessionA = "session-a"
+
+    /// The session ID of capability B in the attribution tests.
+    private static let sessionB = "session-b"
+
+    /// On a shared store, each result says which session ran the command:
+    /// the record, the execute report, `getLines`, and each `grepHistory`
+    /// match — read through the OTHER session.
+    @Test("each shell result names the session that ran the command")
+    func eachResultNamesTheSessionThatRanTheCommand() async throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let capabilityA = ShellCapability(store: store, sessionID: Self.sessionA)
+        let capabilityB = ShellCapability(store: store, sessionID: Self.sessionB)
+
+        let token = try await Self.run(
+            "echo \(Self.sharedMarker)", with: Self.runner(of: capabilityA))
+
+        #expect(await store.state.listCommands().map(\.owner) == [Self.sessionA])
+
+        let report = await Execute.reportFields(of: token, in: store.state)
+        #expect(report["sessionID"] == .string(Self.sessionA))
+
+        let read = try await Self.verb(GetLines.self, in: capabilityB)
+            .call(arguments: GetLinesArguments(commandID: token))
+        #expect(read.sessionID == Self.sessionA)
+
+        let found = try await Self.verb(GrepHistory.self, in: capabilityB)
+            .call(arguments: GrepHistoryArguments(pattern: Self.sharedMarker, literal: true))
+        #expect(found.matches.map(\.sessionID) == [Self.sessionA])
+    }
+
+    /// A capability made with no session ID records no owner, and its results
+    /// carry no `sessionID`.
+    @Test("a capability with no session ID names no session")
+    func aCapabilityWithNoSessionIDNamesNoSession() async throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let capability = ShellCapability(store: store)
+
+        let token = try await Self.run("echo \(Self.sharedMarker)", with: Self.runner(of: capability))
+
+        #expect(await store.state.listCommands().map(\.owner) == [nil])
+        #expect(await Execute.reportFields(of: token, in: store.state)["sessionID"] == nil)
+        let read = try await Self.verb(GetLines.self, in: capability)
+            .call(arguments: GetLinesArguments(commandID: token))
+        #expect(read.sessionID == nil)
+    }
+
+    /// `withShell(store:sessionID:)` gives the session ID to the runner.
+    @Test("withShell(store:sessionID:) gives the session ID to the runner")
+    func withShellStoreSessionIDReachesTheRunner() throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+
+        let registry = try MultiTool.Builder().withShell(store: store, sessionID: Self.sessionA).buildRegistry()
+
+        let execute = try #require(registry.tools["shell.execute"] as? Execute)
+        #expect(execute.runner.sessionID == Self.sessionA)
+    }
+
     // MARK: - Separate stores
 
     /// Two stores in two directories never answer for each other.

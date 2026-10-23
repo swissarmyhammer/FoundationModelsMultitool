@@ -570,8 +570,10 @@ extension Execute {
     /// a number (task `^pnqab9e`). `lineCount` is the count of lines the store
     /// holds for the run, beside `exitCode` and `durationMs`.
     ///
-    /// `exitCode` is absent while a run has none to report, and `outputNote` is
-    /// absent unless the stored output ran past the tail. An absent field is
+    /// `exitCode` is absent while a run has none to report, `sessionID` — the
+    /// session that ran the command — is absent when its capability names
+    /// none, and `outputNote` is absent unless the stored output ran past the
+    /// tail. An absent field is
     /// left out of the object rather than written as null, which is what makes
     /// the rendered JSON read the way the sibling verbs' results read.
     ///
@@ -597,6 +599,9 @@ extension Execute {
         ]
         if let exitCode = record?.exitCode {
             fields["exitCode"] = .number(Double(exitCode))
+        }
+        if let owner = record?.owner {
+            fields["sessionID"] = .string(owner)
         }
         if stored.count > tailLineCount {
             fields["outputNote"] = .string(tailNote(shown: tailLineCount, of: stored.count))

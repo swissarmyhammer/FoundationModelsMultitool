@@ -57,6 +57,8 @@ extension MultiTool.Builder {
     ///
     /// - Parameters:
     ///   - store: the history and output store the verbs record into.
+    ///   - sessionID: the session the verbs run commands for, which each
+    ///     result names as its `sessionID`. Defaults to none.
     ///   - sandbox: the confinement each command spawns under. Defaults to
     ///     no confinement at all.
     ///   - outputChunkStream: the live view of the output a subscribed host
@@ -67,6 +69,7 @@ extension MultiTool.Builder {
     @discardableResult
     public func withShell(
         store: ShellStore,
+        sessionID: String? = nil,
         sandbox: (any CommandSandbox)? = nil,
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
@@ -74,6 +77,7 @@ extension MultiTool.Builder {
         withCapability(
             ShellCapability(
                 store: store,
+                sessionID: sessionID,
                 sandbox: sandbox,
                 outputChunkStream: outputChunkStream,
                 defaultWorkingDirectory: defaultWorkingDirectory))

@@ -52,6 +52,10 @@ struct CommandRecord: Sendable {
     let id: String
     /// The command line as the caller gave it.
     let command: String
+    /// The session that ran the command, or `nil` when its capability names
+    /// none. On a store that several sessions share, this tells their commands
+    /// apart.
+    let owner: String?
     /// The status now.
     var status: CommandStatus
     /// The exit code, when it is known (`nil` while the command runs, `-1`
@@ -312,11 +316,13 @@ actor ShellState {
     /// - Parameters:
     ///   - command: The command line, as the caller gave it.
     ///   - commandID: The completion token of the run.
-    func startCommand(_ command: String, commandID: String) {
+    ///   - owner: The session that runs the command, or `nil` for none.
+    func startCommand(_ command: String, commandID: String, owner: String? = nil) {
         commands.append(
             CommandRecord(
                 id: commandID,
                 command: command,
+                owner: owner,
                 status: .running,
                 exitCode: nil,
                 lineCount: 0,

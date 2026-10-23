@@ -86,6 +86,11 @@ struct GetLinesResult {
     /// wrote everything it is going to write.
     var status: String?
 
+    /// The session that ran the command, or `nil` when its capability named
+    /// none or the read carries a correction. Sessions that share a working
+    /// directory share one history, thus this says whose run it was.
+    var sessionID: String?
+
     /// Why the read covered no line, or `nil` when the read was made.
     var correction: String?
 }
@@ -131,6 +136,7 @@ extension GetLines {
             last: lines.last?.lineNumber ?? Self.emptyRangeBound,
             lines: lines.map { "\($0.lineNumber): \($0.text)" },
             status: record.status.rawValue,
+            sessionID: record.owner,
             correction: nil
         )
     }
@@ -177,6 +183,7 @@ extension GetLines {
             last: emptyRangeBound,
             lines: [],
             status: nil,
+            sessionID: nil,
             correction: message
         )
     }

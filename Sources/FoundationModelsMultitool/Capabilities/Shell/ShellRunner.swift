@@ -187,6 +187,12 @@ struct ShellRunner {
     /// same directory.
     var defaultWorkingDirectory: String?
 
+    /// The session this runner runs commands for, or `nil` — the default —
+    /// for none. Each record this runner starts names it as its owner, thus a
+    /// result read on a store that several sessions share says which session
+    /// ran the command.
+    var sessionID: String?
+
     /// The signal that each kill of a process group sends: the canceler, the
     /// timer of a time limit, and the teardown of the body.
     ///
@@ -412,7 +418,7 @@ struct ShellRunner {
     ///   the pipeline of the output throws in the middle of a run.
     func run(_ request: Request) async throws -> Outcome {
         let commandID = request.completionToken
-        await state.startCommand(request.command, commandID: commandID)
+        await state.startCommand(request.command, commandID: commandID, owner: sessionID)
         defer {
             for live in outputChunkStreams {
                 live.complete(commandID: commandID)

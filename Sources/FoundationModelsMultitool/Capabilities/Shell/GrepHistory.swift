@@ -72,6 +72,11 @@ struct GrepHistoryMatch {
 
     /// The text of the matching line, with its trailing whitespace dropped.
     var text: String
+
+    /// The session that ran the command, or `nil` when its capability named
+    /// none. Sessions that share a working directory share one history, thus
+    /// this says whose run the line came from.
+    var sessionID: String?
 }
 
 /// The result of `tools.shell.grepHistory`: the matches the search found, or
@@ -129,8 +134,13 @@ extension GrepHistory {
                 commandID: arguments.commandID,
                 limit: arguments.limit
             )
+            // The session that ran each command, read in one hop of the store.
+            let owners = Dictionary(
+                await state.listCommands().map { ($0.id, $0.owner) }, uniquingKeysWith: { first, _ in first })
             let matches = found.results.map {
-                GrepHistoryMatch(commandID: $0.commandID, lineNumber: $0.lineNumber, text: $0.text)
+                GrepHistoryMatch(
+                    commandID: $0.commandID, lineNumber: $0.lineNumber, text: $0.text,
+                    sessionID: owners[$0.commandID] ?? nil)
             }
             return GrepHistoryResult(
                 matches: matches, shown: matches.count, total: found.total, correction: nil)
