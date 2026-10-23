@@ -676,6 +676,41 @@ struct SeatbeltSandboxTests {
         #expect(
             lines.contains { $0.hasSuffix(expected) }, "pwd printed \(lines); expected \(expected)")
     }
+
+    /// SWE-bench run bench24-1023, django__django-13447: a relative
+    /// `workingDirectory` that names a folder inside the root was refused as
+    /// outside the roots, because it resolved against the directory of this
+    /// process — which stands outside the root, as the parent of the root did
+    /// in the agent — and not against the root. It resolves against the
+    /// default working directory, the same base a plain command runs in.
+    @Test("a relative working directory inside the root resolves against the root and is not refused")
+    func aRelativeWorkingDirectoryInsideTheRootIsNotRefused() async throws {
+        let root = try makeResolvedDirectory(prefix: Self.defaultRootPrefix)
+        let subfolder = ".red-check-wt"
+        try FileManager.default.createDirectory(
+            atPath: (root as NSString).appendingPathComponent(subfolder),
+            withIntermediateDirectories: false)
+        let store = try scratch.makeDirectory(prefix: Self.defaultRootStorePrefix)
+        let capability = try ShellCapability(
+            storeDirectory: store.appendingPathComponent(Self.shellStoreDirectoryName),
+            sandbox: SeatbeltSandbox(options: .init(writableRoots: [root])),
+            defaultWorkingDirectory: URL(fileURLWithPath: root, isDirectory: true))
+        let verb = try ShellExecuteVerb.configured(in: capability)
+
+        let output = try await verb.call(
+            arguments: ExecuteArguments(
+                command: Self.printWorkingDirectoryCommand, workingDirectory: subfolder))
+        let report = try ShellExecuteVerb.report(of: output)
+
+        #expect(report[Self.correctionKey] == nil, "the call was refused: \(output)")
+        #expect(!output.contains(Self.outsideRootsPhrase), "the call was refused: \(output)")
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        let lines = try #require(report["output"] as? [String])
+        let expected = ShellRunner.resolvedDirectory(
+            path: (root as NSString).appendingPathComponent(subfolder))
+        #expect(
+            lines.contains { $0.hasSuffix(expected) }, "pwd printed \(lines); expected \(expected)")
+    }
 }
 
 /// A canary spawn that could not be made at all — the stand-in for a failure to

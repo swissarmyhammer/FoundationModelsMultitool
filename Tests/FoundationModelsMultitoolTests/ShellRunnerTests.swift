@@ -1191,6 +1191,25 @@ struct ShellRunnerTests {
                 == FileManager.default.currentDirectoryPath)
     }
 
+    /// SWE-bench run bench24-1023: a relative `workingDirectory` resolves
+    /// against the default of the runner — the session root — and not against
+    /// the directory of this process, which can stand outside the root. With
+    /// no default, it resolves against the directory of this process.
+    @Test("a relative working directory resolves against the default, then the process directory")
+    func aRelativeWorkingDirectoryResolvesAgainstTheDefault() {
+        let token = ToolContext.makeCompletionToken()
+        let relative = ShellRunner.Request(
+            command: "echo hi", completionToken: token, workingDirectory: "sub/dir")
+
+        #expect(
+            ShellRunner.effectiveWorkingDirectory(
+                for: relative, defaultWorkingDirectory: Self.defaultDirectory)
+                == Self.defaultDirectory + "/sub/dir")
+        #expect(
+            ShellRunner.effectiveWorkingDirectory(for: relative, defaultWorkingDirectory: nil)
+                == FileManager.default.currentDirectoryPath + "/sub/dir")
+    }
+
     /// With no working directory in the request and no default on the runner,
     /// the command runs in the current directory of this process, thus that is
     /// what the sandbox must be told about — put through the same resolution

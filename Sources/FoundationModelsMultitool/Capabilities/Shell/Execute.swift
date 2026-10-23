@@ -107,7 +107,7 @@ struct ExecuteArguments {
     @Guide(
         description:
             "The directory the command runs in. Omit it to run in the session's working "
-            + "directory.")
+            + "directory; a relative path resolves against that directory.")
     var workingDirectory: String?
 
     /// The extra environment variables as JSON text, or `nil` for none.

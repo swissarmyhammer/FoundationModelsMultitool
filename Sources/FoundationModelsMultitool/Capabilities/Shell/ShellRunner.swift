@@ -540,6 +540,14 @@ struct ShellRunner {
     /// it to the sandbox, thus the directory the child runs in and the
     /// directory the confinement grants cannot disagree.
     ///
+    /// A relative directory in the request resolves against the same base a
+    /// request that names none runs in — `defaultWorkingDirectory`, else the
+    /// current directory of this process. Left relative, the spawn and the
+    /// sandbox would both read it against the directory of this process, which
+    /// a host can stand outside the session root (SWE-bench run bench24-1023:
+    /// the agent stood in the parent of the root, and `.red-check-wt` inside
+    /// the root was refused as outside it).
+    ///
     /// The result is not resolved: a symbolic link stays as it came in, and a
     /// caller that needs the resolved form puts it through
     /// `resolvedDirectory(path:)`, as `resolvedSandboxDirectories` does.
@@ -555,8 +563,10 @@ struct ShellRunner {
     static func effectiveWorkingDirectory(
         for request: Request, defaultWorkingDirectory: String?
     ) -> String {
-        request.workingDirectory ?? defaultWorkingDirectory
-            ?? FileManager.default.currentDirectoryPath
+        let base = defaultWorkingDirectory ?? FileManager.default.currentDirectoryPath
+        guard let requested = request.workingDirectory else { return base }
+        if requested.hasPrefix("/") { return requested }
+        return (base as NSString).appendingPathComponent(requested)
     }
 
     /// The working directory and the temporary directory to give a
