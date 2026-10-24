@@ -25,7 +25,12 @@
 //    is not there, beside its `correction`) reads as `[]`
 //    (django__django-14608: `r2.matches.map(...)`), and each item of a list
 //    result answers the names the other verbs use: `file`, `filePath`,
-//    `path`; `line`, `startLine`, `lineNumber`. The list-shaped
+//    `path`; `line`, `startLine`, `lineNumber`. An item with only an LSP
+//    `range` answers `line`, `startLine` from `range.start.line` and
+//    `endLine` from `range.end.line`, as they are: the LSP lines, the
+//    `startLine` of `grepCode`, and that of `listSymbol` and `getSymbol` are
+//    all zero-based, thus one convention holds across `code_context`. The
+//    `line` of `files.grep` is 1-based, as it was. The list-shaped
 //    `code_context` verbs act as their list too (django__django-14752:
 //    `refs.map(...)` on a `grepCode` result).
 // 2. **A name that is not there finds the verb it means.** `tools` and each
@@ -149,12 +154,14 @@ extension MultiTool {
             Object.defineProperty(s, "isDirectory", { value: e.endsWith("/") }); return s; }); \
             Object.defineProperty(out, "includes", { value: (x) => out.some((e) => sameString(e, x)) }); \
             Object.defineProperty(out, "indexOf", { value: (x) => out.findIndex((e) => sameString(e, x)) }); return out; }; \
-            const matchNames = { file: "file", filepath: "file", path: "file", filename: "file", line: "line", startline: "line", lineno: "line", linenumber: "line", text: "text", content: "text", linetext: "text" }; \
-            const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], text: ["text", "content"] }; \
+            const matchNames = { file: "file", filepath: "file", path: "file", filename: "file", line: "line", startline: "line", lineno: "line", linenumber: "line", endline: "end", text: "text", content: "text", linetext: "text" }; \
+            const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], end: ["endLine"], text: ["text", "content"] }; \
+            const rangeLine = (target, kind) => { const r = target.range; const p = r && typeof r === "object" ? (kind === "line" ? r.start : kind === "end" ? r.end : undefined) : undefined; \
+            return p && typeof p.line === "number" ? p.line : undefined; }; \
             const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const kind = matchNames[norm(k)]; const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); \
-            return real ? target[real] : undefined; } })); \
+            return real ? target[real] : rangeLine(target, kind); } })); \
             const asArray = (v, field) => { if (!v || typeof v !== "object") { return v; } \
             if (field === "entries" && Array.isArray(v.entries)) { v.entries = named(v.entries); } \
             if (field !== "entries" && Array.isArray(v[field])) { v[field] = v[field].map(aliased); } \

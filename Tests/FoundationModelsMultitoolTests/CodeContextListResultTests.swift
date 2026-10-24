@@ -40,6 +40,52 @@ struct ListResultLocations {
     var locations: [ListResultLocation]
 }
 
+/// A zero-based position, as an LSP `range` carries it.
+@Generable
+struct ListResultPosition {
+    @Guide(description: "The zero-based line.")
+    var line: Int
+    @Guide(description: "The zero-based character.")
+    var character: Int
+}
+
+/// An LSP range.
+@Generable
+struct ListResultRange {
+    @Guide(description: "The start.")
+    var start: ListResultPosition
+    @Guide(description: "The end.")
+    var end: ListResultPosition
+}
+
+/// One location of a stand-in verb that answers an LSP range.
+@Generable
+struct ListResultRangedLocation {
+    @Guide(description: "The file.")
+    var filePath: String
+    @Guide(description: "The range.")
+    var range: ListResultRange
+}
+
+/// The result of the stand-in `getImplementations`.
+@Generable
+struct ListResultImplementations {
+    @Guide(description: "The implementations.")
+    var implementations: [ListResultRangedLocation]
+}
+
+/// A stand-in for `code_context.getImplementations` whose items carry only a
+/// range.
+struct ListResultImplementationsTool: Tool {
+    let name = "getImplementations"
+    let description = "Finds the implementations of a symbol."
+    func call(arguments: ListResultArguments) async throws -> ListResultImplementations {
+        let range = ListResultRange(
+            start: ListResultPosition(line: 41, character: 4), end: ListResultPosition(line: 47, character: 0))
+        return ListResultImplementations(implementations: [ListResultRangedLocation(filePath: "d.py", range: range)])
+    }
+}
+
 /// A stand-in for `code_context.getReferences`.
 struct ListResultReferencesTool: Tool {
     let name = "getReferences"
@@ -91,7 +137,10 @@ struct CodeContextListResultTests {
             .withFiles(root: root)
             .addGroup(
                 named: "code_context",
-                [RepairMatchesTool(), ListResultReferencesTool(), ListResultDefinitionTool()] as [any Tool])
+                [
+                    RepairMatchesTool(), ListResultReferencesTool(), ListResultDefinitionTool(),
+                    ListResultImplementationsTool(),
+                ] as [any Tool])
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
@@ -119,5 +168,15 @@ struct CodeContextListResultTests {
             #"const d = await tools.code_context.getDefinition({ symbol: "X" }); return [d.length, d[0].filePath];"#)
 
         #expect(output.contains(#"[1,"c.py"]"#), "output was: \(output)")
+    }
+
+    @Test("an item with only a range answers line, startLine, and endLine in the zero-based lines of grepCode")
+    func aRangeAnswersItsLines() async throws {
+        // grepCode's `startLine` and the LSP `range` are both zero-based, thus
+        // the range's lines pass through as they are.
+        let output = try await Self.run(
+            #"const r = await tools.code_context.getImplementations({ symbol: "X" }); return r.map((i) => [i.line, i.startLine, i.endLine]);"#)
+
+        #expect(try RunOutput.decoded([[Int]].self, from: output) == [[41, 41, 47]], "output was: \(output)")
     }
 }
