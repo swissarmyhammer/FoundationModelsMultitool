@@ -16,7 +16,11 @@
 //    model guessed for that value answers it too, unless the result has a
 //    real field of that name: `content`, `text`, `body`, `data` give the text
 //    (`tox.content.slice(0, 1500)`, bench24-1023b django__django-14238), and
-//    `items`, `results`, `entries`, `files`, `matches` give the list.
+//    `items`, `results`, `entries`, `files`, `matches` give the list. A
+//    `shell.execute` result answers `stdout`, `out`, `text` (its output as
+//    one string, without the `N: ` of each line), `stderr` (`""`: the shell
+//    merges the two streams), `code`, `returncode`, `exit` (its `exitCode`),
+//    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
 // 2. **A name that is not there finds the verb it means.** `tools` and each
 //    group are `Proxy` objects: a missing name is read in any letter case
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
@@ -48,6 +52,8 @@ extension MultiTool {
         "files.list": "entries",
         "code_context.listSymbol": "symbols",
         "code_context.getSymbol": "symbols",
+        // django__django-14534: `r.stdout.slice(-3000)`, see `asShell`.
+        "shell.execute": "shell",
     ]
 
     /// The JS object, as source, that maps each bound synonym to its paths,
@@ -137,13 +143,24 @@ extension MultiTool {
             if (isIndex(k)) { return a[k]; } \
             const m = a[k]; if (typeof m === "function") { return m.bind(a); } \
             return undefined; } }); }; \
+            const shellNames = { stdout: "text", out: "text", text: "text", stderr: "stderr", code: "code", returncode: "code", exit: "code", exitstatus: "code", ok: "ok", success: "ok" }; \
+            const asShell = (v) => { if (!v || typeof v !== "object") { return v; } \
+            const text = () => (Array.isArray(v.output) ? v.output : []).map((l) => String(l).replace(/^\\d+: /, "")).join("\\n"); \
+            return new Proxy(v, { get(target, k) { \
+            if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
+            const kind = shellNames[norm(k)]; \
+            if (kind === "text") { return text(); } \
+            if (kind === "stderr") { return ""; } \
+            if (kind === "code") { return target.exitCode; } \
+            if (kind === "ok") { return target.exitCode === undefined ? undefined : target.exitCode === 0; } \
+            return undefined; } }); }; \
             const shaped = (fn, shape) => function (...args) { const pending = fn(...args); \
             return new Proxy(Object.create(Object.getPrototypeOf(pending)), { get(_, k) { \
             if (k === "then") { return (onFulfilled, onRejected) => pending.then((v) => { const s = shape(v); return typeof onFulfilled === "function" ? onFulfilled(s) : s; }, onRejected); } \
             return Reflect.get(pending, k); } }); }; \
             for (const path of Object.keys(shapes)) { const [g, verb] = path.split("."); \
             if (tools[g] && typeof tools[g][verb] === "function") { const kind = shapes[path]; \
-            tools[g][verb] = shaped(tools[g][verb], kind === "text" ? asText : (v) => asArray(v, kind)); } } \
+            tools[g][verb] = shaped(tools[g][verb], kind === "text" ? asText : kind === "shell" ? asShell : (v) => asArray(v, kind)); } } \
             const isGroup = (v) => v !== null && typeof v === "object"; \
             const groups = Object.keys(tools).filter((g) => isGroup(tools[g])); \
             for (const g of groups) { tools[g] = new Proxy(tools[g], { get(target, k) { \

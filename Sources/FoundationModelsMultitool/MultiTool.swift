@@ -974,6 +974,7 @@ public struct MultiTool: GraphQLEndpointTool {
                         arguments: arguments,
                         binding: binding,
                         journalOp: liveTool.journalOp,
+                        path: liveTool.callName.path,
                         logger: logger
                     )
                 }
@@ -1485,6 +1486,7 @@ public struct MultiTool: GraphQLEndpointTool {
         arguments: [InterpreterValue],
         binding: RunBinding?,
         journalOp: String? = nil,
+        path: String? = nil,
         logger: Logging.Logger
     ) async throws -> InterpreterValue {
         // The completion token is the one of the outer `runCode` run, when a
@@ -1497,7 +1499,7 @@ public struct MultiTool: GraphQLEndpointTool {
             logger.log(.toolInvocationStarted, level: .debug, metadata: toolName)
             do {
                 let value = try await performInvocation(
-                    tool: tool, arguments: arguments, binding: binding, journalOp: journalOp)
+                    tool: tool, arguments: arguments, binding: binding, journalOp: journalOp, path: path)
                 logger.log(
                     .toolInvocationFinished, level: .debug,
                     metadata: toolName.merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
@@ -1572,15 +1574,33 @@ public struct MultiTool: GraphQLEndpointTool {
         tool: any Tool,
         arguments: [InterpreterValue],
         binding: RunBinding?,
-        journalOp: String? = nil
+        journalOp: String? = nil,
+        path: String? = nil
     ) async throws -> InterpreterValue {
         var argumentObject = arguments.first ?? .object([:])
         // `tools.files.read("tox.ini")`: a single string is the main argument
-        // of the verb (SWE-bench run bench24-1023b, `tools.ls(".")`).
-        if case .string = argumentObject, let field = ToolInvoker.mainArgumentName(of: tool) {
-            argumentObject = .object([field: argumentObject])
+        // of the verb (SWE-bench run bench24-1023b, `tools.ls(".")`), and an
+        // object after it holds the other arguments
+        // (django__django-14534: `read("…", { offset: 670, limit: 70 })`).
+        let mainField = ToolInvoker.mainArgumentName(of: tool)
+        if case .string = argumentObject, let mainField {
+            var merged: [String: InterpreterValue] = [:]
+            if arguments.count > 1, case .object(let options) = arguments[1] { merged = options }
+            if merged[mainField] == nil { merged[mainField] = argumentObject }
+            argumentObject = .object(merged)
         }
-        let content = try ArgumentMarshaler.marshalArguments(argumentObject)
+        let content: GeneratedContent
+        do {
+            content = try ArgumentMarshaler.marshalArguments(argumentObject)
+        } catch let error as ArgumentMarshalerError where error.kind == .argumentsNotAnObject {
+            // The message names the real verb and its object form, never
+            // `tools.name`, which the unknown-tool hint read as a path.
+            throw ArgumentMarshalerError(
+                kind: error.kind,
+                message: error.message.replacingOccurrences(
+                    of: ArgumentMarshaler.notAnObjectExample,
+                    with: "`tools.\(path ?? tool.name)({ \(mainField ?? "…"): … })`"))
+        }
         let output = try await ToolInvoker.invoke(
             tool, content: content, binding: binding, journalOp: journalOp)
         return try await SnippetOutput.value(of: output, from: tool)

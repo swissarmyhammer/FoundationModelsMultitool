@@ -113,6 +113,12 @@ public struct ArgumentMarshalerError: Error, Sendable, Equatable, CustomStringCo
 public enum ArgumentMarshaler {
     // MARK: - In: JS argument object -> GeneratedContent
 
+    /// The call form the not-an-object message shows. A caller that knows the
+    /// verb puts the real path in its place; this form names no `tools.*`
+    /// path, thus the unknown-tool hint never reads it as one (bench24-1023b,
+    /// django__django-14534: `tools.name` sent the model to `getRenameEdits`).
+    static let notAnObjectExample = "`({ … })`"
+
     /// Marshals a snippet's call argument — always a single JS object,
     /// `tools.name({ … })` — into a `GeneratedContent` built directly from
     /// its key/value pairs via `GeneratedContent`'s `properties:id:`
@@ -140,7 +146,7 @@ public enum ArgumentMarshaler {
         guard case .object(let fields) = arguments else {
             throw ArgumentMarshalerError(
                 kind: .argumentsNotAnObject,
-                message: "Tool call arguments must be a JS object (`tools.name({ … })`); "
+                message: "Tool call arguments must be a JS object (\(notAnObjectExample)); "
                     + "got \(kindDescription(of: arguments)) instead."
             )
         }

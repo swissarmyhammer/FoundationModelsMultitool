@@ -360,6 +360,10 @@ public enum ToolInvoker {
         "path": ["file", "filepath", "filename", "dir", "directory", "folder", "dirpath", "pathname"],
         "pattern": ["query", "regex", "regexp", "search", "expression"],
         "command": ["cmd", "script", "commandline"],
+        // django__django-14534: `shell.execute({ command, cwd: "." })`. `dir`
+        // and `directory` stand for `path` too; a schema with both is not
+        // renamed, since the meaning is not clear.
+        "workingDirectory": ["cwd", "dir", "directory", "workdir", "workingdir", "cd"],
     ]
 
     /// `name` lowercased, with each `_` and `-` removed — thus `file_path`,
