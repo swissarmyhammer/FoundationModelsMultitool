@@ -76,11 +76,20 @@ struct StandInCodeContextTool: Tool {
             ("grep", "grepCode"), ("callgraph", "getCallgraph"), ("callGraph", "getCallgraph"),
             ("blastRadius", "getBlastradius"), ("impact", "getBlastradius"),
             ("searchSymbolByName", "searchSymbol"),
+            // django__django-15061, clone seq 24202.
+            ("lookupSymbol", "searchSymbol"),
         ])
     func eachOtherNameRuns(name: String, verb: String) async throws {
         let output = try await Self.run(#"return await tools.code_context.\#(name)({ query: "x" });"#)
 
         #expect(try RunOutput.decoded(String.self, from: output) == "\(verb) x", "output was: \(output)")
+    }
+
+    @Test("the snippet of django__django-15061: code_context.findSymbol runs searchSymbol")
+    func findSymbolRunsSearchSymbol() async throws {
+        let output = try await Self.run(#"return await tools.code_context.findSymbol({query: "MultiWidget"});"#)
+
+        #expect(try RunOutput.decoded(String.self, from: output) == "searchSymbol MultiWidget", "output was: \(output)")
     }
 
     @Test("files.search still runs files.grep beside the code_context group")
