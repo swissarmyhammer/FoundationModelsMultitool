@@ -679,6 +679,17 @@ public struct MultiTool: GraphQLEndpointTool {
                 let rendered = try await runSnippet(arguments: RunCodeArguments(code: repaired.code))
                 return enclosingRun == nil ? rendered + "\n\n" + SnippetRepair.note(for: repaired) : rendered
             }
+            // A snippet that does not parse and is plainly Python runs with
+            // python3, through the shell verb of this surface (see
+            // `PythonSnippet`).
+            if bundle.registry.surface.entries.contains(where: { $0.path == "shell.execute" }),
+                PythonSnippet.looksLikePython(arguments.code),
+                (try? interpreter.checkSyntax(of: arguments.code)) == nil
+            {
+                let rendered = try await runSnippet(
+                    arguments: RunCodeArguments(code: PythonSnippet.javaScript(running: arguments.code)))
+                return enclosingRun == nil ? rendered + "\n\n" + PythonSnippet.note : rendered
+            }
             let resolution = await UnknownToolHint.hint(
                 message: interpreterError.message,
                 // `arguments.code`, never `code`: the preamble prepended above
