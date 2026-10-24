@@ -9,7 +9,7 @@
 // integration suite holds the adapters from Router handles to these seams
 // (`RouterDiscoverySeams` in `IntegrationTests/`).
 //
-// The models of these seams must not be the model of the session that calls
+// The models of these seams may be the model of the session that calls
 // `searchTools` — see `SelectionFactory`.
 
 import FoundationModels
@@ -27,18 +27,14 @@ extension SearchToolsTool {
     /// as its instructions. The prompt names the ids that the model can
     /// choose.
     ///
-    /// **The selection model must not be the model of the session that calls
-    /// `searchTools`.** `searchTools` is synchronous: its body runs inside
-    /// the open submission of the calling session, and that submission ends
-    /// only when the body returns. A host that queues the work of each model
-    /// in order (Router does) cannot start a selection session on that same
-    /// model before the submission ends. Such a host refuses the wait at once
-    /// — Router gives its `waitInsideOpenSubmission` error — or the wait
-    /// never ends. A selection session on a different model waits its turn
-    /// on the queue of its own model, and the search completes. Thus, give
-    /// the selection tier a model that is different from the model of each
-    /// session that mounts `searchTools`. Router's `flash` slot is that model
-    /// when `flash` and `standard` name different models.
+    /// **The selection model may be the model of the session that calls
+    /// `searchTools`.** `searchTools` is synchronous, and its body runs after
+    /// the calling session's model call has returned. A host must hold its
+    /// model lock over the call into the model only, never over a tool call
+    /// (Router does, since `505a03f3`). The selection session then takes
+    /// that lock in its turn, on any model, and the search completes. The
+    /// selection session is a new session, so it is never the calling session
+    /// itself, the one wait Router still refuses in band.
     ///
     /// When the selection session fails, `searchTools` does not hide it: the
     /// error of the session is the error of the call, and the model reads it.

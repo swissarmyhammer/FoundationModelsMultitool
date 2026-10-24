@@ -24,7 +24,7 @@ import FoundationModelsRouter
 ///
 /// Each seam is a pooled handle of the model that a Router slot chose, from
 /// the model pool that the Router resolves into. Thus a seam and its Router
-/// slot use one model in memory, and one generation queue.
+/// slot use one model in memory, and one model lock.
 ///
 /// It stands in this test target and not in the library: the library does not
 /// link Router.
@@ -44,20 +44,15 @@ struct RouterDiscoverySeams: Sendable {
 
     /// Makes the seams over the Router handles of a resolved profile.
     ///
-    /// **The librarian must be a model other than the model of the session
-    /// whose answer calls `searchTools`. That is a correctness requirement, not
-    /// a cost preference.** `searchTools` is synchronous, so its body runs
-    /// inside the open submission of the calling session. The model pool runs
-    /// the work of each model in order on one generation queue, and the
-    /// pooled model of a slot uses the same queue as the Router slot. A
-    /// selection session on a different model waits its turn on the queue of
-    /// that model, and the search completes. A session on the same model would
-    /// wait for the open submission to end, and that submission ends only when
-    /// this tool returns. The queue refuses that wait at once with
-    /// `GenerationQueueError.waitInsideOpenSubmission`, and the search gives
-    /// that error. What keeps this suite clear of it is that each profile of
-    /// this target puts a different model in `flash` than in `standard`, and
-    /// `ProfileSlotSeparationTests` holds that.
+    /// **The librarian may be the model of the session whose answer calls
+    /// `searchTools`.** The pooled model of a slot uses the same model lock as
+    /// the Router slot, and that lock is held over the call into the model
+    /// only, never over a tool call (Router `505a03f3`). `searchTools` runs
+    /// after the calling session's model call has returned, so a selection
+    /// session on the same model takes the lock in its turn, and the search
+    /// completes. `NestedGenerationProbeTests` holds that. The profiles of
+    /// this target still put `flash` and `standard` on different models, for
+    /// the readings each suite was measured on, not for correctness.
     ///
     /// - Parameters:
     ///   - librarian: the slot whose model answers every selection prompt.
@@ -66,10 +61,8 @@ struct RouterDiscoverySeams: Sendable {
     ///     passes the result of ``acquireEmbedder(for:from:)`` for
     ///     `profile.embedding`.
     ///   - sampleGenerator: the slot whose model writes the sample snippet,
-    ///     or `nil` (the default) for no sample. It must also be a model
-    ///     other than the model of the session that mounts `searchTools`, for
-    ///     the same reason as the librarian. Thus the main generation slot,
-    ///     which drives that session, is not a correct generator.
+    ///     or `nil` (the default) for no sample. It may be any slot, the main
+    ///     generation slot included, for the same reason as the librarian.
     init(librarian: RoutedLLM, embedder: PooledEmbedder, sampleGenerator: RoutedLLM? = nil) {
         let librarianModel = Self.pooledModel(of: librarian)
         self.selection = { _ in SelectionConfig(model: librarianModel) }

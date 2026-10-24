@@ -210,15 +210,16 @@ import TestConcurrency
 /// property.
 ///
 /// **One model in both slots was the shape until the work-queue Router, and it
-/// is not the shape now.** Sharing one `ModelRef` gave one resident model
-/// rather than a swap between generation and selection on every search. The
-/// work-queue Router refuses the nested selection generation on the model that
-/// the outer submission holds open
-/// (`GenerationQueueError.waitInsideOpenSubmission(model:)`), so every
-/// profile of this target now puts a different model in `standard` and
-/// `flash`, and `ProfileSlotSeparationTests`
-/// holds that. The history below is kept because it is the record of this
-/// suite's runs.
+/// is allowed again.** Sharing one `ModelRef` gave one resident model rather
+/// than a swap between generation and selection on every search. The
+/// work-queue Router refused the nested selection generation on the model of
+/// the outer answer (`waitInsideOpenSubmission`), so the profiles of this
+/// target moved to a different model in `standard` and `flash`. Since Router
+/// `505a03f3` the lock is held over the call into the model only, never over a
+/// tool call, and `NestedGenerationProbeTests` holds that a nested call on the
+/// same model completes. The profiles keep their two models for the readings
+/// each suite was measured on. The history below is kept because it is the
+/// record of this suite's runs.
 ///
 /// It did hang, and for a while nobody knew why. An integration scenario sat 15
 /// minutes at 0% CPU with 18.8GB resident, 98% of system memory free and zero
@@ -374,13 +375,9 @@ let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-mxfp4"
 /// The generation model of the `flash` slot of `multitoolTinyProfile`, which
 /// the selection tier of `searchTools` runs on.
 ///
-/// **It must not be `generationModel`.** `searchTools` is synchronous, so its
-/// selection session runs inside the open submission of the main session on
-/// `standard`. Router runs the work of each model on its own FIFO queue, and
-/// refuses at once a wait on the queue of the open submission
-/// (`GenerationQueueError.waitInsideOpenSubmission`). A selection session on a
-/// different model waits its turn on its own queue, and the search completes.
-/// `ProfileSlotSeparationTests` holds the two slots apart.
+/// It may be `generationModel`: Router holds its lock over the call into the
+/// model only, never over a tool call, so a selection session on the main
+/// session's model completes (`NestedGenerationProbeTests`).
 ///
 /// This model, because `AgentSurfaceDiscoveryTests` grades the selection tier
 /// on it.
@@ -400,9 +397,8 @@ let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 /// Each profile of this target names its models through those constants, so
 /// a model swap is one edit in one file.
 ///
-/// Two models, and they must stay different: `standard` drives the main
-/// session, and `flash` runs the selection tier of `searchTools`. See
-/// `flashModel`.
+/// Two models: `standard` drives the main session, and `flash` runs the
+/// selection tier of `searchTools`. See `flashModel`.
 ///
 /// `nil` context, not a number: resolve the model's own context window rather
 /// than impose one. A pinned figure is always wrong on the wrong side — too
@@ -464,14 +460,10 @@ let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
 
 /// The model in the `standard` slot of `plumbingProbeProfile`: `flashModel`.
 ///
-/// **It must not be `plumbingProbeModel`, which holds `flash`.** `searchTools`
-/// is synchronous: it runs the selection tier on `flash` from inside a tool
-/// call of the session on `standard`. When one model serves both slots, that
-/// nested generation needs the model that the outer submission holds open, and
-/// the work-queue Router refuses it at once with
-/// `GenerationQueueError.waitInsideOpenSubmission(model:)`. A later Router may
-/// refuse such a profile at `Router.resolve`. `ProfileSlotSeparationTests`
-/// holds every profile of this target to two different models.
+/// It is not `plumbingProbeModel`, which holds `flash`, because the work-queue
+/// Router refused a nested selection on the model of the outer answer. Since
+/// Router `505a03f3` one model may serve both slots; the two models stay
+/// because the plumbing suites were measured on them.
 ///
 /// Why this model: it is a small tool-calling model of the same Qwen3 family
 /// as `plumbingProbeModel`, and it is already in the local cache from every
@@ -524,14 +516,9 @@ let agentFlashModel: ModelRef = flashModel
 /// `agentFlashModel`.
 ///
 /// `flash` is `agentFlashModel`, the model that suite grades. `standard` is
-/// `plumbingProbeModel`, a different model, because `searchTools` runs the
-/// selection tier on `flash` from inside a tool call of the session on
-/// `standard`: when one model serves both slots, the work-queue Router refuses
-/// that nested generation with
-/// `GenerationQueueError.waitInsideOpenSubmission(model:)`, and a later Router
-/// may refuse such a profile at `Router.resolve`. The agent's own profile puts
-/// two different models in the two slots too. `plumbingProbeModel` because it
-/// is small and already in the local cache; that suite calls `searchTools`
+/// `plumbingProbeModel`, a different model, as the agent's own profile puts
+/// two different models in the two slots. `plumbingProbeModel` because it is
+/// small and already in the local cache; that suite calls `searchTools`
 /// directly and grades no generation on `standard`.
 ///
 /// The shared embedding model, so the profile names an embedder the way the
