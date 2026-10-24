@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 import FoundationModelsMetadataRegistry
 import os
@@ -51,6 +52,18 @@ enum ScriptedLanguageModelError: Error, Equatable, CustomStringConvertible {
         case .unscripted(let answerCount):
             return "ScriptedLanguageModel received more calls than its \(answerCount) scripted answer(s)."
         }
+    }
+}
+
+/// An error that a host's model session can throw, for example when its model
+/// fails to load. A ``ScriptedLanguageModel`` scripts it with `.failure(_:)`
+/// for the tests that prove a session error reaches the model unhidden.
+struct ScriptedSessionFailure: Error, Equatable, LocalizedError {
+    /// The model whose session failed.
+    let model: String
+
+    var errorDescription: String? {
+        "The session on \(model) failed before it answered."
     }
 }
 

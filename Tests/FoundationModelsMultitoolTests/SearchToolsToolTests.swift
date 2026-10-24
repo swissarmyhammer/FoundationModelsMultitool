@@ -361,22 +361,21 @@ struct SearchToolsToolTests {
 
     // MARK: - A session error is visible (^zhmqvxb)
 
-    /// The refusal Router gives when a synchronous tool body waits for a
-    /// session on the model of its own open submission.
-    static let sameModelRefusal = GenerationQueueError.waitInsideOpenSubmission(model: "stub/standard")
+    /// The error of a host's model session that fails before it answers.
+    static let sessionFailure = ScriptedSessionFailure(model: "stub/flash")
 
-    @Test("a librarian that Router refuses on the model of the calling session gives that refusal as the tool error")
-    func refusedLibrarianGivesTheRefusalAsTheToolError() async throws {
+    @Test("a librarian whose session fails gives that error as the tool error")
+    func failedLibrarianGivesItsErrorAsTheToolError() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let tool = try SearchToolsTool(registry: registry, selection: { _ in
             SelectionConfig(
-                model: ScriptedLanguageModel(answers: [.failure(Self.sameModelRefusal)]),
+                model: ScriptedLanguageModel(answers: [.failure(Self.sessionFailure)]),
                 capacityCharacterLimit: .max)
         })
 
         // Not an empty selection, and not the signatures alone: the call
         // fails, and the model reads the error of the librarian.
-        await #expect(throws: Self.sameModelRefusal) {
+        await #expect(throws: Self.sessionFailure) {
             try await tool.call(arguments: SearchToolsArguments(task: "list the cities"))
         }
     }
@@ -385,7 +384,7 @@ struct SearchToolsToolTests {
     func throwingSampleSessionGivesAVisibleNote() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
-        let failing = ScriptedLanguageModel(answers: [.failure(Self.sameModelRefusal)])
+        let failing = ScriptedLanguageModel(answers: [.failure(Self.sessionFailure)])
         let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: failing)
         let withoutGenerator = try SearchToolsTool(registry: registry, selection: nil)
         let arguments = SearchToolsArguments(task: "how warm is the trip")
@@ -393,10 +392,10 @@ struct SearchToolsToolTests {
         let feedback = try await tool.call(arguments: arguments)
         let today = try await withoutGenerator.call(arguments: arguments)
 
-        let refusalText = try #require(Self.sameModelRefusal.errorDescription)
+        let failureText = try #require(Self.sessionFailure.errorDescription)
         #expect(feedback != today)
         #expect(feedback.contains(SearchToolsTool.sampleFailureLead))
-        #expect(feedback.contains(refusalText))
+        #expect(feedback.contains(failureText))
         #expect(feedback.contains(entry.block))
         #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))
     }

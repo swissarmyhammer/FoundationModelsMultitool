@@ -77,14 +77,9 @@ public let noBackgroundRunsAtLastAnswerCheckName = "noBackgroundRunsAtLastAnswer
 /// having been entered at all.
 public let nestedCallEnteredCheckName = "nestedCallEntered"
 
-/// The label of the check that grades the nested call as refused with
-/// `GenerationQueueError.waitInsideOpenSubmission`.
-public let nestedGenerationRefusedCheckName = "nestedGenerationRefused"
-
-/// The label of the check that grades the refusal of the nested call as at
-/// once: it came while the outer submission still held the model, and with
-/// no job queued behind that submission.
-public let nestedRefusalAtOnceCheckName = "nestedRefusalAtOnce"
+/// The label of the check that grades the nested call as having come back
+/// with a reply.
+public let nestedGenerationReturnedCheckName = "nestedGenerationReturned"
 
 /// Both spellings of one integer a model may write in prose: the bare digits
 /// and the locale's grouped form (`41,739`).
@@ -410,58 +405,19 @@ public func mailCollectionChecks(
     return checks
 }
 
-/// What the generation queue of the model read at the instant the nested call
-/// of the nested-generation probe got the refusal.
-///
-/// The probe grades the order of events, and never a time (card `^kdtrmhv`:
-/// no test checks the speed of the machine). A refusal at once comes while the
-/// outer submission still runs on the queue, and before any job waits behind
-/// it: the queue throws before it queues anything. A nested call that the
-/// queue takes waits behind the outer submission, which cannot end while its
-/// own tool body waits. That is the old defect. Then the probe run does not
-/// end, and that hang is the failure.
-///
-/// Plain values, for `MailCollectionEvidence`'s reason: the grading rule is
-/// then exercised without live inference.
-public struct GenerationQueueReading: Equatable, Sendable {
-    /// Whether a job ran on the queue: the outer submission still held the
-    /// model.
-    public let isRunning: Bool
-
-    /// How many jobs waited behind the running job.
-    public let waitingCount: Int
-
-    /// Records one reading of the queue.
-    ///
-    /// Explicit because a `public` struct's synthesized memberwise
-    /// initializer is `internal` only.
-    ///
-    /// - Parameters:
-    ///   - isRunning: whether a job ran on the queue.
-    ///   - waitingCount: how many jobs waited behind the running job.
-    public init(isRunning: Bool, waitingCount: Int) {
-        self.isRunning = isRunning
-        self.waitingCount = waitingCount
-    }
-}
-
 /// How the nested call of the nested-generation probe ended.
 ///
-/// Router refuses a `respond` on a model from inside an open submission of the
-/// same model, with `GenerationQueueError.waitInsideOpenSubmission(model:)`.
-/// The probe tool records which of these three ends its nested call got. A
-/// nested call that hangs records nothing. Then the probe run does not end,
-/// and that hang is the failure.
+/// Router holds its lock over the call into the model only, never over a tool
+/// call (Router `505a03f3`). A tool body runs after the model's `respond`
+/// returns, so a `respond` on the same model from inside that body takes the
+/// lock in its turn and completes. The probe tool records which of these two
+/// ends its nested call got. A nested call that hangs records nothing. Then
+/// the probe run does not end, and that hang is the failure.
 public enum NestedGenerationOutcome: Equatable, Sendable {
-    /// Router refused the nested call with `waitInsideOpenSubmission`. The
-    /// value is what the generation queue of the model read at that instant,
-    /// or `nil` when the backend of the model names no generation queue.
-    case refused(queueAtRefusal: GenerationQueueReading?)
-
-    /// The nested call came back with a reply. Router did not refuse it.
+    /// The nested call came back with a reply.
     case returned
 
-    /// The nested call threw an error that is not the refusal.
+    /// The nested call threw. The value is the error, as text.
     case threw(description: String)
 }
 
@@ -505,10 +461,9 @@ public struct NestedGenerationEvidence {
 /// Grades one nested-generation probe run into the conditions its verdict is
 /// the conjunction of.
 ///
-/// The probe passes when the nested call was entered, got
-/// `waitInsideOpenSubmission`, and got it at once: the order of events, and
-/// never a real-time bound (card `^kdtrmhv`: no test checks the speed of the
-/// machine).
+/// The probe passes when the nested call was entered and came back with a
+/// reply. A nested call that hangs never reaches this grade: the run does not
+/// end (card `^kdtrmhv`: no test checks the speed of the machine).
 ///
 /// - Parameter evidence: what the run produced.
 /// - Returns: every condition this run is graded on, in reporting order.
@@ -521,54 +476,27 @@ public func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [S
             held: evidence.enteredPaths.contains(path),
             failureMessage:
                 "expected the model to call `\(path)`, the one tool mounted, but it called nothing "
-                + "— so this run made no nested call, and says nothing about the refusal. Read the "
+                + "— so this run made no nested call, and says nothing about how one ends. Read the "
                 + "CALL lines: a run with none is a prompt problem, not a verdict"
         ),
         ScenarioCheck(
-            name: nestedGenerationRefusedCheckName,
-            held: evidence.outcome?.isRefusal ?? false,
+            name: nestedGenerationReturnedCheckName,
+            held: evidence.outcome == .returned,
             failureMessage:
-                "expected the nested `respond` inside `\(path)` to get "
-                + "`GenerationQueueError.waitInsideOpenSubmission`, but it ended as \(outcomeDescription)"
-        ),
-        ScenarioCheck(
-            name: nestedRefusalAtOnceCheckName,
-            held: evidence.outcome?.isRefusalAtOnce ?? false,
-            failureMessage:
-                "expected the refusal at once — while the outer submission still held the model "
-                + "(running=true) and with no job queued behind it (waiting=0) — but the nested call "
-                + "ended as \(outcomeDescription)"
+                "expected the nested `respond` inside `\(path)`, on the outer answer's own model, to "
+                + "come back with a reply, but it ended as \(outcomeDescription)"
         ),
     ]
 }
 
 extension NestedGenerationOutcome {
-    /// Whether Router refused the nested call with `waitInsideOpenSubmission`.
-    var isRefusal: Bool {
-        guard case .refused = self else { return false }
-        return true
-    }
-
-    /// Whether Router refused the nested call at once: the queue read at the
-    /// refusal shows the outer submission still running, and no job waiting
-    /// behind it.
-    var isRefusalAtOnce: Bool {
-        guard case .refused(let queue?) = self else { return false }
-        return queue.isRunning && queue.waitingCount == 0
-    }
-
     /// Says how the nested call ended, for a failure message.
     var failureDescription: String {
         switch self {
-        case .refused(let queue?):
-            "a refusal while the queue read running=\(queue.isRunning) waiting=\(queue.waitingCount)"
-        case .refused(nil):
-            "a refusal, but the backend of the model names no generation queue, so the order of "
-                + "events is not known"
         case .returned:
-            "a reply: Router did not refuse the nested call on the same model"
+            "a reply"
         case .threw(let description):
-            "a different error: \(description)"
+            "an error: \(description)"
         }
     }
 }

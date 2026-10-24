@@ -219,12 +219,12 @@ struct SampleSnippetTests {
         }
     }
 
-    @Test("a generator that Router refuses on the model of the calling session propagates that refusal")
-    func refusedGeneratorPropagatesTheRefusal() async throws {
-        let refusal = GenerationQueueError.waitInsideOpenSubmission(model: "stub/standard")
-        let model = ScriptedLanguageModel(answers: [.failure(refusal)])
+    @Test("a generator whose session fails propagates that error")
+    func failedGeneratorPropagatesItsError() async throws {
+        let failure = ScriptedSessionFailure(model: "stub/standard")
+        let model = ScriptedLanguageModel(answers: [.failure(failure)])
 
-        await #expect(throws: refusal) {
+        await #expect(throws: failure) {
             try await SampleSnippet.generate(
                 forTask: "a temperature", over: try Self.entries(), using: Self.config(over: model))
         }

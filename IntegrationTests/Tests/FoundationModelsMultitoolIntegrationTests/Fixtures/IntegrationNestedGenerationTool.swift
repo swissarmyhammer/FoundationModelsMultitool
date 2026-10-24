@@ -34,10 +34,8 @@ let integrationNestedGenerationPrompt = "Say hello."
 
 /// How many tokens the nested generation is allowed.
 ///
-/// Small on purpose. On the work-queue Router the nested call is refused
-/// before it generates anything. When a later Router lets it through, this
-/// cap keeps that nested generation to seconds, so the probe reports the changed
-/// behavior as a `returned` outcome and not as a time-limit failure.
+/// Small on purpose. The nested call generates on the outer answer's own
+/// model, and this cap keeps that generation to seconds.
 let integrationNestedGenerationTokenLimit = 32
 
 /// The record of how the nested call of the probe ended.
@@ -60,36 +58,37 @@ actor NestedGenerationOutcomeLog {
 /// on the very model that the outer answer runs on, and generates.
 ///
 /// **What it is for.** `searchTools` generates from inside a tool call of the
-/// outer answer. When one model serves both profile slots, that nested
-/// generation needs the model that the outer submission holds open. The old
-/// Router hung for ever there. The work-queue Router refuses it at once with
-/// `GenerationQueueError.waitInsideOpenSubmission(model:)`, because the queue
-/// sees that the outer submission of the same model is open
-/// (`GenerationQueue.refuseWaitInsideOpenSubmission()`). This fixture makes
-/// that nested call and records how it ended, with the queue reading at the
-/// refusal, in a `NestedGenerationOutcomeLog`. `nestedGenerationChecks(for:)` grades the
-/// record.
+/// outer answer. When one model serves the outer answer and the nested call,
+/// that nested generation needs the model of the outer answer. The old Router
+/// hung for ever there, and the work-queue Router after it refused the call
+/// with `waitInsideOpenSubmission`. Since Router `505a03f3` the lock is held
+/// over the call into the model only, never over a tool call: the SDK runs
+/// this tool body after the outer `respond` returns, so the nested call takes
+/// the lock in its turn and completes. This fixture makes that nested call and
+/// records how it ended in a `NestedGenerationOutcomeLog`.
+/// `nestedGenerationChecks(for:)` grades the record.
 ///
 /// **No grammar.** The body calls `makeSession()` with every argument
 /// defaulted: no `Grammar`, no selection tier, no `MetadataSearcher`. The
-/// refusal is a property of the queue, and a grammar in the run would only add
-/// a second thing to read.
+/// question is the lock, and a grammar in the run would only add a second
+/// thing to read.
 ///
 /// **Why the same slot.** `slot` is the resolved `.standard` that the outer
-/// answer already runs on, so the nested session shares that model's queue by
+/// answer already runs on, so the nested session shares that model by
 /// construction — the condition under test, rather than something that
-/// happens to hold when two pins collide.
+/// happens to hold when two pins collide. The nested session is a new
+/// session: a wait for the tool's own session is the one wait Router still
+/// refuses in band (`RoutedSessionError.inBandWaitForOwnSession`).
 ///
 /// **Why the output is not a `String`.** Router's session mount wraps a
 /// `Tool<_, String>` in `BackgroundToolRunner` and leaves every other tool in band
-/// (`ToolMounting.makeWrapped(tool:site:configuration:)`). A
-/// background body runs outside the open submission, where the queue has
-/// nothing to refuse — and would make this probe answer a question nobody
-/// asked. A `@Generable` output keeps the call in band.
+/// (`ToolMounting.makeWrapped(tool:site:configuration:)`). A background body
+/// runs apart from the answer, and would make this probe answer a question
+/// nobody asked. A `@Generable` output keeps the call in band.
 ///
-/// **Why the call returns normally after the refusal.** The tool catches the
-/// refusal and reports the readiness token, so the outer answer ends at once.
-/// The verdict reads the outcome log, never the reply.
+/// **Why the call returns normally after an error.** The tool catches what the
+/// nested call throws and reports the readiness token, so the outer answer
+/// ends at once. The verdict reads the outcome log, never the reply.
 struct IntegrationNestedGenerationTool: Tool {
     /// The name of the span of this fixture's nested call.
     ///
@@ -134,17 +133,11 @@ struct IntegrationNestedGenerationTool: Tool {
 
     /// Makes the nested call on ``slot`` and says how it ended.
     ///
-    /// The refusal records the order of events, and no time: the queue of the
-    /// model is read at the instant the refusal arrives, while this tool body
-    /// still holds the outer submission open (card `^kdtrmhv`: no test checks
-    /// the speed of the machine).
-    ///
-    /// - Returns: `.refused` with the queue reading at the refusal, `.returned`
-    ///   when the nested call gave a reply, or `.threw` for any other error.
+    /// - Returns: `.returned` when the nested call gave a reply, or `.threw`
+    ///   with the error.
     private func nestedCallOutcome() async -> NestedGenerationOutcome {
         // The nested session is a Router session. It is closed on each path,
-        // thus it keeps no hold of the profile after this call. The queue is
-        // read before the close, at the instant the refusal arrives.
+        // thus it keeps no hold of the profile after this call.
         let nested = slot.makeSession()
         do {
             _ = try await nested.respond(
@@ -153,23 +146,9 @@ struct IntegrationNestedGenerationTool: Tool {
             )
             await nested.close()
             return .returned
-        } catch GenerationQueueError.waitInsideOpenSubmission {
-            let reading = await queueReading()
-            await nested.close()
-            return .refused(queueAtRefusal: reading)
         } catch {
             await nested.close()
             return .threw(description: "\(error)")
         }
-    }
-
-    /// Reads the generation queue of the model of ``slot``: the queue the
-    /// outer submission runs on.
-    ///
-    /// - Returns: whether a job runs and how many jobs wait, or `nil` when the
-    ///   backend of the model names no generation queue.
-    private func queueReading() async -> GenerationQueueReading? {
-        guard let queue = slot.residentGenerationQueue else { return nil }
-        return GenerationQueueReading(isRunning: await queue.isRunning, waitingCount: await queue.waitingCount)
     }
 }

@@ -4,12 +4,7 @@ import Testing
 import FoundationModels
 import ScenarioGrading
 @testable import FoundationModelsMultitool
-// `@testable` for one reason, and only the nested-generation probe needs it:
-// `RoutedModel.container` and `GenerationQueue`'s `isRunning` /
-// `waitingCount` are `internal`, and they are the direct reading of the queue
-// state `runNestedGenerationProbe` samples. Router's package is not edited to
-// expose them.
-@testable import FoundationModelsRouter
+import FoundationModelsRouter
 
 /// How a run's seeding state reads on the RESULT line.
 ///
@@ -555,7 +550,7 @@ func streamAnswer(of session: any RoutedSession, prompt: String) async throws ->
             answer.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .elicitationCompleted, .elicitationEnded, .runMessage, .runProgress,
-            .runSettled, .generationCall, .submissionQueued, .submissionStarted, .submissionEnded, .answered,
+            .runSettled, .generationCall, .submissionStarted, .submissionEnded, .answered,
             .answerFailed, .mailDeliveryPaused, .toolDisplay, .mailDelivered, .cancelled, .signalDone, .lost,
             .workStarted, .workEnded:
             // `.toolStatus` here is the residue of the three status cases
@@ -578,9 +573,8 @@ func streamAnswer(of session: any RoutedSession, prompt: String) async throws ->
             // background run's terminal event, which the journal readings below
             // already grade. `.generationCall` reports the usage of one
             // generation call; the `answered` event gives the sum of the
-            // chain. `.submissionQueued` and `.mailDeliveryPaused` report a
-            // wait of the model queue and a hold of mail, and no scenario here
-            // grades either. `.toolDisplay` carries display content that a tool
+            // chain. `.mailDeliveryPaused` reports a hold of mail, and no
+            // scenario here grades it. `.toolDisplay` carries display content that a tool
             // posts for a host, and this runner grades no display content.
             // The submission and answer events are read after
             // the loop, as one fold — see `settle(from:)`.
@@ -1063,60 +1057,16 @@ private func usageForDisplay(_ usage: TokenUsage) -> String {
 /// call that came back is worth reading whole.
 private let nestedGenerationReplyPreviewCharacters = 200
 
-/// Prints the state of the shared generation queue of the model one time.
-///
-/// The work-queue Router replaced the old per-container `generationGate`
-/// with one FIFO `GenerationQueue` for each model. This reads the same two
-/// things the gate reading gave: whether the worker runs a submission, and
-/// how many submissions wait for it. A nested `respond` on the same model
-/// gets `GenerationQueueError.waitInsideOpenSubmission` at once and never
-/// waits, so a healthy run never reads `waiting=1`. A run that hangs reads
-/// `running=true waiting=1` for the rest of its life.
-///
-/// No test may depend on time, thus no sampler reads the queue on a timer.
-/// The queue gives no event when its state changes. Thus the probe reads it
-/// at fixed points of the run: before the answer starts, and at the end of the
-/// answer (also when the answer throws). The state at the nested call itself is
-/// what `IntegrationNestedGenerationTool` records. This prints rather than
-/// asserts, because it is evidence and not a check.
-///
-/// - Parameters:
-///   - slot: the resolved slot whose resident container owns the queue.
-///   - point: the point of the run that the reading belongs to.
-private func reportGenerationQueue(on slot: RoutedLLM, at point: String) async {
-    guard let queue = slot.residentGenerationQueue else {
-        reportTraceLine("QUEUE none: the backend of this model names no generation queue")
-        return
-    }
-    reportTraceLine("QUEUE [\(point)] running=\(await queue.isRunning) waiting=\(await queue.waitingCount)")
-}
-
-extension RoutedLLM {
-    /// The generation queue of the resident model of this slot, or `nil` when
-    /// the backend of the model names none.
-    ///
-    /// Read through a session backend made only to reach the queue of the
-    /// container. It generates nothing, and every session of the model shares
-    /// its queue. `container` is `internal` to Router, thus this extension
-    /// stays in this file, next to the `@testable` import that reaches it.
-    /// The queue sampler above and `IntegrationNestedGenerationTool` both
-    /// read the queue through it.
-    var residentGenerationQueue: GenerationQueue? {
-        container.makeSession(instructions: nil).generationQueue
-    }
-}
-
 /// Runs the nested-generation probe: one answer whose single mounted tool
 /// generates, without any grammar, on the very model that the answer runs on.
 ///
 /// **The question.** `searchTools` generates from inside a tool call of the
-/// outer answer. When the nested generation needs the model that the outer submission
-/// holds open, the work-queue Router must refuse it at once with
-/// `GenerationQueueError.waitInsideOpenSubmission(model:)`. This run makes
+/// outer answer. When the nested generation needs the model of the outer
+/// answer, it must complete: Router holds its lock over the call into the
+/// model only, never over a tool call (Router `505a03f3`). This run makes
 /// exactly that nested call and grades how it ended, through
-/// `nestedGenerationChecks(for:)`: entered, refused, and refused at once —
-/// while the outer submission still ran, and with no job queued behind it.
-/// The order of events decides, and no real-time bound (card `^kdtrmhv`).
+/// `nestedGenerationChecks(for:)`: entered, and returned with a reply. No
+/// real-time bound decides (card `^kdtrmhv`): a hang does not end the run.
 ///
 /// **What it replaced.** The old Router's `RoutedModel.generationGate` — an
 /// `AsyncSemaphore(value: 1)` per resident container, taken by `beginTurn()`
@@ -1137,9 +1087,8 @@ extension RoutedLLM {
 ///
 /// **What a hang looks like from outside.** The answer stops making progress,
 /// and no time limit ends it: the person who runs the suite stops the run.
-/// The evidence is the `QUEUE` line this prints before the answer, the missing
-/// `QUEUE` line of the end of the answer, and the enter record of the span the fixture
-/// opens: the swift-log output of the run shows
+/// The evidence is the enter record of the span the fixture opens: the
+/// swift-log output of the run shows
 /// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the
 /// span of that call does not end for as long as the run lasts.
 ///
@@ -1150,7 +1099,7 @@ extension RoutedLLM {
 func runNestedGenerationProbe(name: String, prompt: String) async throws {
     // `plumbingProbeProfile`, not the shipped pin every other runner in this
     // file resolves. This probe grades **plumbing**: how a nested generation
-    // on a held model ends. The answer belongs to Router's generation queue
+    // on the outer answer's model ends. The answer belongs to the model lock
     // and is the same whatever model is resident. See `plumbingProbeModel`
     // for the rule, and for why no other suite in this target may take it.
     try await withLiveRouterFixture(name: name, profile: plumbingProbeProfile) { fixture in
@@ -1166,18 +1115,15 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             tools: [IntegrationNestedGenerationTool(slot: slot, log: log, outcomes: outcomes)])
 
         let start = Date()
-        await reportGenerationQueue(on: slot, at: "before the answer")
         let answer: StreamedAnswer
         do {
             answer = try await streamAnswer(of: session, prompt: prompt)
         } catch {
-            await reportGenerationQueue(on: slot, at: "the answer threw")
             // Closed on this path too, before the fixture checks the handles
             // of the profile.
             await session.close()
             throw error
         }
-        await reportGenerationQueue(on: slot, at: "the end of the answer")
         let elapsed = Date().timeIntervalSince(start)
 
         let evidence = NestedGenerationEvidence(

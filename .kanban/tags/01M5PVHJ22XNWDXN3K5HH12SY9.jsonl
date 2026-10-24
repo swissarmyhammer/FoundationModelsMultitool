@@ -1,0 +1,1 @@
+{"id":"01M5PVHJ2224YX29KTNGRVFE0B","timestamp":"2026-10-24T11:43:08.866706Z","op":"create","item_id":"01M5PVHJ22XNWDXN3K5HH12SY9","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 0e8a16\n+tag_name: blocked\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 0e8a16\n-tag_name: blocked\n","transaction_id":null}

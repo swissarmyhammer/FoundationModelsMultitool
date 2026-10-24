@@ -231,17 +231,17 @@ struct ScenarioGradingTests {
 
     // MARK: - The nested-generation probe's verdict
 
-    @Test("a nested call refused while the outer submission held the model, with nothing queued, passes")
-    func aRefusalAtOncePassesTheProbe() {
-        // The healthy reading on the work-queue Router: the tool was entered,
-        // and its nested `respond` on the same model got
-        // `waitInsideOpenSubmission` at once — while the outer submission
-        // still ran, and before anything was queued behind it.
+    @Test("a nested call on the outer answer's own model that came back with a reply passes")
+    func aNestedGenerationThatReturnedPassesTheProbe() {
+        // The healthy reading since Router `505a03f3`: the lock is held over
+        // the model call only, never over a tool call, so the tool body's
+        // nested `respond` on the same model runs after the outer `respond`
+        // returns, and completes.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
                 enteredPaths: [integrationNestedGenerationPath],
-                outcome: .refused(queueAtRefusal: Self.queueWhileOuterSubmissionRuns)
+                outcome: .returned
             )
         )
 
@@ -253,8 +253,8 @@ struct ScenarioGradingTests {
     func aRunThatCalledNothingFailsTheProbe() {
         // The shape that must never read as a verdict: the model answered
         // without calling the one tool mounted, so no nested call was made. A
-        // probe that passed here would report a refusal for a run that never
-        // tried.
+        // probe that passed here would report a nested call for a run that
+        // never tried.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
@@ -264,62 +264,33 @@ struct ScenarioGradingTests {
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedCallEnteredCheckName, nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
+        #expect(failed == [nestedCallEnteredCheckName, nestedGenerationReturnedCheckName])
     }
 
-    @Test("a nested generation that came back fails the probe on the refusal")
-    func aNestedGenerationThatReturnedFailsTheProbe() {
-        // The old reading, from the Router that lent its permit to a nested
-        // answer. On the work-queue Router it means the refusal is gone.
-        let checks = nestedGenerationChecks(
-            for: NestedGenerationEvidence(
-                answer: Self.replyReportingTheReadinessToken,
-                enteredPaths: [integrationNestedGenerationPath],
-                outcome: .returned
-            )
-        )
-
-        let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
-    }
-
-    @Test("a nested generation that threw a different error fails the probe on the refusal")
-    func aNestedGenerationThatThrewADifferentErrorFailsTheProbe() {
+    /// Each error is a nested call that did not complete: the old same-model
+    /// refusal, the refusal Router still gives a wait for the tool's own
+    /// session, and a cancellation.
+    @Test(
+        "a nested generation that threw fails the probe on the return",
+        arguments: [
+            "waitInsideOpenSubmission(model: \"stub/standard\")",
+            "inBandWaitForOwnSession(sessionID: 01M5PVHJ217B1MXZWJ6GWKQEBH)",
+            "CancellationError()",
+        ]
+    )
+    func aNestedGenerationThatThrewFailsTheProbe(description: String) {
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: "",
                 enteredPaths: [integrationNestedGenerationPath],
-                outcome: .threw(description: "CancellationError()")
+                outcome: .threw(description: description)
             )
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
-    }
-
-    /// Each queue reading is a refusal that did not come at once. A refusal
-    /// that came after a job waited behind the outer submission was queued
-    /// first. A refusal that came when no job ran came after the outer
-    /// submission closed. A refusal with no queue to read shows no order.
-    @Test(
-        "a refusal that did not come at once fails the probe on the order alone",
-        arguments: [
-            GenerationQueueReading(isRunning: true, waitingCount: 1),
-            GenerationQueueReading(isRunning: false, waitingCount: 0),
-            nil,
-        ]
-    )
-    func aRefusalNotAtOnceFailsOnTheOrderAlone(queueAtRefusal: GenerationQueueReading?) {
-        let checks = nestedGenerationChecks(
-            for: NestedGenerationEvidence(
-                answer: Self.replyReportingTheReadinessToken,
-                enteredPaths: [integrationNestedGenerationPath],
-                outcome: .refused(queueAtRefusal: queueAtRefusal)
-            )
-        )
-
-        let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedRefusalAtOnceCheckName])
+        #expect(failed == [nestedGenerationReturnedCheckName])
+        let message = checks.first { $0.name == nestedGenerationReturnedCheckName }?.failureMessage
+        #expect(message?.contains(description) == true)
     }
 
     // MARK: - The fold of the session events
@@ -520,11 +491,6 @@ struct ScenarioGradingTests {
     private static var replyReportingTheReadinessToken: String {
         "Your model is responsive. Readiness token: \(integrationNestedGenerationToken)"
     }
-
-    /// The queue a scripted refusal at once reads: the outer submission still
-    /// runs, and no job waits behind it, as when the queue throws before it
-    /// queues anything.
-    private static let queueWhileOuterSubmissionRuns = GenerationQueueReading(isRunning: true, waitingCount: 0)
 
     /// Runs one snippet against the compose scenario's own two fixture tools.
     ///
