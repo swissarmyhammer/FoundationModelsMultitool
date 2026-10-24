@@ -730,7 +730,8 @@ public struct MultiTool: GraphQLEndpointTool {
                 interpreterError,
                 hint: resolution?.text
                     ?? Self.headlessElicitHint(message: interpreterError.message, asksUser: asksUser)
-                    ?? UnavailableGlobalHint.hint(message: interpreterError.message),
+                    ?? UnavailableGlobalHint.hint(message: interpreterError.message)
+                    ?? EmptyListHint.hint(message: interpreterError.message, snippet: arguments.code),
                 directive: resolution?.directive ?? .repairSnippet
             )
             // A snippet that failed can still have started a call that it did

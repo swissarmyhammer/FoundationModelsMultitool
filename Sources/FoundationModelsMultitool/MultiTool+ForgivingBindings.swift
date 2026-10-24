@@ -25,7 +25,11 @@
 //    is not there, beside its `correction`) reads as `[]`
 //    (django__django-14608: `r2.matches.map(...)`), and each item of a list
 //    result answers the names the other verbs use: `file`, `filePath`,
-//    `path`; `line`, `startLine`, `lineNumber`. An item with only an LSP
+//    `path`; `line`, `startLine`, `lineNumber`; and `source`, `code`,
+//    `body`, `snippet` for its `text`. A list result read as one item
+//    answers from its first item (noqueue24 django__django-13447:
+//    `s.text.slice(...)` on a `getSymbol` result), and an empty list answers
+//    `undefined` there, as before. An item with only an LSP
 //    `range` answers `line`, `startLine` from `range.start.line` and
 //    `endLine` from `range.end.line`, as they are: every line and column of
 //    `code_context` is 1-based since FoundationModelsCodeContext 223732b,
@@ -155,7 +159,7 @@ extension MultiTool {
             Object.defineProperty(s, "isDirectory", { value: e.endsWith("/") }); return s; }); \
             Object.defineProperty(out, "includes", { value: (x) => out.some((e) => sameString(e, x)) }); \
             Object.defineProperty(out, "indexOf", { value: (x) => out.findIndex((e) => sameString(e, x)) }); return out; }; \
-            const matchNames = { file: "file", filepath: "file", path: "file", filename: "file", line: "line", startline: "line", lineno: "line", linenumber: "line", endline: "end", text: "text", content: "text", linetext: "text" }; \
+            const matchNames = { file: "file", filepath: "file", path: "file", filename: "file", line: "line", startline: "line", lineno: "line", linenumber: "line", endline: "end", text: "text", content: "text", linetext: "text", source: "text", code: "text", body: "text", snippet: "text" }; \
             const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], end: ["endLine"], text: ["text", "content"] }; \
             const rangeLine = (target, kind) => { const r = target.range; const p = r && typeof r === "object" ? (kind === "line" ? r.start : kind === "end" ? r.end : undefined) : undefined; \
             return p && typeof p.line === "number" ? p.line : undefined; }; \
@@ -177,6 +181,7 @@ extension MultiTool {
             if (k === Symbol.iterator) { return a[Symbol.iterator].bind(a); } \
             if (isIndex(k)) { return a[k]; } \
             const m = a[k]; if (typeof m === "function") { return m.bind(a); } \
+            if (typeof k === "string" && field !== "entries" && a[0] && typeof a[0] === "object") { return a[0][k]; } \
             return undefined; } }); }; \
             const shellNames = { stdout: "text", out: "text", text: "text", stderr: "stderr", code: "code", returncode: "code", exit: "code", exitstatus: "code", ok: "ok", success: "ok" }; \
             const asShell = (v) => { if (!v || typeof v !== "object") { return v; } \
