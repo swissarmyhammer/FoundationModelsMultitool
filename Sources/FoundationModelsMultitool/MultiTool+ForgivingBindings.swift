@@ -23,9 +23,11 @@
 //    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
 //    A list field that is `null` (`files.grep` on no match, or on a path that
 //    is not there, beside its `correction`) reads as `[]`
-//    (django__django-14608: `r2.matches.map(...)`), and each match of
-//    `files.grep` or `code_context.grepCode` answers the other verb's names:
-//    `file`, `filePath`, `path`; `line`, `startLine`, `lineNumber`.
+//    (django__django-14608: `r2.matches.map(...)`), and each item of a list
+//    result answers the names the other verbs use: `file`, `filePath`,
+//    `path`; `line`, `startLine`, `lineNumber`. The list-shaped
+//    `code_context` verbs act as their list too (django__django-14752:
+//    `refs.map(...)` on a `grepCode` result).
 // 2. **A name that is not there finds the verb it means.** `tools` and each
 //    group are `Proxy` objects: a missing name is read in any letter case
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
@@ -55,8 +57,18 @@ extension MultiTool {
         "files.glob": "files",
         "files.grep": "matches",
         "files.list": "entries",
-        // django__django-14608: `r1.matches.map(m => m.file)`, see `aliased`.
+        // django__django-14608: `r1.matches.map(m => m.file)`, see `aliased`;
+        // django__django-14752: `refs.map(...)`. The field names are those of
+        // the FoundationModelsCodeContext results; `searchSymbol` answers a
+        // bare list.
         "code_context.grepCode": "matches",
+        "code_context.searchCode": "hits",
+        "code_context.searchSymbol": "symbols",
+        "code_context.getReferences": "references",
+        "code_context.getImplementations": "implementations",
+        "code_context.getInboundCalls": "calls",
+        "code_context.getDefinition": "locations",
+        "code_context.getTypeDefinition": "locations",
         "code_context.listSymbol": "symbols",
         "code_context.getSymbol": "symbols",
         // django__django-14534: `r.stdout.slice(-3000)`, see `asShell`.
@@ -116,7 +128,7 @@ extension MultiTool {
             const norm = (k) => String(k).toLowerCase().replace(/[_-]/g, ""); \
             const tag = /^\\d+:[0-9a-f]{2}\\|/; \
             const textNames = ["content", "text", "body", "data"]; \
-            const listNames = ["items", "results", "entries", "files", "matches"]; \
+            const listNames = ["items", "results", "entries", "files", "matches", "hits", "symbols", "references", "locations"]; \
             const textOf = (v) => { if (!v || typeof v !== "object") { return String(v); } \
             if (Array.isArray(v.lines) && (v.lines.length > 0 || !v.correction)) { return v.lines.map((l) => String(l).replace(tag, "")).join("\\n"); } \
             return v.correction ? String(v.correction) : ""; }; \
@@ -145,7 +157,7 @@ extension MultiTool {
             return real ? target[real] : undefined; } })); \
             const asArray = (v, field) => { if (!v || typeof v !== "object") { return v; } \
             if (field === "entries" && Array.isArray(v.entries)) { v.entries = named(v.entries); } \
-            if (field === "matches" && Array.isArray(v.matches)) { v.matches = v.matches.map(aliased); } \
+            if (field !== "entries" && Array.isArray(v[field])) { v[field] = v[field].map(aliased); } \
             const list = () => { const a = v[field]; if (Array.isArray(a)) { return a; } \
             const other = listNames.find((n) => Array.isArray(v[n])); return other ? v[other] : []; }; \
             return new Proxy(v, { get(target, k) { \
