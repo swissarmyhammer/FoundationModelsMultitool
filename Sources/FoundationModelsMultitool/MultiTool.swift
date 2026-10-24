@@ -674,7 +674,15 @@ public struct MultiTool: GraphQLEndpointTool {
             // thus only a run the model started carries the note.
             if (try? interpreter.checkSyntax(of: arguments.code)) == nil,
                 let repaired = SnippetRepair.repair(
-                    arguments.code, parses: { (try? interpreter.checkSyntax(of: $0)) != nil })
+                    arguments.code,
+                    check: { code in
+                        do {
+                            try interpreter.checkSyntax(of: code)
+                            return .parses
+                        } catch {
+                            return .fails(line: (error as? InterpreterError)?.line)
+                        }
+                    })
             {
                 let rendered = try await runSnippet(arguments: RunCodeArguments(code: repaired.code))
                 return enclosingRun == nil ? rendered + "\n\n" + SnippetRepair.note(for: repaired) : rendered

@@ -9,7 +9,10 @@
 // The rule that keeps a repair safe: each repair is one small edit, each is
 // tried on its own, and the snippet runs repaired only when EXACTLY ONE
 // candidate parses. Two that parse mean the intent is not clear, and the
-// parse error goes back as before.
+// parse error goes back as before. The same slip can be on more than one line
+// (bench24-1023b, django__django-14672): when no edit parses but exactly one
+// moves the parse error to a later line, that edit is kept and the repair
+// goes on from it, up to `mostEdits` edits.
 
 import Foundation
 
@@ -38,6 +41,19 @@ enum SnippetRepair {
     /// The characters a closing token can be.
     private static let closers: [Character] = [")", "}", "]"]
 
+    /// What the parser says of one source.
+    enum ParseCheck: Equatable {
+        /// The source parses.
+        case parses
+        /// The source does not parse; `line` is the line the parser blames,
+        /// when it names one.
+        case fails(line: Int?)
+    }
+
+    /// The most edits one repair makes. The same slip on two lines took two
+    /// (bench24-1023b, django__django-14672, seq 17753).
+    static let mostEdits = 5
+
     /// The one repair that makes `code` parse, or `nil` when none does or
     /// when more than one does.
     ///
@@ -49,11 +65,64 @@ enum SnippetRepair {
     static func repair(
         _ code: String, parses: (String) -> Bool, candidates: [Candidate]? = nil
     ) -> Candidate? {
-        var seen: Set<String> = []
-        let unique = (candidates ?? Self.candidates(for: code)).filter { seen.insert($0.code).inserted }
-        let parsing = unique.filter { parses($0.code) }
-        guard parsing.count == 1, let only = parsing.first else { return nil }
-        return only
+        repair(
+            code, check: { parses($0) ? .parses : .fails(line: nil) },
+            candidates: { candidates ?? Self.candidates(for: $0) })
+    }
+
+    /// The repair of one or more edits that makes `code` parse, or `nil`.
+    ///
+    /// Each step tries every candidate of the code so far. When exactly one
+    /// parses, that is the repair. When none parses but exactly one moves the
+    /// parse error to a later line, that edit is kept and the next step
+    /// starts from it, up to ``mostEdits`` edits. Any other step — two that
+    /// parse, or not exactly one that gets further — answers `nil`.
+    ///
+    /// - Parameters:
+    ///   - code: the snippet that does not parse.
+    ///   - check: what the interpreter's own parser says of a source.
+    ///   - candidates: the repairs to try of a source.
+    ///   - mostEdits: the most edits to make.
+    /// - Returns: the repaired snippet and the note of every edit, or `nil`.
+    static func repair(
+        _ code: String, check: (String) -> ParseCheck,
+        candidates: (String) -> [Candidate] = candidates(for:), mostEdits: Int = mostEdits
+    ) -> Candidate? {
+        var current = code
+        var notes: [String] = []
+        guard case .fails(var failingLine) = check(code) else { return nil }
+        for _ in 0..<mostEdits {
+            var seen: Set<String> = []
+            let checked = candidates(current).filter { seen.insert($0.code).inserted }.map { ($0, check($0.code)) }
+            let parsing = checked.filter { $0.1 == .parses }
+            if parsing.count == 1, let only = parsing.first?.0 {
+                return Candidate(code: only.code, note: joinedNote(notes + [only.note]))
+            }
+            guard parsing.isEmpty, let line = failingLine else { return nil }
+            let further = checked.compactMap { candidate, result -> (Candidate, Int)? in
+                guard case .fails(let next?) = result, next > line else { return nil }
+                return (candidate, next)
+            }
+            guard further.count == 1, let (step, next) = further.first else { return nil }
+            current = step.code
+            notes.append(step.note)
+            failingLine = next
+        }
+        return nil
+    }
+
+    /// The notes of several edits as one: the same edit on several lines is
+    /// said once, `added '}' before ')' on lines 2 and 3`.
+    private static func joinedNote(_ notes: [String]) -> String {
+        guard notes.count > 1 else { return notes.first ?? "" }
+        let parts = notes.map { note -> (String, String)? in
+            guard let range = note.range(of: #"line \d+$"#, options: .regularExpression) else { return nil }
+            return (String(note[..<range.lowerBound]), String(note[range].dropFirst("line ".count)))
+        }
+        let heads = Set(parts.map { $0?.0 })
+        guard heads.count == 1, let head = heads.first ?? nil else { return notes.joined(separator: "; ") }
+        let lines = parts.compactMap { $0?.1 }
+        return "\(head)lines \(lines.dropLast().joined(separator: ", ")) and \(lines.last ?? "")"
     }
 
     /// The note a repaired run closes with.
@@ -71,7 +140,7 @@ enum SnippetRepair {
     /// - Returns: the candidates, which may not parse.
     static func candidates(for code: String) -> [Candidate] {
         missingColonCandidates(code) + missingCommaCandidates(code) + closerCandidates(code)
-            + lineCloserCandidates(code)
+            + lineCloserCandidates(code) + closerBeforeParenCandidates(code)
     }
 
     /// The 1-based line of the character at `offset` (a UTF-16 offset).
@@ -162,6 +231,27 @@ enum SnippetRepair {
                     Candidate(
                         code: lines.joined(separator: "\n"),
                         note: "added a missing '\(closer)' at the end of line \(index + 1)"))
+            }
+            lines[index] = original
+        }
+        return candidates
+    }
+
+    /// A missing `}` or `]` added before the last `)` of one line:
+    /// `f({ a: 1 );` → `f({ a: 1 });` (bench24-1023b, django__django-14672,
+    /// seq 17733).
+    private static func closerBeforeParenCandidates(_ code: String) -> [Candidate] {
+        var lines = code.components(separatedBy: "\n")
+        var candidates: [Candidate] = []
+        for index in lines.indices {
+            let original = lines[index]
+            guard let paren = original.lastIndex(of: ")") else { continue }
+            for closer in ["}", "]"] {
+                var edited = original
+                edited.insert(contentsOf: closer, at: paren)
+                lines[index] = edited
+                candidates.append(
+                    Candidate(code: lines.joined(separator: "\n"), note: "added '\(closer)' before ')' on line \(index + 1)"))
             }
             lines[index] = original
         }

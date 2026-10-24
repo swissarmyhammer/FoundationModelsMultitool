@@ -148,6 +148,72 @@ struct SnippetRepairTests {
         #expect(split(output).note == "Repaired: added a missing ')' at the end of line 2.", "output was: \(output)")
     }
 
+    /// Runs `code` on a surface with the stand-in `grepCode` that answers
+    /// matches.
+    private func runMatches(_ code: String) async throws -> String {
+        let registry = try MultiTool.Builder()
+            .addGroup(named: "code_context", [RepairMatchesTool()])
+            .buildRegistry()
+        return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
+    }
+
+    /// bench24-1023b, django__django-14672 (seq 17733): the `}` of the object
+    /// is missing before the `)`.
+    private static let missingBraceSnippet = """
+        const c4 = await tools.code_context.grepCode({ pattern: "class FieldCacheMixin", maxResults: 3 );
+        return c4.matches.map((m) => m.text);
+        """
+
+    @Test("a '}' missing before the ')' of a call is added there")
+    func aMissingBraceBeforeTheParenIsRepaired() async throws {
+        let output = try await runMatches(Self.missingBraceSnippet)
+        let (value, note) = split(output)
+
+        #expect(try RunOutput.decoded([String].self, from: value) == ["class FieldCacheMixin"], "output was: \(output)")
+        #expect(note == "Repaired: added '}' before ')' on line 1.", "output was: \(output)")
+    }
+
+    /// bench24-1023b, django__django-14672 (seq 17753): the same slip on two
+    /// lines; the run elided the first pattern.
+    private static let twoMissingBracesSnippet = """
+        const a = await tools.code_context.grepCode({ pattern: "class FieldCacheMixin", maxResults: 5 });
+        const b = await tools.code_context.grepCode({ pattern: "def __hash__", filePattern: "django/db/models/*", maxResults: 15 );
+        const c = await tools.code_context.grepCode({ pattern: "hash\\\\(", filePattern: "django/core/checks/*", maxResults: 10 );
+        return [a, b, c].map((r) => r.matches[0].text);
+        """
+
+    @Test("the same slip on two lines is repaired on both, one edit at a time")
+    func theSameSlipOnTwoLinesIsRepaired() async throws {
+        let output = try await runMatches(Self.twoMissingBracesSnippet)
+        let (value, note) = split(output)
+
+        #expect(
+            try RunOutput.decoded([String].self, from: value) == ["class FieldCacheMixin", "def __hash__", #"hash\("#],
+            "output was: \(output)")
+        #expect(note == "Repaired: added '}' before ')' on lines 2 and 3.", "output was: \(output)")
+    }
+
+    @Test("a step with two repairs that parse further stops the repair")
+    func twoStepsThatParseFurtherAreAmbiguous() {
+        // Both candidates move the error to a later line, thus the meaning is
+        // not clear, and nothing is repaired.
+        let repaired = SnippetRepair.repair(
+            "x",
+            check: { $0 == "x" ? .fails(line: 1) : .fails(line: 2) },
+            candidates: { _ in [.init(code: "x;", note: "one"), .init(code: "x+0", note: "two")] })
+        #expect(repaired == nil)
+    }
+
+    @Test("the edits stop at the most edits")
+    func theEditsStopAtTheMost() {
+        // Each edit moves the error one line further and none parses.
+        let repaired = SnippetRepair.repair(
+            "",
+            check: { .fails(line: $0.count + 1) },
+            candidates: { [.init(code: $0 + "x", note: "added 'x' on line \($0.count + 1)")] })
+        #expect(repaired == nil)
+    }
+
     @Test("a snippet no single repair makes parse gives the parse error as before")
     func anUnrepairableSnippetGivesTheParseError() async throws {
         let output = try await run("return {{{ ]]] ;;; (((")
