@@ -22,7 +22,9 @@
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
 //    → `files.grep`), and at the top a bare verb that one group holds
 //    (`tools.grep`), or a synonym (`tools.ls` → `files.list`), resolves to
-//    that verb. A name that nothing answers is still `undefined`, thus the
+//    that verb. In a group, a made-up name that holds the name of one verb
+//    that reads (`listEntries` ⊃ `list`) calls it (see `containedVerbPaths`).
+//    A name that nothing answers is still `undefined`, thus the
 //    snippet fails the way it did before and `UnknownToolHint` answers it.
 //
 // The line is one line on purpose: each preamble line moves the line numbers
@@ -58,6 +60,25 @@ extension MultiTool {
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// The verbs a made-up name that holds their name, or a synonym of it,
+    /// calls: `files.listEntries` → `files.list` (bench24-1023b,
+    /// django__django-14382). Only verbs that read are here, thus a name such
+    /// as `files.deleteAllFiles` never runs anything.
+    private static let containedVerbPaths: Set<String> = ["files.read", "files.list", "files.glob", "files.grep"]
+
+    /// The JS object, as source, that maps each name of 4 or more letters of a
+    /// ``containedVerbPaths`` verb (the verb and its synonyms) to its path.
+    private static var containedTableSource: String {
+        var table: [String: String] = [:]
+        for path in containedVerbPaths {
+            let verb = String(path.split(separator: ".").last ?? "")
+            let names = [VerbSynonyms.normalized(verb)] + (VerbSynonyms.rows.first { $0.path == path }?.verbs.sorted() ?? [])
+            for name in names where name.count >= 4 { table[name] = path }
+        }
+        let data = (try? JSONSerialization.data(withJSONObject: table, options: [.sortedKeys])) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// The preamble line of the forgiving bindings — see the file comment.
     ///
     /// It must run after every `tools.*` assignment, because it wraps the
@@ -67,7 +88,7 @@ extension MultiTool {
             .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         return """
             (function () { \
-            const synonyms = \(synonymTableSource); const shapes = \(shapes); \
+            const synonyms = \(synonymTableSource); const shapes = \(shapes); const contained = \(containedTableSource); \
             const norm = (k) => String(k).toLowerCase().replace(/[_-]/g, ""); \
             const tag = /^\\d+:[0-9a-f]{2}\\|/; \
             const textNames = ["content", "text", "body", "data"]; \
@@ -118,6 +139,10 @@ extension MultiTool {
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const n = norm(k); const same = Object.keys(target).find((verb) => norm(verb) === n); if (same) { return target[same]; } \
             const path = synonyms[n]; if (path && path.startsWith(g + ".")) { return target[path.slice(g.length + 1)]; } \
+            const held = Object.keys(contained).filter((c) => n.includes(c) && contained[c].startsWith(g + ".")); \
+            const longest = Math.max(0, ...held.map((c) => c.length)); \
+            const meant = [...new Set(held.filter((c) => c.length === longest).map((c) => contained[c]))]; \
+            if (meant.length === 1) { return target[meant[0].slice(g.length + 1)]; } \
             return undefined; } }); } \
             globalThis.tools = new Proxy(tools, { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
