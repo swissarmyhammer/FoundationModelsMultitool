@@ -558,7 +558,16 @@ public struct MultiTool: GraphQLEndpointTool {
         return try await MultitoolTelemetry.traced(
             .runCode, attributes: [.toolName: name, .depth: depth, .completionToken: completionToken]
         ) { span in
-            let rendered = try await runSnippet(arguments: arguments)
+            // A snippet that binds its own `tools` hides the namespace; its
+            // namespace calls run on `globalThis.tools` (see `ShadowedTools`).
+            let paths = holder.current.registry.surface.entries.map(\.path)
+            let rendered: String
+            if let rewritten = ShadowedTools.rewrite(arguments.code, paths: paths) {
+                let output = try await runSnippet(arguments: RunCodeArguments(code: rewritten))
+                rendered = enclosingRun == nil ? output + "\n\n" + ShadowedTools.note : output
+            } else {
+                rendered = try await runSnippet(arguments: arguments)
+            }
             span.attributes[MultitoolTelemetry.AttributeKey.outputCharacters.rawValue] = rendered.count
             return rendered
         }
