@@ -47,7 +47,7 @@ enum VerbSynonyms {
         VerbSynonym(path: "files.list", verbs: ["ls", "dir", "listdir", "listdirectory", "readdir", "lsdir", "listfolder"], binds: true),
         VerbSynonym(path: "files.glob", verbs: ["find", "findfiles", "listfiles"], binds: true),
         VerbSynonym(path: "files.grep", verbs: ["search", "searchfiles", "rg", "findtext", "searchtext"], binds: true),
-        VerbSynonym(path: "shell.execute", verbs: ["run", "exec", "runcommand", "sh", "bash"], binds: true),
+        VerbSynonym(path: "shell.execute", verbs: ["run", "exec", "runcommand", "command", "sh", "bash"], binds: true),
         VerbSynonym(
             path: "files.makeDirectory",
             verbs: ["mkdir", "makedir", "createdirectory", "createdir", "newdirectory"], binds: true),
