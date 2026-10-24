@@ -57,6 +57,28 @@ enum VerbSynonyms {
         VerbSynonym(
             path: "files.removeDirectory", verbs: ["rmdir", "removedir", "deletedirectory", "deletedir"], binds: true),
         VerbSynonym(path: "snapshots.rollback", verbs: ["reset", "rewind"], binds: false),
+        // The read verbs of the `code_context` group of
+        // FoundationModelsCodeContext. bench24-1023b, django__django-14411:
+        // `tools.code_context.search({ query })` for `searchSymbol`. A name
+        // that a files row holds too (`search`, `find`, `grep`) answers in
+        // the group it is called in.
+        VerbSynonym(
+            path: "code_context.searchSymbol",
+            verbs: ["search", "find", "lookup", "symbol", "findsymbol", "searchsymbols"], binds: true),
+        VerbSynonym(
+            path: "code_context.getDefinition",
+            verbs: ["definition", "goto", "gotodefinition", "finddefinition", "def"], binds: true),
+        VerbSynonym(
+            path: "code_context.getReferences",
+            verbs: ["references", "refs", "usages", "findreferences", "findusages"], binds: true),
+        VerbSynonym(
+            path: "code_context.getInboundCalls",
+            verbs: ["callers", "whocalls", "incomingcalls", "inboundcalls"], binds: true),
+        VerbSynonym(
+            path: "code_context.listSymbol", verbs: ["symbols", "outline", "listsymbols", "filesymbols"], binds: true),
+        VerbSynonym(path: "code_context.grepCode", verbs: ["grep"], binds: true),
+        VerbSynonym(path: "code_context.getCallgraph", verbs: ["callgraph"], binds: true),
+        VerbSynonym(path: "code_context.getBlastradius", verbs: ["blastradius", "impact"], binds: true),
     ]
 
     /// `name` in the form the table holds: lowercase, with no `_` or `-`.
@@ -74,7 +96,17 @@ enum VerbSynonyms {
     /// - Parameter verb: a verb name as a model wrote it.
     /// - Returns: the row, or `nil` when no row names the verb.
     static func row(for verb: String) -> VerbSynonym? {
+        rows(for: verb).first
+    }
+
+    /// Each row whose verbs hold `verb`, in table order: one name can mean a
+    /// verb in each of two groups (`search` is `files.grep` and
+    /// `code_context.searchSymbol`).
+    ///
+    /// - Parameter verb: a verb name as a model wrote it.
+    /// - Returns: the rows.
+    static func rows(for verb: String) -> [VerbSynonym] {
         let name = normalized(verb)
-        return rows.first { $0.verbs.contains(name) }
+        return rows.filter { $0.verbs.contains(name) }
     }
 }

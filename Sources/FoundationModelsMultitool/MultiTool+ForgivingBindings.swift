@@ -50,11 +50,12 @@ extension MultiTool {
         "code_context.getSymbol": "symbols",
     ]
 
-    /// The JS object, as source, that maps each bound synonym to its path.
+    /// The JS object, as source, that maps each bound synonym to its paths,
+    /// in table order: one name can mean a verb of each group.
     private static var synonymTableSource: String {
-        var table: [String: String] = [:]
+        var table: [String: [String]] = [:]
         for row in VerbSynonyms.rows where row.binds {
-            for verb in row.verbs { table[verb] = row.path }
+            for verb in row.verbs { table[verb, default: []].append(row.path) }
         }
         let data = (try? JSONSerialization.data(withJSONObject: table, options: [.sortedKeys])) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
@@ -63,17 +64,27 @@ extension MultiTool {
     /// The verbs a made-up name that holds their name, or a synonym of it,
     /// calls: `files.listEntries` → `files.list` (bench24-1023b,
     /// django__django-14382). Only verbs that read are here, thus a name such
-    /// as `files.deleteAllFiles` never runs anything.
-    private static let containedVerbPaths: Set<String> = ["files.read", "files.list", "files.glob", "files.grep"]
+    /// as `files.deleteAllFiles` never runs anything. The read verbs of
+    /// `code_context` are here too (django__django-14411:
+    /// `searchSymbolByName` → `searchSymbol`); `rebuildIndex` and the LSP
+    /// start and stop verbs are not.
+    private static let containedVerbPaths: [String] = [
+        "files.read", "files.list", "files.glob", "files.grep",
+        "code_context.searchSymbol", "code_context.getSymbol", "code_context.listSymbol",
+        "code_context.grepCode", "code_context.searchCode", "code_context.getDefinition",
+        "code_context.getTypeDefinition", "code_context.getReferences", "code_context.getImplementations",
+        "code_context.getInboundCalls", "code_context.getHover", "code_context.getCallgraph",
+        "code_context.getBlastradius",
+    ]
 
     /// The JS object, as source, that maps each name of 4 or more letters of a
-    /// ``containedVerbPaths`` verb (the verb and its synonyms) to its path.
+    /// ``containedVerbPaths`` verb (the verb and its synonyms) to its paths.
     private static var containedTableSource: String {
-        var table: [String: String] = [:]
+        var table: [String: [String]] = [:]
         for path in containedVerbPaths {
             let verb = String(path.split(separator: ".").last ?? "")
             let names = [VerbSynonyms.normalized(verb)] + (VerbSynonyms.rows.first { $0.path == path }?.verbs.sorted() ?? [])
-            for name in names where name.count >= 4 { table[name] = path }
+            for name in names where name.count >= 4 { table[name, default: []].append(path) }
         }
         let data = (try? JSONSerialization.data(withJSONObject: table, options: [.sortedKeys])) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
@@ -138,10 +149,11 @@ extension MultiTool {
             for (const g of groups) { tools[g] = new Proxy(tools[g], { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const n = norm(k); const same = Object.keys(target).find((verb) => norm(verb) === n); if (same) { return target[same]; } \
-            const path = synonyms[n]; if (path && path.startsWith(g + ".")) { return target[path.slice(g.length + 1)]; } \
-            const held = Object.keys(contained).filter((c) => n.includes(c) && contained[c].startsWith(g + ".")); \
+            const inGroup = (paths) => (paths || []).filter((p) => p.startsWith(g + ".") && typeof target[p.slice(g.length + 1)] === "function"); \
+            const path = inGroup(synonyms[n])[0]; if (path) { return target[path.slice(g.length + 1)]; } \
+            const held = Object.keys(contained).filter((c) => n.includes(c) && inGroup(contained[c]).length > 0); \
             const longest = Math.max(0, ...held.map((c) => c.length)); \
-            const meant = [...new Set(held.filter((c) => c.length === longest).map((c) => contained[c]))]; \
+            const meant = [...new Set(held.filter((c) => c.length === longest).flatMap((c) => inGroup(contained[c])))]; \
             if (meant.length === 1) { return target[meant[0].slice(g.length + 1)]; } \
             return undefined; } }); } \
             globalThis.tools = new Proxy(tools, { get(target, k) { \
@@ -150,7 +162,8 @@ extension MultiTool {
             const top = Object.keys(target).find((name) => !isGroup(target[name]) && norm(name) === n); if (top) { return target[top]; } \
             const owners = groups.filter((g) => Object.keys(target[g]).some((verb) => norm(verb) === n)); \
             if (owners.length === 1) { return target[owners[0]][k]; } \
-            const path = synonyms[n]; if (path) { const [g, verb] = path.split("."); if (isGroup(target[g])) { return target[g][verb]; } } \
+            const path = (synonyms[n] || []).find((p) => { const [g, verb] = p.split("."); return isGroup(target[g]) && typeof target[g][verb] === "function"; }); \
+            if (path) { const [g, verb] = path.split("."); return target[g][verb]; } \
             return undefined; } }); \
             })();
             """

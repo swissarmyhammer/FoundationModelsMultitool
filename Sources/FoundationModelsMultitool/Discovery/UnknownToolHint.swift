@@ -384,9 +384,16 @@ enum UnknownToolHint {
     ///   - surface: the catalog to read.
     /// - Returns: the entry, or nil.
     private static func meaningMatch(for failedPath: String, in surface: APISurface) -> APISurface.Entry? {
-        let synonymEntry = { (verb: String) -> APISurface.Entry? in
-            guard let row = VerbSynonyms.row(for: verb) else { return nil }
-            return surface.entries.first(where: { $0.path == row.path })
+        // The first row whose path is in the surface — in `group` when the
+        // guess names one, since one name can mean a verb of each group. A
+        // guess whose group holds no such row reads every group:
+        // `code_context.listFiles` names `files.glob`.
+        let synonymEntry = { (verb: String, group: String?) -> APISurface.Entry? in
+            for row in VerbSynonyms.rows(for: verb) {
+                if let group, !row.path.hasPrefix(group + ".") { continue }
+                if let entry = surface.entries.first(where: { $0.path == row.path }) { return entry }
+            }
+            return nil
         }
         guard let separatorIndex = failedPath.lastIndex(of: pathSeparator) else {
             let name = VerbSynonyms.normalized(failedPath)
@@ -394,12 +401,12 @@ enum UnknownToolHint {
                 $0.group != nil && VerbSynonyms.normalized($0.descriptor.name) == name
             }
             if sameVerb.count == 1 { return sameVerb.first }
-            return synonymEntry(failedPath)
+            return synonymEntry(failedPath, nil)
         }
         let group = String(failedPath[..<separatorIndex])
         let verb = String(failedPath[failedPath.index(after: separatorIndex)...])
         guard surface.entries.contains(where: { $0.group == group }) else { return nil }
-        return synonymEntry(verb) ?? containedVerbEntry(in: verb, group: group, surface: surface)
+        return synonymEntry(verb, group) ?? synonymEntry(verb, nil) ?? containedVerbEntry(in: verb, group: group, surface: surface)
     }
 
     /// The shortest name a verb or a synonym of ``VerbSynonyms`` must have
