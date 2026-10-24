@@ -40,12 +40,13 @@ struct ListResultLocations {
     var locations: [ListResultLocation]
 }
 
-/// A zero-based position, as an LSP `range` carries it.
+/// A 1-based position, as a `code_context` `range` carries it since
+/// FoundationModelsCodeContext 223732b.
 @Generable
 struct ListResultPosition {
-    @Guide(description: "The zero-based line.")
+    @Guide(description: "The 1-based line.")
     var line: Int
-    @Guide(description: "The zero-based character.")
+    @Guide(description: "The 1-based character.")
     var character: Int
 }
 
@@ -81,7 +82,7 @@ struct ListResultImplementationsTool: Tool {
     let description = "Finds the implementations of a symbol."
     func call(arguments: ListResultArguments) async throws -> ListResultImplementations {
         let range = ListResultRange(
-            start: ListResultPosition(line: 41, character: 4), end: ListResultPosition(line: 47, character: 0))
+            start: ListResultPosition(line: 42, character: 5), end: ListResultPosition(line: 48, character: 1))
         return ListResultImplementations(implementations: [ListResultRangedLocation(filePath: "d.py", range: range)])
     }
 }
@@ -170,13 +171,14 @@ struct CodeContextListResultTests {
         #expect(output.contains(#"[1,"c.py"]"#), "output was: \(output)")
     }
 
-    @Test("an item with only a range answers line, startLine, and endLine in the zero-based lines of grepCode")
+    @Test("an item with only a range answers line, startLine, and endLine in the 1-based lines of files.read")
     func aRangeAnswersItsLines() async throws {
-        // grepCode's `startLine` and the LSP `range` are both zero-based, thus
-        // the range's lines pass through as they are.
+        // Every code_context line is 1-based since FoundationModelsCodeContext
+        // 223732b, the same as files.grep and files.read, thus the range's
+        // lines pass through as they are: no +1 and no -1.
         let output = try await Self.run(
             #"const r = await tools.code_context.getImplementations({ symbol: "X" }); return r.map((i) => [i.line, i.startLine, i.endLine]);"#)
 
-        #expect(try RunOutput.decoded([[Int]].self, from: output) == [[41, 41, 47]], "output was: \(output)")
+        #expect(try RunOutput.decoded([[Int]].self, from: output) == [[42, 42, 48]], "output was: \(output)")
     }
 }

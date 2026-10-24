@@ -27,10 +27,11 @@
 //    result answers the names the other verbs use: `file`, `filePath`,
 //    `path`; `line`, `startLine`, `lineNumber`. An item with only an LSP
 //    `range` answers `line`, `startLine` from `range.start.line` and
-//    `endLine` from `range.end.line`, as they are: the LSP lines, the
-//    `startLine` of `grepCode`, and that of `listSymbol` and `getSymbol` are
-//    all zero-based, thus one convention holds across `code_context`. The
-//    `line` of `files.grep` is 1-based, as it was. The list-shaped
+//    `endLine` from `range.end.line`, as they are: every line and column of
+//    `code_context` is 1-based since FoundationModelsCodeContext 223732b,
+//    the same as the `line` of `files.grep` and the lines of `files.read`,
+//    thus one convention holds across all groups and nothing adds or
+//    subtracts 1. The list-shaped
 //    `code_context` verbs act as their list too (django__django-14752:
 //    `refs.map(...)` on a `grepCode` result).
 // 2. **A name that is not there finds the verb it means.** `tools` and each
