@@ -21,6 +21,11 @@
 //    one string, without the `N: ` of each line), `stderr` (`""`: the shell
 //    merges the two streams), `code`, `returncode`, `exit` (its `exitCode`),
 //    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
+//    A list field that is `null` (`files.grep` on no match, or on a path that
+//    is not there, beside its `correction`) reads as `[]`
+//    (django__django-14608: `r2.matches.map(...)`), and each match of
+//    `files.grep` or `code_context.grepCode` answers the other verb's names:
+//    `file`, `filePath`, `path`; `line`, `startLine`, `lineNumber`.
 // 2. **A name that is not there finds the verb it means.** `tools` and each
 //    group are `Proxy` objects: a missing name is read in any letter case
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
@@ -50,6 +55,8 @@ extension MultiTool {
         "files.glob": "files",
         "files.grep": "matches",
         "files.list": "entries",
+        // django__django-14608: `r1.matches.map(m => m.file)`, see `aliased`.
+        "code_context.grepCode": "matches",
         "code_context.listSymbol": "symbols",
         "code_context.getSymbol": "symbols",
         // django__django-14534: `r.stdout.slice(-3000)`, see `asShell`.
@@ -130,12 +137,20 @@ extension MultiTool {
             Object.defineProperty(s, "isDirectory", { value: e.endsWith("/") }); return s; }); \
             Object.defineProperty(out, "includes", { value: (x) => out.some((e) => sameString(e, x)) }); \
             Object.defineProperty(out, "indexOf", { value: (x) => out.findIndex((e) => sameString(e, x)) }); return out; }; \
+            const matchNames = { file: "file", filepath: "file", path: "file", filename: "file", line: "line", startline: "line", lineno: "line", linenumber: "line", text: "text", content: "text", linetext: "text" }; \
+            const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], text: ["text", "content"] }; \
+            const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
+            if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
+            const kind = matchNames[norm(k)]; const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); \
+            return real ? target[real] : undefined; } })); \
             const asArray = (v, field) => { if (!v || typeof v !== "object") { return v; } \
             if (field === "entries" && Array.isArray(v.entries)) { v.entries = named(v.entries); } \
+            if (field === "matches" && Array.isArray(v.matches)) { v.matches = v.matches.map(aliased); } \
             const list = () => { const a = v[field]; if (Array.isArray(a)) { return a; } \
             const other = listNames.find((n) => Array.isArray(v[n])); return other ? v[other] : []; }; \
             return new Proxy(v, { get(target, k) { \
-            if (Reflect.has(target, k)) { return Reflect.get(target, k); } \
+            if (Reflect.has(target, k)) { const real = Reflect.get(target, k); \
+            return (real === null || real === undefined) && (k === field || listNames.includes(k)) ? list() : real; } \
             const a = list(); \
             if (listNames.includes(k)) { return a; } \
             if (k === "length") { return a.length; } \
