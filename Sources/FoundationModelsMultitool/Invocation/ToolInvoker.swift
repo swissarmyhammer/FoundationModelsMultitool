@@ -364,7 +364,15 @@ public enum ToolInvoker {
         // and `directory` stand for `path` too; a schema with both is not
         // renamed, since the meaning is not clear.
         "workingDirectory": ["cwd", "dir", "directory", "workdir", "workingdir", "cd"],
+        // django__django-14999: `git.show({ sha })`. The git verbs name a
+        // commit `ref`, and `git.blame` names it `rev`.
+        "ref": ["sha", "commit", "rev", "revision"],
+        "rev": ["sha", "commit", "ref", "revision"],
     ]
+
+    /// The argument that a single string stands for when no one string
+    /// property is the main argument.
+    private static let pathArgumentName = "path"
 
     /// `name` lowercased, with each `_` and `-` removed — thus `file_path`,
     /// `filePath` and `FilePath` read as one name.
@@ -419,7 +427,8 @@ public enum ToolInvoker {
     ///
     /// `tools.files.read("tox.ini")` means `{ path: "tox.ini" }`: the main
     /// argument is the one required string property, or, with no required
-    /// property, the one string property (`path` of `files.list`).
+    /// property, the one string property (`path` of `files.list`), or else
+    /// `path` (`git.show("src/a.txt")`, whose `ref` is a string too).
     ///
     /// - Parameter tool: the tool the call goes to.
     /// - Returns: the property name, or `nil` when no one property is the
@@ -433,6 +442,7 @@ public enum ToolInvoker {
         let requiredStrings = strings.filter { required.contains($0) }
         if requiredStrings.count == 1 { return requiredStrings.first }
         if required.isEmpty, strings.count == 1 { return strings.first }
+        if required.isEmpty, strings.contains(pathArgumentName) { return pathArgumentName }
         return nil
     }
 

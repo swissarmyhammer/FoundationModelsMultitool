@@ -42,7 +42,7 @@ enum VerbSynonyms {
 
     /// The rows, one for each path.
     static let rows: [VerbSynonym] = [
-        VerbSynonym(path: "files.read", verbs: ["cat", "view", "show", "open", "readfile", "getfile"], binds: true),
+        VerbSynonym(path: "files.read", verbs: ["cat", "view", "show", "open", "readfile", "getfile", "readtext", "get"], binds: true),
         VerbSynonym(path: "files.write", verbs: ["writefile", "save", "savefile", "createfile"], binds: true),
         VerbSynonym(path: "files.list", verbs: ["ls", "dir", "listdir", "listdirectory", "readdir", "lsdir", "listfolder"], binds: true),
         VerbSynonym(path: "files.glob", verbs: ["find", "findfiles", "listfiles"], binds: true),

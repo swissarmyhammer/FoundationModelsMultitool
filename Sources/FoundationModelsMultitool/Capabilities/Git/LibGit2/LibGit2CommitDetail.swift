@@ -113,7 +113,47 @@ extension LibGit2Repository {
             files: try fileStats(of: commit))
     }
 
+    /// Reads the patch of the commit that `revision` names against its first
+    /// parent, as `git show` prints it: one `diff --git` section per file.
+    ///
+    /// `tools.git.show` with no path gives this patch after the message of
+    /// the commit (SWE-bench run bench24-1023b, django__django-14999).
+    ///
+    /// - Parameters:
+    ///   - revision: A ref, as `git_revparse_single` reads it.
+    ///   - path: A path relative to the work folder that limits the patch to
+    ///     the files below it, or `nil` for each file.
+    /// - Returns: The patch text, or `nil` when no object has that name.
+    /// - Throws: ``LibGit2Error`` when the ref is not valid, when the object
+    ///   that it names does not peel to a commit, or when a tree, the diff, or
+    ///   the patch cannot be read.
+    func commitPatch(forRevision revision: String, limitedTo path: String?) throws(LibGit2Error) -> String? {
+        guard let commit = try commit(forRevision: revision) else { return nil }
+        defer { git_commit_free(commit) }
+        let diff = try firstParentDiff(of: commit, limitedTo: path)
+        defer { git_diff_free(diff) }
+        try Self.findRenames(in: diff)
+        var buffer = git_buf()
+        defer { git_buf_dispose(&buffer) }
+        try LibGit2.check(git_diff_to_buf(&buffer, diff, GIT_DIFF_FORMAT_PATCH))
+        guard let bytes = buffer.ptr else { return "" }
+        return String(decoding: UnsafeRawBufferPointer(start: bytes, count: buffer.size), as: UTF8.self)
+    }
+
     // MARK: - Steps
+
+    /// Finds the renames of a diff with `git_diff_find_similar` and
+    /// `GIT_DIFF_FIND_RENAMES`, thus the `diff.renames` setting of the host
+    /// does not change the result.
+    ///
+    /// - Parameter diff: The diff, which the call changes in place.
+    /// - Throws: ``LibGit2Error`` when the renames cannot be found.
+    private static func findRenames(in diff: OpaquePointer) throws(LibGit2Error) {
+        var options = git_diff_find_options()
+        try LibGit2.check(git_diff_find_options_init(&options, findOptionsVersion))
+        options.flags = GIT_DIFF_FIND_RENAMES.rawValue
+        try LibGit2.check(git_diff_find_similar(diff, &options))
+    }
 
     /// The sha of each parent of an open commit, the first parent first.
     ///
@@ -135,10 +175,7 @@ extension LibGit2Repository {
     private func fileStats(of commit: OpaquePointer) throws(LibGit2Error) -> [LibGit2FileStat] {
         let diff = try firstParentDiff(of: commit, limitedTo: nil)
         defer { git_diff_free(diff) }
-        var options = git_diff_find_options()
-        try LibGit2.check(git_diff_find_options_init(&options, Self.findOptionsVersion))
-        options.flags = GIT_DIFF_FIND_RENAMES.rawValue
-        try LibGit2.check(git_diff_find_similar(diff, &options))
+        try Self.findRenames(in: diff)
         return try (0..<git_diff_num_deltas(diff)).map { index throws(LibGit2Error) in
             try Self.fileStat(of: diff, at: index)
         }
