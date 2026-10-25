@@ -39,13 +39,19 @@ import Testing
 
     /// Runs `code` on a surface with the files and shell capabilities.
     private static func run(_ code: String) async throws -> String {
+        try await run { _ in code }
+    }
+
+    /// Runs the code `code` makes from the root on a surface with the files
+    /// and shell capabilities.
+    private static func run(_ code: (URL) -> String) async throws -> String {
         let root = try makeRoot()
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
         let registry = try MultiTool.Builder()
             .withFiles(root: root)
             .withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()
-        return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
+        return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code(root)))
     }
 
     /// The value of the snippet of seq 13568.
@@ -83,6 +89,57 @@ import Testing
             """#)
 
         #expect(output.contains(#"[3,3,3,3,false,false,"hi","hi"]"#), "output was: \(output)")
+    }
+
+    @Test("an execute result's output answers the string methods over its text, and stays its list of lines")
+    func aShellOutputActsAsAString() async throws {
+        // noqueue24 django__django-14672 seq 16829: `out(ps).trim is not a
+        // function`; django__django-14752 seq 18454: `r1.output.split is not
+        // a function`.
+        let output = try await Self.run(
+            #"""
+            const r = await tools.shell.execute({ command: "printf 'Ran 3 tests\\nOK\\n'" });
+            const o = r.output;
+            return [o.trim().split("\n"), o.includes("Ran 3 tests"), o.slice(-2),
+              o.match(/Ran (\d+)/)[1], o.toLowerCase().startsWith("ran"), `${o}`.endsWith("OK"),
+              o.length, String(o[0]), o.map((l) => l.length > 0).length];
+            """#)
+
+        #expect(!output.contains("is not a function"), "output was: \(output)")
+        #expect(
+            output.contains(#"[["Ran 3 tests","OK"],true,"OK","3",true,true,2,"1: Ran 3 tests",2]"#),
+            "output was: \(output)")
+    }
+
+    @Test("an execute result still serializes its output as the list of lines")
+    func aShellOutputStillSerializesAsItsLines() async throws {
+        let output = try await Self.run(
+            #"const r = await tools.shell.execute({ command: "echo hi" }); return JSON.stringify(r.output);"#)
+
+        #expect(try RunOutput.decoded(String.self, from: output) == #"["1: hi"]"#, "output was: \(output)")
+    }
+
+    @Test("a workingDirectory that names the root's own folder, and is not in it, runs in the root with a note")
+    func aWorkingDirectoryNamedAsTheRootRunsInTheRoot() async throws {
+        // noqueue24 django__django-14534 seq 11936: `workingDirectory: "repo"`
+        // with the root named `repo` resolved to `…/repo/repo`.
+        var name = ""
+        let output = try await Self.run { root in
+            name = root.lastPathComponent
+            return #"const r = await tools.shell.execute({ command: "pwd", workingDirectory: "\#(name)" }); "#
+                + #"return { status: r.status, out: r.stdout, note: r.note };"#
+        }
+
+        struct Value: Decodable {
+            let status: String
+            let out: String
+            let note: String?
+        }
+        let value = try RunOutput.decoded(Value.self, from: output)
+        #expect(!output.contains("Failed to set working directory"), "output was: \(output)")
+        #expect(value.status == "completed", "output was: \(output)")
+        #expect(value.out.hasSuffix("/\(name)") && !value.out.hasSuffix("/\(name)/\(name)"), "output was: \(output)")
+        #expect(value.note?.contains("the root") == true, "output was: \(output)")
     }
 
     @Test("each other name of workingDirectory is accepted", arguments: ["cwd", "dir", "directory", "workdir", "cd"])

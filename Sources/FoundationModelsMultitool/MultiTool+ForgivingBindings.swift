@@ -21,12 +21,18 @@
 //    one string, without the `N: ` of each line), `stderr` (`""`: the shell
 //    merges the two streams), `code`, `returncode`, `exit` (its `exitCode`),
 //    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
+//    Its `output` stays the list of lines, and the string methods it lacks
+//    (`trim`, `split`, `match`, ...) and `includes`, `indexOf`, `slice`,
+//    `concat`, `toString` work on that same one string (noqueue24
+//    django__django-14752: `r1.output.split is not a function`).
 //    A list field that is `null` (`files.grep` on no match, or on a path that
 //    is not there, beside its `correction`) reads as `[]`
 //    (django__django-14608: `r2.matches.map(...)`), and each item of a list
 //    result answers the names the other verbs use: `file`, `filePath`,
 //    `path`; `line`, `startLine`, `lineNumber`; and `source`, `code`,
-//    `body`, `snippet` for its `text`. A list result read as one item
+//    `body`, `snippet` for its `text`, and `lines` as a one-item list of
+//    `{ number, line, text }` (noqueue24 django__django-14411:
+//    `res.files.map(f => f.lines.map(...))`). A list result read as one item
 //    answers from its first item (noqueue24 django__django-13447:
 //    `s.text.slice(...)` on a `getSymbol` result), and an empty list answers
 //    `undefined` there, as before. An item with only an LSP
@@ -165,8 +171,10 @@ extension MultiTool {
             return p && typeof p.line === "number" ? p.line : undefined; }; \
             const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
-            const kind = matchNames[norm(k)]; const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); \
-            return real ? target[real] : rangeLine(target, kind); } })); \
+            const field = (kind) => { const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); return real ? target[real] : rangeLine(target, kind); }; \
+            if (norm(k) === "lines") { const line = field("line"); const text = field("text"); \
+            return line === undefined && text === undefined ? undefined : [aliased({ number: line, line, text })]; } \
+            return field(matchNames[norm(k)]); } })); \
             const asArray = (v, field) => { if (!v || typeof v !== "object") { return v; } \
             if (field === "entries" && Array.isArray(v.entries)) { v.entries = named(v.entries); } \
             if (field !== "entries" && Array.isArray(v[field])) { v[field] = v[field].map(aliased); } \
@@ -186,7 +194,13 @@ extension MultiTool {
             const shellNames = { stdout: "text", out: "text", text: "text", stderr: "stderr", code: "code", returncode: "code", exit: "code", exitstatus: "code", ok: "ok", success: "ok" }; \
             const asShell = (v) => { if (!v || typeof v !== "object") { return v; } \
             const text = () => (Array.isArray(v.output) ? v.output : []).map((l) => String(l).replace(/^\\d+: /, "")).join("\\n"); \
+            const textFirst = ["includes", "indexOf", "lastIndexOf", "slice", "concat", "toString"]; \
+            const output = (a) => new Proxy(a, { get(lines, k) { \
+            if (k === Symbol.toPrimitive) { return () => text(); } \
+            if (typeof k === "string" && typeof String.prototype[k] === "function" && (textFirst.includes(k) || !(k in lines))) { return String.prototype[k].bind(text()); } \
+            return Reflect.get(lines, k); } }); \
             return new Proxy(v, { get(target, k) { \
+            if (k === "output" && Array.isArray(target.output)) { return output(target.output); } \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const kind = shellNames[norm(k)]; \
             if (kind === "text") { return text(); } \

@@ -316,10 +316,21 @@ extension Execute {
             return Self.corrected(refusal)
         }
 
+        // noqueue24 django__django-14534: `workingDirectory: "repo"` with the
+        // root named `repo` meant the root, not `…/repo/repo`.
+        var workingDirectory = arguments.workingDirectory
+        var note: String?
+        if let requested = workingDirectory,
+            ShellRunner.namesRootItself(requested, defaultWorkingDirectory: runner.defaultWorkingDirectory)
+        {
+            workingDirectory = nil
+            note = Self.rootItselfNote(requested)
+        }
+
         let request = ShellRunner.Request(
             command: arguments.command,
             completionToken: commandID,
-            workingDirectory: arguments.workingDirectory,
+            workingDirectory: workingDirectory,
             environment: environment,
             timeout: arguments.timeout.map { .seconds($0) }
         )
@@ -328,7 +339,19 @@ extension Execute {
             return Self.corrected(refusal)
         }
 
-        return try await report(of: request, in: context)
+        return try await report(of: request, in: context, note: note)
+    }
+
+    /// The name of the report field that holds a note on how the call was read.
+    static let noteField = "note"
+
+    /// The note of a call whose `workingDirectory` named the root itself.
+    ///
+    /// - Parameter requested: The directory the call named.
+    /// - Returns: The note.
+    static func rootItselfNote(_ requested: String) -> String {
+        "workingDirectory \"\(requested)\" is not a folder in the root; it is the name of the root itself, "
+            + "so the command ran in the root."
     }
 
     /// Why the sandbox cannot confine this request, or `nil` when it can — and
@@ -392,10 +415,11 @@ extension Execute {
     ///   - request: The command to run.
     ///   - context: The session context captured at the start of the call, or
     ///     `nil` on a bare session, where every post is a no-op.
+    ///   - note: A note on how the call was read, or `nil` for none.
     /// - Returns: The rendered report of the run.
     /// - Throws: What `ShellRunner.run(_:)` throws.
     private func report(
-        of request: ShellRunner.Request, in context: ToolContext?
+        of request: ShellRunner.Request, in context: ToolContext?, note: String? = nil
     ) async throws -> String {
         // The lease opens before the spawn, and it ends after the terminal
         // event, on each path. See ``shellCommandLease(of:in:)``.
@@ -417,7 +441,8 @@ extension Execute {
         stream.finish()
         await pump.value
 
-        let fields = await Self.reportFields(of: request.completionToken, in: runner.state)
+        var fields = await Self.reportFields(of: request.completionToken, in: runner.state)
+        if let note { fields[Self.noteField] = .string(note) }
         let rendered = Self.rendered(.object(fields))
         await Self.postTerminal(
             rendered, of: request.completionToken, in: runner.state, to: context)

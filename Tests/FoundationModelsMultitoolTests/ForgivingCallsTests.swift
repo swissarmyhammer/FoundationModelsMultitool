@@ -107,6 +107,23 @@ import Testing
         #expect(try RunOutput.decoded(GrepValue.self, from: output).matchCount == 1)
     }
 
+    @Test("each item of a search result answers lines, each with its number, line and text")
+    func aSearchItemAnswersLines() async throws {
+        // noqueue24 django__django-14411 seq 10826: `undefined is not an object
+        // (evaluating 'f.lines.map')`.
+        let output = try await Self.run(
+            #"""
+            const res = await tools.files.search({ pattern: "def ", path: "django/utils" });
+            return res.files.map(f => f.lines.map(l => `${f.file}:${l.number}:${l.line}:${l.text}`)).flat().sort();
+            """#)
+
+        #expect(!output.contains("undefined is not an object"), "output was: \(output)")
+        let lines = try RunOutput.decoded([String].self, from: output)
+        #expect(lines.count == 2, "output was: \(output)")
+        #expect(lines.first?.hasSuffix("html.py:1:1:def escape(): pass") == true, "output was: \(output)")
+        #expect(lines.last?.hasSuffix("text.py:1:1:def slugify(): pass") == true, "output was: \(output)")
+    }
+
     @Test("query and regex stand for the pattern of a search", arguments: ["query", "regex"])
     func queryAndRegexStandForPattern(synonym: String) async throws {
         let output = try await Self.run(

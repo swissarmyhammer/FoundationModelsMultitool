@@ -532,6 +532,32 @@ struct ShellRunner {
         )
     }
 
+    /// Whether `requested` names the base directory itself, by its own last
+    /// folder name, and not a folder inside it.
+    ///
+    /// noqueue24 django__django-14534 seq 11936: `workingDirectory: "repo"`
+    /// with the root named `repo` resolved to `…/repo/repo`, which is not
+    /// there, and the spawn failed with "Failed to set working directory". A
+    /// relative directory that is not a folder in the base, and that equals
+    /// the last folder name of the base, means the base.
+    ///
+    /// - Parameters:
+    ///   - requested: The directory the request names.
+    ///   - defaultWorkingDirectory: The default of the runner, or `nil` for
+    ///     none.
+    /// - Returns: `true` when the command should run in the base instead.
+    static func namesRootItself(_ requested: String, defaultWorkingDirectory: String?) -> Bool {
+        guard !requested.hasPrefix("/") else { return false }
+        let base = defaultWorkingDirectory ?? FileManager.default.currentDirectoryPath
+        var name = Substring(requested)
+        while name.hasPrefix("./") { name = name.dropFirst(2) }
+        while name.hasSuffix("/") { name = name.dropLast() }
+        guard !name.isEmpty, String(name) == (base as NSString).lastPathComponent else { return false }
+        var isDirectory: ObjCBool = false
+        let inside = (base as NSString).appendingPathComponent(String(name))
+        return !(FileManager.default.fileExists(atPath: inside, isDirectory: &isDirectory) && isDirectory.boolValue)
+    }
+
     /// The directory `request` runs in: the directory the request names, else
     /// `defaultWorkingDirectory`, else the current directory of this process.
     ///
