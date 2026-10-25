@@ -21,10 +21,11 @@
 //    one string, without the `N: ` of each line), `stderr` (`""`: the shell
 //    merges the two streams), `code`, `returncode`, `exit` (its `exitCode`),
 //    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
-//    Its `output` stays the list of lines, and the string methods it lacks
-//    (`trim`, `split`, `match`, ...) and `includes`, `indexOf`, `slice`,
-//    `concat`, `toString` work on that same one string (noqueue24
-//    django__django-14752: `r1.output.split is not a function`).
+//    Its `output` stays the list of lines, and each string method an array
+//    lacks (`trim`, `split`, `match`, ...) and `toString` work on that same
+//    one string (noqueue24 django__django-14752: `r1.output.split is not a
+//    function`). A method an array has (`slice`, `includes`, `join`, ...)
+//    stays the array method: `output.slice(-15)` is the last 15 lines.
 //    A list field that is `null` (`files.grep` on no match, or on a path that
 //    is not there, beside its `correction`) reads as `[]`
 //    (django__django-14608: `r2.matches.map(...)`), and each item of a list
@@ -194,10 +195,9 @@ extension MultiTool {
             const shellNames = { stdout: "text", out: "text", text: "text", stderr: "stderr", code: "code", returncode: "code", exit: "code", exitstatus: "code", ok: "ok", success: "ok" }; \
             const asShell = (v) => { if (!v || typeof v !== "object") { return v; } \
             const text = () => (Array.isArray(v.output) ? v.output : []).map((l) => String(l).replace(/^\\d+: /, "")).join("\\n"); \
-            const textFirst = ["includes", "indexOf", "lastIndexOf", "slice", "concat", "toString"]; \
             const output = (a) => new Proxy(a, { get(lines, k) { \
             if (k === Symbol.toPrimitive) { return () => text(); } \
-            if (typeof k === "string" && typeof String.prototype[k] === "function" && (textFirst.includes(k) || !(k in lines))) { return String.prototype[k].bind(text()); } \
+            if (typeof k === "string" && typeof String.prototype[k] === "function" && (k === "toString" || !(k in lines))) { return String.prototype[k].bind(text()); } \
             return Reflect.get(lines, k); } }); \
             return new Proxy(v, { get(target, k) { \
             if (k === "output" && Array.isArray(target.output)) { return output(target.output); } \

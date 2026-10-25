@@ -100,15 +100,28 @@ import Testing
             #"""
             const r = await tools.shell.execute({ command: "printf 'Ran 3 tests\\nOK\\n'" });
             const o = r.output;
-            return [o.trim().split("\n"), o.includes("Ran 3 tests"), o.slice(-2),
-              o.match(/Ran (\d+)/)[1], o.toLowerCase().startsWith("ran"), `${o}`.endsWith("OK"),
-              o.length, String(o[0]), o.map((l) => l.length > 0).length];
+            return [o.trim().split("\n"), o.match(/Ran (\d+)/)[1], o.toLowerCase().startsWith("ran"),
+              `${o}`.endsWith("OK"), o.length, String(o[0]), o.map((l) => l.length > 0).length];
             """#)
 
         #expect(!output.contains("is not a function"), "output was: \(output)")
         #expect(
-            output.contains(#"[["Ran 3 tests","OK"],true,"OK","3",true,true,2,"1: Ran 3 tests",2]"#),
+            output.contains(#"[["Ran 3 tests","OK"],"3",true,true,2,"1: Ran 3 tests",2]"#),
             "output was: \(output)")
+    }
+
+    @Test("the methods an array has stay array methods on an execute result's output")
+    func aShellOutputKeepsItsArrayMethods() async throws {
+        // The kept bench transcripts use `output.slice(-15)` for the last 15
+        // lines, and `output.slice(-6).join(...)`.
+        let output = try await Self.run(
+            #"""
+            const r = await tools.shell.execute({ command: "seq 1 20" });
+            return [r.output.slice(-6).join("\n").split("\n").length, r.output.slice(-15).length === 15,
+              r.output.includes("20: 20"), r.output.indexOf("1: 1"), r.output.concat(["x"]).length];
+            """#)
+
+        #expect(output.contains(#"[6,true,true,0,21]"#), "output was: \(output)")
     }
 
     @Test("an execute result still serializes its output as the list of lines")
