@@ -170,15 +170,14 @@ struct InlineSettleGraceTests {
         }
     }
 
-    @Test("the pending sentence carries the shared pending text and the completion token")
-    func pendingSentenceCarriesTheSharedPendingText() throws {
-        let completionToken = ToolContext.makeCompletionToken()
+    @Test("a runCode call is described by runCode and the first line of its snippet")
+    func aRunCodeCallIsDescribedByItsSnippet() throws {
+        let runCode = MultiTool(registry: try Self.registry())
 
-        let sentence = MultiTool(registry: try Self.registry())
-            .collectInstruction(forCompletionToken: completionToken)
+        let description = runCode.callDescription(
+            for: RunCodeArguments(code: "\n// read\n" + Self.quickSnippet).generatedContent)
 
-        #expect(sentence.contains(PendingRunEnvelope.pendingWorkInstruction))
-        #expect(sentence.contains(completionToken))
+        #expect(description == "runCode // read")
     }
 
     @Test("a host that turns the wait off gets the completion token back, as every mounted call did before")
@@ -195,7 +194,10 @@ struct InlineSettleGraceTests {
             let envelope = try Self.envelope(rendered)
             #expect(envelope.pending)
             #expect(
-                envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken)
+                envelope.next
+                    == PendingRunEnvelope.defaultCollectInstruction(
+                        forCompletionToken: envelope.completionToken,
+                        describing: CallDescription.of(verb: runCode.name, text: Self.quickSnippet))
             )
 
             let terminal = try await TerminalDetail.settledEvent(of: envelope.completionToken, in: context)

@@ -8,7 +8,7 @@
 // never runs it (task `^9pnyvyp`). The check only gives information: the
 // Multitool does not block or change a call because of it, with one
 // exception: ``isStandbySnippet(_:)`` while other background work runs gets
-// ``standbyAnswer`` (SWE-bench run bench24-1023b).
+// ``standbyAnswer(for:)`` (SWE-bench run bench24-1023b).
 
 import Foundation
 import FoundationModelsExtras
@@ -62,15 +62,20 @@ extension MultiTool {
     ///
     /// SWE-bench run bench24-1023b, django__django-13925: the model knew to
     /// wait for a background command, and waited by sending `return
-    /// "standby"` 28 times in two minutes. Each answer of "standby" gave it a
-    /// new turn, so it called again. This answer says the call did nothing,
-    /// that the result comes as a new message, and to end the answer now; it
-    /// never asks for another call.
-    public static let standbyAnswer =
-        "Nothing to run: this snippet calls no tools.* function and only returns a fixed value, "
-        + "and background work of this session is still going. Its result comes into this "
-        + "conversation as a new message, and that message starts you working again. "
-        + "End your answer now: write no text and call no tool."
+    /// "standby"` 28 times in two minutes. noqueue24 django__django-14672: an
+    /// answer that asked for no text and no tool call was an empty output,
+    /// which the model cannot give, and it sent `return "stop"`, `"halt"`,
+    /// `"end"` 122 times. This answer says the call did nothing, names each
+    /// open call with its completion token, says the results come as
+    /// messages, and asks for a plain-text status. The text after the first
+    /// sentence is ``PendingRunEnvelope/waitingStatusInstruction(for:)`` of
+    /// FoundationModelsExtras, the one owner of that text.
+    ///
+    /// - Parameter calls: The open background calls of the session.
+    /// - Returns: The answer.
+    public static func standbyAnswer(for calls: [(description: String, completionToken: String)]) -> String {
+        "Nothing ran: this snippet calls no tool. " + PendingRunEnvelope.waitingStatusInstruction(for: calls)
+    }
 
     /// Tells if a `runCode` snippet only stands by: it calls no `tools.*`
     /// verb, and after its comments it is empty, `return;`, or `return` of
@@ -92,18 +97,22 @@ extension MultiTool {
         return body.range(of: pattern, options: .regularExpression) != nil
     }
 
-    /// Whether the session of `context` has a background run open other than
-    /// the run of this `runCode` call itself.
+    /// The background calls of the session of `context` that are open, other
+    /// than the run of this `runCode` call itself, each with a short
+    /// description and its completion token.
     ///
     /// Each mounted `runCode` call is a background run of its own (see
     /// ``mount``), thus the run of `context` does not count, nor the run that
-    /// holds it (`holdingRunToken`) when the call is mounted inside one.
+    /// holds it (`holdingRunToken`) when the call is mounted inside one. A run
+    /// is described by its op, or by its tool when it has no op.
     ///
     /// - Parameter context: The session context the call runs under.
-    /// - Returns: `true` when other work of the session is still going.
-    static func hasOtherBackgroundWork(in context: ToolContext) async -> Bool {
+    /// - Returns: The other open calls; empty when no other work is going.
+    static func otherBackgroundCalls(in context: ToolContext) async -> [(description: String, completionToken: String)] {
         let own: Set = [context.completionToken, context.holdingRunToken]
-        return await context.backgroundRuns().contains { !own.contains($0.completionToken) }
+        return await context.backgroundRuns()
+            .filter { !own.contains($0.completionToken) }
+            .map { (description: $0.op.isEmpty ? $0.tool : $0.op, completionToken: $0.completionToken) }
     }
 
     /// `snippet` with each `//` and `/* */` comment taken out, or `nil` when a

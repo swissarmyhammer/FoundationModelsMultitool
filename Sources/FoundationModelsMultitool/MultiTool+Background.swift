@@ -21,10 +21,51 @@ import FoundationModelsExtras
 // real result, and a snippet that runs longer than the settle period goes to
 // the background as one run (task `^6nnykct`).
 
+/// The short description of one background call that a pending envelope and
+/// a standby answer name it by: the verb, and the first line of its main
+/// argument, cut to ``maximumTextLength`` characters.
+enum CallDescription {
+
+    /// The most characters of the main argument a description keeps.
+    static let maximumTextLength = 60
+
+    /// `verb` and the first non-blank line of `text`, cut with `…`.
+    ///
+    /// - Parameters:
+    ///   - verb: The name of the verb, such as `execute`.
+    ///   - text: The main argument of the call, such as its command.
+    /// - Returns: The description, or `verb` alone when `text` is blank.
+    static func of(verb: String, text: String) -> String {
+        let line =
+            text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        guard !line.isEmpty else { return verb }
+        let cut = line.count > maximumTextLength ? line.prefix(maximumTextLength) + "…" : Substring(line)
+        return "\(verb) \(cut)"
+    }
+
+    /// The string `field` of `arguments`, or `nil`.
+    ///
+    /// - Parameters:
+    ///   - field: The name of the argument.
+    ///   - arguments: The arguments of the call.
+    /// - Returns: The value, when it is a string.
+    static func string(_ field: String, of arguments: GeneratedContent) -> String? {
+        guard case .structure(let properties, _) = arguments.kind,
+            case .string(let value)? = properties[field]?.kind
+        else { return nil }
+        return value
+    }
+}
+
 extension MultiTool: BackgroundTool {
-    /// The `next` sentence of the pending envelope a background `runCode`
-    /// call hands the model: the completion token of the snippet, and then
-    /// the shared ``PendingRunEnvelope/pendingWorkInstruction``.
+    /// The description a pending envelope names a background `runCode` call
+    /// by: `runCode` and the first line of its snippet. The `next` sentence
+    /// is the default of FoundationModelsExtras
+    /// (``PendingRunEnvelope/defaultCollectInstruction(forCompletionToken:describing:)``),
+    /// which names this description and the completion token, and asks for a
+    /// plain-text status when no other work is left.
     ///
     /// **The session delivers a settled run as mail.** Router puts the
     /// terminal event of a background run into the session outbox, and that
@@ -48,9 +89,11 @@ extension MultiTool: BackgroundTool {
     ///
     /// The sentence names the token, because the mail that comes back names
     /// the run by the same token.
-    public func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "The snippet is still running in the background, with completionToken "
-            + "\"\(completionToken)\". \(PendingRunEnvelope.pendingWorkInstruction)"
+    ///
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: The description, or `nil` when the call holds no snippet.
+    public func callDescription(for arguments: GeneratedContent) -> String? {
+        CallDescription.string("code", of: arguments).map { CallDescription.of(verb: name, text: $0) }
     }
 
     /// How long a `runCode` call waits for its own snippet before it answers

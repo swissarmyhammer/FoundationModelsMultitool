@@ -1,8 +1,8 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffe480
 title: standbyAnswer with no turns (waits on Extras pendingWorkInstruction sha)
 ---
 MultiTool+NoOpSnippet.swift:61 `standbyAnswer` ends with "…that message starts you working again. End your answer now: write no text and call no tool." Model cannot produce empty output (noqueue24 django__django-14672 child …Y48T15: 122 no-tool snippets, then `return "stop"`/"halt"/"end").

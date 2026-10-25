@@ -1,5 +1,6 @@
 // `StandbySnippetTests` — a `runCode` snippet that only stands by while
-// background work runs is taken as "end my answer".
+// background work runs is answered with what still runs and a request for a
+// plain-text status.
 //
 // SWE-bench run bench24-1023b, django__django-13925 (a child session, seq
 // 2837–3247): while a background command ran, the model sent the snippet
@@ -35,14 +36,23 @@ struct StandbySnippetTests {
         }
     }
 
-    @Test("the standby snippet, while a background run is pending, ends the answer and invites no new call")
-    func standbyWhileBackgroundWorkRunsEndsTheAnswer() async throws {
+    @Test("the standby snippet, while a background run is pending, names the open call and asks for a status")
+    func standbyWhileBackgroundWorkRunsNamesTheOpenCall() async throws {
+        // noqueue24 django__django-14672, child …Y48T15: 122 snippets that
+        // call no tool. "End your answer now: write no text and call no tool"
+        // asked for an empty output, which the model cannot give; it called
+        // `return "stop"`, `"halt"`, `"end"` instead.
         let clock = ManualRunClock()
         try await withStubRun(runClock: clock) { stub in
-            try await withScriptedRun(on: stub.context, clock: clock) { _ in
+            try await withScriptedRun(on: stub.context, clock: clock) { scripted in
                 let output = try await run(Self.standbySnippet, under: stub.context)
 
-                #expect(output == MultiTool.standbyAnswer, "output was: \(output)")
+                #expect(output.hasPrefix("Nothing ran: this snippet calls no tool."), "output was: \(output)")
+                #expect(output.contains(scripted.completionToken), "output was: \(output)")
+                #expect(output.contains("Waiting on"), "output was: \(output)")
+                for banned in ["End your answer", "write no text", "starts you working", "turn"] {
+                    #expect(!output.contains(banned), "output was: \(output)")
+                }
                 #expect(!output.contains("call runCode again"))
                 #expect(!output.contains("\"standby\""))
             }
@@ -58,7 +68,7 @@ struct StandbySnippetTests {
             try await withScriptedRun(on: stub.context, clock: clock) { _ in
                 let output = try await run(code, under: stub.context)
 
-                #expect(output == MultiTool.standbyAnswer, "output was: \(output)")
+                #expect(output.hasPrefix("Nothing ran: this snippet calls no tool."), "output was: \(output)")
             }
         }
     }

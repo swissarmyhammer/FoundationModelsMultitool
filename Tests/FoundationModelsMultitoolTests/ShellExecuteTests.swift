@@ -792,16 +792,39 @@ struct ShellExecuteTests {
         #expect(!schema.contains("\"wait\""), "schema was: \(schema)")
     }
 
-    /// The pending sentence of a background command carries the one shared
-    /// pending text, and it names the commandID of the run (task `^1dzf1za`).
-    @Test("the pending sentence of a background command carries the shared pending text and the commandID")
-    func thePendingSentenceCarriesTheSharedPendingText() throws {
-        let completionToken = ToolContext.makeCompletionToken()
+    /// A background command is named by `execute` and the first line of its
+    /// command, cut short, thus the pending sentence says what runs.
+    @Test("the call description of a command is execute and its first line, cut short")
+    func theCallDescriptionNamesTheCommand() throws {
+        let verb = makeVerb(over: try makeState())
+        let long = "python -m pytest tests/forms_tests/tests/test_forms.py -x -q --maxfail=1 --tb=short"
 
-        let sentence = makeVerb(over: try makeState()).collectInstruction(forCompletionToken: completionToken)
+        #expect(verb.callDescription(for: try ExecuteArguments(command: "ls -la\necho done").generatedContent)
+            == "execute ls -la")
+        #expect(verb.callDescription(for: try ExecuteArguments(command: long).generatedContent)
+            == "execute " + long.prefix(CallDescription.maximumTextLength) + "…")
+    }
 
-        #expect(sentence.contains(PendingRunEnvelope.pendingWorkInstruction))
-        #expect(sentence.contains("commandID \"\(completionToken)\""))
+    /// The pending `next` of a mounted background command names the command
+    /// and the commandID, and asks for a status (task `^1dzf1za`).
+    @Test("the pending next of a background execute names the command and the commandID")
+    func thePendingNextNamesTheCommand() async throws {
+        let state = try makeState()
+        let clock = ManualRunClock()
+        try await withOuterRunContext(runClock: clock) { context in
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+            let gate = try ShellCommandGate()
+
+            let output = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
+            let going = try await ShellRunPlane.backgroundRun(in: context)
+            _ = await context.cancel(completionToken: going.completionToken)
+
+            let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
+            let named = CallDescription.of(verb: "execute", text: gate.waitCommand)
+            #expect(envelope.next.contains(named), "next was: \(envelope.next)")
+            #expect(envelope.next.contains(going.completionToken), "next was: \(envelope.next)")
+            #expect(envelope.next.contains("Waiting on"), "next was: \(envelope.next)")
+        }
     }
 
     /// The description of the verb tells the model the same thing about a

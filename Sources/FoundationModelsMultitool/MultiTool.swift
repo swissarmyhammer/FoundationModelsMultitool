@@ -601,12 +601,12 @@ public struct MultiTool: GraphQLEndpointTool {
         let asksUser = Self.asksUser(binding)
         // A snippet that only stands by while other background work of the
         // session is still going is the model's way of waiting: answer it
-        // with the text that ends the answer, not with a value that invites
-        // the next call (SWE-bench run bench24-1023b — see `standbyAnswer`).
-        if let binding, enclosingRun == nil, Self.isStandbySnippet(arguments.code),
-            await Self.hasOtherBackgroundWork(in: binding.context)
-        {
-            return Self.standbyAnswer
+        // with what still runs and a request for a status, not with a value
+        // that invites the next call (SWE-bench run bench24-1023b — see
+        // `standbyAnswer(for:)`).
+        if let binding, enclosingRun == nil, Self.isStandbySnippet(arguments.code) {
+            let open = await Self.otherBackgroundCalls(in: binding.context)
+            if !open.isEmpty { return Self.standbyAnswer(for: open) }
         }
         // One notice chain per invocation, for the same reason: `notify()`
         // and `progress()` post through the captured context, never an

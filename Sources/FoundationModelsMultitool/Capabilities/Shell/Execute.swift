@@ -183,27 +183,22 @@ extension Execute: BackgroundTool {
         ShellRunner(state: runner.state).canceler(completionToken: completionToken)
     }
 
-    /// The `next` sentence the pending envelope of a background command hands
-    /// the model.
+    /// The description the pending envelope of a background command names
+    /// the call by: `execute` and the first line of the command, cut short.
     ///
-    /// It names the commandID of the run, because the mail that the settled
-    /// run becomes names the run by the same string. The rest is the shared
-    /// ``PendingRunEnvelope/pendingWorkInstruction`` (task `^1dzf1za`).
+    /// The `next` sentence is the default of FoundationModelsExtras, which
+    /// names this description and the commandID — the completion token, the
+    /// string the mail of the settled run names it by — and asks for a
+    /// plain-text status when no other work is left (task `^1dzf1za`). It
+    /// sends the model to no `wait` tool and to no `tools.shell.getLines`: a
+    /// wait inside a submission holds the model for every session on it, and
+    /// Router delivers the terminal event of the run to the session as mail
+    /// (`generation-queue.md` §5.5 rule 1).
     ///
-    /// It does not send the model to `tools.shell.getLines`. The shared text
-    /// says "Do not call a tool to wait or to check", and a pointer to a
-    /// verb that reads the output so far tells the model to check.
-    ///
-    /// It sends the model to no `wait` tool. A wait inside a submission holds
-    /// the model for every session on it, and Router delivers the terminal
-    /// event of the run to the session as mail (`generation-queue.md` §5.5
-    /// rule 1).
-    ///
-    /// - Parameter completionToken: The background run's token.
-    /// - Returns: The collect directive, as plain prose.
-    func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "The command is running in the background, with commandID \"\(completionToken)\". "
-            + PendingRunEnvelope.pendingWorkInstruction
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: The description, or `nil` when the call holds no command.
+    func callDescription(for arguments: GeneratedContent) -> String? {
+        CallDescription.string("command", of: arguments).map { CallDescription.of(verb: name, text: $0) }
     }
 }
 

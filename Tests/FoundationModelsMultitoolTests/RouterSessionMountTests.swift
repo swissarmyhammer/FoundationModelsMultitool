@@ -110,16 +110,22 @@ struct RouterSessionMountTests {
 
                 #expect(PendingRunEnvelope.isRendered(text: rendered))
                 let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-                #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
-                // The sentence carries the shared pending text and names this
-                // envelope's token. It names no `wait` tool.
-                #expect(envelope.next.contains(PendingRunEnvelope.pendingWorkInstruction))
-                #expect(envelope.next.contains(envelope.completionToken))
-                #expect(!envelope.next.contains("wait tool"))
-                #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
+                let described = CallDescription.of(verb: runCode.name, text: gatedCodeSnippet)
+                #expect(
+                    envelope.next
+                        == PendingRunEnvelope.defaultCollectInstruction(
+                            forCompletionToken: envelope.completionToken, describing: described))
+                // The sentence names the snippet and this envelope's token,
+                // and asks for a status. Its own words, the snippet aside,
+                // name no `wait` tool.
+                let words = envelope.next.replacingOccurrences(of: described, with: "")
+                #expect(words.contains("Waiting on"))
+                #expect(words.contains(envelope.completionToken))
+                #expect(!words.contains("wait tool"))
+                #expect(!words.localizedCaseInsensitiveContains("call the wait"))
                 // It prescribes no snippet (task `^cf57dtd`).
-                #expect(!envelope.next.contains("Call this tool again"))
-                #expect(!envelope.next.contains("return await wait"))
+                #expect(!words.contains("Call this tool again"))
+                #expect(!words.contains("return await wait"))
                 // The envelope is a short report: shorter than one capped `runCode`
                 // return value.
                 #expect(rendered.count < MultiToolConfiguration.default.returnValueCharacterLimit)
