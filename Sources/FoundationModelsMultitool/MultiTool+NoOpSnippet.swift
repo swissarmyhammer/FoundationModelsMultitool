@@ -104,7 +104,8 @@ extension MultiTool {
     /// Each mounted `runCode` call is a background run of its own (see
     /// ``mount``), thus the run of `context` does not count, nor the run that
     /// holds it (`holdingRunToken`) when the call is mounted inside one. A run
-    /// is described by its op, or by its tool when it has no op.
+    /// is described as its pending envelope described it: the
+    /// `callDescription(for:)` of its tool (`execute <command>`), or its op.
     ///
     /// - Parameter context: The session context the call runs under.
     /// - Returns: The other open calls; empty when no other work is going.
@@ -112,7 +113,7 @@ extension MultiTool {
         let own: Set = [context.completionToken, context.holdingRunToken]
         return await context.backgroundRuns()
             .filter { !own.contains($0.completionToken) }
-            .map { (description: $0.op.isEmpty ? $0.tool : $0.op, completionToken: $0.completionToken) }
+            .map { (description: $0.description, completionToken: $0.completionToken) }
     }
 
     /// `snippet` with each `//` and `/* */` comment taken out, or `nil` when a

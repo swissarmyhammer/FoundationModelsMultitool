@@ -805,6 +805,30 @@ struct ShellExecuteTests {
             == "execute " + long.prefix(CallDescription.maximumTextLength) + "…")
     }
 
+    /// A standby snippet while a background command runs names the command
+    /// and its commandID in the status it asks for, the same description the
+    /// pending envelope of the command named.
+    @Test("a standby snippet while a background execute runs names the command")
+    func aStandbySnippetNamesTheOpenCommand() async throws {
+        let state = try makeState()
+        let clock = ManualRunClock()
+        try await withOuterRunContext(runClock: clock) { context in
+            let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+            let gate = try ShellCommandGate()
+            _ = try await Self.callHeldCommand(engine, command: gate.waitCommand, on: clock, in: context)
+            let going = try await ShellRunPlane.backgroundRun(in: context)
+
+            let runCode = MultiTool(registry: MultiTool.Registry(surface: APISurface(entries: []), tools: [:]))
+            let output = try await ToolContext.$current.withValue(context) {
+                try await runCode.call(arguments: RunCodeArguments(code: "return \"standby\";"))
+            }
+            _ = await context.cancel(completionToken: going.completionToken)
+
+            let named = CallDescription.of(verb: "execute", text: gate.waitCommand)
+            #expect(output.contains("Waiting on \(named) (\(going.completionToken))"), "output was: \(output)")
+        }
+    }
+
     /// The pending `next` of a mounted background command names the command
     /// and the commandID, and asks for a status (task `^1dzf1za`).
     @Test("the pending next of a background execute names the command and the commandID")
