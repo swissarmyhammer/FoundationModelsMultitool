@@ -1584,6 +1584,10 @@ public struct MultiTool: GraphQLEndpointTool {
         }
     }
 
+    /// The field of an object result that holds the notes of `ToolInvoker`:
+    /// which argument values were read as another value.
+    static let notesField = "notes"
+
     /// The actual marshal → validate → call → render pipeline `invokeAsync`
     /// wraps with start and end logging. `binding` selects `ToolInvoker`'s
     /// mount. See `invokeAsync` for every parameter, the return value, and
@@ -1619,9 +1623,15 @@ public struct MultiTool: GraphQLEndpointTool {
                     of: ArgumentMarshaler.notAnObjectExample,
                     with: "`tools.\(path ?? tool.name)({ \(mainField ?? "…"): … })`"))
         }
-        let output = try await ToolInvoker.invoke(
+        let (output, notes) = try await ToolInvoker.invokeNoting(
             tool, content: content, binding: binding, journalOp: journalOp)
-        return try await SnippetOutput.value(of: output, from: tool)
+        let value = try await SnippetOutput.value(of: output, from: tool)
+        // `kind: "class"` read as `"type"`: the result says so in `notes`.
+        guard !notes.isEmpty, case .object(var fields) = value else { return value }
+        var all: [InterpreterValue] = []
+        if case .array(let existing)? = fields[Self.notesField] { all = existing }
+        fields[Self.notesField] = .array(all + notes.map { .string($0) })
+        return .object(fields)
     }
 
     // MARK: - help()/docs() globals (plan.md M7)

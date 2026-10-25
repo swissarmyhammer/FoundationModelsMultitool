@@ -193,9 +193,26 @@ public enum ToolInvoker {
         binding: RunBinding?,
         journalOp: String? = nil
     ) async throws -> T.Output {
+        try await invokeNoting(tool, content: content, binding: binding, journalOp: journalOp).output
+    }
+
+    /// `invoke(_:content:binding:journalOp:)`, and the notes that say which
+    /// argument values were read as another value (see
+    /// `mappingEnumValueSynonyms(_:against:)`).
+    ///
+    /// - Parameters: As `invoke(_:content:binding:journalOp:)`.
+    /// - Returns: `tool`'s `Output`, and one note for each mapped value.
+    /// - Throws: As `invoke(_:content:binding:journalOp:)`.
+    static func invokeNoting<T: Tool>(
+        _ tool: T,
+        content: GeneratedContent,
+        binding: RunBinding?,
+        journalOp: String? = nil
+    ) async throws -> (output: T.Output, notes: [String]) {
         let schema = try decodeArgumentsSchema(tool.parameters, toolName: tool.name)
-        let normalized = wrappingStringsInStringArrays(
-            renamingArgumentSynonyms(content, against: schema), against: schema)
+        let (normalized, notes) = mappingEnumValueSynonyms(
+            wrappingStringsInStringArrays(renamingArgumentSynonyms(content, against: schema), against: schema),
+            against: schema)
         try validate(normalized, against: schema, toolName: tool.name)
         let arguments: T.Arguments
         do {
@@ -210,11 +227,12 @@ public enum ToolInvoker {
             // No Extras mount holds a native call, thus no Extras metric
             // counts it. The library counts it here. A call through the
             // binding below gets the Extras metrics from its mount.
-            return try await MultitoolTelemetry.measuringToolCall(toolName: tool.name) {
+            let output = try await MultitoolTelemetry.measuringToolCall(toolName: tool.name) {
                 try await tool.call(arguments: arguments)
             }
+            return (output, notes)
         }
-        return try await binding.invoke(tool, arguments: arguments, journalOp: journalOp)
+        return (try await binding.invoke(tool, arguments: arguments, journalOp: journalOp), notes)
     }
 
     // MARK: - Pre-call validation
@@ -348,6 +366,55 @@ public enum ToolInvoker {
             }
         }
         return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys))
+    }
+
+    /// The common words for an allowed value of a string enum, by that value.
+    ///
+    /// noqueue24 django__django-14017 seq 6837 is the evidence:
+    /// `code_context.searchSymbol({ kind: "class" })` was refused, since
+    /// `kind` is one of `function`, `method`, `type`, `other`. Each word here
+    /// is lowercase; a value it maps to must be in the enum of the property.
+    private static let enumValueSynonyms: [String: Set<String>] = [
+        "type": ["class", "struct", "enum", "interface", "protocol", "trait", "record"],
+        "function": ["func", "fn", "def"],
+    ]
+
+    /// Replaces each string of a string-enum property in `content` that the
+    /// enum does not hold with the allowed value it evidently means, and says
+    /// so in a note ("Postel's rule": be liberal in what you accept).
+    ///
+    /// A string means an allowed value when it is that value in another
+    /// letter case, or a word of ``enumValueSynonyms`` for it in any letter
+    /// case. A string that means no allowed value stays as it is, thus
+    /// `validateGuides` refuses it with the same message as before.
+    ///
+    /// - Parameters:
+    ///   - content: the marshaled call arguments.
+    ///   - schema: the decoded argument schema of the tool.
+    /// - Returns: `content` with each such string replaced, and one note for
+    ///   each, such as `kind "class" was read as "type".`
+    private static func mappingEnumValueSynonyms(
+        _ content: GeneratedContent,
+        against schema: ArgumentsSchema
+    ) -> (GeneratedContent, [String]) {
+        guard let properties = schema.properties,
+            case .structure(var contentProperties, let orderedKeys) = content.kind
+        else { return (content, []) }
+        var notes: [String] = []
+        for field in orderedKeys {
+            guard let enumValues = properties[field]?.enumValues, !enumValues.isEmpty,
+                let value = contentProperties[field], case .string(let string) = value.kind,
+                !enumValues.contains(string)
+            else { continue }
+            let word = string.lowercased()
+            let meant =
+                enumValues.first { $0.lowercased() == word }
+                ?? enumValues.first { enumValueSynonyms[$0.lowercased()]?.contains(word) == true }
+            guard let meant else { continue }
+            contentProperties[field] = GeneratedContent(kind: .string(meant))
+            notes.append("\(field) \"\(string)\" was read as \"\(meant)\".")
+        }
+        return (GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys)), notes)
     }
 
     /// The usual other names of an argument, by the name the schema gives it.
