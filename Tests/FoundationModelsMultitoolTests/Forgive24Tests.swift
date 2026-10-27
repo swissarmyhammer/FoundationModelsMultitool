@@ -60,6 +60,27 @@ import Testing
         #expect(output.contains("[3,true,2,2]"), "output was: \(output)")
     }
 
+    @Test("a match's line stays a plain number: ===, typeof, Object.is, Set and Map keys")
+    func aMatchLineIsAPlainNumber() async throws {
+        let output = try await Self.run(
+            #"""
+            const r = await tools.files.grep({ pattern: "label", path: "tests/runtests.py" });
+            const m = r.matches.find((x) => x.isMatch);
+            const lines = r.matches.map((x) => x.line);
+            return [m.line === 2, typeof m.line, Object.is(m.line, 2), new Set([...lines, ...lines]).size,
+              new Map([[m.line, "a"]]).get(2), r.matches.find((x) => x.line === 3).text, (m.line - 2) ? "truthy" : "falsy"];
+            """#)
+
+        #expect(output.contains(#"[true,"number",true,3,"a","print(label)","falsy"]"#), "output was: \(output)")
+    }
+
+    @Test("a string method on a number that is no line reads the number as its digits")
+    func aStringMethodOnAPlainNumberReadsItsDigits() async throws {
+        let output = try await Self.run(#"return [(82).slice(0, 1), (1234).padStart(6, "0")];"#)
+
+        #expect(output.contains(#"["8","001234"]"#), "output was: \(output)")
+    }
+
     // MARK: 7. files.exists
 
     @Test("the snippet of seq 459: files.exists answers true or false")

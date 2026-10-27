@@ -36,10 +36,12 @@
 //    `res.files.map(f => f.lines.map(...))`). A list result read as one item
 //    answers from its first item (noqueue24 django__django-13447:
 //    `s.text.slice(...)` on a `getSymbol` result), and an empty list answers
-//    `undefined` there, as before. The number `line` of an item that has a
-//    `text` answers the string methods over that text, and still counts and
-//    serializes as the number (forgive24 django__django-13447:
-//    `m.line.slice(0, 110)` on a `files.grep` match). An item with only an LSP
+//    `undefined` there, as before. The `line` of an item that has a `text`
+//    stays a plain number, and a string method called on the number just
+//    read (`slice`, `trim`, `split`, ... on `Number.prototype`) reads that
+//    text; on any other number it reads the digits (forgive24
+//    django__django-13447: `m.line.slice(0, 110)` on a `files.grep` match;
+//    a Number object broke `===`, `typeof`, and Set keys). An item with only an LSP
 //    `range` answers `line`, `startLine` from `range.start.line` and
 //    `endLine` from `range.end.line`, as they are: every line and column of
 //    `code_context` is 1-based since FoundationModelsCodeContext 223732b,
@@ -186,12 +188,12 @@ extension MultiTool {
             const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], end: ["endLine"], text: ["text", "content"] }; \
             const rangeLine = (target, kind) => { const r = target.range; const p = r && typeof r === "object" ? (kind === "line" ? r.start : kind === "end" ? r.end : undefined) : undefined; \
             return p && typeof p.line === "number" ? p.line : undefined; }; \
-            const lineOf = (n, text) => new Proxy(new Number(n), { get(num, k) { if (k === "toJSON") { return () => n; } \
-            if (typeof k === "string" && typeof String.prototype[k] === "function" && !(k in Number.prototype)) { return String.prototype[k].bind(text); } \
-            if (k === "length") { return text.length; } \
-            const v = Reflect.get(num, k); return typeof v === "function" ? v.bind(num) : v; } }); \
+            let lastLine; \
+            for (const name of ["slice", "substring", "substr", "trim", "trimStart", "trimEnd", "split", "startsWith", "endsWith", "includes", "indexOf", "lastIndexOf", "match", "matchAll", "replace", "replaceAll", "toLowerCase", "toUpperCase", "padStart", "padEnd", "search", "charAt", "charCodeAt", "at", "repeat", "concat", "normalize"]) { \
+            if (!(name in Number.prototype)) { Object.defineProperty(Number.prototype, name, { configurable: true, writable: true, value: function (...args) { \
+            const n = Number(this); const s = lastLine && lastLine.n === n ? lastLine.text : String(n); return String.prototype[name].apply(s, args); } }); } } \
             const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
-            if (k === "line" && typeof target.line === "number" && typeof target.text === "string") { return lineOf(target.line, target.text); } \
+            if (k === "line" && typeof target.line === "number" && typeof target.text === "string") { lastLine = { n: target.line, text: target.text }; return target.line; } \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const field = (kind) => { const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); return real ? target[real] : rangeLine(target, kind); }; \
             if (norm(k) === "lines") { const line = field("line"); const text = field("text"); \
