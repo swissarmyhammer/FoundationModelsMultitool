@@ -26,6 +26,7 @@ import Testing
         let url = root.appendingPathComponent("tests/runtests.py")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("import sys\nlabel = 'a'\nprint(label)\n".utf8).write(to: url)
+        try Data("x = 1\nlabel_b = 2\n".utf8).write(to: root.appendingPathComponent("tests/other.py"))
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
         let registry = try MultiTool.Builder()
             .withFiles(root: root)
@@ -72,6 +73,21 @@ import Testing
             """#)
 
         #expect(output.contains(#"[true,"number",true,3,"a","print(label)","falsy"]"#), "output was: \(output)")
+    }
+
+    @Test("one line number read with two texts reads as its digits, never as the wrong text")
+    func aLineNumberOfTwoFilesReadsAsItsDigits() async throws {
+        // Peer review of 5f4d108: two reads before the call must not give one
+        // line the text of another. Both files match at line 2.
+        let output = try await Self.run(
+            #"""
+            const r = await tools.files.grep({ pattern: "label", path: "tests" });
+            const ms = r.matches.filter((x) => x.isMatch && x.line === 2);
+            const a = ms[0].line, x = r.matches.find((m) => m.isMatch && m.line === 3).line, b = ms[1].line;
+            return [ms.length, a.slice(0, 5), b.slice(0, 5), x.slice(0, 5)];
+            """#)
+
+        #expect(output.contains(#"[2,"2","2","print"]"#), "output was: \(output)")
     }
 
     @Test("a string method on a number that is no line reads the number as its digits")

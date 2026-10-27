@@ -37,9 +37,10 @@
 //    answers from its first item (noqueue24 django__django-13447:
 //    `s.text.slice(...)` on a `getSymbol` result), and an empty list answers
 //    `undefined` there, as before. The `line` of an item that has a `text`
-//    stays a plain number, and a string method called on the number just
-//    read (`slice`, `trim`, `split`, ... on `Number.prototype`) reads that
-//    text; on any other number it reads the digits (forgive24
+//    stays a plain number, and a string method called on a line number the
+//    snippet read (`slice`, `trim`, `split`, ... on `Number.prototype`) reads
+//    its text; on a number read with two texts (one line number in two
+//    files), or on any other number, it reads the digits (forgive24
 //    django__django-13447: `m.line.slice(0, 110)` on a `files.grep` match;
 //    a Number object broke `===`, `typeof`, and Set keys). An item with only an LSP
 //    `range` answers `line`, `startLine` from `range.start.line` and
@@ -188,12 +189,13 @@ extension MultiTool {
             const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], end: ["endLine"], text: ["text", "content"] }; \
             const rangeLine = (target, kind) => { const r = target.range; const p = r && typeof r === "object" ? (kind === "line" ? r.start : kind === "end" ? r.end : undefined) : undefined; \
             return p && typeof p.line === "number" ? p.line : undefined; }; \
-            let lastLine; \
+            const lineTexts = new Map(); const clash = {}; \
+            const noteLine = (n, text) => { const seen = lineTexts.get(n); lineTexts.set(n, seen === undefined || seen === text ? text : clash); return n; }; \
             for (const name of ["slice", "substring", "substr", "trim", "trimStart", "trimEnd", "split", "startsWith", "endsWith", "includes", "indexOf", "lastIndexOf", "match", "matchAll", "replace", "replaceAll", "toLowerCase", "toUpperCase", "padStart", "padEnd", "search", "charAt", "charCodeAt", "at", "repeat", "concat", "normalize"]) { \
             if (!(name in Number.prototype)) { Object.defineProperty(Number.prototype, name, { configurable: true, writable: true, value: function (...args) { \
-            const n = Number(this); const s = lastLine && lastLine.n === n ? lastLine.text : String(n); return String.prototype[name].apply(s, args); } }); } } \
+            const n = Number(this); const t = lineTexts.get(n); return String.prototype[name].apply(typeof t === "string" ? t : String(n), args); } }); } } \
             const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
-            if (k === "line" && typeof target.line === "number" && typeof target.text === "string") { lastLine = { n: target.line, text: target.text }; return target.line; } \
+            if (k === "line" && typeof target.line === "number" && typeof target.text === "string") { return noteLine(target.line, target.text); } \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const field = (kind) => { const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); return real ? target[real] : rangeLine(target, kind); }; \
             if (norm(k) === "lines") { const line = field("line"); const text = field("text"); \
