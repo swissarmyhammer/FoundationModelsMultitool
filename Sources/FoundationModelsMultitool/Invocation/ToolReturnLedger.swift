@@ -185,6 +185,12 @@ private struct ScalarValues {
             // bench24-1023b, `py.slice(0, 2000)`) returns the line without
             // it, which still carries what the call returned.
             if let entry = Hashline.blockEntry(of: text) { insert(entry.text) }
+            // A line of `tools.shell.execute` carries its `N: ` number, and
+            // `r.stdout` joins the lines without it (noturn24
+            // django__django-13964: `return r.stdout` of a two-line output).
+            if let range = text.range(of: #"^\d+: "#, options: .regularExpression) {
+                insert(String(text[range.upperBound...]))
+            }
         case .array(let elements):
             for element in elements { collect(from: element) }
         case .object(let fields):

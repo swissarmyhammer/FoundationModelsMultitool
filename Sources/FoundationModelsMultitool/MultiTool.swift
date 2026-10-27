@@ -1605,7 +1605,18 @@ public struct MultiTool: GraphQLEndpointTool {
         // object after it holds the other arguments
         // (django__django-14534: `read("…", { offset: 670, limit: 70 })`).
         let mainField = ToolInvoker.mainArgumentName(of: tool)
-        if case .string = argumentObject, let mainField {
+        // `tools.files.write(path, content)` (noturn24 django__django-14730):
+        // two or more values before any object fill the arguments in their
+        // declared order, and an object after them holds the rest.
+        let positional = Array(arguments.prefix { if case .object = $0 { false } else { true } })
+        if positional.count > 1, let names = ToolInvoker.positionalArgumentNames(of: tool, for: positional) {
+            var merged: [String: InterpreterValue] = [:]
+            if arguments.count > positional.count, case .object(let options) = arguments[positional.count] {
+                merged = options
+            }
+            for (name, value) in zip(names, positional) where merged[name] == nil { merged[name] = value }
+            argumentObject = .object(merged)
+        } else if case .string = argumentObject, let mainField {
             var merged: [String: InterpreterValue] = [:]
             if arguments.count > 1, case .object(let options) = arguments[1] { merged = options }
             if merged[mainField] == nil { merged[mainField] = argumentObject }
@@ -1714,11 +1725,25 @@ public struct MultiTool: GraphQLEndpointTool {
     ///   - asksUser: tells if the sandbox has the `elicit` global.
     /// - Returns: the documentation, or an error text.
     private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface, asksUser: Bool) -> String {
-        guard case .string(let name) = argument else {
+        // `tools.docs()` (noturn24): no name is the globals page and every
+        // path, the same lists `docs("globals")` and `help()` give.
+        if argument == nil || argument == .null {
+            let globals = sandboxGlobalsDocumentation(for: sandboxGlobalsDocsTopic, asksUser: asksUser) ?? ""
+            let paths = surface.entries.map { "tools.\($0.path)" }.joined(separator: "\n")
+            return globals + "\n\nEvery tool, by path (docs(\"<group>\") gives one group's functions):\n" + paths
+        }
+        guard case .string(let given) = argument else {
             return "docs(name) requires a string tool name, e.g. docs(\"getWeather\")."
         }
+        let name = given.hasPrefix("tools.") ? String(given.dropFirst("tools.".count)) : given
         if let entry = surface.entries.first(where: { $0.path == name }) {
             return entry.block
+        }
+        // `tools.docs("files")` (noturn24 django__django-14730): a group
+        // name gives the docs of each function of the group.
+        let group = surface.entries.filter { $0.path.hasPrefix(name + ".") }
+        if !group.isEmpty {
+            return group.map(\.block).joined(separator: "\n\n")
         }
         // After the catalog, never before it: a wrapped tool actually named
         // `globals` keeps its own block, and the ambient page is what `name`

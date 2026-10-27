@@ -95,18 +95,27 @@ struct HelpDocsTests {
         #expect(decoded.lowercased().contains("unknown"))
     }
 
-    @Test("docs() called with no argument or a non-string argument returns a usage hint, not a crash")
-    func docsWithMissingOrNonStringArgumentReturnsUsageHint() async throws {
+    @Test("docs() called with a non-string argument returns a usage hint, not a crash")
+    func docsWithNonStringArgumentReturnsUsageHint() async throws {
         let registry = try makeRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let missingArgumentOutput = try await multiTool.call(arguments: RunCodeArguments(code: "return docs();"))
-        let numberArgumentOutput = try await multiTool.call(arguments: RunCodeArguments(code: "return docs(42);"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs(42);"))
 
-        for output in [missingArgumentOutput, numberArgumentOutput] {
-            let decoded = try JSONDecoder().decode(String.self, from: Data(output.utf8))
-            #expect(decoded.contains("requires a string"))
-        }
+        let decoded = try JSONDecoder().decode(String.self, from: Data(output.utf8))
+        #expect(decoded.contains("requires a string"))
+    }
+
+    @Test("docs() called with no argument gives the globals page and every tool path")
+    func docsWithNoArgumentGivesTheOverview() async throws {
+        // noturn24: `tools.docs()` asks for the docs of everything.
+        let registry = try makeRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(code: #"const p = docs(); return [p.includes("tools.getWeather"), p.includes(docs("globals"))];"#))
+
+        #expect(output.contains("[true,true]"), "output was: \(output)")
     }
 
     // MARK: - Sandbox: help()/docs() alongside the ambient globals

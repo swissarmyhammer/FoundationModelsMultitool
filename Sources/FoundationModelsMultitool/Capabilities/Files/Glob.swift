@@ -31,8 +31,9 @@ struct GlobArguments {
         description:
             "The glob pattern to match: `*`, `?`, `[...]`, and `**` are supported. A pattern "
             + "with no `/` and no `**` matches file names alone; each other pattern matches the "
-            + "path relative to the searched directory.")
-    var pattern: String
+            + "path relative to the searched directory. Omit it with a path to list every file "
+            + "under the path.")
+    var pattern: String?
 
     /// The directory to search, or `nil` to search the session root.
     @Guide(
@@ -97,6 +98,9 @@ extension Glob {
     /// The gitignore behavior the verb uses when `respectGitIgnore` is absent.
     private static let defaultRespectGitIgnore = true
 
+    /// The pattern the verb uses when `pattern` is absent: every file.
+    private static let everyFilePattern = "*"
+
     /// Finds the matching files and answers them newest first, or answers
     /// the correction that says why there are none.
     ///
@@ -112,8 +116,12 @@ extension Glob {
     /// - Parameter arguments: What to match, and how.
     /// - Returns: The matches newest first, or the correction.
     func call(arguments: GlobArguments) async throws -> GlobResult {
+        // `tools.listFiles({ path: "." })` (noturn24 django__django-14855):
+        // a path with no pattern lists every file under the path. With no
+        // path either, `*` meets the broad-pattern guard, which says so.
+        let pattern = arguments.pattern ?? Self.everyFilePattern
         let output = await GlobEngine().run(
-            pattern: arguments.pattern,
+            pattern: pattern,
             path: arguments.path,
             caseSensitive: arguments.caseSensitive ?? Self.defaultCaseSensitive,
             respectGitIgnore: arguments.respectGitIgnore ?? Self.defaultRespectGitIgnore,
@@ -130,7 +138,7 @@ extension Glob {
             )
         case .corrective(let message):
             return GlobResult(
-                pattern: arguments.pattern,
+                pattern: pattern,
                 files: [],
                 total: 0,
                 capped: false,

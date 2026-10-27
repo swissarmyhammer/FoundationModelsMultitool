@@ -289,6 +289,12 @@ public enum ToolInvoker {
     private struct ArgumentsSchema: Decodable {
         let properties: [String: ArgumentPropertySchema]?
         let required: [String]?
+        let order: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case properties, required
+            case order = "x-order"
+        }
     }
 
     /// Encodes `parameters` with `JSONEncoder` (the same call
@@ -511,6 +517,46 @@ public enum ToolInvoker {
         if required.isEmpty, strings.count == 1 { return strings.first }
         if required.isEmpty, strings.contains(pathArgumentName) { return pathArgumentName }
         return nil
+    }
+
+    /// The properties of `tool` that positional `values` fill, in the
+    /// declared order, or `nil` when the call stays ambiguous.
+    ///
+    /// `tools.files.write(path, content)` means `{ path, content }`
+    /// (noturn24 django__django-14730 seq 10364), and
+    /// `tools.files.edit(path, find, replace)` means `{ path, find, replace }`.
+    /// The order is the schema's `x-order`. The values fill the first
+    /// properties in that order when each value is of its property's type (a
+    /// string fits an array of strings too, see
+    /// `wrappingStringsInStringArrays`) and every required property is
+    /// among them. A schema without `x-order` gives `nil`.
+    ///
+    /// - Parameters:
+    ///   - tool: the tool the call goes to.
+    ///   - values: the positional values of the call.
+    /// - Returns: one property name for each value, in order.
+    static func positionalArgumentNames(of tool: any Tool, for values: [InterpreterValue]) -> [String]? {
+        guard let schema = try? decodeArgumentsSchema(tool.parameters, toolName: tool.name),
+            let order = schema.order, let properties = schema.properties, values.count <= order.count
+        else { return nil }
+        let names = Array(order.prefix(values.count))
+        guard Set(schema.required ?? []).isSubset(of: names) else { return nil }
+        for (name, value) in zip(names, values) {
+            guard let property = properties[name], fits(value, property) else { return nil }
+        }
+        return names
+    }
+
+    /// Whether `value` is of the type `property` declares.
+    private static func fits(_ value: InterpreterValue, _ property: ArgumentPropertySchema) -> Bool {
+        switch (value, property.type) {
+        case (.string, ArgumentPropertySchema.stringType): true
+        case (.string, ArgumentPropertySchema.arrayType): property.isStringArray
+        case (.number, "integer"), (.number, "number"): true
+        case (.bool, "boolean"): true
+        case (.array, ArgumentPropertySchema.arrayType): true
+        default: false
+        }
     }
 
     /// Validates `content` — a marshaled call's arguments — against

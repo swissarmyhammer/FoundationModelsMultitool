@@ -44,7 +44,12 @@
 //    thus one convention holds across all groups and nothing adds or
 //    subtracts 1. The list-shaped
 //    `code_context` verbs act as their list too (django__django-14752:
-//    `refs.map(...)` on a `grepCode` result).
+//    `refs.map(...)` on a `grepCode` result). A list verb that answers a
+//    corrective text acts as an empty list with that text as `correction`,
+//    and still serializes as the text; a `grepCode` pattern that is not a
+//    valid regular expression is searched again as literal text, with a
+//    note (noturn24 django__django-15061: `MultiWidget)`, then `g1.map is
+//    not a function`).
 // 2. **A name that is not there finds the verb it means.** `tools` and each
 //    group are `Proxy` objects: a missing name is read in any letter case
 //    with `_` and `-` ignored, then through ``VerbSynonyms`` (`files.search`
@@ -52,6 +57,11 @@
 //    (`tools.grep`), or a synonym (`tools.ls` → `files.list`), resolves to
 //    that verb. In a group, a made-up name that holds the name of one verb
 //    that reads (`listEntries` ⊃ `list`) calls it (see `containedVerbPaths`).
+//    A shell verb (`run`, `exec`, ...) under any group, or under a group a
+//    model makes up for running code (`tools.code.run`, noturn24
+//    django__django-13964), is `shell.execute`; `docs` and `help` at the top
+//    are the `docs` global, and in a group give the docs of the group
+//    (noturn24 django__django-14730: `tools.docs("files")`).
 //    A name that nothing answers is still `undefined`, thus the
 //    snippet fails the way it did before and `UnknownToolHint` answers it.
 //
@@ -208,20 +218,38 @@ extension MultiTool {
             if (kind === "code") { return target.exitCode; } \
             if (kind === "ok") { return target.exitCode === undefined ? undefined : target.exitCode === 0; } \
             return undefined; } }); }; \
+            const patternKeys = ["pattern", "regex", "regexp", "query", "search", "expression"]; \
+            const literal = (fn) => function (...args) { const a = args[0]; const key = a && typeof a === "object" ? patternKeys.find((n) => typeof a[n] === "string") : undefined; \
+            const p = key ? a[key] : a; \
+            return fn(...args).then((v) => { if (typeof v !== "string" || !/not a valid regular expression/i.test(v) || typeof p !== "string") { return v; } \
+            const q = p.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"); \
+            return fn(...(key ? [{ ...a, [key]: q }] : [q]), ...args.slice(1)).then((r) => { if (r && typeof r === "object") { \
+            r.notes = [...(Array.isArray(r.notes) ? r.notes : []), `pattern "${p}" is not a valid regular expression; it was searched as literal text.`]; } return r; }); }); }; \
+            const fromText = (v, kind) => { const o = { [kind]: [], correction: v }; \
+            Object.defineProperty(o, "toJSON", { value: () => v }); Object.defineProperty(o, "toString", { value: () => v }); return o; }; \
             const shaped = (fn, shape) => function (...args) { const pending = fn(...args); \
             return new Proxy(Object.create(Object.getPrototypeOf(pending)), { get(_, k) { \
             if (k === "then") { return (onFulfilled, onRejected) => pending.then((v) => { const s = shape(v); return typeof onFulfilled === "function" ? onFulfilled(s) : s; }, onRejected); } \
             return Reflect.get(pending, k); } }); }; \
             for (const path of Object.keys(shapes)) { const [g, verb] = path.split("."); \
             if (tools[g] && typeof tools[g][verb] === "function") { const kind = shapes[path]; \
-            tools[g][verb] = shaped(tools[g][verb], kind === "text" ? asText : kind === "shell" ? asShell : (v) => asArray(v, kind)); } } \
+            const fn = path === "code_context.grepCode" ? literal(tools[g][verb]) : tools[g][verb]; \
+            tools[g][verb] = shaped(fn, kind === "text" ? asText : kind === "shell" ? asShell : (v) => asArray(typeof v === "string" ? fromText(v, kind) : v, kind)); } } \
             const isGroup = (v) => v !== null && typeof v === "object"; \
             const groups = Object.keys(tools).filter((g) => isGroup(tools[g])); \
+            const shellVerbs = ["run", "exec", "execute", "runcommand", "command", "sh", "bash", "shell", "cmd", "system", "spawn", "terminal"]; \
+            const docNames = ["docs", "doc", "help", "documentation", "apidocs"]; \
+            const shellGroupNames = ["code", "console", "os", "process", "subprocess", "cli", "runtime", "sandbox", "workspace"]; \
+            const base = tools; \
+            const shellExecute = () => (isGroup(base.shell) && typeof base.shell.execute === "function" ? base.shell.execute : undefined); \
+            const docsOf = (name) => (n) => globalThis.docs(n === undefined ? name : n); \
             for (const g of groups) { tools[g] = new Proxy(tools[g], { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const n = norm(k); const same = Object.keys(target).find((verb) => norm(verb) === n); if (same) { return target[same]; } \
             const inGroup = (paths) => (paths || []).filter((p) => p.startsWith(g + ".") && typeof target[p.slice(g.length + 1)] === "function"); \
             const path = inGroup(synonyms[n])[0]; if (path) { return target[path.slice(g.length + 1)]; } \
+            if (shellVerbs.includes(n) && shellExecute()) { return shellExecute(); } \
+            if (docNames.includes(n) && typeof globalThis.docs === "function") { return docsOf(g); } \
             const held = Object.keys(contained).filter((c) => n.includes(c) && inGroup(contained[c]).length > 0); \
             const longest = Math.max(0, ...held.map((c) => c.length)); \
             const meant = [...new Set(held.filter((c) => c.length === longest).flatMap((c) => inGroup(contained[c])))]; \
@@ -234,8 +262,17 @@ extension MultiTool {
             const owners = groups.filter((g) => Object.keys(target[g]).some((verb) => norm(verb) === n)); \
             if (owners.length === 1) { return target[owners[0]][k]; } \
             const path = (synonyms[n] || []).find((p) => { const [g, verb] = p.split("."); return isGroup(target[g]) && typeof target[g][verb] === "function"; }); \
-            if (path) { const [g, verb] = path.split("."); return target[g][verb]; } \
-            return undefined; } }); \
+            const sh = shellExecute(); \
+            const shellGroup = (f) => (f !== sh ? f : new Proxy(f, { get(t, verb) { \
+            return typeof verb === "string" && !Reflect.has(t, verb) && shellVerbs.includes(norm(verb)) ? t : Reflect.get(t, verb); } })); \
+            if (path) { const [g, verb] = path.split("."); return shellGroup(target[g][verb]); } \
+            if (docNames.includes(n) && typeof globalThis.docs === "function") { return globalThis.docs; } \
+            if (shellVerbs.includes(n) && sh) { return shellGroup(sh); } \
+            if (!shellGroupNames.includes(n) || !sh) { return undefined; } \
+            return new Proxy({}, { get(_, verb) { if (typeof verb !== "string") { return undefined; } const m = norm(verb); \
+            if (shellVerbs.includes(m)) { return sh; } \
+            if (docNames.includes(m) && typeof globalThis.docs === "function") { return globalThis.docs; } \
+            return undefined; } }); } }); \
             })();
             """
     }
