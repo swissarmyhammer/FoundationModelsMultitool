@@ -563,11 +563,45 @@ enum UnknownToolHint {
         in surface: APISurface,
         using searcher: MetadataSearcher<APISurface.Entry>
     ) async -> (tier: SuggestionTier, entries: [APISurface.Entry]) {
-        let byName = entriesResemblingName(of: failedPath, in: surface)
+        // A guess that asks a question is never sent to a verb that writes
+        // (forgive24 django__django-13447: `files.exists` got `files.edit`).
+        let asks = asksAQuestion(failedPath)
+        let fitting = { (entry: APISurface.Entry) in !asks || !writes(entry.path) }
+        let byName = entriesResemblingName(of: failedPath, in: surface).filter(fitting)
         guard byName.isEmpty else { return (.nameResemblance, byName) }
-        let byRelevance = await entriesRelevantTo(failedPath, using: searcher)
+        let byRelevance = await entriesRelevantTo(failedPath, using: searcher).filter(fitting)
         return (byRelevance.isEmpty ? .noMatch : .catalogRelevance, byRelevance)
     }
+
+    /// The first words of a verb that asks a question about what is there.
+    private static let questionWords = [
+        "is", "has", "can", "does", "exists", "exist", "check", "stat", "get", "read", "list", "find",
+        "search", "show", "view", "count", "lookup", "contains",
+    ]
+
+    /// The first words of a verb that changes something.
+    private static let writeWords = [
+        "write", "edit", "patch", "delete", "remove", "make", "create", "set", "update", "rename",
+        "move", "reset", "rollback", "append", "insert", "replace", "apply",
+    ]
+
+    /// Whether the last segment of `path` begins with one of `words`, ending
+    /// there or at a capital letter: `isFile` begins with `is`, `install`
+    /// does not.
+    private static func begins(_ path: String, withOneOf words: [String]) -> Bool {
+        let verb = path.split(separator: ".").last.map(String.init) ?? path
+        return words.contains { word in
+            guard verb.lowercased().hasPrefix(word) else { return false }
+            let rest = verb.dropFirst(word.count)
+            return rest.first.map { $0.isUppercase || $0 == "_" } ?? true
+        }
+    }
+
+    /// Whether the guessed `path` asks a question, such as `files.exists`.
+    private static func asksAQuestion(_ path: String) -> Bool { begins(path, withOneOf: questionWords) }
+
+    /// Whether the verb at `path` changes something, such as `files.edit`.
+    private static func writes(_ path: String) -> Bool { begins(path, withOneOf: writeWords) }
 
     /// Ranks the catalog's entries by name resemblance to `failedPath` and
     /// returns the closest few above `similarityThreshold` — the hint's

@@ -36,7 +36,10 @@
 //    `res.files.map(f => f.lines.map(...))`). A list result read as one item
 //    answers from its first item (noqueue24 django__django-13447:
 //    `s.text.slice(...)` on a `getSymbol` result), and an empty list answers
-//    `undefined` there, as before. An item with only an LSP
+//    `undefined` there, as before. The number `line` of an item that has a
+//    `text` answers the string methods over that text, and still counts and
+//    serializes as the number (forgive24 django__django-13447:
+//    `m.line.slice(0, 110)` on a `files.grep` match). An item with only an LSP
 //    `range` answers `line`, `startLine` from `range.start.line` and
 //    `endLine` from `range.end.line`, as they are: every line and column of
 //    `code_context` is 1-based since FoundationModelsCodeContext 223732b,
@@ -61,7 +64,10 @@
 //    model makes up for running code (`tools.code.run`, noturn24
 //    django__django-13964), is `shell.execute`; `docs` and `help` at the top
 //    are the `docs` global, and in a group give the docs of the group
-//    (noturn24 django__django-14730: `tools.docs("files")`).
+//    (noturn24 django__django-14730: `tools.docs("files")`). `files.exists`,
+//    `isFile`, `isDir` answer `true` or `false`, and `files.stat` answers
+//    `{ path, exists, isFile, isDirectory }`, read from `files.list` of the
+//    parent folder (forgive24 django__django-13447).
 //    A name that nothing answers is still `undefined`, thus the
 //    snippet fails the way it did before and `UnknownToolHint` answers it.
 //
@@ -180,7 +186,12 @@ extension MultiTool {
             const matchFields = { file: ["file", "filePath", "path"], line: ["line", "startLine", "lineNumber"], end: ["endLine"], text: ["text", "content"] }; \
             const rangeLine = (target, kind) => { const r = target.range; const p = r && typeof r === "object" ? (kind === "line" ? r.start : kind === "end" ? r.end : undefined) : undefined; \
             return p && typeof p.line === "number" ? p.line : undefined; }; \
+            const lineOf = (n, text) => new Proxy(new Number(n), { get(num, k) { if (k === "toJSON") { return () => n; } \
+            if (typeof k === "string" && typeof String.prototype[k] === "function" && !(k in Number.prototype)) { return String.prototype[k].bind(text); } \
+            if (k === "length") { return text.length; } \
+            const v = Reflect.get(num, k); return typeof v === "function" ? v.bind(num) : v; } }); \
             const aliased = (m) => (!m || typeof m !== "object" ? m : new Proxy(m, { get(target, k) { \
+            if (k === "line" && typeof target.line === "number" && typeof target.text === "string") { return lineOf(target.line, target.text); } \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const field = (kind) => { const real = kind && matchFields[kind].find((n) => Reflect.has(target, n)); return real ? target[real] : rangeLine(target, kind); }; \
             if (norm(k) === "lines") { const line = field("line"); const text = field("text"); \
@@ -243,11 +254,25 @@ extension MultiTool {
             const base = tools; \
             const shellExecute = () => (isGroup(base.shell) && typeof base.shell.execute === "function" ? base.shell.execute : undefined); \
             const docsOf = (name) => (n) => globalThis.docs(n === undefined ? name : n); \
+            const statNames = { exists: "exists", fileexists: "exists", pathexists: "exists", isfile: "isFile", isdir: "isDirectory", isdirectory: "isDirectory", isfolder: "isDirectory", stat: "stat", lstat: "stat" }; \
+            const pathKeys = ["path", "file", "filePath", "filename", "dir", "directory", "folder"]; \
+            const statVerb = (files, kind) => async function (a) { \
+            const p = typeof a === "string" ? a : a && typeof a === "object" ? pathKeys.map((n) => a[n]).find((x) => typeof x === "string") : undefined; \
+            if (typeof p !== "string") { throw new TypeError(`tools.files.${kind} needs a path: tools.files.${kind}({ path: "..." })`); } \
+            const clean = p.replace(/\\/+$/, ""); const cut = clean.lastIndexOf("/"); \
+            const dir = cut < 0 ? "." : clean.slice(0, cut) || "/"; const name = cut < 0 ? clean : clean.slice(cut + 1); \
+            let isDirectory = clean === "" || clean === "."; let isFile = false; \
+            if (!isDirectory) { const r = await files.list({ path: dir }); \
+            const e = r && !r.correction && Array.isArray(r.entries) ? r.entries.map(String) : []; \
+            isDirectory = e.includes(name + "/"); isFile = e.includes(name); } \
+            const s = { path: p, exists: isFile || isDirectory, isFile, isDirectory }; \
+            return kind === "stat" ? s : s[kind]; }; \
             for (const g of groups) { tools[g] = new Proxy(tools[g], { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const n = norm(k); const same = Object.keys(target).find((verb) => norm(verb) === n); if (same) { return target[same]; } \
             const inGroup = (paths) => (paths || []).filter((p) => p.startsWith(g + ".") && typeof target[p.slice(g.length + 1)] === "function"); \
             const path = inGroup(synonyms[n])[0]; if (path) { return target[path.slice(g.length + 1)]; } \
+            if (g === "files" && statNames[n] && typeof target.list === "function") { return statVerb(target, statNames[n]); } \
             if (shellVerbs.includes(n) && shellExecute()) { return shellExecute(); } \
             if (docNames.includes(n) && typeof globalThis.docs === "function") { return docsOf(g); } \
             const held = Object.keys(contained).filter((c) => n.includes(c) && inGroup(contained[c]).length > 0); \
@@ -266,6 +291,7 @@ extension MultiTool {
             const shellGroup = (f) => (f !== sh ? f : new Proxy(f, { get(t, verb) { \
             return typeof verb === "string" && !Reflect.has(t, verb) && shellVerbs.includes(norm(verb)) ? t : Reflect.get(t, verb); } })); \
             if (path) { const [g, verb] = path.split("."); return shellGroup(target[g][verb]); } \
+            if (statNames[n] && isGroup(target.files) && typeof target.files.list === "function") { return statVerb(target.files, statNames[n]); } \
             if (docNames.includes(n) && typeof globalThis.docs === "function") { return globalThis.docs; } \
             if (shellVerbs.includes(n) && sh) { return shellGroup(sh); } \
             if (!shellGroupNames.includes(n) || !sh) { return undefined; } \
