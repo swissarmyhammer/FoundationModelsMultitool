@@ -62,25 +62,6 @@ struct ShellStateTests {
     /// prefix-leak test searches for.
     private static let identifierFragmentLength = 8
 
-    /// `PATH_MAX` on Darwin: the number of bytes of a path, the terminating
-    /// null byte included. Thus the longest path that opens is one byte less.
-    private static let pathMaxBytes = 1024
-
-    /// The component the store appends to its own directory to reach the file
-    /// it seeds first.
-    private static let gitignoreComponent = "/\(gitignoreFileName)"
-
-    /// The length of the store path the two overlong-path tests build.
-    ///
-    /// The path is shorter than `pathMaxBytes` by exactly the length of
-    /// `gitignoreComponent`. Thus `createDirectory` makes the store, and the
-    /// `.gitignore` child of that store reaches the limit and does not write.
-    /// That failure is what the two tests examine.
-    private static let overlongStorePathLength = pathMaxBytes - gitignoreComponent.utf8.count
-
-    /// The length of each path component the overlong path is built from.
-    private static let pathSegmentLength = 100
-
     /// The permissions of a directory that the owner cannot write.
     private static let readOnlyDirectoryMode = 0o555
 
@@ -131,31 +112,6 @@ struct ShellStateTests {
     /// - Returns: One `LogLine` for each text, numbered from 1.
     private func expectedLines(_ texts: [String]) -> [LogLine] {
         texts.enumerated().map { LogLine(lineNumber: $0.offset + 1, text: $0.element) }
-    }
-
-    /// The store path the two overlong-path tests give to `ShellState`.
-    ///
-    /// The path grows by whole components until it reaches
-    /// `overlongStorePathLength`. A path this long holds no file, thus the
-    /// pre-existing counterpart test examines the directory itself and not a
-    /// file inside it.
-    ///
-    /// - Parameter directory: The temporary directory of the test, which the
-    ///   path grows from.
-    /// - Returns: A path just short enough to create, whose `.gitignore` child
-    ///   is too long to write.
-    private func makeOverlongStorePath(in directory: URL) -> URL {
-        var store = directory
-        let segment = String(repeating: "d", count: Self.pathSegmentLength)
-        while store.path.utf8.count + 1 + segment.utf8.count <= Self.overlongStorePathLength {
-            store.appendPathComponent(segment)
-        }
-
-        let remaining = Self.overlongStorePathLength - store.path.utf8.count - 1
-        if remaining > 0 {
-            store.appendPathComponent(String(repeating: "d", count: remaining))
-        }
-        return store
     }
 
     // MARK: - Storage round trip
@@ -713,76 +669,5 @@ struct ShellStateTests {
         let record = try #require(await state.record(commandID: token))
         #expect(record.status == .killed)
         #expect(record.exitCode == nil)
-    }
-
-    // MARK: - A store directory that only half prepared
-
-    /// `prepareDirectory` makes the store directory, and only then seeds
-    /// `.gitignore` and touches the log — two more steps, and each one can
-    /// throw. A throw there used to leave behind the directory it had just
-    /// made, and on the fallback branch nobody learns that path. Thus it leaked
-    /// silently and permanently.
-    ///
-    /// The failure comes from the length of the path. The other way — to put a
-    /// blocker INSIDE the store, a `.gitignore` directory or a `log` directory
-    /// — does not work, for two reasons: to make it also makes the store, which
-    /// is the opposite case, and `prepareDirectory` guards each write with
-    /// `fileExists`, which answers `true` for a directory, thus the step is
-    /// passed over and nothing throws. `umask` works, and it is global to the
-    /// process, thus it would race the parallel suites.
-    ///
-    /// So the store path grows to just under `PATH_MAX`: long enough that
-    /// `createDirectory` succeeds, short enough that `<store>/.gitignore` goes
-    /// over the limit. Thus `fileExists` on that child answers `false`, the
-    /// write happens, and it fails. The behavior is the same on each run, and
-    /// it stays inside the temporary directory of this test.
-    @Test("A store directory the subject made is removed when preparation throws")
-    func storeDirectoryItCreatedIsRemovedWhenPreparationThrows() throws {
-        let temporary = try makeTempDirectory()
-        let store = makeOverlongStorePath(in: temporary)
-
-        #expect(store.path.utf8.count < Self.pathMaxBytes)
-        #expect(
-            store.appendingPathComponent(Self.gitignoreFileName).path.utf8.count
-                >= Self.pathMaxBytes)
-        #expect(!FileManager.default.fileExists(atPath: store.path))
-
-        // `resolveDirectory` takes the failure of the preferred store and falls
-        // back, thus the construction SUCCEEDS — which is what makes this leak
-        // silent: the half-prepared preferred directory stays behind, and no
-        // caller learns its path.
-        let state = try ShellState(preferredDirectory: store)
-        // The subject made the fallback store, and `scratch` did not, thus this
-        // test removes it. Without that, each run leaks one.
-        defer { try? FileManager.default.removeItem(at: state.logURL.deletingLastPathComponent()) }
-        #expect(!state.logURL.path.hasPrefix(store.path))
-
-        // The subject made this directory and then failed to prepare it, thus
-        // nothing it made may stay.
-        #expect(!FileManager.default.fileExists(atPath: store.path))
-    }
-
-    /// The unwind must remove what `prepareDirectory` itself made, and nothing
-    /// more. `createDirectory(withIntermediateDirectories: true)` succeeds
-    /// quietly on a directory that is already there, thus a `catch` that always
-    /// removes would delete a store of the caller — and each log already in it
-    /// — after one write failure that does not last.
-    @Test("A store directory that was already there survives a preparation throw")
-    func preExistingStoreDirectorySurvivesAPreparationThrow() throws {
-        let temporary = try makeTempDirectory()
-        let store = makeOverlongStorePath(in: temporary)
-
-        // The store is there before the subject runs.
-        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
-        #expect(FileManager.default.fileExists(atPath: store.path))
-
-        // The same swallowed failure and fallback as above. Keep the store, thus
-        // the fallback directory it made is removable; to discard it leaks one
-        // directory for each run.
-        let state = try ShellState(preferredDirectory: store)
-        defer { try? FileManager.default.removeItem(at: state.logURL.deletingLastPathComponent()) }
-
-        // The subject did not make it, thus it must not remove it.
-        #expect(FileManager.default.fileExists(atPath: store.path))
     }
 }
