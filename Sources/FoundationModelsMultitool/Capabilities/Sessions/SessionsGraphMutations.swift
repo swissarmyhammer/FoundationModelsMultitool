@@ -515,6 +515,8 @@ extension SessionsGraphAPI {
             Value(.queued).description("The target works: the message waits for the end of its turn.")
             Value(.started).description("An agent with no live session started one with the message.")
             Value(.refused).description("A loop guard, an archived target or no match refused the message.")
+            Value(.sent).description(
+                "The target is not live: the message is written to its inbox and not yet delivered.")
         }
         .description("What happened to a message at one target.")
     }

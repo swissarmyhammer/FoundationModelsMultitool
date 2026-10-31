@@ -66,6 +66,11 @@ enum SendOutcome {
 
   """A loop guard, an archived target or no match refused the message."""
   REFUSED
+
+  """
+  The target is not live: the message is written to its inbox and not yet delivered.
+  """
+  SENT
 }
 
 """One session on this server."""

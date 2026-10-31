@@ -64,6 +64,13 @@ struct SessionsToolMessageTests {
     /// The outcome word of a queued message in the answer.
     private static let queuedWord = "Queued"
 
+    /// The outcome word of a message that waits in the inbox of a session
+    /// that is not live, in the answer.
+    private static let sentWord = "Sent to"
+
+    /// The words that say the message is not delivered yet, in the answer.
+    private static let notDeliveredWords = "written to the inbox of the session and not yet delivered"
+
     /// The outcome word of a started session in the answer.
     private static let startedWord = "Started"
 
@@ -553,5 +560,24 @@ struct SessionsToolMessageTests {
         let messages = try await Self.unread(to: other.id, in: directory)
         #expect(messages.map(\.text) == [Self.messageText, Self.replyText], "sent: \(report.sent), replied: \(report.replied)")
         #expect(messages.last?.inReplyTo == questionID)
+    }
+
+    @Test("a receipt with the outcome sent says the message is in the inbox of the session and not yet delivered")
+    func aSentReceiptSaysTheMessageIsNotYetDelivered() {
+        let target = ULID.generate()
+        let messageID = MailID()
+        let receipt = SessionSendReceipt(messageID: messageID, target: target, outcome: .sent)
+
+        let output = SessionsToolText.receipts([receipt])
+
+        #expect(output.contains(Self.sentWord), "output was: \(output)")
+        #expect(output.contains(Self.notDeliveredWords), "output was: \(output)")
+        #expect(output.contains("\(messageID)"), "output was: \(output)")
+    }
+
+    @Test("the SendOutcome enum maps the outcome sent of the directory to SENT")
+    func theSendOutcomeEnumMapsSent() {
+        #expect(SessionsGraphOutcome(.sent) == .sent)
+        #expect(SessionsGraphOutcome.sent.rawValue == "SENT")
     }
 }

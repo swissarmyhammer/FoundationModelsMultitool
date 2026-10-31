@@ -326,6 +326,10 @@ enum SessionsGraphOutcome: String, Codable, CaseIterable, Sendable {
     /// A loop guard, an archived target or no match refused the message.
     case refused = "REFUSED"
 
+    /// The message is written to the inbox of a session that is not live, and
+    /// is not yet delivered.
+    case sent = "SENT"
+
     /// Makes the enum value of an outcome of the directory.
     ///
     /// - Parameter outcome: The outcome of the directory.
@@ -335,6 +339,7 @@ enum SessionsGraphOutcome: String, Codable, CaseIterable, Sendable {
         case .queued: self = .queued
         case .started: self = .started
         case .refused: self = .refused
+        case .sent: self = .sent
         }
     }
 }

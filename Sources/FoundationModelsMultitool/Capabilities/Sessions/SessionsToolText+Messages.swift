@@ -130,6 +130,8 @@ extension SessionsToolText {
         case .refused:
             let refuser = target.map { " by \($0)" } ?? ""
             return "- Refused\(refuser): \(receipt.reason ?? noReason)"
+        case .sent:
+            return "- Sent to \(session): the message is written to the inbox of the session and not yet delivered.\(messageID)"
         }
     }
 }
