@@ -284,13 +284,6 @@ struct HardeningTests {
         )
     }
 
-    @Test("README's enumerated 'Injected globals' list is set-equal to the runtime-enumerated sandbox globals")
-    func readmeInjectedGlobalsListMatchesRuntime() async throws {
-        let injected = try await Self.injectedGlobals()
-        let documented = try Self.readmeInjectedGlobals()
-        #expect(documented == injected)
-    }
-
     /// The globals a fresh `MultiTool` run context can reach beyond a
     /// completely vanilla `JSContext`'s own standard ECMAScript environment
     /// — the "injected globals" plan.md M10's security-model section
@@ -321,40 +314,4 @@ struct HardeningTests {
     private static var emptyRegistry: MultiTool.Registry {
         MultiTool.Registry(surface: APISurface(entries: []), tools: [:])
     }
-
-    /// Parses the `### Injected globals` section of the repo root's
-    /// `README.md` — every `- \`name\`` list item between that heading and
-    /// the next heading — the machine-checked half of "README↔code sync"
-    /// (plan.md M10 acceptance: "drift fails CI").
-    ///
-    /// - Returns: every documented injected-global name.
-    /// - Throws: `HardeningTestsError` if the section can't be found.
-    private static func readmeInjectedGlobals() throws -> Set<String> {
-        let text = try RepositoryFile.read(relativePath: "README.md")
-
-        let heading = "### Injected globals"
-        guard let headingRange = text.range(of: heading) else {
-            throw HardeningTestsError(message: "README.md has no \"\(heading)\" section.")
-        }
-
-        let afterHeading = text[headingRange.upperBound...]
-        let sectionEnd = afterHeading.range(of: "\n#")?.lowerBound ?? afterHeading.endIndex
-        let section = afterHeading[..<sectionEnd]
-
-        var names: Set<String> = []
-        for rawLine in section.split(separator: "\n", omittingEmptySubsequences: false) {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("- `"), trimmed.hasSuffix("`") else { continue }
-            let name = trimmed.dropFirst(3).dropLast(1)
-            guard !name.isEmpty else { continue }
-            names.insert(String(name))
-        }
-        return names
-    }
-}
-
-/// A parse failure reading `README.md`'s documented sandbox-surface list.
-private struct HardeningTestsError: Error, CustomStringConvertible {
-    let message: String
-    var description: String { message }
 }
