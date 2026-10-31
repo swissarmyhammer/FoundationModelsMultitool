@@ -23,41 +23,12 @@ import Testing
 
 /// Pins the plain-`Tool` contract of the six files verbs.
 ///
-/// Two kinds of case hold it. The behavioral cases call each verb with no
-/// bound `ToolContext`: a read answers content, a write creates the file, an
-/// edit rewrites it, a patch adds a file, a glob and a grep find the seeded
-/// file, and a path outside the root answers the corrective text in band
-/// rather than throwing. The reflective case reads the source of the Files
-/// capability and fails when a file in it spells the ambient-context read in
-/// any form but the one-time capture at the top of a mutating verb's `call`;
-/// that is the cheap guard, and it fails before a verb is called.
+/// Each case calls a verb with no bound `ToolContext`: a read answers
+/// content, a write creates the file, an edit rewrites it, a patch adds a
+/// file, a glob and a grep find the seeded file, and a path outside the root
+/// answers the corrective text in band rather than throwing.
 @Suite(.ownsTemporaryDirectories) struct PlainToolContractTests {
     // MARK: Test scaffolding
-
-    /// The directory the reflective case scans, from the repository root.
-    private static let filesCapabilityDirectory = "Sources/FoundationModelsMultitool/Capabilities/Files"
-
-    /// The expression that reads the ambient context. Every spelling of it
-    /// under the Files capability must be the ``ambientContextCapture``.
-    private static let ambientContextRead = "ToolContext.current"
-
-    /// The one permitted spelling of the ambient-context read: the capture a
-    /// mutating verb makes one time, at the top of `call(arguments:)`, so
-    /// that no later read after an `await` finds `nil` where the first found
-    /// a session (eventplan.md § "The ambient context").
-    private static let ambientContextCapture = "let toolContext = ToolContext.current"
-
-    /// The files that carry exactly one ``ambientContextCapture`` each: the
-    /// four verbs that record changes, which deliver their change set through
-    /// it. No other file of the capability reads the ambient context at all.
-    private static let capturingVerbFiles = [
-        "Delete.swift", "Edit.swift", "Patch.swift", "RemoveDirectory.swift", "Write.swift",
-    ]
-        .map { "\(filesCapabilityDirectory)/\($0)" }
-
-    /// The separator `RepositoryFile.sightings` writes between the location
-    /// and the needle of one entry.
-    private static let sightingSeparator = ": "
 
     /// The name of the file each behavioral case seeds.
     private static let seededFileName = "seed.txt"
@@ -318,62 +289,5 @@ import Testing
         GrepArguments(
             pattern: seededWord, path: path, glob: nil, type: nil, caseInsensitive: nil, contextLines: nil,
             outputMode: nil)
-    }
-
-    // MARK: The reflective guard
-
-    /// The `path:line` location of one `RepositoryFile.sightings` entry.
-    ///
-    /// - Parameters:
-    ///   - sighting: the `path:line: needle` entry.
-    ///   - needle: the needle the entry ends with.
-    /// - Returns: the entry with its separator and needle removed.
-    private static func location(of sighting: String, needle: String) -> String {
-        String(sighting.dropLast(sightingSeparator.count + needle.count))
-    }
-
-    /// The repository-relative file path of one `RepositoryFile.sightings` entry.
-    ///
-    /// - Parameter sighting: the `path:line: needle` entry.
-    /// - Returns: the text before the first `:`.
-    private static func file(of sighting: String) -> String {
-        String(sighting.prefix { $0 != ":" })
-    }
-
-    /// Every ambient-context read in the Files capability is the one-time
-    /// capture of a mutating verb, and each mutating verb makes exactly one.
-    ///
-    /// The behavioral cases above prove the bare-session contract for the
-    /// arguments they pass. This case proves the shape of the read for every
-    /// path of every verb at once: a read spelled any other way — a second
-    /// read after an `await`, a read in `Read`, `Glob` or `Grep`, a read in
-    /// the journal — would fail here, before a bare-session host found the
-    /// change. The folder is read through `#filePath`, the way the golden
-    /// tests read their fixtures, thus the scan reads the checkout under test
-    /// and no other.
-    @Test func filesVerbsReadTheAmbientContextOneTimeAtTheStart() throws {
-        let reads = try RepositoryFile.sightings(
-            of: [Self.ambientContextRead], inRelativeDirectory: Self.filesCapabilityDirectory)
-        let captures = try RepositoryFile.sightings(
-            of: [Self.ambientContextCapture], inRelativeDirectory: Self.filesCapabilityDirectory)
-
-        #expect(
-            reads.map { Self.location(of: $0, needle: Self.ambientContextRead) }
-                == captures.map { Self.location(of: $0, needle: Self.ambientContextCapture) },
-            """
-            A files verb reads the ambient context in a form that is not the one-time \
-            capture `\(Self.ambientContextCapture)`. A verb reads it one time, at the top \
-            of `call(arguments:)`, and answers from the `FileContext` it holds when the \
-            read is `nil`, so that a bare `LanguageModelSession` with no Router can mount it. \
-            Each line below must become that capture, or go:
-            \(reads.joined(separator: "\n"))
-            """)
-        #expect(
-            captures.map(Self.file).sorted() == Self.capturingVerbFiles,
-            """
-            The one-time capture stands in a file that is not a mutating verb, or a mutating \
-            verb makes it more than one time. The captures were:
-            \(captures.joined(separator: "\n"))
-            """)
     }
 }

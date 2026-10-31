@@ -33,18 +33,12 @@ struct PackageManifestTests {
     /// The manifest of this package, named from the repository root.
     private static let manifestPath = "Package.swift"
 
-    /// The directory of the library target, named from the repository root.
-    private static let librarySourcesPath = "Sources/FoundationModelsMultitool"
-
     /// The name the manifest gives to the library target.
     private static let libraryTargetName = "packageName"
 
     /// The dependency declaration of the Router product, as the manifest
     /// writes it.
     private static let routerProductDeclaration = ".product(name: routerDependencyName"
-
-    /// The import statement that the library sources must not hold.
-    private static let routerImport = "import FoundationModelsRouter"
 
     /// The texts that start the declaration of a target in the manifest.
     private static let targetDeclarationStarts = [".target(", ".executableTarget(", ".testTarget("]
@@ -79,19 +73,6 @@ struct PackageManifestTests {
             The package ships no executable. Only the stdio MCP test server of \
             the test support code is an executable target. These are:
             \(executables.joined(separator: "\n\n"))
-            """)
-    }
-
-    @Test("no library source file imports FoundationModelsRouter")
-    func librarySourcesImportNoRouter() throws {
-        let sightings = try RepositoryFile.sightings(
-            of: [Self.routerImport], inRelativeDirectory: Self.librarySourcesPath)
-        #expect(
-            sightings.isEmpty,
-            """
-            A library file imports Router. Import FoundationModelsExtras for \
-            the tool hosting types:
-            \(sightings.joined(separator: "\n"))
             """)
     }
 

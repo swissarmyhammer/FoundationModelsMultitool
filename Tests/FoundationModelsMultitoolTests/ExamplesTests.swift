@@ -310,7 +310,7 @@ struct ExamplesTests {
 
     /// The documents that a reader of this package reads for its contract,
     /// each named by its path from the repository root.
-    static let contractDocuments = ["README.md", "docs/SECURITY.md", "eventplan.md", "plan.md"]
+    static let contractDocuments = ["README.md", "docs/SECURITY.md"]
 
     /// The documents that state the shipped contract itself. `plan.md` and
     /// `eventplan.md` are records of the design, and each one tells how a

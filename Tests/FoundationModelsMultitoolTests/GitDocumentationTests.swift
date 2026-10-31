@@ -52,17 +52,8 @@ struct GitDocumentationTests {
         "PHP", "Swift", "Elixir", "Bash", "JSON", "YAML", "TOML", "CSV", "Markdown", "Vue", "fallback",
     ]
 
-    /// The language that git.md § "Decisions", item 13, removed.
+    /// The language that the semantic diff no longer supports.
     private static let droppedLanguage = "Fortran"
-
-    /// The plan of the capability, from the repository root.
-    private static let planPath = "git.md"
-
-    /// The plan of the web capability, whose status text the git plan copies.
-    private static let webPlanPath = "web.md"
-
-    /// The heading of the status section of each plan.
-    private static let statusHeading = "## Status of this document"
 
     @Test("the README Capabilities section names each text a host needs to mount the git capability",
           arguments: readmeTexts)
@@ -85,15 +76,5 @@ struct GitDocumentationTests {
         #expect(
             !section.contains(Self.droppedLanguage),
             "\(Self.readmePath) \(Self.capabilitiesHeading) names \"\(Self.droppedLanguage)\".")
-    }
-
-    @Test("the status of git.md says that the code shipped, with the same text as web.md")
-    func planStatusSaysThatTheCodeShipped() throws {
-        let gitStatus = try RepositoryFile.section(headed: Self.statusHeading, inRelativeFile: Self.planPath)
-        let webStatus = try RepositoryFile.section(headed: Self.statusHeading, inRelativeFile: Self.webPlanPath)
-        #expect(
-            gitStatus.trimmingCharacters(in: .whitespacesAndNewlines)
-                == webStatus.trimmingCharacters(in: .whitespacesAndNewlines),
-            "\(Self.planPath) \(Self.statusHeading) is \"\(gitStatus)\".")
     }
 }
