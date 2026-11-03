@@ -15,71 +15,41 @@ import Testing
 @Suite("ShellCrashReapTests", .ownsTemporaryDirectories)
 struct ShellCrashReapTests {
 
-    /// Owns the temporary directories of the shell stores of this suite.
-    private let scratch = TestScratch()
-
     /// The name prefix of the temporary directory of one test.
     private static let testDirectoryNamePrefix = "crash-reap-tests"
-
-    /// The offset, in seconds, that makes a start time differ from the real
-    /// one. It stands for a pid that another process took.
-    private static let otherStartOffset: Int64 = 1
-
-    /// The key of the record that a test writes.
-    private static let recordKey = "leftover"
-
-    /// An owner that is not alive: the pid of this process with a start time
-    /// that this process never had.
-    private static var deadOwner: ProcessIdentity {
-        ProcessIdentity(
-            pid: ProcessIdentity.own.pid, startSeconds: 0, startMicroseconds: 0)
-    }
 
     // MARK: - Helpers
 
     /// A store directory that this test owns.
-    ///
-    /// - Throws: When the directory does not prepare.
-    private func makeStoreDirectory() throws -> URL {
-        try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+    private func makeStoreDirectory() -> URL {
+        CrashReapFixture.makeDirectory(prefix: Self.testDirectoryNamePrefix)
             .appendingPathComponent(".shell")
     }
 
     /// Writes a record for `child` as a crashed host would have left it, and
-    /// then makes a new store over the same directory.
+    /// then makes a new store over the same directory and asks it to reap.
     ///
     /// - Parameters:
     ///   - child: The identity the record holds for the child.
     ///   - owner: The host that wrote the record.
     /// - Throws: When the store or the record does not write.
     private func openStoreAfterCrash(child: ProcessIdentity, owner: ProcessIdentity) throws {
-        let directory = try makeStoreDirectory()
+        let directory = makeStoreDirectory()
         let first = try ShellState(preferredDirectory: directory)
-        try first.processLedger.record(key: Self.recordKey, child: child, owner: owner)
-        _ = try ShellState(preferredDirectory: directory)
+        try first.processLedger.record(key: CrashReapFixture.recordKey, child: child, owner: owner)
+        try ShellState(preferredDirectory: directory).reapLeftovers()
     }
 
     // MARK: - The reap
 
     @Test("a new store kills the group of a leftover whose pid and start time match")
     func killsMatchingLeftover() throws {
-        let leftover = try OwnedChild()
-        let identity = try #require(ProcessIdentity.of(pid: leftover.pid))
-
-        try openStoreAfterCrash(child: identity, owner: Self.deadOwner)
-
-        #expect(leftover.finish() == .signaled(SIGKILL))
+        try CrashReapFixture.expectMatchingLeftoverKilled(reapAfterCrash: openStoreAfterCrash)
     }
 
     @Test("a new store spares a process that has the pid of the record and another start time")
     func sparesReusedPid() throws {
-        let bystander = try OwnedChild()
-        var identity = try #require(ProcessIdentity.of(pid: bystander.pid))
-        identity.startSeconds += Self.otherStartOffset
-
-        try openStoreAfterCrash(child: identity, owner: Self.deadOwner)
-
-        #expect(bystander.finish() == .exited(0))
+        try CrashReapFixture.expectReusedPidSpared(reapAfterCrash: openStoreAfterCrash)
     }
 
     @Test("a new store spares the child of a record whose host is alive")
@@ -87,7 +57,7 @@ struct ShellCrashReapTests {
         let running = try OwnedChild()
         let identity = try #require(ProcessIdentity.of(pid: running.pid))
 
-        try openStoreAfterCrash(child: identity, owner: .own)
+        try openStoreAfterCrash(child: identity, owner: try #require(ProcessIdentity.own))
 
         #expect(running.finish() == .exited(0))
     }
@@ -96,14 +66,62 @@ struct ShellCrashReapTests {
     func removesHandledRecord() throws {
         let leftover = try OwnedChild()
         let identity = try #require(ProcessIdentity.of(pid: leftover.pid))
-        let directory = try makeStoreDirectory()
+        let directory = makeStoreDirectory()
         let first = try ShellState(preferredDirectory: directory)
-        try first.processLedger.record(key: Self.recordKey, child: identity, owner: Self.deadOwner)
+        try first.processLedger.record(
+            key: CrashReapFixture.recordKey, child: identity, owner: CrashReapFixture.deadOwner)
 
         let second = try ShellState(preferredDirectory: directory)
+        second.reapLeftovers()
 
         #expect(second.processLedger.recordedKeys().isEmpty)
         _ = leftover.finish()
+    }
+
+    @Test("making a store reaps nothing until the caller asks")
+    func makingAStoreKillsNothing() throws {
+        let leftover = try OwnedChild()
+        let identity = try #require(ProcessIdentity.of(pid: leftover.pid))
+        let directory = makeStoreDirectory()
+        let first = try ShellState(preferredDirectory: directory)
+        try first.processLedger.record(
+            key: CrashReapFixture.recordKey, child: identity, owner: CrashReapFixture.deadOwner)
+
+        _ = try ShellState(preferredDirectory: directory)
+
+        #expect(leftover.finish() == .exited(0))
+    }
+
+    @Test("a store that a ShellStore makes reaps the leftover once")
+    func shellStoreReapsLeftover() throws {
+        let leftover = try OwnedChild()
+        let identity = try #require(ProcessIdentity.of(pid: leftover.pid))
+        let directory = makeStoreDirectory()
+        let first = try ShellState(preferredDirectory: directory)
+        try first.processLedger.record(
+            key: CrashReapFixture.recordKey, child: identity, owner: CrashReapFixture.deadOwner)
+
+        _ = try ShellStore(storeDirectory: directory)
+
+        #expect(leftover.finish() == .signaled(SIGKILL))
+    }
+
+    @Test("a new store removes a record that does not decode, and kills nothing")
+    func removesUndecodableRecord() throws {
+        let bystander = try OwnedChild()
+        let directory = makeStoreDirectory()
+        let first = try ShellState(preferredDirectory: directory)
+        let ledgerDirectory = first.processLedger.directory
+        try FileManager.default.createDirectory(at: ledgerDirectory, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(
+            to: ledgerDirectory.appendingPathComponent(CrashReapFixture.recordKey)
+                .appendingPathExtension("json"))
+
+        let second = try ShellState(preferredDirectory: directory)
+        second.reapLeftovers()
+
+        #expect(second.processLedger.recordedKeys().isEmpty)
+        #expect(bystander.finish() == .exited(0))
     }
 
     // MARK: - The record of a live command
@@ -114,9 +132,9 @@ struct ShellCrashReapTests {
         let state = try ShellState(preferredDirectory: makeStoreDirectory())
         let noSignal = ProcessGroupKill(pid: child.pid, signal: { _ in })
 
-        await state.registerProcess(commandID: Self.recordKey, group: noSignal)
+        await state.registerProcess(commandID: CrashReapFixture.recordKey, group: noSignal)
 
-        #expect(state.processLedger.recordedKeys() == [Self.recordKey])
+        #expect(state.processLedger.recordedKeys() == [CrashReapFixture.recordKey])
         _ = child.finish()
     }
 
@@ -125,9 +143,9 @@ struct ShellCrashReapTests {
         let child = try OwnedChild()
         let state = try ShellState(preferredDirectory: makeStoreDirectory())
         let noSignal = ProcessGroupKill(pid: child.pid, signal: { _ in })
-        await state.registerProcess(commandID: Self.recordKey, group: noSignal)
+        await state.registerProcess(commandID: CrashReapFixture.recordKey, group: noSignal)
 
-        await state.completeCommand(commandID: Self.recordKey)
+        await state.completeCommand(commandID: CrashReapFixture.recordKey)
 
         #expect(state.processLedger.recordedKeys().isEmpty)
         _ = child.finish()

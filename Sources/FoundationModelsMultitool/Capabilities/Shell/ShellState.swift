@@ -298,6 +298,18 @@ actor ShellState {
         self.logURL = directory.appendingPathComponent(Self.logFilename)
         self.processLedger = ProcessLedger(
             directory: directory.appendingPathComponent(Self.processRecordsDirectoryName, isDirectory: true))
+    }
+
+    /// Kills the leftover children of hosts that crashed, and removes their
+    /// records.
+    ///
+    /// This reads the record directory and sends signals, thus it is slow
+    /// work, and the initializer does not do it. The owner of the store calls
+    /// this one time, after the initializer.
+    ///
+    /// - Returns: How many process groups it killed.
+    @discardableResult
+    nonisolated func reapLeftovers() -> Int {
         processLedger.reapLeftovers()
     }
 
@@ -393,22 +405,8 @@ actor ShellState {
     ///   - group: The right to kill the process group of the child.
     func registerProcess(commandID: String, group: ProcessGroupKill) {
         processes[commandID] = group
-        recordForCrash(commandID: commandID, pid: group.pid)
+        processLedger.recordProcess(key: commandID, pid: group.pid)
         resolvePidWaiters(commandID: commandID, with: group)
-    }
-
-    /// Writes the record that lets a later store kill this child when the host
-    /// crashes before it reaps the child.
-    ///
-    /// A record that does not write only weakens that backstop. The command
-    /// must still run, thus a failure here is not an error of the command.
-    ///
-    /// - Parameters:
-    ///   - commandID: The completion token of the run.
-    ///   - pid: The pid of the child.
-    private func recordForCrash(commandID: String, pid: pid_t) {
-        guard let child = ProcessIdentity.of(pid: pid) else { return }
-        try? processLedger.record(key: commandID, child: child)
     }
 
     /// The pid of the process-group leader of a command that runs, or `nil`

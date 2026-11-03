@@ -542,6 +542,24 @@ struct StdioServerProcessTests {
         }
     }
 
+    /// The host keeps the read end of the stdout pipe of the child too. A
+    /// child that the host spawns later must not inherit it, thus it carries
+    /// the same `FD_CLOEXEC` mark as the write end of the stdin pipe.
+    @Test func theResponsePipeOfTheHostClosesOnExec() async throws {
+        let stdio = try makeHeldChild(named: "cloexec-response-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            let transport = try await stdio.respawn()
+            let vended = try #require(transport as? StdioServerTransport)
+
+            let flags = fcntl(vended.responseDescriptor.rawValue, F_GETFD)
+
+            #expect(flags & FD_CLOEXEC == FD_CLOEXEC)
+
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
+    }
+
     // MARK: - An external kill is healed by a reconnect through a fresh spawn
 
     /// After an unscripted death of the child, `MCPServer.reconnect()` calls

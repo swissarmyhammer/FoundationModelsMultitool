@@ -41,6 +41,9 @@ public final class ShellStore: Sendable {
     /// throws: the store prepares a directory on disk, and a store that cannot
     /// prepare has nowhere to record a run.
     ///
+    /// The store kills the shell children that a crashed host left in the
+    /// same directory, one time, before the initializer returns.
+    ///
     /// - Parameter storeDirectory: The directory the history and the captured
     ///   output of each run are written into. The default, `nil`, takes
     ///   `<cwd>/.shell` — see `ShellDotfolder.currentDirectory()`. A store that
@@ -54,5 +57,6 @@ public final class ShellStore: Sendable {
         } else {
             state = try ShellState()
         }
+        state.reapLeftovers()
     }
 }

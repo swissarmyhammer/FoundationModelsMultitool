@@ -299,7 +299,7 @@ public struct StdioServerProcess: Sendable {
         await state.recordSpawn(spawned.pid)
         return StdioServerTransport(
             inner: spawned.transport, state: state, pid: spawned.pid,
-            requestDescriptor: spawned.requestDescriptor)
+            requestDescriptor: spawned.requestDescriptor, responseDescriptor: spawned.responseDescriptor)
     }
 
     /// Group-terminates and reaps whatever subprocess this value fronts
@@ -324,6 +324,9 @@ public struct StdioServerProcess: Sendable {
         /// The write end of the stdin pipe of the subprocess: the descriptor
         /// `transport` writes each request to.
         let requestDescriptor: FileDescriptor
+        /// The read end of the stdout pipe of the subprocess: the descriptor
+        /// `transport` reads each response from.
+        let responseDescriptor: FileDescriptor
     }
 
     /// The fd of the child that becomes its standard input.
@@ -412,30 +415,41 @@ public struct StdioServerProcess: Sendable {
         closeAll([stdinReadFd, stdoutWriteFd])
 
         let requestDescriptor = FileDescriptor(rawValue: stdinWriteFd)
+        let responseDescriptor = FileDescriptor(rawValue: stdoutReadFd)
         let transport = StdioTransport(
-            input: FileDescriptor(rawValue: stdoutReadFd),
+            input: responseDescriptor,
             output: requestDescriptor,
             logger: MultitoolTelemetry.logger
         )
-        return Spawned(pid: pid, transport: transport, requestDescriptor: requestDescriptor)
+        return Spawned(
+            pid: pid, transport: transport, requestDescriptor: requestDescriptor,
+            responseDescriptor: responseDescriptor)
+    }
+
+    /// Applies one C call to each fd of `fds`. The loop over the fds is
+    /// written here one time.
+    ///
+    /// - Parameters:
+    ///   - fds: The fds to act on.
+    ///   - operation: The call to make for each fd.
+    private static func apply(toEach fds: [Int32], _ operation: (Int32) -> Void) {
+        for fd in fds {
+            operation(fd)
+        }
     }
 
     /// Marks each fd of `fds` with `FD_CLOEXEC`.
     ///
     /// - Parameter fds: The fds that a later `exec` of this process must close.
     private static func setCloseOnExec(_ fds: [Int32]) {
-        for fd in fds {
-            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-        }
+        apply(toEach: fds) { _ = fcntl($0, F_SETFD, FD_CLOEXEC) }
     }
 
     /// Closes each fd of `fds` in this process.
     ///
     /// - Parameter fds: The fds to close.
     private static func closeAll(_ fds: [Int32]) {
-        for fd in fds {
-            close(fd)
-        }
+        apply(toEach: fds) { close($0) }
     }
 
     /// Creates a pipe, and returns its read end and its write end.
@@ -621,16 +635,6 @@ private final class ProcessState: Sendable {
         "stdio-\(pid)"
     }
 
-    /// Writes the record that lets a later host kill this server when the
-    /// host crashes before it reaps the server. A record that does not write
-    /// only weakens that backstop, thus the spawn goes on.
-    ///
-    /// - Parameter pid: The pid of the server.
-    private func writeRecord(of pid: pid_t) {
-        guard let ledger, let server = ProcessIdentity.of(pid: pid) else { return }
-        try? ledger.record(key: Self.recordKey(of: pid), child: server)
-    }
-
     /// The live pid, or `nil` when nothing is fronted.
     var pid: pid_t? { currentPid.withLock { $0 } }
 
@@ -660,7 +664,7 @@ private final class ProcessState: Sendable {
             return previous
         }
         registry.register(pid)
-        writeRecord(of: pid)
+        ledger?.recordProcess(key: Self.recordKey(of: pid), pid: pid)
         if let evicted {
             await killReapAndDeregister(evicted)
         }
@@ -785,7 +789,8 @@ private final class ProcessState: Sendable {
 /// — the path a host's disconnect of the server built over this transport
 /// reaches, without a call to `StdioServerProcess.shutdown()`.
 ///
-/// Internal and not private, thus a test can read ``requestDescriptor``.
+/// Internal and not private, thus a test can read ``requestDescriptor`` and
+/// ``responseDescriptor``.
 actor StdioServerTransport: Transport, DisposableTransport {
     /// The real transport this actor delegates every protocol operation to.
     private let inner: StdioTransport
@@ -814,6 +819,10 @@ actor StdioServerTransport: Transport, DisposableTransport {
     /// `SIGPIPE` reaches the host process.
     nonisolated let requestDescriptor: FileDescriptor
 
+    /// The read end of the stdout pipe of the subprocess: the descriptor
+    /// `inner` reads each response from.
+    nonisolated let responseDescriptor: FileDescriptor
+
     /// The receive stream of `inner`, cached by `connect()` — `receive()` is
     /// not `async` in the protocol, so it cannot fetch the stream of `inner`
     /// on demand and returns what `connect()` cached here instead.
@@ -826,11 +835,16 @@ actor StdioServerTransport: Transport, DisposableTransport {
     ///   - state: The shared process bookkeeping to tear down on `disconnect()`.
     ///   - pid: The pid of the subprocess spawned for this transport.
     ///   - requestDescriptor: The descriptor `inner` writes each request to.
-    fileprivate init(inner: StdioTransport, state: ProcessState, pid: pid_t, requestDescriptor: FileDescriptor) {
+    ///   - responseDescriptor: The descriptor `inner` reads each response from.
+    fileprivate init(
+        inner: StdioTransport, state: ProcessState, pid: pid_t, requestDescriptor: FileDescriptor,
+        responseDescriptor: FileDescriptor
+    ) {
         self.inner = inner
         self.state = state
         self.pid = pid
         self.requestDescriptor = requestDescriptor
+        self.responseDescriptor = responseDescriptor
         self.logger = inner.logger
     }
 

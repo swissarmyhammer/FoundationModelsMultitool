@@ -1,0 +1,72 @@
+---
+assignees:
+- claude-code
+comments:
+- actor: claude-code
+  id: 01m6he3bfn597ae47w2yzynmz2
+  text: |-
+    ### implement — changed
+    - evidence: commits b33d3461 (shell) and the stdio commit after it. Files: Capabilities/ProcessLedger.swift, Shell/ShellState.swift, MCP/StdioServerProcess.swift, tests ShellCrashReapTests, StdioCrashReapTests, StdioServerProcessTests, Support/OwnedChild. swift test passed once per commit (2858 and 2863 tests).
+    - decision: a record holds the child AND the host (pid + start time). Reap only if the host is not alive, so a live host or sibling store is never touched.
+    - decision: stdio servers are third-party; Multitool sets FD_CLOEXEC on the host pipe ends so the kernel EOF reaches the server, and adds optional crashRecordDirectory for reap by pid + start time.
+    - next: review; push and the 2 lines to foundationmodelsacpagent-87 were not done (not asked in this order).
+  timestamp: 2026-11-03T19:27:41.557709+00:00
+- actor: claude-code
+  id: 01m6hjp66s2h1ynjd6vq8x5zem
+  text: |-
+    ### review — findings
+    - evidence: review sha 746da544..5a900fdb. 21 findings, 21 confirmed, 12 refuted. The checklist is in the description.
+    - next: the implementer fixes all 21 items. The task stays in review.
+  timestamp: 2026-11-03T20:47:53.049529+00:00
+- actor: claude-code
+  id: 01m6hjps0yqv3rcfdjygv2xmvt
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — shell part and stdio part
+    - test: green — swift test, 2863 passed
+    - commit: 2f0b7ce2, 5a900fdb (pushed)
+    - review: findings — 21 open; StdioServerProcess.swift:392,428,630; ProcessLedger.swift:51,93,140,179; ShellState.swift:301,410; ShellCrashReapTests.swift:26,29; StdioCrashReapTests.swift:21,34,42,51,79,90; OwnedChild.swift:63,105,107
+  timestamp: 2026-11-03T20:48:12.318092+00:00
+position_column: review
+position_ordinal: '80'
+title: 'Crash leftovers: reap old shell children and stdio MCP servers at store init'
+---
+Source: the restore audit, item 2. Coordinator: foundationmodelsacpagent-87.
+
+Problem: a crash leaves shell children and stdio MCP servers running. The atexit sweep of ProcessRegistry.global covers normal exit only (StdioServerProcess.swift near line 28). Each shell child has its own process group (ShellRunner.swift near line 675). A restored run can start the same command again while the old one still writes to the same working tree.
+
+Work:
+- At spawn, write the pid and the start time into .shell/.
+- At store init, kill any group whose pid and start time still match. A reused pid with another start time must not be killed.
+- Stdio MCP servers exit on stdin EOF.
+- The atexit sweep stays for normal exit.
+- Write the test first with a simulated crash: leave a child and its record, make a new store, check the child is gone and an unrelated process is not touched.
+- No test may depend on machine speed.
+
+Then: tdd, review, commit, push, and 2 lines to foundationmodelsacpagent-87.
+
+## Review Findings (2026-11-03 14:42)
+
+> Scope: `review sha 746da544..5a900fdb` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 0 not reviewed.
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/StdioServerProcess.swift:392` `completeness/invariant-propagation` — setCloseOnExec marks two host ends, stdinWriteFd and stdoutReadFd. The test for this change checks only the stdin write end. The stdout read end gets the same mark, but no test asserts it, so a regression that drops the mark on stdoutReadFd would pass the suite. Add an assertion in theRequestPipeOfTheHostClosesOnExec, or a sibling test, that checks FD_CLOEXEC on the stdout read end. If the transport does not expose that descriptor, expose it for the test or check it through the transport's input descriptor.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/StdioServerProcess.swift:428` `reuse/reuse` — setCloseOnExec repeats the loop shape of the existing closeAll helper. Both walk an array of fds and apply one C call to each. The two helpers could share one parameterized function that takes the fcntl or close operation, so the loop is written once. Either generalize closeAll into a helper that takes the per-fd operation, or accept the two-line loop as too small to share. If the second option is chosen, state that decision in the code review reply.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/StdioServerProcess.swift:630` `duplication/duplication` — `writeRecord` repeats the identify-then-record logic of `ShellState.recordForCrash`, which is the same pattern in a second store. The copy is in production code, so the two can drift apart. Move the lookup and write into a shared `ProcessLedger` method that takes a key and a pid, as described for `recordForCrash`. `writeRecord` then reduces to a single call that passes `Self.recordKey(of: pid)` and `pid`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/MCP/StdioServerProcess.swift:630` `reuse/reuse` — writeRecord reimplements the same record-writing steps as ShellState.recordForCrash: resolve the child identity with ProcessIdentity.of(pid:), then write it through a ProcessLedger with try?. Two copies of this logic will drift apart. The shared step belongs on ProcessLedger, for example a method that takes a pid and records it only when the process is alive. Add one method to ProcessLedger, such as record(key:pid:), that performs the ProcessIdentity.of lookup and the write. Call it from writeRecord here and from recordForCrash in ShellState.swift.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/ProcessLedger.swift:51` `swift/preconditions` — When proc_pidinfo fails for getpid(), the static `own` silently builds an identity with start time zero. The unexpected failure is hidden. The fake identity also makes the live host look dead to a later reap, so that reap can kill the children of a live host. Add `assertionFailure("own process identity is unreadable")` and a production log entry in the nil branch. Do not invent a zero start time. Prefer a path that treats an unreadable own identity as unsafe to reap, so no kill happens.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/ProcessLedger.swift:93` `code-hygiene/idioms-swift` — UseSynthesizedInitializer: remove this explicit initializer, which is identical to the compiler-synthesized initializer.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/ProcessLedger.swift:140` `completeness/inverse-operation-coverage` — reapLeftovers() has a new branch for an undecodable record file. The branch removes the file and continues. No test writes a corrupt record and checks that the next store removes it and kills nothing. The new input shape is written by no test, so the branch is unproven. Add one test: write a non-JSON file with a valid key into the record directory, create a new ShellState or StdioServerProcess over it, and assert that the file is gone and that no process was signaled. Use an OwnedChild as a bystander and assert it still exits with code 0.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/ProcessLedger.swift:179` `completeness/inverse-operation-coverage` — killGroup has a second branch. When the live process with the recorded pid and start time does not lead its own process group, it sends SIGKILL to the pid only. No test covers this branch. Every kill test uses an OwnedChild, which always leads its group, so the fallback path is unproven. Add one test with a child that does not lead its group, for example a child spawned into the parent's group, or a child that has called setpgid to a different group. Record it with its matching identity, run reapLeftovers, and assert that the child is signaled with SIGKILL and that no group kill was sent.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellState.swift:301` `swift/initialization` — The init calls processLedger.reapLeftovers(). That method reads the record directory and sends SIGKILL to process groups. Slow file and process work runs inside init, so a caller cannot expect init to return at once. Move the reap into an explicit method, for example `func reapLeftovers()`, that the caller invokes once after init. Keep init to storing the directory and the ledger.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellState.swift:410` `duplication/duplication` — `recordForCrash` repeats the identify-then-record logic of `StdioServerProcess.writeRecord`: look up the live `ProcessIdentity` of a pid, return if it is gone, then write it to the `ProcessLedger` under a key. The two copies can drift, for example if one later changes how a missing identity or a write failure is handled. Add one method on `ProcessLedger`, for example `func recordProcess(key: String, pid: pid_t)`, that performs the `ProcessIdentity.of(pid:)` lookup, the early return, and the best-effort `try?` write. Both `recordForCrash` and `writeRecord` then call it with their own key, and each keeps only its key choice.
+- [x] `Tests/FoundationModelsMultitoolTests/ShellCrashReapTests.swift:26` `reuse/reuse` — The otherStartOffset constant is defined again in StdioCrashReapTests with the same value. Move otherStartOffset into the shared test support with deadOwner and recordKey.
+- [x] `Tests/FoundationModelsMultitoolTests/ShellCrashReapTests.swift:29` `reuse/reuse` — The recordKey constant is defined again in StdioCrashReapTests with the same value. Move recordKey into the shared test support with deadOwner and otherStartOffset.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:21` `reuse/reuse` — The scratch property repeats the same test-owned directory holder defined in ShellCrashReapTests. Move the TestScratch property into the shared test support and use it from both suites.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:34` `reuse/reuse` — The recordKey constant is defined again in ShellCrashReapTests with the same value. Move recordKey into the shared test support with deadOwner and otherStartOffset.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:42` `reuse/reuse` — The deadOwner test fixture is defined again in a second test suite. Both copies build the same dead-owner identity, so a change to one can leave the other out of step. Move deadOwner, otherStartOffset and recordKey into one shared test support file, for example under Tests/FoundationModelsMultitoolTests/Support/, and use them from both suites.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:51` `reuse/reuse` — makeRecordDirectory repeats the helper makeStoreDirectory in ShellCrashReapTests. Both create a test-owned directory from the same scratch helper. The only difference is the trailing .shell path component. Move the scratch-directory helper into the shared test support, with a prefix parameter, and use it from both suites.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:79` `reuse/reuse` — The killsMatchingLeftover test body is a copy of the test with the same name in ShellCrashReapTests. Both check that a leftover whose pid and start time match is killed with SIGKILL. Only the store or server construction differs, so the rule is written twice. Share the kill-match rule through one parameterized helper that takes the record-writing closure, or keep both tests and state in a comment that they cover the two spawn paths separately.
+- [x] `Tests/FoundationModelsMultitoolTests/StdioCrashReapTests.swift:90` `reuse/reuse` — The sparesReusedPid test body is a copy of the test with the same name in ShellCrashReapTests. Both tests check the same rule, that a process with a reused pid and another start time is spared, and only the store construction differs. Move the shared reap rule into one parameterized test helper that takes the leftover-record constructor, or keep both tests and record that the two suites deliberately cover the two spawn paths.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/OwnedChild.swift:63` `code-hygiene/idioms-swift` — ReplaceForEachWithForLoop: replace use of '.forEach { ... }' with for-in loop.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/OwnedChild.swift:105` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/OwnedChild.swift:107` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.

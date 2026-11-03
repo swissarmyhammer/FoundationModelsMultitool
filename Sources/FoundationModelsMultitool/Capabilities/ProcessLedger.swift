@@ -32,6 +32,7 @@
 
 import Darwin
 import Foundation
+import Logging
 
 /// One process, named by its pid and the time the kernel started it.
 ///
@@ -47,8 +48,27 @@ struct ProcessIdentity: Codable, Equatable, Sendable {
     /// The microseconds of the start time, after ``startSeconds``.
     var startMicroseconds: Int64
 
-    /// The identity of this process.
-    static let own = of(pid: getpid()) ?? ProcessIdentity(pid: getpid(), startSeconds: 0, startMicroseconds: 0)
+    /// The identity of this process, or `nil` when the kernel does not give
+    /// its start time.
+    ///
+    /// There is no made-up identity in its place. A record with an owner that
+    /// is not real would look like the record of a dead host, and a later
+    /// reap could kill the children of this live host. A caller with `nil`
+    /// here writes no record: ``ProcessLedger/record(key:child:owner:)``
+    /// throws ``ProcessLedger/RecordError/ownerUnreadable``.
+    static let own: ProcessIdentity? = readOwn()
+
+    /// Reads the identity of this process. A failure is a defect: it is
+    /// logged, and a debug build stops.
+    private static func readOwn() -> ProcessIdentity? {
+        let identity = of(pid: getpid())
+        if identity == nil {
+            let message = "own process identity is unreadable"
+            MultitoolTelemetry.logger.error("\(message)")
+            assertionFailure(message)
+        }
+        return identity
+    }
 
     /// The identity of the live process with `pid`.
     ///
@@ -80,19 +100,19 @@ struct ProcessLedger: Sendable {
         let owner: ProcessIdentity
     }
 
+    /// Why a record was not written.
+    enum RecordError: Error, Equatable {
+        /// The owner has no identity. A record without a real owner is never
+        /// written, because a reap could take the live host for a dead one.
+        case ownerUnreadable
+    }
+
     /// The extension of a record file.
     private static let fileExtension = "json"
 
     /// The directory that holds the record files. It is made on the first
     /// write.
     let directory: URL
-
-    /// Makes a ledger over `directory`.
-    ///
-    /// - Parameter directory: The directory for the record files.
-    init(directory: URL) {
-        self.directory = directory
-    }
 
     /// Writes the record of one child.
     ///
@@ -101,11 +121,28 @@ struct ProcessLedger: Sendable {
     ///     with the same key. The key must be a valid file name.
     ///   - child: The child to record.
     ///   - owner: The host that runs the child. It is this process by default.
-    /// - Throws: What the encoding or the write throws.
-    func record(key: String, child: ProcessIdentity, owner: ProcessIdentity = .own) throws {
+    /// - Throws: ``RecordError/ownerUnreadable`` when `owner` is `nil`, and
+    ///   what the encoding or the write throws.
+    func record(key: String, child: ProcessIdentity, owner: ProcessIdentity? = ProcessIdentity.own) throws {
+        guard let owner else { throw RecordError.ownerUnreadable }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(Record(child: child, owner: owner))
         try data.write(to: url(forKey: key), options: .atomic)
+    }
+
+    /// Writes the record of the live process `pid`, as a best effort.
+    ///
+    /// A record that does not write only weakens the backstop of the reap, and
+    /// the work of the caller must go on. Thus nothing is thrown. Nothing is
+    /// written when no process has the pid, or when the owner is `nil`.
+    ///
+    /// - Parameters:
+    ///   - key: The name of the record — see ``record(key:child:owner:)``.
+    ///   - pid: The pid of the child to record.
+    ///   - owner: The host that runs the child. It is this process by default.
+    func recordProcess(key: String, pid: pid_t, owner: ProcessIdentity? = ProcessIdentity.own) {
+        guard let child = ProcessIdentity.of(pid: pid) else { return }
+        try? record(key: key, child: child, owner: owner)
     }
 
     /// Removes the record of one child. Nothing happens when there is none.
