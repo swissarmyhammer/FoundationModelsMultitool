@@ -166,6 +166,10 @@ actor ShellState {
     nonisolated let sessionID: String
     /// The append-only `.shell/log` file this session reads and writes.
     nonisolated let logURL: URL
+    /// The record files of the children that run now. A new store on the same
+    /// directory kills the leftovers of a host that crashed — see
+    /// `ProcessLedger`.
+    nonisolated let processLedger: ProcessLedger
 
     private var commands: [CommandRecord] = []
     /// The commands that run now: the completion token of each one, and the
@@ -292,6 +296,9 @@ actor ShellState {
         let directory = try Self.resolveDirectory(preferred: preferredDirectory, sessionID: session)
         self.sessionID = session
         self.logURL = directory.appendingPathComponent(Self.logFilename)
+        self.processLedger = ProcessLedger(
+            directory: directory.appendingPathComponent(Self.processRecordsDirectoryName, isDirectory: true))
+        processLedger.reapLeftovers()
     }
 
     /// Makes a `ShellState` rooted at `<cwd>/.shell`, with the temporary
@@ -386,7 +393,22 @@ actor ShellState {
     ///   - group: The right to kill the process group of the child.
     func registerProcess(commandID: String, group: ProcessGroupKill) {
         processes[commandID] = group
+        recordForCrash(commandID: commandID, pid: group.pid)
         resolvePidWaiters(commandID: commandID, with: group)
+    }
+
+    /// Writes the record that lets a later store kill this child when the host
+    /// crashes before it reaps the child.
+    ///
+    /// A record that does not write only weakens that backstop. The command
+    /// must still run, thus a failure here is not an error of the command.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token of the run.
+    ///   - pid: The pid of the child.
+    private func recordForCrash(commandID: String, pid: pid_t) {
+        guard let child = ProcessIdentity.of(pid: pid) else { return }
+        try? processLedger.record(key: commandID, child: child)
     }
 
     /// The pid of the process-group leader of a command that runs, or `nil`
@@ -598,6 +620,7 @@ actor ShellState {
         commandID: String, status: CommandStatus = .completed, exitCode: Int? = nil
     ) {
         processes[commandID] = nil
+        processLedger.remove(key: commandID)
         // A `groupToCancel(commandID:)` call already suspended for this token —
         // a cancel that outraced this same spawn, most often — has nobody
         // left to answer it once this command ends, on this or any other
@@ -817,6 +840,10 @@ actor ShellState {
     }
 
     // MARK: - The store directory
+
+    /// The name of the directory inside `.shell` that holds the record file
+    /// of each child that runs.
+    private static let processRecordsDirectoryName = "processes"
 
     /// The name of the append-only log file inside the `.shell` directory.
     private static let logFilename = "log"
