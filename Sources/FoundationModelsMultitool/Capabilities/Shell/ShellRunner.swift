@@ -188,8 +188,11 @@ struct ShellRunner {
     var defaultWorkingDirectory: String?
 
     /// The session this runner runs commands for, read each time a command
-    /// starts, or `nil` — the default — for none. Each record this runner
-    /// starts names it as its owner, thus a result read on a store that
+    /// starts, or `nil` — the default — for none. A command whose call has a
+    /// `ToolContext` names the session of that context instead, thus a
+    /// sub-agent that shares this runner owns its own commands. This closure
+    /// is the fallback for a call with no context. Each record this runner
+    /// starts names the owner, thus a result read on a store that
     /// several sessions share says which session ran the command. It is read
     /// at the run, not at init, because a host builds its tools before it
     /// knows the session, and can replace the session under the same tools.
@@ -420,7 +423,7 @@ struct ShellRunner {
     ///   the pipeline of the output throws in the middle of a run.
     func run(_ request: Request) async throws -> Outcome {
         let commandID = request.completionToken
-        await state.startCommand(request.command, commandID: commandID, owner: sessionID())
+        await state.startCommand(request.command, commandID: commandID, owner: ToolContext.current?.sessionID.ulidString ?? sessionID())
         defer {
             for live in outputChunkStreams {
                 live.complete(commandID: commandID)

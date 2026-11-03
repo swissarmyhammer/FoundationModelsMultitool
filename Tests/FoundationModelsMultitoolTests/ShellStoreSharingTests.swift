@@ -329,6 +329,40 @@ struct ShellStoreSharingTests {
         #expect(found.matches.map(\.sessionID) == [Self.sessionA, Self.sessionB])
     }
 
+    /// Two sessions share one capability, as a root and a sub-agent do. Each
+    /// command names the session of its own call, not the session of the
+    /// closure.
+    @Test("a command is owned by the session of its ToolContext")
+    func aCommandIsOwnedByTheSessionOfItsToolContext() async throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let capability = ShellCapability(store: store, sessionID: { Self.sessionA })
+        let runner = try Self.runner(of: capability)
+        let root = LeasedSession()
+        let child = try await root.makeChild()
+
+        let rootToken = try await ToolContext.$current.withValue(root.context) {
+            try await Self.run("echo \(Self.sharedMarker)", with: runner)
+        }
+        let childToken = try await ToolContext.$current.withValue(child.context) {
+            try await Self.run("echo \(Self.sharedMarker)", with: runner)
+        }
+
+        let owners = Dictionary(uniqueKeysWithValues: await store.state.listCommands().map { ($0.id, $0.owner) })
+        #expect(owners[rootToken] == root.sessionID.ulidString)
+        #expect(owners[childToken] == child.sessionID.ulidString)
+    }
+
+    /// A call with no `ToolContext` keeps the closure as the owner.
+    @Test("a command with no ToolContext is owned by the session closure")
+    func aCommandWithNoToolContextIsOwnedByTheSessionClosure() async throws {
+        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let capability = ShellCapability(store: store, sessionID: { Self.sessionA })
+
+        try await Self.run("echo \(Self.sharedMarker)", with: Self.runner(of: capability))
+
+        #expect(await store.state.listCommands().map(\.owner) == [Self.sessionA])
+    }
+
     /// `withShell(store:sessionID:)` gives the session ID to the runner.
     @Test("withShell(store:sessionID:) gives the session ID to the runner")
     func withShellStoreSessionIDReachesTheRunner() throws {
