@@ -738,10 +738,32 @@ public struct MultiTool: GraphQLEndpointTool {
             // not await, and the run waited for that call to end. The notice
             // comes last, after the repair directive, so the model repairs the
             // snippet and does not run that call again.
-            return [rendered, pendingNotice(naming: pendingCalls)].compactMap { $0 }.joined(separator: "\n\n")
+            let errorText = [rendered, pendingNotice(naming: pendingCalls)].compactMap { $0 }.joined(separator: "\n\n")
+            reportFailure(ofRun: errorText)
+            return errorText
         case .failure(let error):
             throw error
         }
+    }
+
+    /// Ends the run of the model as failed, with the error text as the value.
+    ///
+    /// The model still gets `errorText` as the output of the call. This only
+    /// changes the outcome that the terminal event of the run carries. The
+    /// call comes after the repair and the Python paths of ``runSnippet``,
+    /// thus a snippet that one of them fixes reports the outcome of its second
+    /// run and not of the first.
+    ///
+    /// A nested run does not report. The snippet that started it gets the
+    /// failure as a value or as an exception that it can catch, and the outer
+    /// run ends as failed only if the outer snippet fails. A nested run also
+    /// holds the binding of the outer run, thus a report here would end the
+    /// outer run as failed for an error that the outer snippet handled.
+    ///
+    /// - Parameter errorText: The repairable error text that the call returns.
+    private func reportFailure(ofRun errorText: String) {
+        guard enclosingRun == nil else { return }
+        ToolContext.current?.reportFailure(value: .string(errorText))
     }
 
     /// The captured session binding of this run, or `nil` when it has none.

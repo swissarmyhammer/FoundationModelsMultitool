@@ -426,8 +426,9 @@ extension Execute {
         let clock = runner.clock
         let pump = Task { await Self.reportOutput(of: stream, to: context, on: clock) }
 
+        let ended: ShellRunner.Outcome
         do {
-            _ = try await running.run(request)
+            ended = try await running.run(request)
         } catch {
             stream.finish()
             await pump.value
@@ -439,9 +440,38 @@ extension Execute {
         var fields = await Self.reportFields(of: request.completionToken, in: runner.state)
         if let note { fields[Self.noteField] = .string(note) }
         let rendered = Self.rendered(.object(fields))
+        let failure = Self.failureValue(of: ended)
+        // The report goes before the terminal event and before the return, thus
+        // the run ends as failed while the call still returns the report.
+        if let failure { context?.reportFailure(value: failure) }
         await Self.postTerminal(
-            rendered, of: request.completionToken, in: runner.state, to: context)
+            rendered, of: request.completionToken, in: runner.state, to: context, value: failure)
         return rendered
+    }
+
+    /// The value of the failure of a run: the exit code of a command that
+    /// ended with a nonzero exit code, or `nil` for any other end.
+    ///
+    /// Each nonzero exit code is a failure, `grep` with exit code 1 included.
+    /// No command has an exit code that means success, thus a caller or a hook
+    /// that knows `grep` exit code 1 means "no match" reads the code in the
+    /// value.
+    ///
+    /// A command that a signal killed has no exit code. A command that ran
+    /// past its time limit or that a cancel stopped has none too. These runs
+    /// give no value: a time limit and a stop already give their own outcome
+    /// on the terminal event, and a signal gives the outcome `failed` from the
+    /// record of the run.
+    ///
+    /// - Parameter ended: How the run ended.
+    /// - Returns: The exit code as an integer value, or `nil` when the run has
+    ///   no exit code to report or the exit code is zero.
+    static func failureValue(of ended: ShellRunner.Outcome) -> OperationValue? {
+        guard ended.status == .completed,
+            ended.exitCode != successExitCode,
+            ended.exitCode != ShellRunner.absentExitCode
+        else { return nil }
+        return .int(ended.exitCode)
     }
 
     /// Begins the ``FoundationModelsExtras/WorkKind/shellCommand`` lease of
@@ -520,8 +550,10 @@ extension Execute {
     ///   - state: The store the run recorded into.
     ///   - context: The session context captured at the start of the call, or
     ///     `nil` on a bare session.
+    ///   - value: The value of the failure, or `nil` when the run has none.
     private static func postTerminal(
-        _ detail: String, of completionToken: String, in state: ShellState, to context: ToolContext?
+        _ detail: String, of completionToken: String, in state: ShellState, to context: ToolContext?,
+        value: OperationValue?
     ) async {
         guard let context else { return }
         await context.post(
@@ -531,7 +563,8 @@ extension Execute {
                 correlationID: completionToken,
                 kind: .completed,
                 detail: detail,
-                outcome: await outcome(of: completionToken, in: state)
+                outcome: await outcome(of: completionToken, in: state),
+                value: value
             )
         )
     }
