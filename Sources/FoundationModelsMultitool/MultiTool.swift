@@ -357,6 +357,20 @@ public struct MultiTool: GraphQLEndpointTool {
         holder.current.registry.graphQLEndpoints
     }
 
+    /// The registry that this `runCode` reads now: the registry from build
+    /// time, or the newest staged registry that a submission boundary has
+    /// applied.
+    ///
+    /// A host builds the tools of a sub-agent run, fresh or restored, with
+    /// `currentRegistry.makeSessionTools(selection:embedder:sampleModel:)`.
+    /// Then the sub-agent sees the catalog that the root session has now. A
+    /// registry that the host kept from build time does not have the MCP
+    /// catalog changes. A staged registry that no boundary has applied is not
+    /// part of this value.
+    public var currentRegistry: Registry {
+        holder.current.registry
+    }
+
     /// The box that holds the catalog + live tool instances this `runCode`
     /// dispatches into, and everything precomputed from them, as one
     /// `RegistryBundle` — see `RegistryHolder`.
