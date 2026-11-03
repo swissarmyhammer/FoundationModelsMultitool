@@ -198,15 +198,27 @@ public struct StdioServerProcess: Sendable {
     ///   - env: Environment variables layered onto (never in place of) the
     ///     inherited environment of the spawned subprocess. None by default.
     ///   - name: The human-readable server name.
+    ///   - crashRecordDirectory: A directory for the record files of the
+    ///     spawned servers, or `nil` for none. With a directory, each spawn
+    ///     writes the pid and the start time of the server, and each teardown
+    ///     removes them. This initializer kills the servers that a host left
+    ///     when it crashed: it kills the process group of a record only when
+    ///     the host of the record is not alive and a live process has the pid
+    ///     AND the start time of the record. The `atexit` sweep does not run
+    ///     on a crash, and a server is a program of another author that may
+    ///     not exit on the end of its input.
     /// - Throws: ``StdioServerProcessError/commandNotAbsolute(_:)`` when
     ///   `command` is not an absolute path.
     public init(
         command: String,
         args: [String] = [],
         env: [EnvVariable] = [],
-        name: String
+        name: String,
+        crashRecordDirectory: URL? = nil
     ) throws {
-        try self.init(command: command, args: args, env: env, name: name, registry: .global)
+        try self.init(
+            command: command, args: args, env: env, name: name,
+            crashRecordDirectory: crashRecordDirectory, registry: .global)
     }
 
     /// The same as ``init(command:args:env:name:)``, with the registry every
@@ -220,6 +232,8 @@ public struct StdioServerProcess: Sendable {
     ///   - args: Arguments passed to `command` on every spawn.
     ///   - env: Environment variables layered onto the inherited environment.
     ///   - name: The human-readable server name.
+    ///   - crashRecordDirectory: The directory of the record files, or `nil`
+    ///     for none — see ``init(command:args:env:name:crashRecordDirectory:)``.
     ///   - registry: The registry every spawned pid is registered into and
     ///     deregistered from.
     ///   - didReap: Called after each teardown path reaped and deregistered
@@ -232,6 +246,7 @@ public struct StdioServerProcess: Sendable {
         args: [String] = [],
         env: [EnvVariable] = [],
         name: String,
+        crashRecordDirectory: URL? = nil,
         registry: ProcessRegistry,
         didReap: @escaping @Sendable (pid_t) -> Void = { _ in }
     ) throws {
@@ -242,7 +257,9 @@ public struct StdioServerProcess: Sendable {
         self.args = args
         self.env = env
         self.name = name
-        self.state = ProcessState(registry: registry, didReap: didReap)
+        let ledger = crashRecordDirectory.map { ProcessLedger(directory: $0) }
+        ledger?.reapLeftovers()
+        self.state = ProcessState(registry: registry, ledger: ledger, didReap: didReap)
     }
 
     /// The pid of whichever subprocess ``respawn()`` most recently spawned and
@@ -367,6 +384,13 @@ public struct StdioServerProcess: Sendable {
             throw error
         }
 
+        // The host ends of the two pipes close on `exec`, thus no later child
+        // of this process keeps them open. When the host crashes, the kernel
+        // closes the host end of the stdin pipe, and the server reads the end
+        // of its input only if no other process holds a copy of that end. A
+        // server that exits on the end of its input then leaves with the host.
+        setCloseOnExec([stdinWriteFd, stdoutReadFd])
+
         let pid: pid_t
         do {
             pid = try spawnChild(
@@ -394,6 +418,15 @@ public struct StdioServerProcess: Sendable {
             logger: MultitoolTelemetry.logger
         )
         return Spawned(pid: pid, transport: transport, requestDescriptor: requestDescriptor)
+    }
+
+    /// Marks each fd of `fds` with `FD_CLOEXEC`.
+    ///
+    /// - Parameter fds: The fds that a later `exec` of this process must close.
+    private static func setCloseOnExec(_ fds: [Int32]) {
+        for fd in fds {
+            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        }
     }
 
     /// Closes each fd of `fds` in this process.
@@ -559,16 +592,43 @@ private final class ProcessState: Sendable {
     /// that pid.
     private let didReap: @Sendable (pid_t) -> Void
 
+    /// The record files that let a later host kill a server this host left
+    /// after a crash, or `nil` when the host asked for none.
+    private let ledger: ProcessLedger?
+
     /// Creates process-state bookkeeping backed by `registry`.
     ///
     /// - Parameters:
     ///   - registry: The registry every spawned pid is registered into and
     ///     deregistered from.
+    ///   - ledger: The record files of the spawned servers, or `nil` for none.
     ///   - didReap: Called after each teardown path reaped and deregistered
     ///     a pid, with that pid.
-    init(registry: ProcessRegistry, didReap: @escaping @Sendable (pid_t) -> Void) {
+    init(
+        registry: ProcessRegistry, ledger: ProcessLedger?,
+        didReap: @escaping @Sendable (pid_t) -> Void
+    ) {
         self.registry = registry
+        self.ledger = ledger
         self.didReap = didReap
+    }
+
+    /// The name of the record file of the server with `pid`.
+    ///
+    /// - Parameter pid: The pid of the server.
+    /// - Returns: The key for ``ProcessLedger``.
+    private static func recordKey(of pid: pid_t) -> String {
+        "stdio-\(pid)"
+    }
+
+    /// Writes the record that lets a later host kill this server when the
+    /// host crashes before it reaps the server. A record that does not write
+    /// only weakens that backstop, thus the spawn goes on.
+    ///
+    /// - Parameter pid: The pid of the server.
+    private func writeRecord(of pid: pid_t) {
+        guard let ledger, let server = ProcessIdentity.of(pid: pid) else { return }
+        try? ledger.record(key: Self.recordKey(of: pid), child: server)
     }
 
     /// The live pid, or `nil` when nothing is fronted.
@@ -600,6 +660,7 @@ private final class ProcessState: Sendable {
             return previous
         }
         registry.register(pid)
+        writeRecord(of: pid)
         if let evicted {
             await killReapAndDeregister(evicted)
         }
@@ -684,8 +745,10 @@ private final class ProcessState: Sendable {
     private func teardown(of pid: pid_t) -> @Sendable () -> Void {
         let registry = registry
         let didReap = didReap
+        let ledger = ledger
         return {
             Self.killAndReap(pid)
+            ledger?.remove(key: Self.recordKey(of: pid))
             registry.deregister(pid)
             didReap(pid)
         }

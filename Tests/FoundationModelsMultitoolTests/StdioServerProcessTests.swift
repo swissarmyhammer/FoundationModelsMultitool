@@ -521,6 +521,27 @@ struct StdioServerProcessTests {
         }
     }
 
+    /// The host keeps the write end of the stdin pipe of the child. When the
+    /// host crashes, the kernel closes that end, and the child reads the end
+    /// of its input — but only when no other process holds a copy. A child
+    /// that the host spawns later inherits each descriptor that is not marked
+    /// `FD_CLOEXEC`, and it then keeps the pipe of an older server open. The
+    /// test reads the mark on the descriptor of the host.
+    @Test func theRequestPipeOfTheHostClosesOnExec() async throws {
+        let stdio = try makeHeldChild(named: "cloexec-test")
+        try await ensuring({ await stdio.shutdown() }) {
+            let transport = try await stdio.respawn()
+            let vended = try #require(transport as? StdioServerTransport)
+
+            let flags = fcntl(vended.requestDescriptor.rawValue, F_GETFD)
+
+            #expect(flags & FD_CLOEXEC == FD_CLOEXEC)
+
+            await stdio.shutdown()
+            Self.confirmNoLeaks()
+        }
+    }
+
     // MARK: - An external kill is healed by a reconnect through a fresh spawn
 
     /// After an unscripted death of the child, `MCPServer.reconnect()` calls
