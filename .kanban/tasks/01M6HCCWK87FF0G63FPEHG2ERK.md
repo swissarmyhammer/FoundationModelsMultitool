@@ -27,8 +27,24 @@ comments:
     - commit: 2f0b7ce2, 5a900fdb (pushed)
     - review: findings — 21 open; StdioServerProcess.swift:392,428,630; ProcessLedger.swift:51,93,140,179; ShellState.swift:301,410; ShellCrashReapTests.swift:26,29; StdioCrashReapTests.swift:21,34,42,51,79,90; OwnedChild.swift:63,105,107
   timestamp: 2026-11-03T20:48:12.318092+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m6hk3skb931tjh2scejxxss6
+  text: |-
+    ### finish iteration 2 — changed
+    - implement: changed — 21 of 21 findings fixed, 11 files
+    - test: green — swift test, 2872 passed
+    - commit: 343eca3f (local, not pushed)
+    - review: pending
+  timestamp: 2026-11-03T20:55:18.891041+00:00
+- actor: claude-code
+  id: 01m6hk6t6ccxb7teh8h40mt8tk
+  text: |-
+    ### review — clean
+    - evidence: review sha 343eca3f~1..343eca3f. 0 findings, 0 refuted. 10 files reviewed. All 21 prior items are checked.
+    - next: none. The task moves to done.
+  timestamp: 2026-11-03T20:56:57.804912+00:00
+position_column: done
+position_ordinal: ffffffe880
 title: 'Crash leftovers: reap old shell children and stdio MCP servers at store init'
 ---
 Source: the restore audit, item 2. Coordinator: foundationmodelsacpagent-87.
