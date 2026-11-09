@@ -425,15 +425,18 @@ extension Execute {
         running.callerOutputChunkStream = stream
         let clock = runner.clock
         let pump = Task { await Self.reportOutput(of: stream, to: context, on: clock) }
+        let heartbeat = Task { await Self.reportHeartbeat(of: request.command, to: context, on: clock) }
 
         let ended: ShellRunner.Outcome
         do {
             ended = try await running.run(request)
         } catch {
+            heartbeat.cancel()
             stream.finish()
             await pump.value
             throw error
         }
+        heartbeat.cancel()
         stream.finish()
         await pump.value
 
@@ -528,6 +531,43 @@ extension Execute {
             await collector.collect(event)
         }
         await collector.finish()
+    }
+
+    /// The time between two heartbeat events of a run: 30 seconds.
+    ///
+    /// It is well inside the no-progress window of a `runCode` call (120
+    /// seconds by default, `MultiToolConfiguration.defaultExecutionTimeLimit`),
+    /// thus a live command keeps the call that awaits it alive. One event in
+    /// this time costs little in a transcript.
+    static let heartbeatInterval = Duration.seconds(30)
+
+    /// The most characters of the command line a heartbeat event names.
+    private static let heartbeatCommandLimit = 80
+
+    /// Posts one `progress` event each ``heartbeatInterval`` while the run
+    /// lives, until the caller cancels the task after the run.
+    ///
+    /// dotask24 django__django-13964 seq 4000: `runtests.py 2>&1 | tail -6`
+    /// printed nothing until its end, and the runCode that awaited it ended
+    /// as "timed out after 120.0 seconds with no progress". A command that
+    /// still runs is not a stalled one. Each event resets the no-progress
+    /// window of the run that holds the call.
+    ///
+    /// - Parameters:
+    ///   - command: The command line of the run.
+    ///   - context: The session context captured at the start of the call, or
+    ///     `nil` on a bare session, where nothing is posted.
+    ///   - clock: The clock the interval sleeps on: the clock of the runner.
+    private static func reportHeartbeat(
+        of command: String, to context: ToolContext?, on clock: any Clock<Duration>
+    ) async {
+        guard let context else { return }
+        let shown = command.count > heartbeatCommandLimit ? command.prefix(heartbeatCommandLimit) + "…" : command[...]
+        var elapsed = Duration.zero
+        while (try? await clock.sleep(for: heartbeatInterval)) != nil, !Task.isCancelled {
+            elapsed += heartbeatInterval
+            await context.progress("still running after \(elapsed.components.seconds) s: \(shown)")
+        }
     }
 
     /// Posts the one terminal event of a run.

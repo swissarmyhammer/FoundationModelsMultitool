@@ -677,9 +677,10 @@ struct ShellExecuteTests {
             ) {
                 try await Self.call(verb, ExecuteArguments(command: command), under: context)
             } during: { call in
-                // Each wait also ends when the call ends first.
+                // Each wait also ends when the call ends first. Two sleeps:
+                // the heartbeat of the run, and the interval of the collection.
                 try await EventRace.firstOf(
-                    { try? await clock.waitForRecordedSleeps(atLeast: 1) }, or: { await call.waitForEnd() })
+                    { try? await clock.waitForRecordedSleeps(atLeast: 2) }, or: { await call.waitForEnd() })
                 let isCollecting = clock.recordedSleeps.contains(interval)
                 let before = await recordedOperationEvents(of: run, ofKind: .progress)
                 clock.open(sleepsOf: interval)
@@ -695,6 +696,46 @@ struct ShellExecuteTests {
             #expect(
                 progressAfterInterval == ["stdout: \(Self.inlineMarker)"],
                 "progress after the interval: \(progressAfterInterval)")
+        }
+    }
+
+    /// A command that prints nothing still posts `progress` while it runs.
+    ///
+    /// dotask24 django__django-13964 seq 4000 and django__django-14016 seq
+    /// 4945: `runtests.py 2>&1 | tail -6` printed nothing until its end, and
+    /// the runCode that awaited it ended as "timed out after 120.0 seconds
+    /// with no progress". A live command is not a stalled one: the verb posts
+    /// one heartbeat event each ``Execute/heartbeatInterval``, and each one
+    /// resets the no-progress window of the run that holds the call.
+    @Test("a silent command posts a heartbeat progress event when its interval ends")
+    func aSilentCommandPostsAHeartbeat() async throws {
+        let state = try makeState()
+        let clock = GatedClock()
+        let verb = makeVerb(over: state, pacedBy: clock)
+        try await withStubRun { run in
+            let context = run.context
+            let stop = ShellRunner(state: state).canceler(completionToken: context.completionToken)
+            let interval = Execute.heartbeatInterval
+            let gate = try ShellCommandGate()
+
+            let (isWaiting, before, after) = try await Self.callStopped(by: { _ = await stop() }) {
+                try await Self.call(verb, ExecuteArguments(command: gate.waitCommand), under: context)
+            } during: { call in
+                try await EventRace.firstOf(
+                    { try? await clock.waitForRecordedSleeps(atLeast: 1) }, or: { await call.waitForEnd() })
+                let isWaiting = clock.recordedSleeps.contains(interval)
+                let before = await recordedOperationEvents(of: run, ofKind: .progress)
+                clock.open(sleepsOf: interval)
+                try await EventRace.firstOf(
+                    { _ = await recordedOperationEvents(of: run, ofKind: .progress, awaiting: 1) },
+                    or: { await call.waitForEnd() })
+                let after = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+                return (isWaiting, before, after)
+            }
+
+            #expect(isWaiting, "the heartbeat never waited on its interval")
+            #expect(before.isEmpty, "progress before the interval: \(before)")
+            #expect(after.count == 1 && after.first?.contains("still running") == true, "progress was: \(after)")
         }
     }
 
