@@ -135,7 +135,7 @@ struct OperationVerbTool: Tool, Sendable {
         for parameter: OperationParameterDescriptor, verbName: String
     ) -> DynamicGenerationSchema {
         guard let allowedValues = parameter.allowedValues else {
-            return dynamicSchema(for: parameter.type)
+            return dynamicSchema(for: parameter.type, named: "\(verbName).\(parameter.name)")
         }
         return DynamicGenerationSchema(
             name: "\(verbName).\(parameter.name)", description: parameter.description, anyOf: allowedValues)
@@ -143,9 +143,17 @@ struct OperationVerbTool: Tool, Sendable {
 
     /// The dynamic schema of one parameter type.
     ///
-    /// - Parameter type: The parameter type.
+    /// An `.object` is the `anyOf` of a string and an empty object, as the
+    /// fused schema of Extras gives it: that schema has no `type`, so
+    /// `ToolInvoker` takes both an object and JSON text for it (kanban24
+    /// django__django-14997 seq 23396).
+    ///
+    /// - Parameters:
+    ///   - type: The parameter type.
+    ///   - name: The name of the parameter schema, unique in the verb, which
+    ///     names the `anyOf` of an `.object`.
     /// - Returns: The dynamic schema.
-    private static func dynamicSchema(for type: OperationParameterType) -> DynamicGenerationSchema {
+    private static func dynamicSchema(for type: OperationParameterType, named name: String) -> DynamicGenerationSchema {
         switch type {
         case .string:
             DynamicGenerationSchema(type: String.self)
@@ -155,8 +163,15 @@ struct OperationVerbTool: Tool, Sendable {
             DynamicGenerationSchema(type: Double.self)
         case .boolean:
             DynamicGenerationSchema(type: Bool.self)
+        case .object:
+            DynamicGenerationSchema(
+                name: name, description: "one JSON object, or its text",
+                anyOf: [
+                    DynamicGenerationSchema(type: String.self),
+                    DynamicGenerationSchema(name: "\(name).members", properties: []),
+                ])
         case .array(let element):
-            DynamicGenerationSchema(arrayOf: dynamicSchema(for: element))
+            DynamicGenerationSchema(arrayOf: dynamicSchema(for: element, named: "\(name).element"))
         }
     }
 
@@ -206,6 +221,8 @@ struct OperationVerbTool: Tool, Sendable {
             .number
         case .boolean:
             .boolean
+        case .object:
+            .any
         case .array(let element):
             .array(element: shape(for: element))
         }

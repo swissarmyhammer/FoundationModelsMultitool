@@ -210,8 +210,9 @@ public enum ToolInvoker {
         journalOp: String? = nil
     ) async throws -> (output: T.Output, notes: [String]) {
         let schema = try decodeArgumentsSchema(tool.parameters, toolName: tool.name)
+        let renamed = renamingArgumentSynonyms(content, against: schema)
         let (normalized, notes) = mappingEnumValueSynonyms(
-            wrappingStringsInStringArrays(renamingArgumentSynonyms(content, against: schema), against: schema),
+            encodingContainersInStrings(wrappingStringsInStringArrays(renamed, against: schema), against: schema),
             against: schema)
         try validate(normalized, against: schema, toolName: tool.name)
         let arguments: T.Arguments
@@ -372,6 +373,69 @@ public enum ToolInvoker {
             }
         }
         return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys))
+    }
+
+    /// Replaces each object or array value of a string property in `content`
+    /// with its JSON text ("Postel's rule": be liberal in what you accept).
+    ///
+    /// kanban24 django__django-14997 seq 23396 is the evidence:
+    /// `tools.kanban.runKanban({ query, variables: { body } })` was refused
+    /// with `argument "variables" must be string, got an object instead.`,
+    /// though the operation reads `variables` as JSON text. A number, a
+    /// boolean, or `null` for a string stays as it is, thus `validateType`
+    /// reports it with the same message as before.
+    ///
+    /// - Parameters:
+    ///   - content: the marshaled call arguments.
+    ///   - schema: the decoded argument schema of the tool.
+    /// - Returns: `content` with each such value replaced by its JSON text, or
+    ///   `content` unchanged when no property needs it or `content` is not a
+    ///   `.structure`.
+    private static func encodingContainersInStrings(
+        _ content: GeneratedContent,
+        against schema: ArgumentsSchema
+    ) -> GeneratedContent {
+        guard let properties = schema.properties,
+            case .structure(var contentProperties, let orderedKeys) = content.kind
+        else { return content }
+        for (field, propertySchema) in properties where propertySchema.type == ArgumentPropertySchema.stringType {
+            guard let value = contentProperties[field] else { continue }
+            switch value.kind {
+            case .array(let items) where field == commandArgumentName:
+                contentProperties[field] = GeneratedContent(kind: .string(shellCommandLine(of: items) ?? value.jsonString))
+            case .structure, .array:
+                contentProperties[field] = GeneratedContent(kind: .string(value.jsonString))
+            default:
+                continue
+            }
+        }
+        return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys))
+    }
+
+    /// The string argument that holds a shell command line.
+    private static let commandArgumentName = "command"
+
+    /// The `sh` command line that runs `items` as argv, each one quoted, or
+    /// `nil` when an item is not a string.
+    ///
+    /// dotask24 django__django-14672 seq 12313: `shell.execute({ command:
+    /// ["python", "tests/runtests.py", …] })` was refused with `argument
+    /// "command" must be string, got an array`.
+    private static func shellCommandLine(of items: [GeneratedContent]) -> String? {
+        var words: [String] = []
+        for item in items {
+            guard case .string(let word) = item.kind else { return nil }
+            words.append(shellQuoted(word))
+        }
+        return words.joined(separator: " ")
+    }
+
+    /// `word` as one `sh` word: as it is when it holds only safe characters,
+    /// else in single quotes.
+    private static func shellQuoted(_ word: String) -> String {
+        let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./=:,+@%"))
+        if !word.isEmpty, word.unicodeScalars.allSatisfy(safe.contains) { return word }
+        return "'" + word.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 
     /// The common words for an allowed value of a string enum, by that value.

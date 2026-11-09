@@ -1,0 +1,1 @@
+{"id":"01M705BW61YX4MGD38SCGFVMTX","timestamp":"2026-11-09T12:43:40.097631Z","op":"create","item_id":"01M705BW61ZHPS9HM7XQSWVNS8","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 0075ca\n+tag_name: forgive\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 0075ca\n-tag_name: forgive\n","transaction_id":null}

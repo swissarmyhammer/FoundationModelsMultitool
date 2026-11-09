@@ -173,6 +173,40 @@ struct OperationVerbToolTests {
         #expect(verb.includesSchemaInInstructions)
     }
 
+    /// A descriptor with one `.object` parameter, `variables`, as the kanban
+    /// GraphQL operation declares it.
+    private static var runQueryDescriptor: OperationDescriptor {
+        OperationDescriptor(
+            verb: "run", noun: "query", opString: "run query",
+            description: "Runs a query.",
+            parameters: [
+                OperationParameterDescriptor(
+                    name: "variables", type: .object, required: false, description: "the variables.",
+                    aliases: [], allowedValues: nil)
+            ])
+    }
+
+    @Test("kanban24 14997: an .object parameter takes an object or JSON text, and both reach the parent as sent")
+    func anObjectParameterTakesAnObjectOrText() async throws {
+        let parent = NotesOperationTool()
+        let verb = try OperationVerbTool(parent: parent, descriptor: Self.runQueryDescriptor)
+        let object = GeneratedContent(properties: ["body": "b"])
+        let text = GeneratedContent(#"{"body":"b"}"#)
+
+        for value in [object, text] {
+            do {
+                _ = try await ToolInvoker.invoke(verb, content: GeneratedContent(properties: ["variables": value]))
+            } catch let error as ToolInvokerError {
+                Issue.record("the invoker refused \(value.jsonString): \(error.message)")
+            } catch {}
+        }
+
+        let sent = parent.recordedCalls.compactMap { try? $0.payload.value(GeneratedContent.self, forProperty: "variables") }
+        #expect(sent.map(\.jsonString) == [object.jsonString, text.jsonString], "sent was: \(sent)")
+        let declaration = try verb.render().declaration
+        #expect(declaration.contains("variables?: any"), "declaration was: \(declaration)")
+    }
+
     @Test("ToolInvoker rejects a payload with the required title missing, and the error names title")
     func invokerRejectsAMissingRequiredParameter() async throws {
         let parent = NotesOperationTool()
