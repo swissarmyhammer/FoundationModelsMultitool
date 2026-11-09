@@ -79,6 +79,11 @@
 //    `tools.code_context.readFile`). A verb under a made-up group calls the
 //    verb its name means: `tools.search.grep` is `files.grep`, not
 //    `web.search` (dotask24 django__django-14534).
+//    A `files.patch` call with no `patch` text and the pairs of an edit
+//    (`edits: [{ oldText, newText }]`, or one `old_string`, `new_string`
+//    pair) runs `files.edit` with them as `find` and `replace`, and
+//    `files.edit` takes that shape too (dotask24 django__django-13447 seq
+//    738: `Tool "patch" is missing its required argument "patch"`).
 //    A name that nothing answers is still `undefined`, thus the
 //    snippet fails the way it did before and `UnknownToolHint` answers it.
 //
@@ -273,6 +278,21 @@ extension MultiTool {
             if (tools[g] && typeof tools[g][verb] === "function") { const kind = shapes[path]; \
             const fn = path === "code_context.grepCode" ? literal(tools[g][verb]) : tools[g][verb]; \
             tools[g][verb] = shaped(fn, kind === "text" ? asText : kind === "shell" ? asShell : (v) => asArray(typeof v === "string" ? fromText(v, kind) : v, kind)); } } \
+            const oldNames = ["oldtext", "oldstring", "old", "find", "search", "from", "before", "original"]; \
+            const newNames = ["newtext", "newstring", "new", "replace", "to", "after", "replacement"]; \
+            const pick = (e, names) => { const k = Object.keys(e).find((x) => names.includes(norm(x))); return k === undefined ? undefined : e[k]; }; \
+            const editShape = (a) => { if (!a || typeof a !== "object" || Array.isArray(a)) { return undefined; } \
+            const listKey = ["edits", "changes", "replacements"].find((n) => Array.isArray(a[n])); \
+            const list = listKey ? a[listKey] : [a]; const find = []; const replace = []; \
+            for (const e of list) { if (!e || typeof e !== "object") { return undefined; } const o = pick(e, oldNames); const n = pick(e, newNames); \
+            if (typeof o !== "string" || typeof n !== "string") { return undefined; } find.push(o); replace.push(n); } \
+            const rest = {}; for (const k of Object.keys(a)) { if (k !== listKey && !oldNames.includes(norm(k)) && !newNames.includes(norm(k))) { rest[k] = a[k]; } } \
+            return { ...rest, find, replace }; }; \
+            if (tools.files && typeof tools.files.patch === "function" && typeof tools.files.edit === "function") { \
+            const patch = tools.files.patch; const edit = tools.files.edit; \
+            tools.files.edit = function (a, ...rest) { const e = a && typeof a === "object" && !Array.isArray(a.find) ? editShape(a) : undefined; return edit(e || a, ...rest); }; \
+            tools.files.patch = function (a, ...rest) { const e = a && typeof a === "object" && typeof a.patch !== "string" && typeof a.diff !== "string" ? editShape(a) : undefined; \
+            return e ? edit(e) : patch(a, ...rest); }; } \
             const isGroup = (v) => v !== null && typeof v === "object"; \
             const groups = Object.keys(tools).filter((g) => isGroup(tools[g])); \
             const shellVerbs = ["run", "exec", "execute", "runcommand", "command", "sh", "bash", "shell", "cmd", "system", "spawn", "terminal"]; \
