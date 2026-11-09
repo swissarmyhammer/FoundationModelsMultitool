@@ -423,7 +423,9 @@ struct ShellRunner {
     ///   the pipeline of the output throws in the middle of a run.
     func run(_ request: Request) async throws -> Outcome {
         let commandID = request.completionToken
-        await state.startCommand(request.command, commandID: commandID, owner: ToolContext.current?.sessionID.ulidString ?? sessionID())
+        await state.startCommand(
+            request.command, commandID: commandID, owner: ToolContext.current?.sessionID.ulidString ?? sessionID(),
+            holdingRunToken: ToolContext.current?.holdingRunToken)
         defer {
             for live in outputChunkStreams {
                 live.complete(commandID: commandID)

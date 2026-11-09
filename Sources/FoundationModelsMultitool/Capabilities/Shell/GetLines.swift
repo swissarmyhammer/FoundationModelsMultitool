@@ -93,6 +93,11 @@ struct GetLinesResult {
 
     /// Why the read covered no line, or `nil` when the read was made.
     var correction: String?
+
+    /// How the token was read, or `nil` when it named the command itself: a
+    /// `runCode` token reads the last command its snippet started, and the
+    /// note names each one.
+    var note: String? = nil
 }
 
 extension GetLines {
@@ -123,22 +128,47 @@ extension GetLines {
             return Self.corrected(correction, commandID: arguments.commandID)
         }
 
-        guard let record = await state.record(commandID: arguments.commandID) else {
+        var note: String?
+        var record = await state.record(commandID: arguments.commandID)
+        if record == nil {
+            // A snippet token: read the last command the snippet started
+            // (dotask24 django__django-13447 seq 661).
+            let held = await state.records(heldBy: arguments.commandID)
+            record = held.last
+            if !held.isEmpty { note = Self.snippetTokenNote(arguments.commandID, held: held) }
+        }
+        guard let record else {
             return Self.corrected(
                 Self.unknownTokenCorrection(arguments.commandID), commandID: arguments.commandID)
         }
 
         let lines = try await state.getLines(
-            commandID: arguments.commandID, start: start, end: arguments.end)
+            commandID: record.id, start: start, end: arguments.end)
         return GetLinesResult(
-            commandID: arguments.commandID,
+            commandID: record.id,
             first: lines.first?.lineNumber ?? Self.emptyRangeBound,
             last: lines.last?.lineNumber ?? Self.emptyRangeBound,
             lines: lines.map { "\($0.lineNumber): \($0.text)" },
             status: record.status.rawValue,
             sessionID: record.owner,
-            correction: nil
+            correction: nil,
+            note: note
         )
+    }
+
+    /// What a read of a snippet token says about the commands it started.
+    ///
+    /// - Parameters:
+    ///   - token: The token of the `runCode` run the read named.
+    ///   - held: The commands of that run, oldest first; not empty.
+    /// - Returns: The note.
+    private static func snippetTokenNote(_ token: String, held: [CommandRecord]) -> String {
+        guard held.count > 1, let last = held.last else {
+            return "\(token) is the token of a runCode snippet; these are the lines of the command it ran."
+        }
+        let list = held.map { "\($0.id) (\($0.command))" }.joined(separator: ", ")
+        return "\(token) is the token of a runCode snippet that ran \(held.count) commands: \(list). "
+            + "These are the lines of the last one, \(last.id); read another by its commandID."
     }
 
     /// Why a `start...end` range reads nothing, or `nil` when the range is

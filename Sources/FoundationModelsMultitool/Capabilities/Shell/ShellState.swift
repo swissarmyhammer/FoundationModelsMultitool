@@ -72,6 +72,11 @@ struct CommandRecord: Sendable {
     var completedAt: ContinuousClock.Instant?
     /// The end time on the wall clock, set when the command ends.
     var completedAtWall: Date?
+    /// The completion token of the run that holds this command — the
+    /// `runCode` run of the snippet that called it — or `nil` when no
+    /// `ToolContext` names one. `getLines` reads a snippet token through it
+    /// (dotask24 django__django-13447 seq 661).
+    var holdingRunToken: String? = nil
 
     /// Milliseconds in one second — the multiplier `durationMs` puts on the
     /// seconds component of `duration`.
@@ -336,7 +341,11 @@ actor ShellState {
     ///   - command: The command line, as the caller gave it.
     ///   - commandID: The completion token of the run.
     ///   - owner: The session that runs the command, or `nil` for none.
-    func startCommand(_ command: String, commandID: String, owner: String? = nil) {
+    ///   - holdingRunToken: The completion token of the run that holds the
+    ///     command, or `nil` for none.
+    func startCommand(
+        _ command: String, commandID: String, owner: String? = nil, holdingRunToken: String? = nil
+    ) {
         commands.append(
             CommandRecord(
                 id: commandID,
@@ -348,7 +357,8 @@ actor ShellState {
                 startedAt: ContinuousClock().now,
                 startedAtWall: Date(),
                 completedAt: nil,
-                completedAtWall: nil
+                completedAtWall: nil,
+                holdingRunToken: holdingRunToken
             ))
         resolveCommandStartWaiters(command: command, commandID: commandID)
     }
@@ -671,6 +681,16 @@ actor ShellState {
     /// - Returns: The record, or `nil`.
     func record(commandID: String) -> CommandRecord? {
         indexOfCommand(commandID: commandID).map { commands[$0] }
+    }
+
+    /// The records of the commands that the run `token` holds, in the order
+    /// they started: the commands a `runCode` snippet called. A command that
+    /// runs under `token` itself is not among them.
+    ///
+    /// - Parameter token: The completion token of the holding run.
+    /// - Returns: The records, oldest first.
+    func records(heldBy token: String) -> [CommandRecord] {
+        commands.filter { $0.holdingRunToken == token && $0.id != token }
     }
 
     // MARK: - History questions
