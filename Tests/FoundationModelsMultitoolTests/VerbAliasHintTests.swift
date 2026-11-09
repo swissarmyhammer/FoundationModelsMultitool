@@ -109,6 +109,30 @@ struct VerbAliasHintTests {
         )
     }
 
+    @Test("dotask24 14534 seq 9451: search.grep is answered by its verb, files.grep, and not by its group, web.search")
+    func aVerbUnderAMadeUpGroupIsAnsweredByTheVerb() async throws {
+        let resolution = try await resolve("search.grep", includesWeb: true)
+
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == ["files.grep"], "text was: \(resolution.text)")
+    }
+
+    @Test("fs.readFile and fs.listDir are answered with files.read and files.list")
+    func anFsGuessIsAnsweredWithTheFilesVerb() async throws {
+        #expect(try await resolve("fs.readFile").suggestedPaths == ["files.read"])
+        #expect(try await resolve("fs.listDir").suggestedPaths == ["files.list"])
+    }
+
+    @Test("dotask24 14534 seq 8777: agents.list says that agents is a top-level tool, and names no catalog verb")
+    func aTopLevelToolInsideRunCodeIsNamedAsOne() async throws {
+        let resolution = try await resolve("agents.list")
+
+        #expect(resolution.tier == .topLevelTool)
+        #expect(resolution.suggestedPaths.isEmpty)
+        #expect(resolution.text.contains("agents is a top-level tool"), "text was: \(resolution.text)")
+        #expect(!resolution.text.contains("snapshots"), "text was: \(resolution.text)")
+    }
+
     @Test("a made-up listFiles verb in a real group is answered with files.glob")
     func listFilesInARealGroupIsAnsweredWithGlob() async throws {
         let resolution = try await resolve("\(Self.codeContextGroup).listFiles")
@@ -177,11 +201,12 @@ struct VerbAliasHintTests {
         #expect(!resolution.suggestedPaths.contains(Self.globPath))
     }
 
-    @Test("an alias verb under a group that does not exist keeps the ranked tiers")
-    func anAliasVerbUnderNoGroupKeepsTheRankedTiers() async throws {
+    @Test("an alias verb under a group that does not exist is read as its bare verb")
+    func anAliasVerbUnderNoGroupIsReadAsItsVerb() async throws {
         let resolution = try await resolve("bash.run")
 
-        #expect(resolution.tier == .catalogRelevance)
+        #expect(resolution.tier == .verbAlias)
+        #expect(resolution.suggestedPaths == [Self.executePath])
     }
 
     @Test("an alias answer is recorded against the alias tier")

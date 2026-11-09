@@ -71,6 +71,14 @@
 //    `isFile`, `isDir` answer `true` or `false`, and `files.stat` answers
 //    `{ path, exists, isFile, isDirectory }`, read from `files.list` of the
 //    parent folder (forgive24 django__django-13447).
+//    A made-up group name for the files (`fs`, `fileSystem`, `file`) is the
+//    `files` group, at the top and under any group (kanban24
+//    django__django-13447: `const fs = await tools.code_context.fs`), and a
+//    files read verb (`read`, `list`, `glob`, `grep`) or its synonym under
+//    another group calls that files verb (kanban24 django__django-14017:
+//    `tools.code_context.readFile`). A verb under a made-up group calls the
+//    verb its name means: `tools.search.grep` is `files.grep`, not
+//    `web.search` (dotask24 django__django-14534).
 //    A name that nothing answers is still `undefined`, thus the
 //    snippet fails the way it did before and `UnknownToolHint` answers it.
 //
@@ -110,6 +118,21 @@ extension MultiTool {
         // django__django-14534: `r.stdout.slice(-3000)`, see `asShell`.
         "shell.execute": "shell",
     ]
+
+    /// The group names a model makes up, each with the real group it means.
+    ///
+    /// dotask24 django__django-13447 seq 43: `tools.fs.list(...)`; kanban24
+    /// django__django-13447 seq 472: `tools.fs.readFile(...)`. Each name is
+    /// lowercase with no `_` or `-`.
+    private static let groupAliases: [String: String] = [
+        "fs": "files", "filesystem": "files", "file": "files",
+    ]
+
+    /// The JS object, as source, of ``groupAliases``.
+    private static var groupAliasSource: String {
+        let data = (try? JSONSerialization.data(withJSONObject: groupAliases, options: [.sortedKeys])) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
 
     /// The JS object, as source, that maps each bound synonym to its paths,
     /// in table order: one name can mean a verb of each group.
@@ -256,6 +279,9 @@ extension MultiTool {
             const docNames = ["docs", "doc", "help", "documentation", "apidocs"]; \
             const shellGroupNames = ["code", "console", "os", "process", "subprocess", "cli", "runtime", "sandbox", "workspace"]; \
             const base = tools; \
+            const groupAliases = \(groupAliasSource); \
+            const groupNamed = (n) => { const g = groups.find((x) => norm(x) === n) || groupAliases[n]; return g && isGroup(base[g]) ? base[g] : undefined; }; \
+            const readers = ["read", "list", "glob", "grep"]; \
             const shellExecute = () => (isGroup(base.shell) && typeof base.shell.execute === "function" ? base.shell.execute : undefined); \
             const docsOf = (name) => (n) => globalThis.docs(n === undefined ? name : n); \
             const statNames = { exists: "exists", fileexists: "exists", pathexists: "exists", isfile: "isFile", isdir: "isDirectory", isdirectory: "isDirectory", isfolder: "isDirectory", stat: "stat", lstat: "stat" }; \
@@ -283,21 +309,28 @@ extension MultiTool {
             const longest = Math.max(0, ...held.map((c) => c.length)); \
             const meant = [...new Set(held.filter((c) => c.length === longest).flatMap((c) => inGroup(contained[c])))]; \
             if (meant.length === 1) { return target[meant[0].slice(g.length + 1)]; } \
+            const other = groupNamed(n); if (other) { return other; } \
+            const files = g !== "files" && isGroup(base.files) ? base.files : undefined; \
+            const reader = files && readers.find((verb) => typeof files[verb] === "function" && (norm(verb) === n || (synonyms[n] || []).includes("files." + verb))); \
+            if (reader) { return files[reader]; } \
             return undefined; } }); } \
+            const verbGroup = (f) => (typeof f !== "function" ? f : new Proxy(f, { get(t, verb) { \
+            if (typeof verb !== "string" || Reflect.has(t, verb)) { return Reflect.get(t, verb); } \
+            const sh = shellExecute(); if (f === sh && shellVerbs.includes(norm(verb))) { return t; } \
+            const meant = globalThis.tools[verb]; return typeof meant === "function" ? meant : undefined; } })); \
             globalThis.tools = new Proxy(tools, { get(target, k) { \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const n = norm(k); \
             const top = Object.keys(target).find((name) => !isGroup(target[name]) && norm(name) === n); if (top) { return target[top]; } \
+            const alias = groupAliases[n]; if (alias && isGroup(target[alias])) { return target[alias]; } \
             const owners = groups.filter((g) => Object.keys(target[g]).some((verb) => norm(verb) === n)); \
-            if (owners.length === 1) { return target[owners[0]][k]; } \
+            if (owners.length === 1) { return verbGroup(target[owners[0]][k]); } \
             const path = (synonyms[n] || []).find((p) => { const [g, verb] = p.split("."); return isGroup(target[g]) && typeof target[g][verb] === "function"; }); \
             const sh = shellExecute(); \
-            const shellGroup = (f) => (f !== sh ? f : new Proxy(f, { get(t, verb) { \
-            return typeof verb === "string" && !Reflect.has(t, verb) && shellVerbs.includes(norm(verb)) ? t : Reflect.get(t, verb); } })); \
-            if (path) { const [g, verb] = path.split("."); return shellGroup(target[g][verb]); } \
+            if (path) { const [g, verb] = path.split("."); return verbGroup(target[g][verb]); } \
             if (statNames[n] && isGroup(target.files) && typeof target.files.list === "function") { return statVerb(target.files, statNames[n]); } \
             if (docNames.includes(n) && typeof globalThis.docs === "function") { return globalThis.docs; } \
-            if (shellVerbs.includes(n) && sh) { return shellGroup(sh); } \
+            if (shellVerbs.includes(n) && sh) { return verbGroup(sh); } \
             if (!shellGroupNames.includes(n) || !sh) { return undefined; } \
             return new Proxy({}, { get(_, verb) { if (typeof verb !== "string") { return undefined; } const m = norm(verb); \
             if (shellVerbs.includes(m)) { return sh; } \

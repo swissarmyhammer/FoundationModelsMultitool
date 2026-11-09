@@ -130,6 +130,11 @@ enum UnknownToolHint {
         /// path — a name of ``VerbSynonyms``, or a bare verb that one group
         /// holds.
         case verbAlias = "alias"
+
+        /// No ranking tier ran: the guess is under the name of a top-level
+        /// tool of the session, which no runCode snippet can call (see
+        /// ``topLevelToolNames``).
+        case topLevelTool = "top-level"
     }
 
     /// One unknown-`tools.*`-path detection: what the model reached for,
@@ -263,6 +268,9 @@ enum UnknownToolHint {
         guard let failedPath = firstUnknownPath(in: message, knownPaths: knownPaths) else {
             return nil
         }
+        if let topLevel = topLevelToolResolution(for: failedPath, in: surface) {
+            return topLevel
+        }
         if let groupCall = groupCallResolution(forGroup: failedPath, in: surface, snippet: snippet, knownPaths: knownPaths) {
             return groupCall
         }
@@ -315,6 +323,35 @@ enum UnknownToolHint {
         )
     }
 
+    /// The names of the top-level tools a host of this family gives a session
+    /// beside `runCode`, which a snippet cannot reach under `tools.*`.
+    ///
+    /// dotask24 django__django-14534 seq 8777: `tools.agents.list()` inside
+    /// runCode was told to call `tools.snapshots.list`, and failed twice.
+    static let topLevelToolNames: Set<String> = ["agents"]
+
+    /// Resolves a guess under the name of a top-level tool, or nil when the
+    /// first name of `failedPath` is no such name or is a group of `surface`.
+    ///
+    /// - Parameters:
+    ///   - failedPath: the unknown dotted path the snippet called.
+    ///   - surface: the catalog whose groups are read.
+    /// - Returns: the resolution, or nil.
+    private static func topLevelToolResolution(for failedPath: String, in surface: APISurface) -> Resolution? {
+        let name = String(failedPath.prefix { $0 != pathSeparator })
+        guard topLevelToolNames.contains(name), !surface.entries.contains(where: { $0.group == name }) else {
+            return nil
+        }
+        return Resolution(
+            imaginedPath: failedPath,
+            tier: .topLevelTool,
+            suggestedPaths: [],
+            directive: .repairSnippet,
+            text: "tools.\(failedPath) \(missingPathPhrase). \(name) is a top-level tool, not a runCode group: "
+                + "call the \(name) tool directly, outside runCode, and take this call out of the snippet."
+        )
+    }
+
     /// Renders the hint text for a call on a group object.
     ///
     /// - Parameters:
@@ -348,9 +385,9 @@ enum UnknownToolHint {
     ///   that exactly one group holds answers first, and a row of
     ///   ``VerbSynonyms`` next.
     ///
-    /// A guess under a group that does not exist keeps the ranked tiers,
-    /// because tier 1 and tier 2 already read it without the group prefix in
-    /// the way.
+    /// A guess under a group that does not exist is read as its bare verb,
+    /// thus `search.grep` names `files.grep` and not `web.search`. A verb
+    /// that answers nothing keeps the ranked tiers.
     ///
     /// - Parameters:
     ///   - failedPath: the unknown dotted path the snippet called.
@@ -395,17 +432,26 @@ enum UnknownToolHint {
             }
             return nil
         }
-        guard let separatorIndex = failedPath.lastIndex(of: pathSeparator) else {
-            let name = VerbSynonyms.normalized(failedPath)
+        // A bare verb: a real verb that exactly one group holds, else a row.
+        let bareVerbEntry = { (verb: String) -> APISurface.Entry? in
+            let name = VerbSynonyms.normalized(verb)
             let sameVerb = surface.entries.filter {
                 $0.group != nil && VerbSynonyms.normalized($0.descriptor.name) == name
             }
             if sameVerb.count == 1 { return sameVerb.first }
-            return synonymEntry(failedPath, nil)
+            return synonymEntry(verb, nil)
+        }
+        guard let separatorIndex = failedPath.lastIndex(of: pathSeparator) else {
+            return bareVerbEntry(failedPath)
         }
         let group = String(failedPath[..<separatorIndex])
         let verb = String(failedPath[failedPath.index(after: separatorIndex)...])
-        guard surface.entries.contains(where: { $0.group == group }) else { return nil }
+        guard surface.entries.contains(where: { $0.group == group }) else {
+            // A made-up group: the verb is the meaning, not the group name
+            // (dotask24 django__django-14534 seq 9451: `search.grep` is
+            // `files.grep`, not `web.search`).
+            return bareVerbEntry(verb)
+        }
         return synonymEntry(verb, group) ?? synonymEntry(verb, nil) ?? containedVerbEntry(in: verb, group: group, surface: surface)
     }
 
