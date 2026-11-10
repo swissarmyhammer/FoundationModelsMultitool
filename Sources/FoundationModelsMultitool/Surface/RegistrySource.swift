@@ -292,6 +292,19 @@ extension MultiTool {
 
         // MARK: - Tool mode
 
+        /// The fix that the `sandboxed` refusal of a shell capability gives:
+        /// the shell always starts a child process, so the host removes it,
+        /// or uses `open` mode.
+        static let shellRefusalHint =
+            "Remove the shell from the builder in the \(ToolMode.sandboxed.rawValue) tool mode, "
+            + "or use the \(ToolMode.open.rawValue) tool mode."
+
+        /// The fix that the `sandboxed` refusal of an MCP server over stdio
+        /// gives: the same server over HTTP starts no child process.
+        static let stdioServerRefusalHint =
+            "Connect the MCP server over HTTP, not over stdio, "
+            + "or use the \(ToolMode.open.rawValue) tool mode."
+
         /// Makes sure that each registration can work in ``mode``.
         ///
         /// It calls the shared check `ToolMode.validate(probe:)` of
@@ -307,7 +320,8 @@ extension MultiTool {
         ///   `MultiToolBuilderError` with the kind `.notAvailable(mode:)`,
         ///   named for the noun of the first capability that starts a child
         ///   process, when ``mode`` is `sandboxed` and such a capability is
-        ///   registered.
+        ///   registered. Its message ends with the fix for that kind of
+        ///   capability — see ``refusalHint(for:)``.
         private func validateToolMode() throws {
             try mode.validate(probe: sandboxProbe)
             guard mode == .sandboxed, let refused = childProcessCapability() else { return }
@@ -316,8 +330,18 @@ extension MultiTool {
                 name: refused.noun,
                 message: "The \(refused.noun) capability starts a child process, "
                     + "which the \(mode.rawValue) tool mode does not permit. "
-                    + "Remove it from the builder (connect an MCP server over HTTP, not over stdio), "
-                    + "or use the \(ToolMode.open.rawValue) tool mode.")
+                    + Self.refusalHint(for: refused))
+        }
+
+        /// The fix that the refusal of `capability` gives — see
+        /// ``shellRefusalHint`` and ``stdioServerRefusalHint``.
+        ///
+        /// - Parameter capability: a capability that ``startsChildProcess(_:)``
+        ///   accepts: a shell capability, or an MCP capability whose server
+        ///   connected over stdio.
+        /// - Returns: the hint for the kind of `capability`.
+        private static func refusalHint(for capability: any Capability) -> String {
+            capability is ShellCapability ? shellRefusalHint : stdioServerRefusalHint
         }
 
         /// The first capability of ``registrations`` that starts a child

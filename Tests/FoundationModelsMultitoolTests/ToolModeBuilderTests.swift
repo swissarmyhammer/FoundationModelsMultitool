@@ -35,6 +35,10 @@ struct ToolModeBuilderTests {
     /// mode, as its kind and its name.
     private static let shellNotAvailable = (MultiToolBuilderError.Kind.notAvailable(mode: .sandboxed), shellNoun)
 
+    /// The name of the MCP transport that the refusal of a stdio server
+    /// advises. The refusal of the shell must not name it.
+    private static let httpTransportName = "HTTP"
+
     /// A `sandboxed` builder in a sandboxed process, with each capability
     /// that works in the App Sandbox.
     private static func makeSandboxedBuilder() -> MultiTool.Builder {
@@ -57,6 +61,17 @@ struct ToolModeBuilderTests {
         return try builder.withShell(
             storeDirectory: store.appendingPathComponent(".shell"),
             defaultWorkingDirectory: TestSupport.makeTemporaryDirectory(named: directoryName))
+    }
+
+    /// The error that `buildRegistry()` of a `sandboxed` builder with the
+    /// shell gives.
+    ///
+    /// - Returns: the error of the builder.
+    /// - Throws: a failed requirement when `buildRegistry()` throws no
+    ///   `MultiToolBuilderError`.
+    private static func sandboxedShellRefusal() throws -> MultiToolBuilderError {
+        let builder = try addShell(to: makeSandboxedBuilder())
+        return try #require(throws: MultiToolBuilderError.self) { try builder.buildRegistry() }
     }
 
     /// The nouns of `registry`, in sorted order.
@@ -86,11 +101,23 @@ struct ToolModeBuilderTests {
 
     @Test("sandboxed mode with withShell throws notAvailable for the shell")
     func sandboxedModeRefusesTheShell() throws {
-        let builder = try Self.addShell(to: Self.makeSandboxedBuilder())
-
-        let error = try #require(throws: MultiToolBuilderError.self) { try builder.buildRegistry() }
+        let error = try Self.sandboxedShellRefusal()
 
         #expect((error.kind, error.name) == Self.shellNotAvailable)
+    }
+
+    @Test("the sandboxed refusal of the shell tells the host to remove the shell or use open mode")
+    func sandboxedShellRefusalGivesTheShellHint() throws {
+        let error = try Self.sandboxedShellRefusal()
+
+        #expect(error.message.hasSuffix(MultiTool.RegistrySource.shellRefusalHint), "message was: \(error.message)")
+    }
+
+    @Test("the sandboxed refusal of the shell does not tell the host to connect over HTTP")
+    func sandboxedShellRefusalGivesNoHTTPAdvice() throws {
+        let error = try Self.sandboxedShellRefusal()
+
+        #expect(!error.message.contains(Self.httpTransportName), "message was: \(error.message)")
     }
 
     @Test("a rebuild in sandboxed mode with withShell throws notAvailable for the shell")

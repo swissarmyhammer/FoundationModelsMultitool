@@ -84,6 +84,20 @@ struct ToolModeMCPTests {
         return try await MCPTestSupport.withConnection(of: server) { try await body(server) }
     }
 
+    /// The error that `buildRegistry()` of a `sandboxed` builder gives for a
+    /// server that connected over a `StdioServerProcess`.
+    ///
+    /// - Returns: the error of the builder.
+    /// - Throws: what the connect threw, or a failed requirement when
+    ///   `buildRegistry()` throws no `MultiToolBuilderError`.
+    private static func sandboxedStdioRefusal() async throws -> MultiToolBuilderError {
+        try await withStdioServer { server in
+            let builder = try await MultiTool.Builder(mode: .sandboxed, sandboxProbe: sandboxedProcess)
+                .withMCP(servers: [server])
+            return try #require(throws: MultiToolBuilderError.self) { try builder.buildRegistry() }
+        }
+    }
+
     // MARK: - The process
 
     @Test("a sandboxed start of a StdioServerProcess throws notAvailable")
@@ -133,13 +147,18 @@ struct ToolModeMCPTests {
 
     @Test("a sandboxed builder with a server over stdio throws notAvailable")
     func sandboxedBuilderRefusesAStdioServer() async throws {
-        let error = try await Self.withStdioServer { server in
-            let builder = try await MultiTool.Builder(mode: .sandboxed, sandboxProbe: Self.sandboxedProcess)
-                .withMCP(servers: [server])
-            return try #require(throws: MultiToolBuilderError.self) { try builder.buildRegistry() }
-        }
+        let error = try await Self.sandboxedStdioRefusal()
 
         #expect((error.kind, error.name) == Self.serverNotAvailable)
+    }
+
+    @Test("the sandboxed refusal of a server over stdio tells the host to connect it over HTTP")
+    func sandboxedStdioRefusalGivesTheHTTPHint() async throws {
+        let error = try await Self.sandboxedStdioRefusal()
+
+        #expect(
+            error.message.hasSuffix(MultiTool.RegistrySource.stdioServerRefusalHint),
+            "message was: \(error.message)")
     }
 
     @Test("an open builder with a server over stdio builds and has its noun")
