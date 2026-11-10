@@ -485,6 +485,9 @@ extension MCPServer {
         // The attempt is in the set before its factory runs, thus a teardown
         // that starts now waits until the factory returned.
         let transportID = beginAttempt(generation: generation)
+        // Each end of the attempt forgets its handshake drop, also a stale
+        // end. A failure reads the record first, in its `catch`.
+        defer { _ = takeHandshakeDrop(ofAttempt: transportID) }
         var attempt: AttemptClient?
         do {
             let transport: any Transport
@@ -529,7 +532,11 @@ extension MCPServer {
                     MultitoolTelemetry.LogMetadataKey.peerServerName.rawValue: "\(initialized.serverInfo.name)",
                     MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(tools.count)",
                 ])
-        } catch {
+        } catch let thrown {
+            // A drop during the handshake tore the client down. The error of
+            // that teardown names the teardown, so the attempt names the
+            // drop.
+            let error = takeHandshakeDrop(ofAttempt: transportID) ? MCPError.connectionClosed : thrown
             guard
                 isCurrentGeneration(
                     generation,

@@ -27,10 +27,27 @@ comments:
     - evidence: 123 files. Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift (removed `= .open` from `mode` in `init(mode:sandboxProbe:)`, kept `sandboxProbe = .live`, changed the `mode` doc text); doc examples in 10 other Sources files; 101 files under Tests/ (Tests/FoundationModelsMultitoolTests, its Fixtures, Tests/Support/MCPTestServer); 8 files under IntegrationTests/Tests; README.md; docs/GUIDE.md and docs/SECURITY.md (the text now says that `mode` has no default value, and the "a later change removes that default" text is gone). `StdioServerProcess.init` keeps `mode: ToolMode = .open` (not in scope). `swift build --build-tests`: Build complete, 0 compiler warnings. IntegrationTests `swift build --build-tests`: Build complete, 0 compiler warnings. `swift test` one time: 2868 tests in 253 suites passed, 0 failures. Not committed.
     - next: /review
   timestamp: 2026-11-10T17:37:51.893030+00:00
+- actor: claude-code
+  id: 01m738z9qkxash8yb04fr01k98
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (0d1e85ff) — 0 findings, 0 confirmed, 0 refuted; 91 attempted, 0 failed; 120 files reviewed; README.md, docs/GUIDE.md, docs/SECURITY.md have no validator; .kanban/ is ignored.
+    - next: none. The task is in done.
+  timestamp: 2026-11-10T17:44:25.587060+00:00
+- actor: claude-code
+  id: 01m738ztvfn6182s7paa5xsygy
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ~123 files (MultiToolBuilder.swift init has no mode default; callers in Tests and IntegrationTests give `mode: .open`; docs)
+    - test: green — swift test, 2868 tests in 253 suites passed (the run of the implement step); package and IntegrationTests build with 0 compiler warnings
+    - commit: 0d1e85ff — LOCAL ONLY, NOT PUSHED
+    - review: clean — 0 findings
+    - push blocked: FoundationModelsKanban origin/main Tests/FoundationModelsKanbanTests/Multitool/CodeModeTests.swift:62 still calls `MultiTool.Builder()`. Push only after that line gives `mode:`, or after testudoapp-75 says to push.
+  timestamp: 2026-11-10T17:44:43.119481+00:00
 depends_on:
 - 01M73030WWZF8M6HM1S3XS0D60
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fffffff680
 title: 'MT-15: Remove the default of the builder mode, so each host names its mode'
 ---
 ## Wait first (order rule across repos)

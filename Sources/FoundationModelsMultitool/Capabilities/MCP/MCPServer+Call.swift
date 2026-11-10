@@ -382,18 +382,30 @@ extension MCPServer {
     /// call in flight, when `generation` is still current; a report from a
     /// transport a newer connect superseded is discarded.
     ///
-    /// The `state` stays as it was, and no catalog snapshot is emitted: the
-    /// recovery is the host's `reconnect()`, which discovers afresh and emits
-    /// the one snapshot of the returning server.
+    /// After a connect, the `state` stays as it was, and no catalog snapshot
+    /// is emitted: the recovery is the host's `reconnect()`, which discovers
+    /// afresh and emits the one snapshot of the returning server.
     ///
-    /// - Parameter generation: The `connectGeneration` the transport was
-    ///   connected under.
-    func handleTransportDrop(generation: Int) {
+    /// During a connect (the state is `.connecting`), the drop also tears
+    /// down the client of the attempt. The SDK client ends its wait for the
+    /// answer to `initialize` or `tools/list` only on its own `disconnect()`.
+    /// Thus, with no teardown, a server that exits before it answers makes
+    /// the connect wait with no end. The attempt then throws, and the state
+    /// moves to `.faulted` — see `applyConnect(via:generation:)`.
+    ///
+    /// - Parameters:
+    ///   - generation: The `connectGeneration` the transport was connected
+    ///     under.
+    ///   - transportID: The id of the attempt in `openTransports`.
+    func handleTransportDrop(generation: Int, transportID: Int) {
         guard
             isCurrentGeneration(
                 generation, orDiscard: .mcpStaleStreamEndIgnored)
         else {
             return
+        }
+        if state == .connecting {
+            endHandshake(ofAttempt: transportID)
         }
         isTransportDropped = true
         record(

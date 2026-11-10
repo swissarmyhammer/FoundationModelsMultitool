@@ -23,7 +23,7 @@ import Testing
 /// of the client still runs, thus the second end throws as well, and so does
 /// each receive stream after that end.
 ///
-/// What the report of a drop then does — `handleTransportDrop(generation:)` and
+/// What the report of a drop then does — `handleTransportDrop(generation:transportID:)` and
 /// the `.lost` calls that follow — is read by `LostCallTests`.
 ///
 /// Each test waits on an event and never on a time. No test checks the speed

@@ -374,8 +374,15 @@ public actor MCPServer {
     /// advisory cancel is on the wire before the transport closes.
     let cancellationNotices = CancellationNotices()
 
+    /// Each connect attempt, by its id in ``openTransports``, whose transport
+    /// dropped during its handshake — set by
+    /// `endHandshake(ofAttempt:)`, and read and cleared by the attempt when it
+    /// ends. The attempt then throws `MCPError.connectionClosed`, not the
+    /// "Client disconnected" error of the teardown.
+    var handshakeDroppedAttempts: Set<Int> = []
+
     /// Whether the receive stream of the connected transport ended without a
-    /// `disconnect()` — set by `handleTransportDrop(generation:)`, and reset
+    /// `disconnect()` — set by `handleTransportDrop(generation:transportID:)`, and reset
     /// by the next connect that succeeds. While set, a call that would send a
     /// request throws `MCPServerError.lost` at once, because no answer can
     /// arrive.
@@ -383,7 +390,7 @@ public actor MCPServer {
 
     /// Each caller of `waitUntilTransportDropped()` that waits for a
     /// transport drop, by the id of the wait — resumed by
-    /// `handleTransportDrop(generation:)`, ended by a `disconnect()` or a new
+    /// `handleTransportDrop(generation:transportID:)`, ended by a `disconnect()` or a new
     /// connect, and ended by a cancel of the task of the wait. A test hook:
     /// no product code waits here.
     var transportDropWaiters = TestHookWaiters<ConnectionHookWaitEnd, Void>()

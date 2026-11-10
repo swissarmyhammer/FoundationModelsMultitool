@@ -10,7 +10,7 @@
 // says the connection is gone. This wrapper is where the server learns it:
 // the receive stream the client iterates is a mirror of the wrapped one, and
 // the task that relays it reports the end of the wrapped stream — finished or
-// thrown — to `MCPServer.handleTransportDrop(generation:)`, which fails every
+// thrown — to `MCPServer.handleTransportDrop(generation:transportID:)`, which fails every
 // in-flight call as `.lost`.
 //
 // **A disconnect the host asked for is not a drop.** `MCP.Client.disconnect()`
@@ -32,7 +32,7 @@
 // THROW, which its `catch` breaks on. A stream that ends with no error sends
 // the loop straight back to `receive()`, and the loop then spins hot on one
 // cooperative-pool thread until its task is cancelled. After a drop, nothing
-// cancels that task: `handleTransportDrop(generation:)` fails the calls in
+// cancels that task: `handleTransportDrop(generation:transportID:)` fails the calls in
 // flight and leaves the client where it is. After a disconnect of this
 // wrapper, the loop can still run too: the teardown of `MCPServer` stops the
 // loop of the client before it calls the `disconnect()` of this wrapper
@@ -218,11 +218,24 @@ actor DropObservingTransport: Transport {
         await close?.value
     }
 
-    /// Delegates to the wrapped transport.
+    /// Delegates to the wrapped transport, while the mirror did not end and
+    /// no ``disconnect()`` ran.
+    ///
+    /// After a drop or a disconnect, no answer can arrive. Thus a send then
+    /// throws at once, with the error the mirror ended with. A request that
+    /// `MCP.Client` records after its own teardown then fails, and does not
+    /// wait with no end.
     ///
     /// - Parameter data: The raw bytes to send.
-    /// - Throws: What the `send(_:)` of the wrapped transport throws.
+    /// - Throws: The error the mirror ended with, ``dropError`` after a
+    ///   disconnect, or what the `send(_:)` of the wrapped transport throws.
     func send(_ data: Data) async throws {
+        if let endError {
+            throw endError
+        }
+        guard !wasDisconnected else {
+            throw Self.dropError
+        }
         try await wrapped.send(data)
     }
 

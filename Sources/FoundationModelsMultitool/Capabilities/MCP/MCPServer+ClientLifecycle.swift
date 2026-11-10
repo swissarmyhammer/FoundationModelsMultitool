@@ -153,7 +153,7 @@ extension MCPServer {
         let observed = DropObservingTransport(
             wrapping: transport,
             onDrop: { [weak self] in
-                await self?.handleTransportDrop(generation: generation)
+                await self?.handleTransportDrop(generation: generation, transportID: transportID)
             },
             onClose: { [weak self] in
                 await self?.closeOpenTransport(transportID)
@@ -248,6 +248,29 @@ extension MCPServer {
         guard let retired = currentClient else { return }
         dropAttemptClient(retired)
         await waitUntilTransportClosed(retired.transportID)
+    }
+
+    /// Ends the handshake of the attempt `transportID`, whose transport
+    /// dropped before the attempt connected: records the drop, and tears
+    /// down the client of the attempt. The teardown fails each request that
+    /// waits for an answer, also `initialize`, thus the attempt throws — see
+    /// `applyConnect(via:generation:)`. A no-op for an attempt with no
+    /// client.
+    ///
+    /// - Parameter transportID: The id of the attempt in ``openTransports``.
+    func endHandshake(ofAttempt transportID: Int) {
+        guard let client = openTransports[transportID]?.client else { return }
+        handshakeDroppedAttempts.insert(transportID)
+        tearDownClient(client, transportID: transportID)
+    }
+
+    /// Whether the transport of the attempt `transportID` dropped during its
+    /// handshake, and forgets that record.
+    ///
+    /// - Parameter transportID: The id of the attempt in ``openTransports``.
+    /// - Returns: `true` when ``endHandshake(ofAttempt:)`` ended the attempt.
+    func takeHandshakeDrop(ofAttempt transportID: Int) -> Bool {
+        handshakeDroppedAttempts.remove(transportID) != nil
     }
 
     // MARK: - The open attempts
