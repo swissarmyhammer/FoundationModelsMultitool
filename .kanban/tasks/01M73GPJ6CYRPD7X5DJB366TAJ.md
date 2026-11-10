@@ -9,8 +9,15 @@ comments:
     - evidence: review sha HEAD~1..HEAD (03382f97): 1 finding (1 confirmed, 2 refuted) — Tests/FoundationModelsMultitoolTests/MCPHandshakeDropTests.swift:71
     - next: Add a test where the server answers `initialize`, then exits before it answers `tools/list`. Make sure that `connect(via:)` throws and the state is `.faulted`. Use no clock.
   timestamp: 2026-11-10T20:08:06.321092+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m73hdznxvr5cb4ytfykf979d
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 4e74af4b). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. All prior review items are checked.
+    - next: none. The task is in done.
+  timestamp: 2026-11-10T20:12:15.421495+00:00
+position_column: done
+position_ordinal: fffffff780
 title: MCP connect waits with no end when the stdio server exits before it answers initialize
 ---
 ## What
