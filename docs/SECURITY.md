@@ -160,6 +160,43 @@ as it gets file access from the files capability. The web verbs are such tools.
   network is a normal case. The guard still checks each redirect hop of that
   request, and each result URL that a snippet fetches.
 
+## Tool modes and the shell
+
+Each `MultiTool.Builder` has a tool mode, the `ToolMode` of
+FoundationModelsExtras. The host gives the mode in
+`MultiTool.Builder(mode:sandboxProbe:)`. Give the mode in each host, and do
+not use the default value (`open`): a later change removes that default.
+The [Modes](GUIDE.md#modes) section of the guide gives an example.
+
+- **`open` mode** has all capabilities: files, shell, git, snapshots, web,
+  environment, MCP servers over stdio and over HTTP, sessions, and operation
+  tools.
+- **`sandboxed` mode** has files, git, snapshots, web, environment, MCP
+  servers over HTTP (or in memory), sessions, and operation tools. It has no
+  shell and no MCP server over stdio, because the App Sandbox does not let a
+  process start a child process.
+- **The check of the process.** `buildRegistry()` and `build()` call
+  `ToolMode.validate(probe:)` of FoundationModelsExtras first. In a process in
+  the App Sandbox, `open` mode throws `ToolModeError.openModeInSandbox`.
+- **The refusal of a child process.** In `sandboxed` mode, a builder with
+  `withShell`, or with an MCP server that connected over a
+  `StdioServerProcess`, makes `buildRegistry()` throw a
+  `MultiToolBuilderError` with the kind `.notAvailable(mode: .sandboxed)`. The
+  message gives the fix for that capability. A `StdioServerProcess` made with
+  `mode: .sandboxed` starts no process: its `respawn()` throws
+  `StdioServerProcessError.notAvailable(mode:)`.
+- **Git.** The git capability of this package is read-only and does not
+  push. In `sandboxed` mode, a host that pushes a repository cannot push over
+  SSH. A push over HTTPS with a token works (D101).
+
+**There is no command sandbox.** In `open` mode, `tools.shell.execute` runs
+each command with `/bin/sh -c`, with the rights of the user that runs the
+host process. The command can read, change and delete each file that the user
+can, and it can use the network. The path guard of the files capability does
+not apply to a shell command. Until Step 4 (D174), the shell of OpenTestudo
+has no guard. A host that mounts the shell must accept these rights, or use
+`sandboxed` mode.
+
 ## What the watchdog and caps bound
 
 - **Execution time** — a `runCode` call has one outer timeout: the

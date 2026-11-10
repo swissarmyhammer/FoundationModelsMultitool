@@ -48,6 +48,6 @@ Six ready-made capabilities ship with the package: files, shell, web, git,
 environment and MCP.
 
 - [`docs/GUIDE.md`](docs/GUIDE.md) — the capabilities, background runs, discovery and operation tools.
-- [`docs/SECURITY.md`](docs/SECURITY.md) — the sandbox contract. Read it before you mount the shell or web capability.
+- [`docs/SECURITY.md`](docs/SECURITY.md) — the security model: the `runCode` sandbox, the two tool modes, and the shell, which has no command sandbox. Read it before you mount the shell or web capability.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the package fits together.
 - `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` — copy-pasteable "how do I…" examples against the public API.

@@ -98,9 +98,8 @@ struct ExecuteArguments {
     /// process.
     ///
     /// The `@Guide` text below names the session and not the process on
-    /// purpose. The model cannot see the directory of the host process, and a
-    /// sandbox rooted at the session refuses a run there — UPSTREAM_ASKS.md
-    /// Ask 6.
+    /// purpose. The model cannot see the directory of the host process —
+    /// UPSTREAM_ASKS.md Ask 6.
     @Guide(
         description:
             "The directory the command runs in. Omit it to run in the session's working "

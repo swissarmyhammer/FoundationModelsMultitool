@@ -6,16 +6,59 @@ The capabilities, background runs, discovery and operation tools of FoundationMo
 
 Six capabilities ship with the package, each a set of ordinary `Tool`s you
 add to a catalog like any other: **files** (read, edit, patch, search),
-**shell** (a sandboxed `execute` plus its history verbs), **web** (search the
+**shell** (`execute`, which runs a command with `/bin/sh -c`, plus its
+history verbs), **web** (search the
 web and fetch a page), **git** (read the status, the history, and a semantic
 diff of a repository), **environment** (read the environment variables, the
 operating system, and the date and time), and **MCP** (attach a stdio or HTTP
 server and register its catalog under a noun).
 
-Every shell command runs under a seatbelt sandbox, and a snippet reaches
-nothing but the tools you gave it. The guarantees and the escape hatches are
-written down in [`docs/SECURITY.md`](SECURITY.md) — read that before
-mounting the shell capability or the web capability.
+There is no command sandbox. Each shell command runs with `/bin/sh -c`, with
+the rights of the user that runs the host process. A snippet gets only the
+tools that you gave it. The guarantees and the escape hatches are in
+[`docs/SECURITY.md`](SECURITY.md). Read that before you mount the shell
+capability or the web capability.
+
+### Modes
+
+Each `MultiTool.Builder` has a tool mode: the `ToolMode` of
+FoundationModelsExtras. The host gives the mode one time, when it makes the
+builder:
+
+```swift
+let builder = MultiTool.Builder(mode: .sandboxed)
+```
+
+Give the mode in each host. Do not use the default value of
+`init(mode:sandboxProbe:)` (`open`). A later change removes that default.
+
+| Mode | Capabilities |
+|---|---|
+| `open` | All capabilities: files, shell, git, snapshots, web, environment, MCP servers over stdio and over HTTP, sessions, and operation tools. |
+| `sandboxed` | Files, git, snapshots, web, environment, MCP servers over HTTP (or in memory), sessions, and operation tools. There is no shell and no MCP server over stdio, because the App Sandbox does not let a process start a child process. |
+
+These are the rules of the modes:
+
+- `buildRegistry()` and `build()` (and `rebuildRegistry()`) call
+  `ToolMode.validate(probe:)` of FoundationModelsExtras first. In a process
+  in the App Sandbox, `open` mode throws `ToolModeError.openModeInSandbox`.
+  Thus the mistake shows when the host makes the registry, and not at the
+  first tool call. The `sandboxProbe` argument of the builder is
+  `SandboxProbe.live` by default, which reads the current process. A test
+  gives `SandboxProbe.fixed(_:)`.
+- In `sandboxed` mode, a builder with `withShell`, or with an MCP server that
+  connected over a `StdioServerProcess`, makes `buildRegistry()` throw a
+  `MultiToolBuilderError` with the kind `.notAvailable(mode: .sandboxed)`.
+  The error names the noun of the capability. Its message gives the fix for
+  that capability: remove the shell, or connect the MCP server over HTTP. The
+  other fix is `open` mode. The builder does not skip the capability silently,
+  because such a registration is a bug of the host.
+- A `StdioServerProcess` made with `mode: .sandboxed` starts no process. Its
+  `respawn()` throws `StdioServerProcessError.notAvailable(mode:)`. This is
+  the second guard.
+- The git capability of this package is read-only and does not push. In
+  `sandboxed` mode, a host that pushes a repository cannot push over SSH. A
+  push over HTTPS with a token works (D101).
 
 ### Files
 
