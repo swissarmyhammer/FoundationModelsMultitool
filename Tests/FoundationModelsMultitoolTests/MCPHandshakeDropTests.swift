@@ -38,6 +38,44 @@ struct MCPHandshakeDropTests {
     /// failure and no answer.
     private static let readThenFail = "read line; exit 1"
 
+    /// A server that answers `initialize` with a result that has the id and
+    /// the protocol version of the request, then reads each line until the
+    /// `tools/list` request, and exits with no answer. Thus the transport
+    /// drops during the discovery of the tools, after the `initialize` step.
+    private static let answerInitializeThenExitAtToolsList = answerInitialize + #"""
+        while read line; do
+          case "$line" in
+            *tools/list*) exit 0 ;;
+          esac
+        done
+        """#
+
+    /// The control of ``answerInitializeThenExitAtToolsList``: the same
+    /// answer to `initialize`, then an answer to `tools/list` with no tools,
+    /// then a wait until the input ends. A connect to this server gets to
+    /// `.ready`. Thus the answer to `initialize` is correct, and the drop of
+    /// the script above comes during the discovery.
+    private static let answerInitializeAndToolsList = answerInitialize + #"""
+        while read line; do
+          case "$line" in
+            *tools/list*)
+              id=$(printf '%s' "$line" | sed -E 's/.*"id":("[^"]*"|[0-9]+).*/\1/')
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[]}}\n' "$id" ;;
+          esac
+        done
+        """#
+
+    /// The first part of each script that answers `initialize`: reads the
+    /// request, and writes a result with the id and the protocol version of
+    /// the request.
+    private static let answerInitialize = #"""
+        read line
+        id=$(printf '%s' "$line" | sed -E 's/.*"id":("[^"]*"|[0-9]+).*/\1/')
+        version=$(printf '%s' "$line" | sed -E 's/.*"protocolVersion":"([^"]*)".*/\1/')
+        printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"%s","capabilities":{"tools":{}},"serverInfo":{"name":"drop","version":"1"}}}\n' "$id" "$version"
+
+        """#
+
     /// Connects a server over a stdio process that runs `script`, and gives
     /// the server after the connect ended.
     ///
@@ -55,7 +93,6 @@ struct MCPHandshakeDropTests {
         } catch {
             return (server, error)
         }
-        await server.disconnect()
         return (server, nil)
     }
 
@@ -69,14 +106,24 @@ struct MCPHandshakeDropTests {
     }
 
     @Test(
-        "a stdio server that exits before initialize makes connect throw, and the state is faulted",
-        arguments: [exitAtOnce, readThenExit, readThenFail])
+        "a stdio server that exits before it answers initialize or tools/list makes connect throw, and the state is faulted",
+        arguments: [exitAtOnce, readThenExit, readThenFail, answerInitializeThenExitAtToolsList])
     func exitBeforeInitializeFaults(script: String) async throws {
         let (server, error) = try await Self.connect(toScript: script)
 
         #expect(error != nil)
         let state = await server.state
         #expect(Self.isFaulted(state))
+        await server.disconnect()
+    }
+
+    @Test("a stdio server that answers initialize and tools/list gets to ready")
+    func answeringServerIsReady() async throws {
+        let (server, error) = try await Self.connect(toScript: Self.answerInitializeAndToolsList)
+
+        #expect(error == nil)
+        let state = await server.state
+        #expect(state == .ready)
         await server.disconnect()
     }
 }

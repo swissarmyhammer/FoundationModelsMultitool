@@ -136,6 +136,9 @@ struct LostCallTests {
 
                 await respawning.disconnect()
                 try await server.waitUntilTransportDropped()
+                // A drop after the connect does not change the state: only a
+                // drop during the handshake ends the attempt as `.faulted`.
+                #expect(await server.state == .ready)
                 let thrown = await MCPCallProbe.thrownError {
                     _ = try await engine.call(arguments: NoArguments())
                 }
