@@ -35,9 +35,6 @@ struct ShellStoreSharingTests {
     /// directory is traceable to this suite.
     private static let testDirectoryNamePrefix = "shellstoresharing-tests"
 
-    /// The name of the store folder inside the directory of one test.
-    private static let shellStoreDirectoryName = ".shell"
-
     /// The text the command of capability A writes, which capability B reads.
     private static let sharedMarker = "written-by-capability-a"
 
@@ -54,15 +51,6 @@ struct ShellStoreSharingTests {
     private static let linePadding = String(repeating: "x", count: 512)
 
     // MARK: - The ground of one test
-
-    /// A store directory inside a temporary directory this test owns.
-    ///
-    /// - Returns: A directory no other test shares.
-    /// - Throws: When the temporary directory does not create.
-    private func makeStoreDirectory() throws -> URL {
-        try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-            .appendingPathComponent(Self.shellStoreDirectoryName)
-    }
 
     /// The runner of the `execute` verb of `capability`, with a private
     /// process-group registry — see `ShellExecuteVerb.configured(in:)`.
@@ -118,7 +106,8 @@ struct ShellStoreSharingTests {
     /// because the two capabilities hold one store.
     @Test("a capability lists and reads the command another capability on the store ran")
     func aCapabilityReadsWhatAnotherCapabilityOnTheStoreRan() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capabilityA = ShellCapability(store: store)
         let capabilityB = ShellCapability(store: store)
 
@@ -143,7 +132,8 @@ struct ShellStoreSharingTests {
     /// keeps its own default working directory.
     @Test("capabilities on one store keep their own default working directory")
     func capabilitiesOnOneStoreKeepTheirOwnDefaultWorkingDirectory() throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let rootA = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         let rootB = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
 
@@ -161,7 +151,8 @@ struct ShellStoreSharingTests {
     /// `withCapability(ShellCapability(store:...))`.
     @Test("withShell(store:) registers a capability over the given store")
     func withShellStoreRegistersOverTheGivenStore() throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
 
         let registry = try MultiTool.Builder().withShell(store: store).buildRegistry()
 
@@ -175,7 +166,8 @@ struct ShellStoreSharingTests {
     /// each command wrote is in the log once, whole, and in its own command.
     @Test("concurrent commands on one store leave every line whole")
     func concurrentCommandsOnOneStoreLeaveEveryLineWhole() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let runners = try [ShellCapability(store: store), ShellCapability(store: store)]
             .map(Self.runner(of:))
 
@@ -191,7 +183,7 @@ struct ShellStoreSharingTests {
     /// writes over a line of the other.
     @Test("two stores on one log file leave every line whole")
     func twoStoresOnOneLogFileLeaveEveryLineWhole() async throws {
-        let directory = try makeStoreDirectory()
+        let directory = try scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix)
         let storeA = try ShellStore(storeDirectory: directory)
         let storeB = try ShellStore(storeDirectory: directory)
         let runnerA = try Self.runner(of: ShellCapability(store: storeA))
@@ -263,7 +255,8 @@ struct ShellStoreSharingTests {
     /// match — read through the OTHER session.
     @Test("each shell result names the session that ran the command")
     func eachResultNamesTheSessionThatRanTheCommand() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capabilityA = ShellCapability(store: store, sessionID: { Self.sessionA })
         let capabilityB = ShellCapability(store: store, sessionID: { Self.sessionB })
 
@@ -288,7 +281,8 @@ struct ShellStoreSharingTests {
     /// carry no `sessionID`.
     @Test("a capability with no session ID names no session")
     func aCapabilityWithNoSessionIDNamesNoSession() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capability = ShellCapability(store: store)
 
         let token = try await Self.run("echo \(Self.sharedMarker)", with: Self.runner(of: capability))
@@ -306,7 +300,8 @@ struct ShellStoreSharingTests {
     /// command records the value at its run, and each result gives it back.
     @Test("the session ID is read when each command runs, not at init")
     func theSessionIDIsReadWhenEachCommandRuns() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let current = OSAllocatedUnfairLock<String?>(initialState: nil)
         let capability = ShellCapability(store: store, sessionID: { current.withLock { $0 } })
         let runner = try Self.runner(of: capability)
@@ -334,7 +329,8 @@ struct ShellStoreSharingTests {
     /// closure.
     @Test("a command is owned by the session of its ToolContext")
     func aCommandIsOwnedByTheSessionOfItsToolContext() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capability = ShellCapability(store: store, sessionID: { Self.sessionA })
         let runner = try Self.runner(of: capability)
         let root = LeasedSession()
@@ -355,7 +351,8 @@ struct ShellStoreSharingTests {
     /// A call with no `ToolContext` keeps the closure as the owner.
     @Test("a command with no ToolContext is owned by the session closure")
     func aCommandWithNoToolContextIsOwnedByTheSessionClosure() async throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capability = ShellCapability(store: store, sessionID: { Self.sessionA })
 
         try await Self.run("echo \(Self.sharedMarker)", with: Self.runner(of: capability))
@@ -366,7 +363,8 @@ struct ShellStoreSharingTests {
     /// `withShell(store:sessionID:)` gives the session ID to the runner.
     @Test("withShell(store:sessionID:) gives the session ID to the runner")
     func withShellStoreSessionIDReachesTheRunner() throws {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory())
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
 
         let registry = try MultiTool.Builder().withShell(store: store, sessionID: { Self.sessionA }).buildRegistry()
 
@@ -379,8 +377,10 @@ struct ShellStoreSharingTests {
     /// Two stores in two directories never answer for each other.
     @Test("two stores stay separate")
     func twoStoresStaySeparate() async throws {
-        let storeA = try ShellStore(storeDirectory: makeStoreDirectory())
-        let storeB = try ShellStore(storeDirectory: makeStoreDirectory())
+        let storeA = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
+        let storeB = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
         let capabilityA = ShellCapability(store: storeA)
         let capabilityB = ShellCapability(store: storeB)
 
@@ -403,7 +403,7 @@ struct ShellStoreSharingTests {
     /// each one reads the lines of its own session only.
     @Test("two stores on one directory stay separate")
     func twoStoresOnOneDirectoryStaySeparate() async throws {
-        let directory = try makeStoreDirectory()
+        let directory = try scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix)
         let storeA = try ShellStore(storeDirectory: directory)
         let storeB = try ShellStore(storeDirectory: directory)
 

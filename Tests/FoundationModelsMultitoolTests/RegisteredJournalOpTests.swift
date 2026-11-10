@@ -46,9 +46,6 @@ struct RegisteredJournalOpTests {
     /// directory is traceable to this suite.
     private static let testDirectoryNamePrefix = "registered-journal-op-tests"
 
-    /// The name of the store folder inside the directory of one test.
-    private static let shellStoreDirectoryName = ".shell"
-
     /// The noun the fixture verb registers under.
     private static let demoNoun = "demo"
 
@@ -297,11 +294,12 @@ struct RegisteredJournalOpTests {
     /// - Parameter scratch: The owner of the temporary directory the store
     ///   prepares in.
     /// - Returns: The rendered catalog paired with the live verbs of the shell.
-    /// - Throws: What `makeDirectory(prefix:)`, `withShell(storeDirectory:)` or
+    /// - Throws: What `makeShellStoreDirectory(prefix:)`, `withShell(storeDirectory:)` or
     ///   `buildRegistry()` throws.
     private static func makeShellRegistry(in scratch: TestScratch) throws -> MultiTool.Registry {
         try MultiTool.Builder()
-            .withShell(storeDirectory: makeStoreDirectory(in: scratch))
+            .withShell(
+                storeDirectory: scratch.makeShellStoreDirectory(prefix: testDirectoryNamePrefix))
             .buildRegistry()
     }
 
@@ -312,28 +310,18 @@ struct RegisteredJournalOpTests {
     ///   - scratch: The owner of the temporary directory the store prepares in.
     ///   - probe: The probe that records the stamp of each run.
     /// - Returns: The rendered catalog paired with the live verbs of the shell.
-    /// - Throws: What `makeDirectory(prefix:)`, `ShellStore.init` or
+    /// - Throws: What `makeShellStoreDirectory(prefix:)`, `ShellStore.init` or
     ///   `buildRegistry()` throws.
     private static func makeShellRegistry(
         in scratch: TestScratch, observedBy probe: JournalOpProbe
     ) throws -> MultiTool.Registry {
-        let store = try ShellStore(storeDirectory: makeStoreDirectory(in: scratch))
+        let store = try ShellStore(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: testDirectoryNamePrefix))
         var runner = ShellRunner(state: store.state)
         runner.runWillSpawn = { _ in probe.recordCurrentStamp() }
         return try MultiTool.Builder()
             .withCapability(ShellCapability(runner: runner))
             .buildRegistry()
-    }
-
-    /// The store directory of one test, inside a temporary directory the
-    /// caller owns.
-    ///
-    /// - Parameter scratch: The owner of the temporary directory.
-    /// - Returns: The store directory.
-    /// - Throws: What `makeDirectory(prefix:)` throws.
-    private static func makeStoreDirectory(in scratch: TestScratch) throws -> URL {
-        try scratch.makeDirectory(prefix: testDirectoryNamePrefix)
-            .appendingPathComponent(shellStoreDirectoryName)
     }
 
     /// Runs one `runCode` snippet over `registry`, under the ambient context a

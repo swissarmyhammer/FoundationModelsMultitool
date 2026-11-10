@@ -40,9 +40,6 @@ struct ShellExecuteTests {
     /// directory is traceable to this suite.
     private static let testDirectoryNamePrefix = "shellexecute-tests"
 
-    /// The name of the store folder inside the directory of one test.
-    private static let shellStoreDirectoryName = ".shell"
-
     /// The noun the verb renders under, which is the noun the shell capability
     /// gives it.
     private static let shellNoun = "shell"
@@ -136,21 +133,13 @@ struct ShellExecuteTests {
 
     // MARK: - The ground of one test
 
-    /// A store directory inside a temporary directory this test owns.
-    ///
-    /// - Returns: A directory no other test shares.
-    /// - Throws: When the temporary directory does not create.
-    private func makeStoreDirectory() throws -> URL {
-        try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-            .appendingPathComponent(Self.shellStoreDirectoryName)
-    }
-
     /// Makes a store in a temporary directory this test owns.
     ///
     /// - Returns: A store that no other test shares.
     /// - Throws: When the directory or the store does not prepare.
     private func makeState() throws -> ShellState {
-        try ShellState(preferredDirectory: makeStoreDirectory())
+        try ShellState(
+            preferredDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
     }
 
     /// A whole capability over a store this test owns.
@@ -168,7 +157,7 @@ struct ShellExecuteTests {
         outputChunkStream: ShellOutputChunkStream? = nil, defaultWorkingDirectory: URL? = nil
     ) throws -> ShellCapability {
         try ShellCapability(
-            storeDirectory: makeStoreDirectory(),
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix),
             outputChunkStream: outputChunkStream,
             defaultWorkingDirectory: defaultWorkingDirectory)
     }

@@ -111,3 +111,28 @@ final class TestScratch: Sendable {
         }
     }
 }
+
+// MARK: - Shell store directory
+
+extension TestScratch {
+
+    /// The name of the store folder inside the directory of one test.
+    static let shellStoreDirectoryName = ".shell"
+
+    /// Makes a unique temporary directory that this test owns, and gives the
+    /// path of the shell store folder inside it.
+    ///
+    /// This call does not make the store folder. The code under test makes it
+    /// when it prepares its store. Each suite that drives a store gets the
+    /// store path from this one place, so a change to the path is made one
+    /// time.
+    ///
+    /// - Parameter prefix: A short name that states the role of the directory.
+    ///   Thus a leaked directory is traceable to the suite that made it.
+    /// - Returns: The store directory, which no other test shares.
+    /// - Throws: When the temporary directory does not create.
+    func makeShellStoreDirectory(prefix: String) throws -> URL {
+        try makeDirectory(prefix: prefix)
+            .appendingPathComponent(Self.shellStoreDirectoryName)
+    }
+}

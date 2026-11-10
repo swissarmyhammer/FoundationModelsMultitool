@@ -36,9 +36,6 @@ struct ShellCapabilityTests {
     /// directory is traceable to this suite.
     private static let testDirectoryNamePrefix = "shellcapability-tests"
 
-    /// The name of the store folder inside the directory of one test.
-    private static let shellStoreDirectoryName = ".shell"
-
     /// The one noun this capability owns.
     private static let shellNoun = "shell"
 
@@ -91,21 +88,13 @@ struct ShellCapabilityTests {
 
     // MARK: - The ground of one test
 
-    /// A store directory inside a temporary directory this test owns.
-    ///
-    /// - Returns: A directory no other test shares.
-    /// - Throws: When the temporary directory does not create.
-    private func makeStoreDirectory() throws -> URL {
-        try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-            .appendingPathComponent(Self.shellStoreDirectoryName)
-    }
-
     /// The capability over a store this test owns.
     ///
     /// - Returns: The capability.
     /// - Throws: When the directory or the store does not prepare.
     private func makeCapability() throws -> ShellCapability {
-        try ShellCapability(storeDirectory: makeStoreDirectory())
+        try ShellCapability(
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
     }
 
     /// A registry holding the shell capability and nothing else.
@@ -115,7 +104,8 @@ struct ShellCapabilityTests {
     ///   render.
     private func makeShellRegistry() throws -> MultiTool.Registry {
         try MultiTool.Builder()
-            .withShell(storeDirectory: makeStoreDirectory())
+            .withShell(
+                storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
             .buildRegistry()
     }
 
@@ -172,7 +162,7 @@ struct ShellCapabilityTests {
         let stream = ShellOutputChunkStream()
 
         let capability = try ShellCapability(
-            storeDirectory: makeStoreDirectory(),
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix),
             outputChunkStream: stream)
 
         let execute = try Self.verb(Execute.self, in: capability)
@@ -189,7 +179,8 @@ struct ShellCapabilityTests {
         let sessionRoot = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
 
         let capability = try ShellCapability(
-            storeDirectory: makeStoreDirectory(), defaultWorkingDirectory: sessionRoot)
+            storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix),
+            defaultWorkingDirectory: sessionRoot)
 
         let execute = try Self.verb(Execute.self, in: capability)
         #expect(execute.runner.defaultWorkingDirectory == sessionRoot.path)
@@ -214,7 +205,9 @@ struct ShellCapabilityTests {
         let sessionRoot = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
 
         let registry = try MultiTool.Builder()
-            .withShell(storeDirectory: makeStoreDirectory(), defaultWorkingDirectory: sessionRoot)
+            .withShell(
+                storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix),
+                defaultWorkingDirectory: sessionRoot)
             .buildRegistry()
 
         #expect(registry.surface.entries.map(\.path) == Self.shellPaths)
@@ -276,7 +269,8 @@ struct ShellCapabilityTests {
     @Test("searchTools finds each shell verb, with the runnable example of that verb")
     func searchToolsFindsEachShellVerbWithItsRunnableExample() async throws {
         let surface = try MultiTool.Builder()
-            .withShell(storeDirectory: makeStoreDirectory())
+            .withShell(
+                storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
             .build()
         let selection = ScriptedLanguageModel([Self.selectionReply])
         let searcher = MetadataSearcher(
