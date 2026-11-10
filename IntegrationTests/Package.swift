@@ -195,3 +195,11 @@ let package = Package(
         )
     ]
 )
+
+// FoundationModelsRouter links llama.cpp through C++ modules, and a Swift
+// target that imports a C++ module, directly or through a dependency, must
+// build with C++ interoperability. Every target here reaches Router, so each
+// non-plugin target takes the mode.
+for target in package.targets where target.type != .plugin {
+    target.swiftSettings = (target.swiftSettings ?? []) + [.interoperabilityMode(.Cxx)]
+}
