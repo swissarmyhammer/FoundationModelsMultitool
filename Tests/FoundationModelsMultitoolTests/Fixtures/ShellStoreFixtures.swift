@@ -4,8 +4,7 @@ import Synchronization
 // MARK: - Shell scratch fixtures
 //
 // The shell capability writes to disk — an output buffer, a history file, the
-// working directory a command runs in, the subpaths a sandbox grants. Thus
-// each test that drives one needs a directory of its own, and each directory
+// working directory a command runs in. Thus each test that drives one needs a directory of its own, and each directory
 // must go away when that test ends. `TestScratch` owns those directories.
 
 /// The temporary directories of one test, removed when that test ends.

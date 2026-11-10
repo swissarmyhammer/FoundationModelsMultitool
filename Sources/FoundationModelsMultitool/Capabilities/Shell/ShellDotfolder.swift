@@ -34,14 +34,10 @@ enum ShellDotfolder {
 
     /// The configuration file of the shell capability inside each layer root.
     ///
-    /// **Nothing reads this file yet, and the name is kept on purpose.** The
-    /// write confinement of `SeatbeltSandbox.Options` — `writableRoots` and
-    /// `extraWritePaths` — is stated there as configuration the host supplies,
-    /// and code is the only host that supplies it today. A file the two
-    /// resolvers of this type find is where that configuration is meant to
-    /// come from, and this constant is the one name they resolve. So the
-    /// answer to "where do the write roots come from" is this file, and the
-    /// name stands until a reader gives it a body.
+    /// **Nothing reads this file yet, and the name is kept on purpose.** A
+    /// file the two resolvers of this type find is where the configuration of
+    /// the shell capability is meant to come from, and this constant is the
+    /// one name they resolve. The name stands until a reader gives it a body.
     ///
     /// The `.yaml` extension states the intended format. It is not a format
     /// this package can read right now: no YAML parser is a dependency of it.

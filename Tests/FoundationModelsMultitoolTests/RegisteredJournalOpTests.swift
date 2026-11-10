@@ -180,10 +180,10 @@ struct RegisteredJournalOpTests {
     /// ends it, and the cancel ends the snippet with a `CancellationError`.
     @Test("an inner tools.shell.execute run of a held command never stands on the run plane, and the cancel ends it")
     func anInnerShellRunStaysOffTheRunPlane() async throws {
-        let sandbox = JournalOpProbeSandbox()
-        let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
+        let probe = JournalOpProbe()
+        let registry = try Self.makeShellRegistry(in: scratch, observedBy: probe)
         try await withOuterRunContext { context in
-            // The wait for the sandbox also ends when the run ends.
+            // The wait for the probe also ends when the run ends.
             let run = try await EventRace.watch(
                 {
                     try await Self.run(
@@ -194,8 +194,8 @@ struct RegisteredJournalOpTests {
                         over: registry,
                         under: context)
                 },
-                awaiting: { try? await sandbox.waitUntilConsulted() }, requiring: { sandbox.isConsulted },
-                orFail: "the run ended before it consulted the sandbox"
+                awaiting: { try? await probe.waitUntilObserved() }, requiring: { probe.isObserved },
+                orFail: "the run ended before it reached its spawn"
             ).task
 
             #expect(await context.backgroundRuns().isEmpty)
@@ -206,19 +206,19 @@ struct RegisteredJournalOpTests {
 
     // MARK: - The stamp the shell verb itself reads
 
-    /// The second reading of the pair, made from INSIDE the run: `Execute`
-    /// reads its own `ToolContext` and asks its sandbox to preflight from
-    /// inside that call — so a probe sandbox reports the stamp the
-    /// registration site put on the run, which is the one field
-    /// `BackgroundRun.op` and `ToolInvocationRecord.op` are both built from.
+    /// The second reading of the pair, made from INSIDE the run: the runner
+    /// of `Execute` calls its `runWillSpawn` hook in the task of the run,
+    /// before the spawn — so the probe reports the stamp the registration
+    /// site put on the run, which is the one field `BackgroundRun.op` and
+    /// `ToolInvocationRecord.op` are both built from.
     ///
-    /// An inner call runs to completion, so the run consulted its sandbox
-    /// before the snippet returns, and the run never stands on the run plane.
-    /// The test reads the stamp from the sandbox itself.
+    /// An inner call runs to completion, so the run reached its spawn before
+    /// the snippet returns, and the run never stands on the run plane. The
+    /// test reads the stamp from the probe.
     @Test("a tools.shell.execute run carries the journal op \"execute shell\" into its own call")
     func aShellRunCarriesThePairIntoItsOwnCall() async throws {
-        let sandbox = JournalOpProbeSandbox()
-        let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
+        let probe = JournalOpProbe()
+        let registry = try Self.makeShellRegistry(in: scratch, observedBy: probe)
         try await withOuterRunContext { context in
             try await Self.run(
                 """
@@ -230,9 +230,9 @@ struct RegisteredJournalOpTests {
         }
 
         // A fixed order, not a wait: the inner call ran to completion before
-        // the snippet returned, thus the run consulted its sandbox already.
+        // the snippet returned, thus the run reached its spawn already.
         let stampedOp = try #require(
-            sandbox.observedOps.first, "the run never consulted its sandbox")
+            probe.observedOps.first, "the run never reached its spawn")
         #expect(stampedOp == "\(Self.executeVerb) \(Self.shellNoun)")
     }
 
@@ -291,24 +291,49 @@ struct RegisteredJournalOpTests {
     // MARK: - The ground of one test
 
     /// Builds a registry holding the whole shell capability over a store in a
-    /// temporary directory the caller owns.
+    /// temporary directory the caller owns, through `withShell`, as a host
+    /// builds it.
+    ///
+    /// - Parameter scratch: The owner of the temporary directory the store
+    ///   prepares in.
+    /// - Returns: The rendered catalog paired with the live verbs of the shell.
+    /// - Throws: What `makeDirectory(prefix:)`, `withShell(storeDirectory:)` or
+    ///   `buildRegistry()` throws.
+    private static func makeShellRegistry(in scratch: TestScratch) throws -> MultiTool.Registry {
+        try MultiTool.Builder()
+            .withShell(storeDirectory: makeStoreDirectory(in: scratch))
+            .buildRegistry()
+    }
+
+    /// Builds a registry holding the whole shell capability, whose runner
+    /// gives each run to `probe` before it spawns the child.
     ///
     /// - Parameters:
     ///   - scratch: The owner of the temporary directory the store prepares in.
-    ///   - sandbox: The confinement each command of the capability spawns
-    ///     under. The default, `nil`, confines nothing.
+    ///   - probe: The probe that records the stamp of each run.
     /// - Returns: The rendered catalog paired with the live verbs of the shell.
-    /// - Throws: What `makeDirectory(prefix:)`,
-    ///   `withShell(storeDirectory:sandbox:)` or `buildRegistry()` throws.
+    /// - Throws: What `makeDirectory(prefix:)`, `ShellStore.init` or
+    ///   `buildRegistry()` throws.
     private static func makeShellRegistry(
-        in scratch: TestScratch, sandbox: (any CommandSandbox)? = nil
+        in scratch: TestScratch, observedBy probe: JournalOpProbe
     ) throws -> MultiTool.Registry {
-        let directory = try scratch.makeDirectory(prefix: testDirectoryNamePrefix)
+        let store = try ShellStore(storeDirectory: makeStoreDirectory(in: scratch))
+        var runner = ShellRunner(state: store.state)
+        runner.runWillSpawn = { _ in probe.recordCurrentStamp() }
         return try MultiTool.Builder()
-            .withShell(
-                storeDirectory: directory.appendingPathComponent(shellStoreDirectoryName),
-                sandbox: sandbox)
+            .withCapability(ShellCapability(runner: runner))
             .buildRegistry()
+    }
+
+    /// The store directory of one test, inside a temporary directory the
+    /// caller owns.
+    ///
+    /// - Parameter scratch: The owner of the temporary directory.
+    /// - Returns: The store directory.
+    /// - Throws: What `makeDirectory(prefix:)` throws.
+    private static func makeStoreDirectory(in scratch: TestScratch) throws -> URL {
+        try scratch.makeDirectory(prefix: testDirectoryNamePrefix)
+            .appendingPathComponent(shellStoreDirectoryName)
     }
 
     /// Runs one `runCode` snippet over `registry`, under the ambient context a
@@ -329,77 +354,48 @@ struct RegisteredJournalOpTests {
     }
 }
 
-/// A `CommandSandbox` that records the journal `op` of each run that consults
-/// it, and that confines nothing.
+/// A probe that records the journal `op` of each run that reaches its spawn.
 ///
-/// The seam is the one place inside a real `execute` run that a test can stand:
-/// `Execute` asks its sandbox to `preflight` before it spawns, from inside its
-/// own call, thus `ToolContext.current` there is the context the registration
-/// site stamped for THAT run. No other probe is needed, and the verb keeps its
-/// production shape.
-///
-/// `wrap` gives the shell invocation back exactly as it came in, thus the
-/// command of the run starts as it starts with no sandbox at all and the probe
-/// changes only what is observed.
+/// The hook is the one place inside a real `execute` run that a test can
+/// stand: `ShellRunner.runWillSpawn` runs in the task of the run, thus
+/// `ToolContext.current` there is the context the registration site stamped
+/// for THAT run. The command of the run starts as it starts with no probe,
+/// and the probe changes only what is observed.
 ///
 /// A reference type, thus the test reads what the copy of the runner the verb
 /// holds observed. A runner is a value, and it is copied. It is a locked class
-/// rather than an actor because `wrap` is a SYNCHRONOUS requirement of
-/// `CommandSandbox`, which an actor answers only from outside its own
-/// isolation — the same shape `RecordingSandbox` takes, for the same reason.
-private final class JournalOpProbeSandbox: CommandSandbox {
+/// rather than an actor because the hook is SYNCHRONOUS.
+private final class JournalOpProbe: Sendable {
 
-    /// The stamp of each run that consulted this sandbox, in call order — `nil`
-    /// for a call that ran under no ambient context at all.
+    /// The stamp of each run that reached its spawn, in call order — `nil`
+    /// for a run under no ambient context at all.
     private let observed = Mutex<[String?]>([])
 
-    /// The gate that the first run that consults this sandbox opens.
-    private let consulted = TestGate()
+    /// The gate that the first run that reaches its spawn opens.
+    private let reached = TestGate()
 
-    /// The stamp of each run that consulted this sandbox, in call order.
+    /// The stamp of each run that reached its spawn, in call order.
     var observedOps: [String?] {
         observed.withLock { $0 }
     }
 
-    /// Whether a run consulted this sandbox.
-    var isConsulted: Bool {
-        consulted.isOpen
+    /// Whether a run reached its spawn.
+    var isObserved: Bool {
+        reached.isOpen
     }
 
-    /// Waits until a run consulted this sandbox. Returns at once when a run
-    /// already consulted it.
+    /// Waits until a run reached its spawn. Returns at once when a run
+    /// already did.
     ///
     /// - Throws: `CancellationError` when the task is cancelled first.
-    func waitUntilConsulted() async throws {
-        try await consulted.wait()
+    func waitUntilObserved() async throws {
+        try await reached.wait()
     }
 
-    /// Records the journal op of the run, and proves nothing about the
-    /// confinement.
-    ///
-    /// - Parameters:
-    ///   - workingDirectory: Not read — nothing is proved.
-    ///   - temporaryDirectory: Not read — nothing is proved.
-    func preflight(workingDirectory: String, temporaryDirectory: String) async {
+    /// Records the journal op of the ambient context of the calling run.
+    func recordCurrentStamp() {
         let stampedOp = ToolContext.current?.op
         observed.withLock { $0.append(stampedOp) }
-        consulted.open()
-    }
-
-    /// Gives back `shellPath` and `shellArguments` unchanged.
-    ///
-    /// - Parameters:
-    ///   - shellPath: The absolute path of the shell to run.
-    ///   - shellArguments: The arguments of that shell.
-    ///   - workingDirectory: Not read — no confinement is applied.
-    ///   - temporaryDirectory: Not read — no confinement is applied.
-    /// - Returns: The shell invocation as it came in.
-    func wrap(
-        shellPath: String,
-        shellArguments: [String],
-        workingDirectory: String,
-        temporaryDirectory: String
-    ) -> SandboxedInvocation {
-        SandboxedInvocation(executable: shellPath, arguments: shellArguments)
+        reached.open()
     }
 }

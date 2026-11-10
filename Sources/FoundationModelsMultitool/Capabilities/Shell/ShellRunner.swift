@@ -161,21 +161,6 @@ struct ShellRunner {
         [outputChunkStream, callerOutputChunkStream].compactMap { $0 }
     }
 
-    /// The confinement each command of this runner spawns under, or `nil` — the
-    /// default — to start the shell directly, with no confinement.
-    ///
-    /// `nil` is deliberately not `UnconfinedSandbox`: the default path builds
-    /// the same `/bin/sh -c command` configuration it always built, with no step
-    /// of confinement in it at all, thus a host that opts in to nothing runs
-    /// exactly the code it ran before. `UnconfinedSandbox` stays the meaning of
-    /// "no confinement" for a caller that wants to state that choice as a value.
-    ///
-    /// A sandbox that is there decides the executable and the arguments of each
-    /// spawn (see `configuration(for:)`), and `run` asks it INSIDE its own
-    /// `do`/`catch`, thus a sandbox that cannot build the confinement finalizes
-    /// the record and throws again instead of a quiet spawn with no confinement.
-    var sandbox: (any CommandSandbox)?
-
     /// The directory a request runs in when it names none, or `nil` — the
     /// default — to keep the current directory of this process.
     ///
@@ -183,8 +168,7 @@ struct ShellRunner {
     /// gives that root here, thus a request that omits `workingDirectory` runs
     /// in the session root, and not in the directory the host process happens
     /// to stand in. `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`
-    /// is the one place that reads it, thus the spawn and the sandbox see the
-    /// same directory.
+    /// is the one place that reads it.
     var defaultWorkingDirectory: String?
 
     /// The session this runner runs commands for, read each time a command
@@ -213,6 +197,16 @@ struct ShellRunner {
     /// lets the child end and the run reap it, and only then lets the canceler
     /// go on. Thus the test drives the late kill path in a fixed order.
     var cancelerWillSignal: @Sendable () async -> Void = {}
+
+    /// What a run does after it recorded its command and before it spawns the
+    /// child. It does nothing by default.
+    ///
+    /// This is an internal hook for the tests: the run calls it in its own
+    /// task, thus `ToolContext.current` in it is the context of that run. A
+    /// test reads the journal op of the run there, or keeps the context to
+    /// read the run plane of a live session, with no change to the command
+    /// that the run starts.
+    var runWillSpawn: @Sendable (Request) -> Void = { _ in }
 
     /// One request to run a command.
     struct Request: Sendable {
@@ -393,9 +387,8 @@ struct ShellRunner {
     ///
     /// `state.completeIfRunning` runs on each path out of `Subprocess.run`, and
     /// not on the normal return alone. The `catch` finalizes and throws again
-    /// for a spawn that never happened — a `workingDirectory` that is not there,
-    /// or a `sandbox` that cannot build the confinement for this request —
-    /// exactly as it does for a failure of the pipeline in the middle of a run,
+    /// for a spawn that never happened, such as a `workingDirectory` that is not
+    /// there, exactly as it does for a failure of the pipeline in the middle of a run,
     /// such as a throw from `state.appendLines`. Both report `.completed` with
     /// `absentExitCode`, the same pair a death by signal takes: neither one has
     /// an exit code to report, and neither one is a time limit or a cancel.
@@ -419,8 +412,7 @@ struct ShellRunner {
     /// - Parameter request: The command to run.
     /// - Returns: The status and the exit code of the run.
     /// - Throws: What `Subprocess.run` throws for a child that never started,
-    ///   what `sandbox.wrap` throws for a confinement it cannot build, or what
-    ///   the pipeline of the output throws in the middle of a run.
+    ///   or what the pipeline of the output throws in the middle of a run.
     func run(_ request: Request) async throws -> Outcome {
         let commandID = request.completionToken
         await state.startCommand(
@@ -432,15 +424,11 @@ struct ShellRunner {
             }
         }
 
-        do {
-            // Built INSIDE the `do`, and not above it, because `sandbox.wrap`
-            // can throw — a wrapper binary that is not there, or a working
-            // directory outside the roots of the confinement — and that throw
-            // must reach the `catch` below.
-            let configuration = try configuration(for: request)
+        runWillSpawn(request)
 
+        do {
             let result = try await Subprocess.run(
-                configuration, input: .none, output: .sequence, error: .sequence
+                configuration(for: request), input: .none, output: .sequence, error: .sequence
             ) { execution in
                 let pid = execution.processIdentifier.value
                 let group = ProcessGroupKill(pid: pid, signal: signalProcessGroup)
@@ -483,13 +471,9 @@ struct ShellRunner {
 
     // MARK: - The configuration of the spawn
 
-    /// The configuration to spawn for `request`, which `sandbox` decorates when
-    /// this runner carries one.
-    ///
-    /// With no sandbox this is the configuration the runner always built —
-    /// `/bin/sh` with `["-c", command]`, in the effective working directory —
-    /// and it reads no sandbox at all, thus the path with no confinement
-    /// carries no code of confinement.
+    /// The configuration to spawn for `request`: `/bin/sh` with
+    /// `["-c", command]`, in the effective working directory, with no wrapper
+    /// process in front of the shell.
     ///
     /// The working directory is always stated, and never left to
     /// `Configuration` as `nil`: `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`
@@ -497,38 +481,12 @@ struct ShellRunner {
     /// runner, and the child inherits the directory of this process only when
     /// the runner has no default either.
     ///
-    /// With a sandbox the executable and the arguments come from `wrap`, and
-    /// nothing else changes. The environment, the working directory and the
-    /// platform options stay exactly as they are, because a wrapper starts its
-    /// target in place and keeps the pid it took. Thus the process group of the
-    /// child, the entry in the registry and the teardown with `killpg` behave
-    /// the same way with a wrapper in front of the shell and without one.
-    ///
     /// - Parameter request: The command to spawn.
     /// - Returns: The configuration that goes to `Subprocess.run`.
-    /// - Throws: What `sandbox.wrap` throws when it cannot build the
-    ///   confinement. There is no fall back to a spawn with no confinement, thus
-    ///   a caller must call this where that throw is finalized — see `run(_:)`.
-    private func configuration(for request: Request) throws -> Configuration {
-        var executable = Self.shellPath
-        var arguments = [Self.shellCommandFlag, request.command]
-
-        if let sandbox {
-            let directories = Self.resolvedSandboxDirectories(
-                request: request, defaultWorkingDirectory: defaultWorkingDirectory)
-            let invocation = try sandbox.wrap(
-                shellPath: executable,
-                shellArguments: arguments,
-                workingDirectory: directories.work,
-                temporaryDirectory: directories.tmp
-            )
-            executable = invocation.executable
-            arguments = invocation.arguments
-        }
-
-        return Configuration(
-            executable: .path(FilePath(executable)),
-            arguments: Arguments(arguments),
+    private func configuration(for request: Request) -> Configuration {
+        Configuration(
+            executable: .path(FilePath(Self.shellPath)),
+            arguments: Arguments([Self.shellCommandFlag, request.command]),
             environment: environment(overriding: request.environment),
             workingDirectory: FilePath(
                 Self.effectiveWorkingDirectory(
@@ -567,24 +525,20 @@ struct ShellRunner {
     /// `defaultWorkingDirectory`, else the current directory of this process.
     ///
     /// This is the ONE place that spells that fallback. `configuration(for:)`
-    /// gives the result to the spawn, and `resolvedSandboxDirectories` gives
-    /// it to the sandbox, thus the directory the child runs in and the
-    /// directory the confinement grants cannot disagree.
+    /// gives the result to the spawn.
     ///
     /// A relative directory in the request resolves against the same base a
     /// request that names none runs in — `defaultWorkingDirectory`, else the
-    /// current directory of this process. Left relative, the spawn and the
-    /// sandbox would both read it against the directory of this process, which
-    /// a host can stand outside the session root (SWE-bench run bench24-1023:
-    /// the agent stood in the parent of the root, and `.red-check-wt` inside
-    /// the root was refused as outside it).
+    /// current directory of this process. Left relative, the spawn would read
+    /// it against the directory of this process, which a host can stand
+    /// outside the session root (SWE-bench run bench24-1023: the agent stood
+    /// in the parent of the root, and `.red-check-wt` inside the root was
+    /// refused as outside it).
     ///
-    /// The result is not resolved: a symbolic link stays as it came in, and a
-    /// caller that needs the resolved form puts it through
-    /// `resolvedDirectory(path:)`, as `resolvedSandboxDirectories` does.
+    /// The result is not resolved: a symbolic link stays as it came in.
     ///
-    /// It is `static` for the reason `resolvedSandboxDirectories` is: a test
-    /// proves the order of the fallback with no runner and no spawn.
+    /// It is `static` because a test proves the order of the fallback with no
+    /// runner and no spawn.
     ///
     /// - Parameters:
     ///   - request: The command whose directory to decide.
@@ -598,78 +552,6 @@ struct ShellRunner {
         guard let requested = request.workingDirectory else { return base }
         if requested.hasPrefix("/") { return requested }
         return (base as NSString).appendingPathComponent(requested)
-    }
-
-    /// The working directory and the temporary directory to give a
-    /// `CommandSandbox` for `request`, each one with its symbolic links
-    /// resolved.
-    ///
-    /// To discharge the path precondition of `CommandSandbox` is the work of the
-    /// runner: Seatbelt matches the path of the vnode that the kernel resolved,
-    /// thus a grant that names `/tmp`, or a raw `$TMPDIR`, never matches the
-    /// `/private/tmp` or the `/private/var/folders/…` the kernel sees, and the
-    /// sandbox then refuses in silence what it appears to permit.
-    ///
-    /// The working directory is
-    /// `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`, the same
-    /// value `configuration(for:)` gives the spawn, thus the sandbox learns the
-    /// directory the command truly runs in — the default of the runner for a
-    /// request that names none, and the current directory of this process only
-    /// when the runner has no default either.
-    ///
-    /// It is `static` because a test proves the resolution on its own, with no
-    /// runner and no spawn.
-    ///
-    /// - Parameters:
-    ///   - request: The command whose directories to resolve.
-    ///   - defaultWorkingDirectory: The default of the runner, or `nil` for
-    ///     none.
-    /// - Returns: The resolved working directory and temporary directory.
-    static func resolvedSandboxDirectories(
-        request: Request, defaultWorkingDirectory: String?
-    ) -> (work: String, tmp: String) {
-        (
-            work: resolvedDirectory(
-                path: effectiveWorkingDirectory(
-                    for: request, defaultWorkingDirectory: defaultWorkingDirectory)),
-            tmp: resolvedDirectory(path: NSTemporaryDirectory())
-        )
-    }
-
-    /// `path` with any trailing separator removed and each symbolic link
-    /// component followed.
-    ///
-    /// The resolution itself is `resolvedPath`, the one resolver of this module.
-    /// There is no second copy of that step here, on purpose: a copy can name a
-    /// different path than the confinement enforces, and nothing reports the
-    /// disagreement. What this member adds is the trailing separator, which
-    /// `NSTemporaryDirectory()` carries and which a Seatbelt grant must not.
-    ///
-    /// A path that is not there has nothing to resolve, thus the input comes
-    /// back as it came in, with the trailing separator still removed. That
-    /// widens nothing in silence: the value goes on to a sandbox that either
-    /// refuses it or grants exactly what it names, and the spawn of a working
-    /// directory that is not there fails by itself.
-    ///
-    /// **This member is the one DIRECTORY resolver of the runner, and each
-    /// caller must use it — a test included.** The two steps travel together:
-    /// a caller that reaches past it to `resolvedPath` alone keeps a trailing
-    /// separator the grant must not carry, and a caller that spells the trim
-    /// again writes a second copy that can drift. It is `internal` rather than
-    /// `private` for that reason, exactly as `resolvedSandboxDirectories` is
-    /// `static`: a test states the contract by naming this member, and never by
-    /// rebuilding it.
-    ///
-    /// The parameter carries a label because this is a semantic transformation
-    /// and not a value-preserving conversion: it follows symbolic links and it
-    /// removes a trailing separator, thus the value that comes back can name a
-    /// different path than the value that went in.
-    ///
-    /// - Parameter path: The path to resolve.
-    /// - Returns: The resolved path, or `path` itself when it does not resolve.
-    static func resolvedDirectory(path: String) -> String {
-        let trimmed = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
-        return resolvedPath(trimmed)
     }
 
     /// The platform options that put the child in its own process group, thus

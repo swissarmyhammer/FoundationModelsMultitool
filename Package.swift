@@ -98,8 +98,8 @@ private func swissArmyHammerPackage(name: String) -> Package.Dependency {
 
 /// The child-process package the shell capability spawns commands with.
 ///
-/// `ShellRunner` and `SandboxPreflight` import its `Subprocess` module: one
-/// starts a command and reads its output, the other starts the sandbox canary.
+/// `ShellRunner` imports its `Subprocess` module: it starts a command and reads
+/// its output.
 /// The package stands under the `swiftlang` organization — the former
 /// `apple/swift-subprocess` path answers 404.
 private let subprocessPackage = "swift-subprocess"

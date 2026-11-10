@@ -98,13 +98,17 @@ struct ShellRunnerTests {
     /// tree does.
     private static let readyThenWait = "echo \(readyMarker); wait"
 
-    /// A directory path no file system holds, thus `realpath(3)` resolves
-    /// nothing of it and the resolver gives the input back.
-    private static let absentDirectory = "/nonexistent-shellrunner-tests-directory"
+    /// The path of the shell the runner starts each command under.
+    private static let shellPath = "/bin/sh"
 
-    /// The same absent path carrying the trailing separator that
-    /// `NSTemporaryDirectory()` carries and that a Seatbelt grant must not.
-    private static let absentDirectoryWithSeparator = absentDirectory + "/"
+    /// The command that prints the path the shell started as.
+    private static let printShellPathCommand = "echo $0"
+
+    /// The command that prints the pid of the parent of the shell.
+    private static let printParentProcessCommand = "echo $PPID"
+
+    /// The name of the file a command makes to show that it ran.
+    private static let spawnMarkerName = "spawned.marker"
 
     /// The directory a request of the fallback test names. It need not exist:
     /// `effectiveWorkingDirectory(for:defaultWorkingDirectory:)` picks a value
@@ -442,9 +446,8 @@ struct ShellRunnerTests {
     /// Runs `/bin/pwd` through `runner` and gives back the directory it printed.
     ///
     /// `/bin/pwd` prints the physical directory (`/var` becomes `/private/var`
-    /// on macOS), thus a caller compares the result against
-    /// `ShellRunner.resolvedDirectory(path:)` of the directory it expects — the
-    /// one directory resolver, and never a second spelling of that step.
+    /// on macOS), thus a caller compares the result against `resolvedPath(_:)`
+    /// of the directory it expects — the one resolver of this module.
     ///
     /// - Parameters:
     ///   - runner: The runner that starts the command.
@@ -596,7 +599,7 @@ struct ShellRunnerTests {
         let printed = try await printedWorkingDirectory(
             of: runner, in: state, workingDirectory: requested.path)
 
-        let expected = ShellRunner.resolvedDirectory(path: requested.path)
+        let expected = resolvedPath(requested.path)
         #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
     }
 
@@ -613,7 +616,7 @@ struct ShellRunnerTests {
         let printed = try await printedWorkingDirectory(
             of: runner, in: state, workingDirectory: nil)
 
-        let expected = ShellRunner.resolvedDirectory(path: fallback.path)
+        let expected = resolvedPath(fallback.path)
         #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
     }
 
@@ -628,7 +631,7 @@ struct ShellRunnerTests {
         let printed = try await printedWorkingDirectory(
             of: runner, in: state, workingDirectory: requested.path)
 
-        let expected = ShellRunner.resolvedDirectory(path: requested.path)
+        let expected = resolvedPath(requested.path)
         #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
     }
 
@@ -1019,152 +1022,72 @@ struct ShellRunnerTests {
         #expect(record.completedAt != nil)
     }
 
-    // MARK: - The spawn goes through `CommandSandbox`
+    // MARK: - The spawn is `/bin/sh -c`, with no wrapper process
 
-    /// Seatbelt matches the path of the vnode that the kernel resolved, thus the
-    /// runner owes `wrap` directories with each symbolic link followed: `/tmp`
-    /// must arrive as `/private/tmp`, and `$TMPDIR` in its
-    /// `/private/var/folders/…` form with no trailing separator.
-    @Test("the runner gives the sandbox resolved directories")
-    func runnerPassesResolvedDirectoriesToSandbox() async throws {
-        var (runner, _, _) = try makeRunner()
-        let sandbox = RecordingSandbox()
-        runner.sandbox = sandbox
-        let token = ToolContext.makeCompletionToken()
-
-        _ = try await runner.run(
-            .init(command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
-
-        let call = try #require(sandbox.calls.first)
-        // The expected form goes through `ShellRunner.resolvedDirectory(path:)`,
-        // the one directory resolver and the one the runner itself calls. It
-        // carries BOTH steps — the trailing separator that
-        // `NSTemporaryDirectory()` holds comes off, then `resolvedPath` follows
-        // each symbolic link — thus a test that reached past it to `resolvedPath`
-        // alone would state a path the runner never hands over, and nothing
-        // would report the disagreement.
-        let resolvedTemporary = ShellRunner.resolvedDirectory(path: NSTemporaryDirectory())
-        #expect(call.shellPath == "/bin/sh")
-        #expect(call.shellArguments == ["-c", "echo hi"])
-        #expect(call.workingDirectory == "/private/tmp")
-        #expect(call.temporaryDirectory == resolvedTemporary)
-        #expect(
-            call.temporaryDirectory.hasPrefix("/private/"),
-            "the temporary directory reached the sandbox unresolved: \(call.temporaryDirectory)")
-        #expect(!call.temporaryDirectory.hasSuffix("/"))
-    }
-
-    /// What `wrap` gives back is what spawns: the fake replaces the argv of the
-    /// request, thus the recorded output of the command proves the decorated
-    /// invocation — and not `request.command` — reached the spawn.
-    @Test("the runner spawns the decorated invocation")
-    func runnerSpawnsDecoratedInvocation() async throws {
-        var (runner, state, _) = try makeRunner()
-        runner.sandbox = RecordingSandbox(
-            returning: SandboxedInvocation(
-                executable: "/bin/sh", arguments: ["-c", "echo decorated"]))
-        let token = ToolContext.makeCompletionToken()
-
-        let outcome = try await runner.run(.init(command: "echo hi", completionToken: token))
-
-        #expect(outcome.status == .completed)
-        #expect(outcome.exitCode == 0)
-        let lines = try await state.getLines(commandID: token)
-        #expect(lines.map(\.text) == ["decorated"])
-    }
-
-    /// The default path — no sandbox — spawns `/bin/sh -c command` exactly as it
-    /// always has, with no new code between the request and the child.
-    @Test("no sandbox spawns the shell directly")
-    func nilSandboxSpawnsShellDirectly() async throws {
+    /// The runner starts `/bin/sh` itself. `$0` of a `sh -c` command is the
+    /// path the shell started as, thus a runner that put a different shell
+    /// first gives a different first line.
+    @Test("the command runs under /bin/sh")
+    func theCommandRunsUnderBinSh() async throws {
         let (runner, state, _) = try makeRunner()
-        #expect(runner.sandbox == nil)
         let token = ToolContext.makeCompletionToken()
 
-        let outcome = try await runner.run(.init(command: "echo plain", completionToken: token))
+        _ = try await runner.run(.init(command: Self.printShellPathCommand, completionToken: token))
 
-        #expect(outcome.status == .completed)
-        #expect(outcome.exitCode == 0)
         let lines = try await state.getLines(commandID: token)
-        #expect(lines.map(\.text) == ["plain"])
+        #expect(lines.map(\.text) == [Self.shellPath])
     }
 
-    /// A sandbox that cannot build its confinement must stop the command dead:
-    /// the error reaches the caller, and nothing runs unconfined. The command
-    /// would make a marker file if it ever spawned, thus the absence of that
-    /// file proves no child ran.
-    @Test("a sandbox that throws fails closed")
-    func throwingSandboxFailsClosed() async throws {
+    /// No wrapper process stands between this process and the shell. The
+    /// parent of the shell is this process, thus a runner that starts a
+    /// wrapper, which then starts the shell as its own child, gives a
+    /// different parent.
+    @Test("the parent of the shell is this process, and not a wrapper")
+    func theParentOfTheShellIsThisProcess() async throws {
+        let (runner, state, _) = try makeRunner()
+        let token = ToolContext.makeCompletionToken()
+
+        _ = try await runner.run(.init(command: Self.printParentProcessCommand, completionToken: token))
+
+        let lines = try await state.getLines(commandID: token)
+        #expect(lines.map(\.text) == [String(getpid())])
+    }
+
+    // MARK: - The hook before the spawn
+
+    /// `runWillSpawn` gets the request of the run, thus a test can read the
+    /// run it observes by its completion token and by its command.
+    @Test("the hook before the spawn gets the request of the run")
+    func theHookBeforeTheSpawnGetsTheRequestOfTheRun() async throws {
+        var (runner, _, _) = try makeRunner()
+        let observed = Mutex<[String]>([])
+        runner.runWillSpawn = { request in observed.withLock { $0.append(request.completionToken) } }
+        let token = ToolContext.makeCompletionToken()
+
+        _ = try await runner.run(.init(command: "true", completionToken: token))
+
+        #expect(observed.withLock { $0 } == [token])
+    }
+
+    /// The hook runs before the child starts. The command makes a marker
+    /// file, and the hook reads whether the file is there, thus a hook that
+    /// came after the spawn could see the file.
+    @Test("the hook before the spawn runs before the child starts")
+    func theHookBeforeTheSpawnRunsBeforeTheChildStarts() async throws {
         var (runner, _, directory) = try makeRunner()
-        let sandbox = RecordingSandbox(throwing: .refused)
-        runner.sandbox = sandbox
-        let marker = directory.appendingPathComponent("spawned.marker")
-        let token = ToolContext.makeCompletionToken()
-
-        await #expect(throws: RecordingSandboxError.refused) {
-            _ = try await runner.run(
-                .init(command: "/usr/bin/touch \(marker.path)", completionToken: token))
+        let marker = directory.appendingPathComponent(Self.spawnMarkerName)
+        let markerWasThere = Mutex<[Bool]>([])
+        runner.runWillSpawn = { _ in
+            markerWasThere.withLock { $0.append(FileManager.default.fileExists(atPath: marker.path)) }
         }
-
-        #expect(sandbox.calls.count == 1)
-        #expect(!FileManager.default.fileExists(atPath: marker.path))
-    }
-
-    /// A `wrap` that throws must happen inside the same `do`/`catch` that
-    /// finalizes a failed spawn, or the record `startCommand` made stays
-    /// `running` for ever and the run plane reports a command that never
-    /// existed.
-    @Test("a sandbox that throws finalizes the record")
-    func throwingSandboxFinalizesRecord() async throws {
-        var (runner, state, _) = try makeRunner()
-        runner.sandbox = RecordingSandbox(throwing: .refused)
         let token = ToolContext.makeCompletionToken()
 
-        await #expect(throws: RecordingSandboxError.refused) {
-            _ = try await runner.run(.init(command: "echo hi", completionToken: token))
-        }
+        _ = try await runner.run(.init(command: "/usr/bin/touch \(marker.path)", completionToken: token))
 
-        let record = try #require(await state.record(commandID: token))
-        #expect(record.status == .completed)
-        #expect(record.exitCode == Self.absentExitCode)
-        #expect(record.completedAt != nil)
+        #expect(markerWasThere.withLock { $0 } == [false])
     }
 
-    /// The resolution step on its own, with no spawn: `/tmp` is a symbolic link
-    /// to `/private/tmp` on macOS, and a grant for the unresolved form denies
-    /// silently.
-    @Test("the resolved sandbox directories follow symbolic links")
-    func resolvedSandboxDirectoriesResolvesSymlinks() {
-        let token = ToolContext.makeCompletionToken()
-        let directories = ShellRunner.resolvedSandboxDirectories(
-            request: .init(
-                command: "echo hi", completionToken: token, workingDirectory: "/tmp"),
-            defaultWorkingDirectory: nil)
-
-        // The one directory resolver again, and never `resolvedPath` alone: the
-        // trim of the trailing separator belongs to that step, thus a test that
-        // skipped it would state a `$TMPDIR` the runner never hands over.
-        let resolvedTemporary = ShellRunner.resolvedDirectory(path: NSTemporaryDirectory())
-        #expect(directories.work == "/private/tmp")
-        #expect(directories.tmp == resolvedTemporary)
-        #expect(
-            directories.tmp.hasPrefix("/private/"),
-            "the temporary directory stayed unresolved: \(directories.tmp)")
-        #expect(!directories.tmp.hasSuffix("/"))
-    }
-
-    /// The default of the runner goes through the same resolution the named
-    /// case takes: a default that is a symbolic link reaches the sandbox in its
-    /// resolved form, thus the grant matches the vnode the kernel sees.
-    @Test("the resolved sandbox directories take the runner default when the request names none")
-    func resolvedSandboxDirectoriesTakesTheRunnerDefault() {
-        let token = ToolContext.makeCompletionToken()
-        let directories = ShellRunner.resolvedSandboxDirectories(
-            request: .init(command: "echo hi", completionToken: token),
-            defaultWorkingDirectory: "/tmp")
-
-        #expect(directories.work == "/private/tmp")
-    }
+    // MARK: - The working directory a request runs in
 
     /// The one place that spells the fallback, proved with no runner and no
     /// spawn: the request first, then the default of the runner, then the
@@ -1208,137 +1131,5 @@ struct ShellRunnerTests {
         #expect(
             ShellRunner.effectiveWorkingDirectory(for: relative, defaultWorkingDirectory: nil)
                 == FileManager.default.currentDirectoryPath + "/sub/dir")
-    }
-
-    /// With no working directory in the request and no default on the runner,
-    /// the command runs in the current directory of this process, thus that is
-    /// what the sandbox must be told about — put through the same resolution
-    /// the named case takes, thus both branches meet the path precondition of
-    /// `CommandSandbox`.
-    ///
-    /// The test states the resolved form, and the absence of a trailing
-    /// separator, and it does not compare against the raw
-    /// `currentDirectoryPath`. The two spellings are in fact always equal here,
-    /// and that is a property of the input and not of the code under test:
-    /// `currentDirectoryPath` comes from `getcwd(3)`, which gives the physical
-    /// path with each symbolic link already followed. Thus no assertion on this
-    /// branch can tell a resolver that ran from one that was skipped;
-    /// `resolvedSandboxDirectoriesResolvesSymlinks` pins that behavior on an
-    /// input that can carry a symbolic link. What this case pins is the contract
-    /// at the boundary.
-    @Test("the resolved sandbox directories fall back to the current directory")
-    func resolvedSandboxDirectoriesFallsBackToCurrentDirectory() {
-        let token = ToolContext.makeCompletionToken()
-        let directories = ShellRunner.resolvedSandboxDirectories(
-            request: .init(command: "echo hi", completionToken: token),
-            defaultWorkingDirectory: nil)
-
-        let resolvedCurrent = ShellRunner.resolvedDirectory(
-            path: FileManager.default.currentDirectoryPath)
-        #expect(directories.work == resolvedCurrent)
-        #expect(!directories.work.hasSuffix("/"))
-    }
-
-    /// The trailing separator comes off even when the path resolves to nothing.
-    ///
-    /// `realpath(3)` drops a trailing separator of a path that IS there, thus
-    /// every other case of this suite stays green with the trim taken out. A
-    /// path that is not there is the one input that tells the two apart: the
-    /// resolver gives the input back, and a Seatbelt grant must not carry the
-    /// separator.
-    @Test("the resolved directory drops a trailing separator it cannot resolve")
-    func resolvedDirectoryDropsTheTrailingSeparatorOfAnAbsentPath() {
-        let resolved = ShellRunner.resolvedDirectory(path: Self.absentDirectoryWithSeparator)
-
-        #expect(resolved == Self.absentDirectory)
-    }
-}
-
-/// The failure a `RecordingSandbox` raises when it is set to refuse.
-///
-/// A case of its own, thus a test can state that the RUNNER carried the error of
-/// the sandbox up, and not some other failure of the spawn.
-enum RecordingSandboxError: Error, Equatable, Sendable {
-
-    /// The fake was asked to fail closed, and to give back no invocation.
-    case refused
-}
-
-/// A `CommandSandbox` that records each `wrap` call, and that gives back an
-/// invocation the test chose — or throws the failure the test chose.
-///
-/// A reference type, thus the test reads the calls that the copy of the runner
-/// made. A runner is a value, and it is copied.
-final class RecordingSandbox: CommandSandbox {
-
-    /// The inputs of one recorded `wrap` call, in the order `CommandSandbox`
-    /// states them.
-    struct Call: Equatable, Sendable {
-        /// The absolute path of the shell the runner asked to confine.
-        let shellPath: String
-        /// The arguments of that shell.
-        let shellArguments: [String]
-        /// The working directory the runner gave, resolved.
-        let workingDirectory: String
-        /// The temporary directory the runner gave, resolved.
-        let temporaryDirectory: String
-    }
-
-    /// The invocation each successful `wrap` gives back.
-    private let invocation: SandboxedInvocation?
-
-    /// The failure each `wrap` throws, or `nil` to give back an invocation.
-    private let failure: RecordingSandboxError?
-
-    /// Each `wrap` call so far, in call order.
-    private let recorded = Mutex<[Call]>([])
-
-    /// Makes a fake sandbox.
-    ///
-    /// - Parameters:
-    ///   - invocation: The invocation `wrap` gives back, or `nil` to give back
-    ///     the shell invocation it received.
-    ///   - failure: The failure `wrap` throws, or `nil` to give back an
-    ///     invocation.
-    init(
-        returning invocation: SandboxedInvocation? = nil,
-        throwing failure: RecordingSandboxError? = nil
-    ) {
-        self.invocation = invocation
-        self.failure = failure
-    }
-
-    /// Each `wrap` call so far, in call order.
-    var calls: [Call] {
-        recorded.withLock { $0 }
-    }
-
-    /// Records the call, then gives back the chosen invocation or throws the
-    /// chosen failure.
-    ///
-    /// - Parameters:
-    ///   - shellPath: The absolute path of the shell to run.
-    ///   - shellArguments: The arguments of that shell.
-    ///   - workingDirectory: The absolute working directory, resolved.
-    ///   - temporaryDirectory: The absolute temporary directory, resolved.
-    /// - Returns: The chosen invocation, or the shell invocation as it came in.
-    /// - Throws: The `RecordingSandboxError` this fake was made with, if any.
-    func wrap(
-        shellPath: String,
-        shellArguments: [String],
-        workingDirectory: String,
-        temporaryDirectory: String
-    ) throws -> SandboxedInvocation {
-        recorded.withLock {
-            $0.append(
-                Call(
-                    shellPath: shellPath, shellArguments: shellArguments,
-                    workingDirectory: workingDirectory, temporaryDirectory: temporaryDirectory))
-        }
-        if let failure {
-            throw failure
-        }
-        return invocation ?? SandboxedInvocation(
-            executable: shellPath, arguments: shellArguments)
     }
 }

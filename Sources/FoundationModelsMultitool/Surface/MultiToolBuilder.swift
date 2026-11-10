@@ -11,7 +11,7 @@ import FoundationModelsExtras
 /// `build()`. That is why the fluent chain needs `try` only on its final
 /// call.
 ///
-/// `withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`
+/// `withShell(storeDirectory:outputChunkStream:defaultWorkingDirectory:)`
 /// and `withMCP(servers:)` are the two registration methods that throw, and
 /// neither throws THIS error: the first prepares the store of the shell on
 /// disk, and the second waits for each server to be ready, which is resource

@@ -23,14 +23,11 @@
 // `LanguageModelSession` there is no context, so the verb mints the string
 // itself: the store records the run under it, and no run-plane entry exists.
 //
-// **The seatbelt sandbox is the only gate on a command** (decision of
-// 2026-08-24, eventplan.md § "Consolidation of the siblings"). This verb asks
-// no permission question, it prompts nobody, and it keeps no remembered answer.
-// What it does ask the sandbox is whether it can confine this command at all,
-// and it asks BEFORE the run — see `CommandSandbox.preflight`, whose own doc
-// comment names this verb as its caller: a confinement failure raised inside
-// the runner is erased to a string on the way out, and a failure the model
-// cannot read stops the answer. The model cannot repair it inside the answer.
+// **This verb has no gate on a command.** It asks no permission question, it
+// prompts nobody, and it keeps no remembered answer. The command runs as
+// `/bin/sh -c` with the rights of the user of this process, with no
+// confinement. A host that must not give a shell does not register this
+// capability: in the `sandboxed` tool mode the builder refuses it.
 //
 // **The background is a declaration of the verb, and never a choice of the
 // call.** A command can run for hours, so the verb declares the background
@@ -62,9 +59,9 @@
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
 // thrown: a blank command, a command over the length cap, an environment that
-// is not a JSON object of strings, an environment value the verb refuses, and a
-// confinement the sandbox refuses are each a mistake the model corrects inside
-// the same answer. A thrown error would end the answer instead.
+// is not a JSON object of strings, and an environment value the verb refuses
+// are each a mistake the model corrects inside the same answer. A thrown error
+// would end the answer instead.
 //
 // **The cap on the length of a command and the cap on the length of an
 // environment value stand HERE.** `ShellRunner.run(_:)` states that they belong
@@ -172,8 +169,7 @@ extension Execute: BackgroundTool {
     ///
     /// The runner is built over this verb's own store rather than reusing the
     /// configured one, because the canceler reads the store and touches nothing
-    /// else of the runner: no sandbox, no registry and no output stream reach
-    /// it.
+    /// else of the runner: no registry and no output stream reach it.
     ///
     /// - Parameter completionToken: The completion token of the run to stop.
     /// - Returns: The canceler of that run.
@@ -330,10 +326,6 @@ extension Execute {
             timeout: arguments.timeout.map { .seconds($0) }
         )
 
-        if let refusal = await confinementRefusal(for: request) {
-            return Self.corrected(refusal)
-        }
-
         return try await report(of: request, in: context, note: note)
     }
 
@@ -347,43 +339,6 @@ extension Execute {
     static func rootItselfNote(_ requested: String) -> String {
         "workingDirectory \"\(requested)\" is not a folder in the root; it is the name of the root itself, "
             + "so the command ran in the root."
-    }
-
-    /// Why the sandbox cannot confine this request, or `nil` when it can — and
-    /// `nil` as well when this verb carries no sandbox at all.
-    ///
-    /// This stands before the run for the reason `CommandSandbox.preflight`
-    /// states: a confinement failure raised inside `ShellRunner.run` travels
-    /// out through the body of the run, and each layer above it erases the
-    /// error to a string, so by the time a `catch` here could read it the
-    /// diagnosis is gone. Asking first is what keeps it typed long enough to
-    /// become text the model acts on.
-    ///
-    /// Only `SeatbeltSandboxError` is rendered. A `preflight` that throws
-    /// anything else is choosing its own error type, and that value travels on
-    /// and stops the answer, exactly as a throw at spawn time does. To fold every
-    /// error into corrective text here would turn a cancel and a programmer
-    /// mistake into advice to try something else, which hides a defect behind a
-    /// suggestion.
-    ///
-    /// - Parameter request: The command whose confinement to examine.
-    /// - Returns: The correction, or `nil` to run the command.
-    private func confinementRefusal(for request: ShellRunner.Request) async -> String? {
-        guard let sandbox = runner.sandbox else { return nil }
-        // The runner's own resolution, reused rather than spelled again, thus
-        // the directories examined here are the ones it confines — the default
-        // of the runner included, for a request that names no directory.
-        let directories = ShellRunner.resolvedSandboxDirectories(
-            request: request, defaultWorkingDirectory: runner.defaultWorkingDirectory)
-        do {
-            try await sandbox.preflight(
-                workingDirectory: directories.work, temporaryDirectory: directories.tmp)
-            return nil
-        } catch let error as SeatbeltSandboxError {
-            return Self.correction(for: error)
-        } catch {
-            return nil
-        }
     }
 
     /// Runs `request` to its end, reporting output as it arrives, and answers
@@ -927,41 +882,6 @@ extension Execute {
         /// Why the text is not a JSON object of string values.
         case invalid(String)
     }
-
-    /// What a sandbox that cannot confine this command says to the model.
-    ///
-    /// Total over `SeatbeltSandboxError` and answering a non-optional `String`,
-    /// because every case of that error means the command must not run: there
-    /// is no "proceed" answer to state.
-    ///
-    /// Each message names the diagnosis and then says the command was not run.
-    /// The second half is not decoration. The model is deciding what to do
-    /// next, and the difference between "your command failed" and "your command
-    /// never happened" is the difference between it running the command again
-    /// and it working around a side effect that does not exist.
-    ///
-    /// A bare exit code is never the whole message. `sandbox-exec` exits 65 for
-    /// a profile it refuses, and a command may exit 65 for its own reasons, so
-    /// the number alone would be a riddle. The stderr of the wrapper travels
-    /// with it, because that one line separates a profile that is malformed
-    /// from a grant that is missing, and whoever fixes the configuration of the
-    /// host needs it.
-    ///
-    /// - Parameter error: The confinement failure the sandbox diagnosed.
-    /// - Returns: The correction.
-    static func correction(for error: SeatbeltSandboxError) -> String {
-        switch error {
-        case .sandboxExecMissing:
-            return "The sandbox is not available: /usr/bin/sandbox-exec is not there. The command "
-                + "was NOT run."
-        case .profileRejected(let exitCode, let stderr):
-            return "The sandbox refused its profile (exit \(exitCode)): \(stderr). The command was "
-                + "NOT run."
-        case .workingDirectoryOutsideRoots(let path, let roots):
-            return "The sandbox refused the working directory '\(path)': it stands outside the "
-                + "configured roots \(roots). The command was NOT run."
-        }
-    }
 }
 
 /// Runs one shell command in the background, and reports the tail of its
@@ -1000,22 +920,20 @@ struct Execute: Tool {
         workingDirectory to run it somewhere else, and environment as a JSON object of string \
         values to add variables. A command that is empty or longer than 262144 UTF-8 bytes, an \
         environment that is not a JSON object of strings, an environment value longer than 1024 \
-        UTF-8 bytes or holding a null byte, a carriage return or a line feed, and a command the \
-        sandbox cannot confine each come back as a correction rather than as an error — read it, \
-        correct the call, and ask again.
+        UTF-8 bytes or holding a null byte, a carriage return or a line feed each come back as a \
+        correction rather than as an error — read it, correct the call, and ask again.
         """
 
-    /// The runner this verb spawns each command through, which holds the store,
-    /// the process-group registry and the confinement of the capability.
+    /// The runner this verb spawns each command through, which holds the store
+    /// and the process-group registry of the capability.
     let runner: ShellRunner
 
     /// Makes the verb over one runner.
     ///
     /// The runner is the whole of what this verb is configured with, and that
-    /// is why it takes one rather than a bare store: the confinement, the
-    /// process-group registry and the live view of the output all stand on it.
-    /// A host gives the capability its sandbox this way, and a test gives it a
-    /// runner whose process registry is private the same way.
+    /// is why it takes one rather than a bare store: the process-group registry
+    /// and the live view of the output both stand on it. A test gives it a
+    /// runner whose process registry is private this way.
     ///
     /// - Parameter runner: The runner each command of this verb spawns through.
     init(runner: ShellRunner) {

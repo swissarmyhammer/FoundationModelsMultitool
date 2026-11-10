@@ -9,56 +9,46 @@ import Synchronization
 // `ToolContext.current` is the ONLY route to a session's run plane. Router
 // publishes no `backgroundRuns`, no `wait(completionToken:)` and no
 // `cancel(completionToken:)` on `RoutedSession`; `RoutedSessionActor` and its
-// `runPlane` property are internal to that package. So a
-// scenario that has to read what a live session's shell run is doing needs a
-// tool to hand it a context, and there is exactly one place a tool does that.
+// `runPlane` property are internal to that package. So a scenario that has to
+// read what a live session's shell run is doing needs the context of that run.
 //
-// `Execute` asks its sandbox to `preflight` from INSIDE its own call, before it
-// spawns anything (`CommandSandbox.preflight`, whose own documentation names
-// that verb as its caller). `ToolContext.current` there is the SHELL run's own
-// context — its completion token, its session and its run plane. The root
-// package's `RegisteredJournalOpTests` already reads the journal op through this
-// same seam, with the same shape of probe.
+// `ShellRunner.runWillSpawn` is the place a test reads it. The runner calls
+// that hook in the task of the run, after `ShellState.startCommand` recorded
+// the run and before the spawn, thus `ToolContext.current` there is the SHELL
+// run's own context — its completion token, its session and its run plane —
+// and the request carries the command line that the run got. The root
+// package's `RegisteredJournalOpTests` reads the journal op through the same
+// hook.
 //
-// The probe keeps the context in `wrap`, and not in `preflight`. `wrap` runs in
-// the same call and the same task, after `ShellState.startCommand` recorded the
-// run and before the spawn, and it is the one step that sees the command line.
-// Thus the event of a run carries the command that the run got, and a harness
-// can examine the command before it waits on the output of the run.
-//
-// The seam is the shipped configuration and not a back door:
-// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)` takes
-// the sandbox a host configures, so a scenario that passes this probe is running
-// the surface a host runs, with the confinement a host chose — here, none.
+// The capability is the type a host registers: `ShellCapability(runner:)` is
+// the initializer that `withShell(...)` reaches, and the runner differs from
+// the runner of `withShell` only in the hook. Thus a scenario that uses this
+// observer runs the surface a host runs.
 
-/// A `CommandSandbox` that confines nothing and keeps the ambient
-/// ``FoundationModelsRouter/ToolContext`` of each `tools.shell.execute` run.
+/// Keeps the ambient ``FoundationModelsRouter/ToolContext`` and the command of
+/// each `tools.shell.execute` run, from the hook a run calls before its spawn.
 ///
-/// `wrap` gives the shell invocation back exactly as it came in, so a command
-/// starts as it starts with no sandbox at all and the probe changes only what is
-/// observed. That matters twice over here: a gated run must not depend on
-/// `/usr/bin/sandbox-exec` being present, and a Seatbelt profile refusing the
-/// scenario's command would end the answer instead of the run this suite grades.
+/// The hook changes nothing of the run, so a command starts as it starts with
+/// no observer.
 ///
-/// A locked reference type rather than an actor, because `wrap` is a
-/// SYNCHRONOUS requirement of `CommandSandbox`, which an actor answers only from
-/// outside its own isolation. It is also the shape a runner needs: a
-/// `ShellRunner` is a value and is copied, so a value probe would record into a
-/// copy the caller never reads.
-final class ShellRunContextProbe: CommandSandbox {
+/// A locked reference type rather than an actor, because the hook is
+/// SYNCHRONOUS. It is also the shape a runner needs: a `ShellRunner` is a
+/// value and is copied, so a value observer would record into a copy the
+/// caller never reads.
+final class ShellRunContextObserver: Sendable {
 
-    /// One run that consulted this probe.
+    /// One run that reached its spawn.
     private struct ObservedRun {
         /// The ambient context of the run.
         let context: ToolContext
 
-        /// The command line of the run: the last argument that the shell got.
-        let command: String?
+        /// The command line of the run: the command that went to `sh -c`.
+        let command: String
     }
 
-    /// Everything that `wrap` and the waiters change.
+    /// Everything that the hook and the waiters change.
     private struct State {
-        /// Each run that consulted this probe, in call order.
+        /// Each run that reached its spawn, in call order.
         var runs: [ObservedRun] = []
 
         /// Each wait of ``waitForFirstContext()`` that did not end, by id.
@@ -84,12 +74,12 @@ final class ShellRunContextProbe: CommandSandbox {
         case waiting
     }
 
-    /// The state of the probe.
+    /// The state of the observer.
     private let state = Mutex(State())
 
-    /// The ambient context of each run that consulted this probe, in call order.
+    /// The ambient context of each run that reached its spawn, in call order.
     ///
-    /// A run that consulted the probe under no ambient context at all is not
+    /// A run that reached its spawn under no ambient context at all is not
     /// recorded: it has no completion token, so it names nothing on the run
     /// plane and there is nothing for a scenario to read it by.
     var observedContexts: [ToolContext] {
@@ -97,10 +87,10 @@ final class ShellRunContextProbe: CommandSandbox {
     }
 
     /// The command line that the run `completionToken` got, or `nil` when no
-    /// such run consulted this probe.
+    /// such run reached its spawn.
     ///
     /// The command is known when ``waitForFirstContext()`` returns the context
-    /// of the run: the probe keeps both in the same step.
+    /// of the run: the observer keeps both in the same step.
     ///
     /// - Parameter completionToken: The completion token of the run.
     /// - Returns: The command line of the run.
@@ -110,7 +100,7 @@ final class ShellRunContextProbe: CommandSandbox {
         }
     }
 
-    /// Waits until a run consulted this probe, and answers the context of the
+    /// Waits until a run reached its spawn, and answers the context of the
     /// first such run. Returns at once when one already did.
     ///
     /// This is the event that the model started a `tools.shell.execute` run,
@@ -118,7 +108,7 @@ final class ShellRunContextProbe: CommandSandbox {
     ///
     /// - Returns: The ambient context of the first run.
     /// - Throws: `CancellationError` when the task is cancelled before a run
-    ///   consulted this probe.
+    ///   reached its spawn.
     func waitForFirstContext() async throws -> ToolContext {
         let id = state.withLock { current -> Int in
             defer { current.nextID += 1 }
@@ -158,36 +148,36 @@ final class ShellRunContextProbe: CommandSandbox {
         }
     }
 
-    /// Keeps the ambient context and the command line of this run, ends each
-    /// wait of ``waitForFirstContext()``, and gives back `shellPath` and
-    /// `shellArguments` unchanged.
+    /// Makes the shell capability whose runner gives each run to this
+    /// observer before it spawns the child.
     ///
-    /// The probe takes the default `preflight` of `CommandSandbox`, which does
-    /// nothing: it proves nothing about the confinement.
+    /// - Parameter storeDirectory: The directory the store of the capability
+    ///   prepares in.
+    /// - Returns: The capability.
+    /// - Throws: What `ShellStore.init(storeDirectory:)` throws.
+    func makeShellCapability(storeDirectory: URL) throws -> ShellCapability {
+        var runner = ShellRunner(state: try ShellStore(storeDirectory: storeDirectory).state)
+        runner.runWillSpawn = { [self] request in observe(request) }
+        return ShellCapability(runner: runner)
+    }
+
+    /// Keeps the ambient context and the command line of the calling run, and
+    /// ends each wait of ``waitForFirstContext()``.
     ///
-    /// - Parameters:
-    ///   - shellPath: The absolute path of the shell to run.
-    ///   - shellArguments: The arguments of that shell. The last one is the
-    ///     command line (`sh -c <command>`).
-    ///   - workingDirectory: Not read — no confinement is applied.
-    ///   - temporaryDirectory: Not read — no confinement is applied.
-    /// - Returns: The shell invocation as it came in.
-    func wrap(
-        shellPath: String,
-        shellArguments: [String],
-        workingDirectory: String,
-        temporaryDirectory: String
-    ) -> SandboxedInvocation {
+    /// A run under no ambient context is not kept: it has no completion token
+    /// on a run plane, so there is nothing for a scenario to read it by.
+    ///
+    /// - Parameter request: The request of the run.
+    private func observe(_ request: ShellRunner.Request) {
         if let context = ToolContext.current {
-            record(ObservedRun(context: context, command: shellArguments.last))
+            record(ObservedRun(context: context, command: request.command))
         }
-        return SandboxedInvocation(executable: shellPath, arguments: shellArguments)
     }
 
     /// Keeps `run`, and ends each wait of ``waitForFirstContext()`` with the
     /// context of the first run.
     ///
-    /// - Parameter run: The run that consulted this probe.
+    /// - Parameter run: The run that reached its spawn.
     private func record(_ run: ObservedRun) {
         let (first, waiting) = state.withLock { current -> (ToolContext, [CheckedContinuation<ToolContext, any Error>]) in
             current.runs.append(run)

@@ -165,20 +165,17 @@ struct ShellCapabilityTests {
         #expect(getLines.state === grepHistory.state)
     }
 
-    /// The confinement and the live view of the output reach the run plane
-    /// through the runner, which is the whole of what `Execute` is configured
-    /// with. A host that gives the capability a sandbox gives it to the spawn.
-    @Test("the sandbox and the live view of the output reach the runner of the run-plane verb")
-    func theSandboxAndTheLiveViewReachTheRunner() throws {
+    /// The live view of the output reaches the run plane through the runner,
+    /// which is the whole of what `Execute` is configured with.
+    @Test("the live view of the output reaches the runner of the run-plane verb")
+    func theLiveViewReachesTheRunner() throws {
         let stream = ShellOutputChunkStream()
 
         let capability = try ShellCapability(
             storeDirectory: makeStoreDirectory(),
-            sandbox: UnconfinedSandbox(),
             outputChunkStream: stream)
 
         let execute = try Self.verb(Execute.self, in: capability)
-        #expect(execute.runner.sandbox is UnconfinedSandbox)
         #expect(execute.runner.outputChunkStream === stream)
     }
 

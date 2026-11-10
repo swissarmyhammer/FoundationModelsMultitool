@@ -1,11 +1,10 @@
 // `PathContainment` — the one component-wise path-containment check of this
 // package.
 //
-// Three call sites answer the same question: is a path the root itself, or a
+// Two call sites answer the same question: is a path the root itself, or a
 // descendant of it? `PathGuard.ensureWorkspaceBoundary` bounds a file path to
-// the workspace roots, `SeatbeltSandbox` bounds a working directory to its
-// writable roots, and the test target's `TestSupport` bounds a candidate to a
-// test root. Each one formerly carried its own private copy of the
+// the workspace roots, and the test target's `TestSupport` bounds a candidate
+// to a test root. Each one formerly carried its own private copy of the
 // comparison. This file holds the single implementation, thus the guards
 // cannot drift apart.
 //
@@ -21,8 +20,7 @@
 ///
 /// This check does not resolve `.` or `..`, does not touch the file system,
 /// and does not require an absolute path. A caller that needs one of those
-/// guarantees establishes it first: `PathGuard` canonicalizes both sides,
-/// `SeatbeltSandbox` refuses a relative or traversal path outright, and
+/// guarantees establishes it first: `PathGuard` canonicalizes both sides, and
 /// `TestSupport` standardizes both URLs.
 enum PathContainment {
     /// The non-empty path components of `path`.

@@ -143,7 +143,8 @@ private let runCodeToolName = "runCode"
 /// Runs the shell background scenario end to end against a freshly resolved live
 /// profile, on the shipped configuration.
 ///
-/// The surface is `MultiTool.Builder().withShell(...)` vended through
+/// The surface is the shell capability `withShell(...)` registers, with a run
+/// observer on its runner (see ``ShellRunContextObserver``), vended through
 /// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)`,
 /// with the seams of `LiveRouterFixture.discoverySeams`, and mounted on a
 /// `RoutedSession` the resolved `.standard` slot vends — the same wiring a
@@ -167,9 +168,9 @@ private let runCodeToolName = "runCode"
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runShellBackgroundScenario(name: String) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
-        let probe = ShellRunContextProbe()
+        let observer = ShellRunContextObserver()
         let registry = try MultiTool.Builder()
-            .withShell(storeDirectory: LiveRouterFixture.makeTempDir(), sandbox: probe)
+            .withCapability(observer.makeShellCapability(storeDirectory: LiveRouterFixture.makeTempDir()))
             .buildRegistry()
         let declaredJournalOp = registry.surface.entries.first { $0.path == shellExecutePath }?.journalOp
         // The command of the model waits on `modelGate`, and the swept run
@@ -197,7 +198,7 @@ func runShellBackgroundScenario(name: String) async throws {
         // different question from the one this scenario asks.
         let watcher = Task {
             await observeShellRunPlane(
-                probe: probe, registry: registry, declaredJournalOp: declaredJournalOp,
+                observer: observer, registry: registry, declaredJournalOp: declaredJournalOp,
                 expectedCommand: command, answerEnded: answerEnded, sweptGate: sweptGate)
         }
         let start = Date()
@@ -222,7 +223,7 @@ func runShellBackgroundScenario(name: String) async throws {
         // `runCode` call of the answer waits for the snippet in band, and a
         // cancel then would end that call of the answer and not a background
         // run.
-        await cancelSnippetRun(observed: &plane, probe: probe)
+        await cancelSnippetRun(observed: &plane, observer: observer)
 
         // The journal half of task ^1hq8xny's split: `RoutedSessionActor.close()`
         // journals exactly what `RunPlane.sweep()` answers with, through
@@ -308,7 +309,7 @@ struct ShellRunPlaneObservation: Sendable {
     /// The completion token of the model's own `tools.shell.execute` run, or
     /// `nil` when no execute run started.
     ///
-    /// It is read off the run's own ambient context, which the probe sandbox
+    /// It is read off the run's own ambient context, which the run observer
     /// keeps. The token is also the `commandID` under which the store keeps the
     /// output of the run. The run is an inner run, so it never stands on the
     /// run plane (card `^6nnykct`).
@@ -319,7 +320,7 @@ struct ShellRunPlaneObservation: Sendable {
     let scenarioCommand: String
 
     /// The command line that the model typed for its `tools.shell.execute`
-    /// run, as the probe sandbox kept it, or `nil` when no execute run
+    /// run, as the run observer kept it, or `nil` when no execute run
     /// started.
     var typedCommand: String?
 
@@ -355,8 +356,8 @@ struct ShellRunPlaneObservation: Sendable {
 /// No step waits on time. Each step waits on an event, or reads once at a
 /// point where the product already made the reading true:
 ///
-/// - The context of the model's shell run comes with the event of the probe
-///   (``ShellRunContextProbe/waitForFirstContext()``). A model that never
+/// - The context of the model's shell run comes with the event of the
+///   observer (``ShellRunContextObserver/waitForFirstContext()``). A model that never
 ///   starts the run gives no such event, thus the wait also ends when the
 ///   answer ended (`answerEnded`), and the step leaves its reading unset.
 /// - The `runCode` run stands on the run plane before its body runs:
@@ -377,8 +378,9 @@ struct ShellRunPlaneObservation: Sendable {
 /// which one stopped.
 ///
 /// - Parameters:
-///   - probe: the sandbox the shell capability was built with, which hands over
-///     the ambient context and the command of each `tools.shell.execute` run.
+///   - observer: the observer the shell capability was built with, which hands
+///     over the ambient context and the command of each `tools.shell.execute`
+///     run.
 ///   - registry: the built registry, whose `tools` hold the live
 ///     `tools.shell.getLines` verb over the same store.
 ///   - declaredJournalOp: the op the registration site declared for
@@ -388,15 +390,15 @@ struct ShellRunPlaneObservation: Sendable {
 ///   - sweptGate: the FIFO the command of the swept run waits on.
 /// - Returns: what the harness managed to read.
 private func observeShellRunPlane(
-    probe: ShellRunContextProbe, registry: MultiTool.Registry, declaredJournalOp: String?,
+    observer: ShellRunContextObserver, registry: MultiTool.Registry, declaredJournalOp: String?,
     expectedCommand: String, answerEnded: ScenarioGate, sweptGate: ShellCommandGate
 ) async -> ShellRunPlaneObservation {
     var observation = ShellRunPlaneObservation(scenarioCommand: expectedCommand)
 
-    guard let context = await firstShellRunContext(of: probe, orAfter: answerEnded) else { return observation }
+    guard let context = await firstShellRunContext(of: observer, orAfter: answerEnded) else { return observation }
     let token = context.completionToken
     observation.executeRunToken = token
-    observation.typedCommand = probe.command(ofRun: token)
+    observation.typedCommand = observer.command(ofRun: token)
 
     // The run plane `status()` reports. `MultiTool`'s `status()` global is
     // `ToolContext.backgroundRuns()` rendered as JS objects — see
@@ -413,7 +415,7 @@ private func observeShellRunPlane(
         observation.childProcessGroup = processGroup(in: observation.liveLines)
     }
 
-    // Started BEFORE the cancel of `cancelSnippetRun(observed:probe:)`, so the
+    // Started BEFORE the cancel of `cancelSnippetRun(observed:observer:)`, so the
     // session certainly holds a background shell run when `close()` sweeps:
     // the run the model started is the one this scenario cancels, and a sweep
     // needs one of its own to answer for.
@@ -425,7 +427,7 @@ private func observeShellRunPlane(
 
 /// Whether the model typed the scenario command.
 ///
-/// The probe keeps the command line as the shell got it, thus whitespace at
+/// The observer keeps the command line as the shell got it, thus whitespace at
 /// the two ends is not part of the comparison.
 ///
 /// - Parameters:
@@ -440,23 +442,23 @@ private func isScenarioCommand(_ typed: String?, expected: String) -> Bool {
 /// The ambient context of the model's first shell run, or `nil` when the answer
 /// ended with no shell run.
 ///
-/// Two events race, and the first one decides: the probe sees the first shell
-/// run (``ShellRunContextProbe/waitForFirstContext()``), or the runner opens
-/// `answerEnded`. After the answer ended, the probe is read one time, thus a run
-/// that came at the same time as the end of the answer is not lost.
+/// Two events race, and the first one decides: the observer sees the first
+/// shell run (``ShellRunContextObserver/waitForFirstContext()``), or the runner
+/// opens `answerEnded`. After the answer ended, the observer is read one time,
+/// thus a run that came at the same time as the end of the answer is not lost.
 ///
 /// - Parameters:
-///   - probe: the sandbox the shell capability was built with.
+///   - observer: the observer the shell capability was built with.
 ///   - answerEnded: the gate the runner opens when the answer ended.
 /// - Returns: the context of the first shell run, or `nil`.
 private func firstShellRunContext(
-    of probe: ShellRunContextProbe, orAfter answerEnded: ScenarioGate
+    of observer: ShellRunContextObserver, orAfter answerEnded: ScenarioGate
 ) async -> ToolContext? {
     await withTaskGroup(of: ToolContext?.self) { group in
-        group.addTask { try? await probe.waitForFirstContext() }
+        group.addTask { try? await observer.waitForFirstContext() }
         group.addTask {
             guard (try? await answerEnded.wait()) != nil else { return nil }
-            return probe.observedContexts.first
+            return observer.observedContexts.first
         }
         let first = await group.next() ?? nil
         group.cancelAll()
@@ -473,12 +475,12 @@ private func firstShellRunContext(
 /// - Parameters:
 ///   - observation: what the harness read off the run plane; the outcome of the
 ///     cancel and the state of the process group go into it.
-///   - probe: the sandbox the shell capability was built with, whose first
-///     context carries the run plane of the session.
+///   - observer: the observer the shell capability was built with, whose
+///     first context carries the run plane of the session.
 private func cancelSnippetRun(
-    observed observation: inout ShellRunPlaneObservation, probe: ShellRunContextProbe
+    observed observation: inout ShellRunPlaneObservation, observer: ShellRunContextObserver
 ) async {
-    guard let context = probe.observedContexts.first, let token = observation.backgroundRun?.completionToken else {
+    guard let context = observer.observedContexts.first, let token = observation.backgroundRun?.completionToken else {
         return
     }
     observation.cancelOutcome = cancelReport(of: await context.cancel(completionToken: token))
@@ -801,7 +803,7 @@ func shellBackgroundChecks(for evidence: ShellBackgroundEvidence) -> [ScenarioCh
             held: plane.executeRunToken?.isEmpty == false,
             failureMessage:
                 "expected the model to start a tools.shell.execute run under a completion token "
-                + "of its own, but no execute run reached the shell sandbox"
+                + "of its own, but no execute run reached its spawn"
         ),
         ScenarioCheck(
             name: shellBackgroundReportCheckName,

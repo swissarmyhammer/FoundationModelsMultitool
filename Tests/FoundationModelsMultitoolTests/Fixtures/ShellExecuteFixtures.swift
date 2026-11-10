@@ -8,8 +8,7 @@ import Testing
 //
 // Two suites drive `tools.shell.execute` through a whole `ShellCapability`
 // rather than through a bare `Execute`: the suite of the verb itself, and the
-// seatbelt suite that proves a plain command runs where the capability says it
-// runs. Both need the same two steps — take the configured verb out of the
+// suite of a store that several sessions share. Both need the same two steps — take the configured verb out of the
 // capability with a registry of its own, and read the JSON report back — so
 // both steps stand here, and neither suite holds a copy of them.
 
@@ -23,8 +22,8 @@ enum ShellExecuteVerb {
     /// The capability takes `ProcessRegistry.global`, and an ordinary test must
     /// not touch the process-wide instance — see the doc comment of that
     /// property. Nothing else of the configured runner is touched, thus the
-    /// store, the live view, the confinement and the default working directory
-    /// stay the ones the capability built.
+    /// store, the live view and the default working directory stay the ones
+    /// the capability built.
     ///
     /// - Parameter capability: The capability a test configured.
     /// - Returns: The verb of that capability.

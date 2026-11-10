@@ -20,11 +20,12 @@
 // boundary." A host that never calls `MultiTool.Builder.withShell(...)` renders
 // no `tools.shell` namespace at all.
 //
-// **There is no permission layer, and no policy parameter.** By the decision of
-// 2026-08-24 the seatbelt sandbox is the only gate on a command: the verb asks
-// no permission question, it prompts nobody, and it keeps no remembered answer
-// — see the header of `Execute.swift`. What a host configures here is the
-// confinement itself, through `sandbox`.
+// **There is no permission layer, no policy parameter and no confinement.** The
+// verb asks no permission question, it prompts nobody, and it keeps no
+// remembered answer — see the header of `Execute.swift`. Each command runs as
+// `/bin/sh -c` with the rights of the user of this process. A host that must
+// not give a shell registers none: in the `sandboxed` tool mode the builder
+// refuses this capability.
 //
 // **`listProcesses` and `killProcess` are deliberately absent.** eventplan.md §
 // "Consolidation of the siblings" removes them: the shared background engine of
@@ -43,9 +44,9 @@ import FoundationModels
 ///     .build()
 /// ```
 ///
-/// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`
+/// `MultiTool.Builder.withShell(storeDirectory:outputChunkStream:defaultWorkingDirectory:)`
 /// is the short form of `withCapability(ShellCapability(...))`, and it takes the
-/// same four arguments. Register this type directly where a host builds the
+/// same three arguments. Register this type directly where a host builds the
 /// capability once and hands it on.
 ///
 /// The three verbs render in the order they are listed:
@@ -71,8 +72,8 @@ public struct ShellCapability: Capability {
     /// array and the noun above are the whole of what the surface needs.
     public let tools: [any Tool]
 
-    /// Makes the shell capability over one store, one confinement, one live view
-    /// of the output, and one default working directory.
+    /// Makes the shell capability over one store, one live view of the output,
+    /// and one default working directory.
     ///
     /// **This initializer throws, and `MultiTool.Builder.withShell(...)` throws
     /// with it.** That is resource acquisition rather than validation: the
@@ -88,10 +89,6 @@ public struct ShellCapability: Capability {
     ///     `ShellDotfolder.currentDirectory()`. A store that cannot prepare
     ///     there falls back to a temporary directory rather than throwing, so
     ///     this initializer throws only when neither prepares.
-    ///   - sandbox: The confinement each command spawns under. The default,
-    ///     `nil`, starts the shell directly, with no confinement and with no
-    ///     step of confinement on the path at all — see `ShellRunner.sandbox`,
-    ///     which states why that is not `UnconfinedSandbox`.
     ///   - outputChunkStream: The live view of the output a subscribed host
     ///     reads. The default, `nil`, tees nothing.
     ///   - defaultWorkingDirectory: The directory a `tools.shell.execute` call
@@ -104,20 +101,17 @@ public struct ShellCapability: Capability {
     ///   the temporary fallback prepares.
     public init(
         storeDirectory: URL? = nil,
-        sandbox: (any CommandSandbox)? = nil,
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) throws {
         self.init(
             store: try ShellStore(storeDirectory: storeDirectory),
-            sandbox: sandbox,
             outputChunkStream: outputChunkStream,
             defaultWorkingDirectory: defaultWorkingDirectory)
     }
 
     /// Makes the shell capability over a store that other capabilities may
-    /// share, with its own confinement, live view and default working
-    /// directory.
+    /// share, with its own live view and default working directory.
     ///
     /// A host that runs several sessions in one working directory makes one
     /// `ShellStore` and hands it to the capability of each session. Then each
@@ -134,8 +128,6 @@ public struct ShellCapability: Capability {
     ///     thus each session on a shared store can tell whose command it
     ///     reads. A closure, because a host builds its tools before it knows
     ///     its session, and can replace the session under the same tools.
-    ///   - sandbox: The confinement each command spawns under — see
-    ///     `init(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`.
     ///   - outputChunkStream: The live view of the output a subscribed host
     ///     reads. The default, `nil`, tees nothing.
     ///   - defaultWorkingDirectory: The directory a `tools.shell.execute` call
@@ -144,26 +136,31 @@ public struct ShellCapability: Capability {
     public init(
         store: ShellStore,
         sessionID: @escaping @Sendable () -> String? = { nil },
-        sandbox: (any CommandSandbox)? = nil,
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) {
-        let state = store.state
-
-        // The runner carries the store, the confinement, the live view and the
-        // default directory to the run plane. `Execute` is configured with a
-        // runner and with nothing else, which is why the two content-plane
-        // verbs take the store straight from here rather than reaching through
-        // one.
-        var runner = ShellRunner(
-            state: state, outputChunkStream: outputChunkStream, sandbox: sandbox)
+        // The runner carries the store, the live view and the default
+        // directory to the run plane.
+        var runner = ShellRunner(state: store.state, outputChunkStream: outputChunkStream)
         runner.defaultWorkingDirectory = defaultWorkingDirectory?.path
         runner.sessionID = sessionID
+        self.init(runner: runner)
+    }
 
+    /// Makes the shell capability over one configured runner.
+    ///
+    /// `Execute` is configured with the runner and with nothing else. The two
+    /// content-plane verbs take the store of the runner, thus each verb of one
+    /// capability reads the same store. A test gives a runner with a hook of
+    /// its own here, and the capability stays the type a host registers.
+    ///
+    /// - Parameter runner: The runner each command of `tools.shell.execute`
+    ///   spawns through.
+    init(runner: ShellRunner) {
         self.tools = [
             Execute(runner: runner),
-            GetLines(state: state),
-            GrepHistory(state: state),
+            GetLines(state: runner.state),
+            GrepHistory(state: runner.state),
         ]
     }
 }

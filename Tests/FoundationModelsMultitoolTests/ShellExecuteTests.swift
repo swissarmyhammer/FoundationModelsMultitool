@@ -122,9 +122,8 @@ struct ShellExecuteTests {
     /// The command that prints the directory it runs in.
     ///
     /// `/bin/pwd` prints the physical directory (`/var` becomes `/private/var`
-    /// on macOS), thus a test compares the result against
-    /// `ShellRunner.resolvedDirectory(path:)` of the directory it expects — the
-    /// one directory resolver, and never a second spelling of that step.
+    /// on macOS), thus a test compares the result against `resolvedPath(_:)`
+    /// of the directory it expects — the one resolver of this module.
     private static let printWorkingDirectoryCommand = "/bin/pwd"
 
     /// The words the rendered surface uses for the directory a call that omits
@@ -840,9 +839,9 @@ struct ShellExecuteTests {
         let verb = makeVerb(over: try makeState())
         let long = "python -m pytest tests/forms_tests/tests/test_forms.py -x -q --maxfail=1 --tb=short"
 
-        #expect(verb.callDescription(for: try ExecuteArguments(command: "ls -la\necho done").generatedContent)
+        #expect(verb.callDescription(for: ExecuteArguments(command: "ls -la\necho done").generatedContent)
             == "execute ls -la")
-        #expect(verb.callDescription(for: try ExecuteArguments(command: long).generatedContent)
+        #expect(verb.callDescription(for: ExecuteArguments(command: long).generatedContent)
             == "execute " + long.prefix(CallDescription.maximumTextLength) + "…")
     }
 
@@ -1141,7 +1140,7 @@ struct ShellExecuteTests {
         let lines = try #require(report["output"] as? [String])
         // Each line of the report carries its line number in front of the
         // text, thus the test reads the end of the line.
-        let expected = ShellRunner.resolvedDirectory(path: root.path)
+        let expected = resolvedPath(root.path)
         #expect(
             lines.contains { $0.hasSuffix(expected) }, "pwd printed \(lines); expected \(expected)")
     }
