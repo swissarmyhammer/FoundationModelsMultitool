@@ -1,15 +1,17 @@
-// `TransportContracts` — the two contracts a transport can state to the server
-// that connects through it: "this failure is permanent, do not retry it", and
-// "this instance owns a resource, release it if you never connect it".
+// `TransportContracts` — the three contracts a transport can state to the server
+// that connects through it: "this failure is permanent, do not retry it",
+// "this instance owns a resource, release it if you never connect it", and
+// "this transport talks to a child process".
 //
-// A behavioral port of the `NonRetryableConnectError` and
+// The first two are a behavioral port of the `NonRetryableConnectError` and
 // `DisposableTransport` protocols of
-// `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`. They
-// stand in a file of their own here because `StdioServerProcess` conforms to
-// both, and `MCPServer` — the one reader of both, on its connect path — stands
-// in files of its own.
+// `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`. The
+// third, `ChildProcessTransport`, is the guard of the `sandboxed` tool mode
+// (D128 (d), MT-15). They stand in a file of their own here because
+// `StdioServerProcess` conforms to all three, and `MCPServer` — the one reader
+// of all three, on its connect path — stands in files of its own.
 //
-// **Why the sdk's own `Transport` cannot carry either.** `Transport` is the
+// **Why the sdk's own `Transport` cannot carry them.** `Transport` is the
 // protocol of the `MCP` module, and this package does not own it, so it
 // cannot add a requirement to it. Its one lifecycle requirement,
 // `disconnect()`, is documented as "tear down an established connection", and
@@ -82,3 +84,15 @@ protocol DisposableTransport: Transport {
     /// never connected, because that is the only circumstance it runs in.
     func dispose() async
 }
+
+/// A `Transport` whose far end is a child process that this process started.
+///
+/// A marker with no requirement. ``MCPServer`` records when a connect gets a
+/// transport of this kind from its factory — see
+/// ``MCPServer/connectsOverChildProcess``. In ``ToolMode/sandboxed`` mode the
+/// App Sandbox does not let a process start a command, so `buildRegistry()`
+/// refuses a server with that record.
+///
+/// - SeeAlso: `StdioServerProcess.swift`, whose private transport is the one
+///   conforming implementation of this package.
+protocol ChildProcessTransport: Transport {}

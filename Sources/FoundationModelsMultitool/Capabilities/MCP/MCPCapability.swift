@@ -103,6 +103,11 @@ public struct MCPCapability: Capability {
     /// its current catalog again.
     let server: MCPServer
 
+    /// Whether ``server`` connected over a child process — see
+    /// `MCPServer.connectsOverChildProcess`. `buildRegistry()` in
+    /// ``ToolMode/sandboxed`` mode refuses the capability when it is `true`.
+    let connectsOverChildProcess: Bool
+
     /// A new capability of the same server, read from the catalog the server
     /// holds now — the read a registry rebuild makes.
     ///
@@ -127,5 +132,6 @@ public struct MCPCapability: Capability {
         self.noun = catalog.identity.name
         self.tools = catalog.tools.map { MCPTool(entry: $0, server: server) }
         self.server = server
+        self.connectsOverChildProcess = await server.connectsOverChildProcess
     }
 }

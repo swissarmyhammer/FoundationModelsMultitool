@@ -210,6 +210,15 @@ public actor MCPServer {
     /// ever succeeded.
     public private(set) var identity: ServerIdentity?
 
+    /// Whether a connect of this server got a ``ChildProcessTransport`` from
+    /// its factory — a transport that `StdioServerProcess` vends.
+    ///
+    /// `false` until such a connect, and never `false` again after it: a
+    /// server that talked to a child process one time can do it again on a
+    /// reconnect. `MCPCapability` reads it, so `buildRegistry()` in
+    /// ``ToolMode/sandboxed`` mode refuses the server.
+    var connectsOverChildProcess = false
+
     /// The clock `connect(via:backoffPolicy:)` sleeps on between retry
     /// attempts — injectable so a test substitutes a virtual clock and drives
     /// a full backoff schedule with no real delay.

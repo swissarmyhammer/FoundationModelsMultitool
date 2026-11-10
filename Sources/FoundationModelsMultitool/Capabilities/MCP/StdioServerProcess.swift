@@ -118,8 +118,8 @@ public struct StdioServerProcess: Sendable {
 
     /// Errors thrown while a ``StdioServerProcess`` is constructed or spawned.
     public enum StdioServerProcessError: Error, CustomStringConvertible, Equatable {
-        /// ``init(command:args:env:name:)`` was given a `command` that is not
-        /// an absolute path.
+        /// ``init(command:args:env:name:crashRecordDirectory:mode:)`` was
+        /// given a `command` that is not an absolute path.
         ///
         /// This package requires an absolute path and resolves nothing through
         /// `PATH`. A relative lookup would have to pick WHICH `PATH` — the
@@ -143,6 +143,18 @@ public struct StdioServerProcess: Sendable {
         /// fails the same way every time after.
         case spawnFailed(command: String, errno: Int32)
 
+        /// ``respawn()`` was called on a value in a tool mode that does not
+        /// permit a child process; carries that mode.
+        ///
+        /// In ``ToolMode/sandboxed`` mode the App Sandbox does not let a
+        /// process start a command, so ``respawn()`` throws this error before
+        /// `posix_spawn`, and no process starts. The host must not start a
+        /// stdio server in this mode; this error is the second, hard guard.
+        ///
+        /// Conforms to `NonRetryableConnectError` (see the extension below):
+        /// the mode of a value never changes, so a retry gives the same error.
+        case notAvailable(mode: ToolMode)
+
         /// A human-readable description of this error.
         public var description: String {
             switch self {
@@ -154,6 +166,9 @@ public struct StdioServerProcess: Sendable {
             case .spawnFailed(let command, let errno):
                 return
                     "StdioServerProcess failed to spawn \"\(command)\": \(String(cString: strerror(errno)))"
+            case .notAvailable(let mode):
+                return
+                    "StdioServerProcess cannot start a child process in the \(mode.rawValue) tool mode. Connect the MCP server over HTTP, or use the \(ToolMode.open.rawValue) tool mode."
             }
         }
     }
@@ -181,6 +196,11 @@ public struct StdioServerProcess: Sendable {
     /// builds over this process.
     public let name: String
 
+    /// The tool mode of this value. In ``ToolMode/sandboxed`` mode,
+    /// ``respawn()`` throws ``StdioServerProcessError/notAvailable(mode:)``
+    /// and starts no process.
+    public let mode: ToolMode
+
     /// The shared, class-backed process bookkeeping every copy of this value
     /// (and every transport it vends) refers to — see the header of this file
     /// for the four teardown paths this one piece of state serves.
@@ -190,7 +210,8 @@ public struct StdioServerProcess: Sendable {
     ///
     /// No process is spawned yet — a spawn happens only when ``respawn()`` is
     /// called, never at construction. Each spawned pid registers into
-    /// `ProcessRegistry.global`.
+    /// `ProcessRegistry.global`. In ``ToolMode/sandboxed`` mode, ``respawn()``
+    /// spawns nothing and throws.
     ///
     /// - Parameters:
     ///   - command: The absolute path to the server executable.
@@ -207,6 +228,9 @@ public struct StdioServerProcess: Sendable {
     ///     AND the start time of the record. The `atexit` sweep does not run
     ///     on a crash, and a server is a program of another author that may
     ///     not exit on the end of its input.
+    ///   - mode: The tool mode of the host. Defaults to `open`, which
+    ///     spawns on each ``respawn()``. In `sandboxed` mode, ``respawn()``
+    ///     throws ``StdioServerProcessError/notAvailable(mode:)``.
     /// - Throws: ``StdioServerProcessError/commandNotAbsolute(_:)`` when
     ///   `command` is not an absolute path.
     public init(
@@ -214,15 +238,16 @@ public struct StdioServerProcess: Sendable {
         args: [String] = [],
         env: [EnvVariable] = [],
         name: String,
-        crashRecordDirectory: URL? = nil
+        crashRecordDirectory: URL? = nil,
+        mode: ToolMode = .open
     ) throws {
         try self.init(
             command: command, args: args, env: env, name: name,
-            crashRecordDirectory: crashRecordDirectory, registry: .global)
+            crashRecordDirectory: crashRecordDirectory, registry: .global, mode: mode)
     }
 
-    /// The same as ``init(command:args:env:name:)``, with the registry every
-    /// spawned pid goes into as a parameter.
+    /// The same as ``init(command:args:env:name:crashRecordDirectory:mode:)``,
+    /// with the registry every spawned pid goes into as a parameter.
     ///
     /// A test gives a private `ProcessRegistry()` here, and never `.global` —
     /// see the doc comment of `ProcessRegistry.global` for the reason.
@@ -233,9 +258,10 @@ public struct StdioServerProcess: Sendable {
     ///   - env: Environment variables layered onto the inherited environment.
     ///   - name: The human-readable server name.
     ///   - crashRecordDirectory: The directory of the record files, or `nil`
-    ///     for none — see ``init(command:args:env:name:crashRecordDirectory:)``.
+    ///     for none — see ``init(command:args:env:name:crashRecordDirectory:mode:)``.
     ///   - registry: The registry every spawned pid is registered into and
     ///     deregistered from.
+    ///   - mode: The tool mode of the host. Defaults to `open`.
     ///   - didReap: Called after each teardown path reaped and deregistered
     ///     a pid, with that pid. A test waits for this event, and not for a
     ///     time. A no-op by default.
@@ -248,6 +274,7 @@ public struct StdioServerProcess: Sendable {
         name: String,
         crashRecordDirectory: URL? = nil,
         registry: ProcessRegistry,
+        mode: ToolMode = .open,
         didReap: @escaping @Sendable (pid_t) -> Void = { _ in }
     ) throws {
         guard command.hasPrefix("/") else {
@@ -257,6 +284,7 @@ public struct StdioServerProcess: Sendable {
         self.args = args
         self.env = env
         self.name = name
+        self.mode = mode
         let ledger = crashRecordDirectory.map { ProcessLedger(directory: $0) }
         ledger?.reapLeftovers()
         self.state = ProcessState(registry: registry, ledger: ledger, didReap: didReap)
@@ -285,8 +313,13 @@ public struct StdioServerProcess: Sendable {
     /// to the server directly: to reconnect a stdio server is to respawn it,
     /// and this is what does that.
     ///
+    /// In ``ToolMode/sandboxed`` mode it spawns nothing and tears nothing
+    /// down: it throws before all other work.
+    ///
     /// - Returns: A `Transport` wired to the freshly spawned subprocess.
-    /// - Throws: ``StdioServerProcessError/pipeCreationFailed(errno:)`` when a
+    /// - Throws: ``StdioServerProcessError/notAvailable(mode:)`` when
+    ///   ``mode`` is `sandboxed`.
+    ///   ``StdioServerProcessError/pipeCreationFailed(errno:)`` when a
     ///   pipe cannot be created, or
     ///   ``StdioServerProcessError/spawnFailed(command:errno:)`` when
     ///   `posix_spawn` itself fails. `spawnFailed` reports `isNonRetryable`
@@ -294,6 +327,9 @@ public struct StdioServerProcess: Sendable {
     ///   on a `command` that will never spawn; `pipeCreationFailed` still
     ///   takes the normal retry schedule.
     public func respawn() async throws -> any Transport {
+        guard mode == .open else {
+            throw StdioServerProcessError.notAvailable(mode: mode)
+        }
         await state.terminateCurrent()
         let spawned = try Self.spawn(command: command, args: args, env: env)
         await state.recordSpawn(spawned.pid)
@@ -568,18 +604,20 @@ public struct StdioServerProcess: Sendable {
     }
 }
 
-/// `commandNotAbsolute` and `spawnFailed` are permanent configuration
-/// failures, not flaky connections: a bad `command` path never spawns, however
-/// often it is retried. `pipeCreationFailed` is left out on purpose — a pipe
+/// `commandNotAbsolute`, `spawnFailed` and `notAvailable` are permanent
+/// configuration failures, not flaky connections: a bad `command` path never
+/// spawns, however often it is retried, and the tool mode of a value never
+/// changes. `pipeCreationFailed` is left out on purpose — a pipe
 /// fails on fd exhaustion in THIS process (`EMFILE`, `ENFILE`), which is
 /// plausibly transient, unlike a `command` that will never exist.
 extension StdioServerProcess.StdioServerProcessError: NonRetryableConnectError {
     /// Whether this error is a permanent configuration failure
-    /// (``commandNotAbsolute(_:)`` and ``spawnFailed(command:errno:)``) or a
-    /// transient, retryable condition (``pipeCreationFailed(errno:)``).
+    /// (``commandNotAbsolute(_:)``, ``spawnFailed(command:errno:)`` and
+    /// ``notAvailable(mode:)``) or a transient, retryable condition
+    /// (``pipeCreationFailed(errno:)``).
     public var isNonRetryable: Bool {
         switch self {
-        case .commandNotAbsolute, .spawnFailed:
+        case .commandNotAbsolute, .spawnFailed, .notAvailable:
             return true
         case .pipeCreationFailed:
             return false
@@ -791,7 +829,7 @@ private final class ProcessState: Sendable {
 ///
 /// Internal and not private, thus a test can read ``requestDescriptor`` and
 /// ``responseDescriptor``.
-actor StdioServerTransport: Transport, DisposableTransport {
+actor StdioServerTransport: ChildProcessTransport, DisposableTransport {
     /// The real transport this actor delegates every protocol operation to.
     private let inner: StdioTransport
 

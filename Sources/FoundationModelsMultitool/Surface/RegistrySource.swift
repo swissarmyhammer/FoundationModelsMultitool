@@ -157,8 +157,9 @@ extension MultiTool {
         /// - Throws: `ToolModeError.openModeInSandbox` when ``mode`` is
         ///   `open` and the process is in the App Sandbox.
         ///   `MultiToolBuilderError` with the kind `.notAvailable(mode:)`
-        ///   when ``mode`` is `sandboxed` and a shell capability is
-        ///   registered. `ToolAPIRendererError`, propagated unchanged and never
+        ///   when ``mode`` is `sandboxed` and a capability that starts a
+        ///   child process is registered: a shell capability, or an MCP
+        ///   server that connected over stdio. `ToolAPIRendererError`, propagated unchanged and never
         ///   wrapped — the same posture `ToolInvoker` takes toward a tool's
         ///   own thrown error — when a queued tool cannot be fully rendered.
         ///   A tool that cannot be fully rendered fails loudly here rather
@@ -296,33 +297,53 @@ extension MultiTool {
         /// It calls the shared check `ToolMode.validate(probe:)` of
         /// FoundationModelsExtras first, so `open` mode in a process in the
         /// App Sandbox fails at composition time. Then, in `sandboxed` mode,
-        /// it refuses a shell capability: the App Sandbox does not let a
-        /// process spawn a command, and a host that registers the shell in
-        /// this mode has a bug. The other capabilities work in both modes.
+        /// it refuses a capability that starts a child process — the shell,
+        /// or an MCP server that connected over stdio: the App Sandbox does
+        /// not let a process spawn a command, and a host that registers such
+        /// a capability in this mode has a bug. The other capabilities, and
+        /// an MCP server over HTTP or in memory, work in both modes.
         ///
         /// - Throws: `ToolModeError.openModeInSandbox` from the shared check.
         ///   `MultiToolBuilderError` with the kind `.notAvailable(mode:)`,
-        ///   named for the noun of the shell, when ``mode`` is `sandboxed`
-        ///   and a shell capability is registered.
+        ///   named for the noun of the first capability that starts a child
+        ///   process, when ``mode`` is `sandboxed` and such a capability is
+        ///   registered.
         private func validateToolMode() throws {
             try mode.validate(probe: sandboxProbe)
-            guard mode == .sandboxed, let shell = registeredShell() else { return }
+            guard mode == .sandboxed, let refused = childProcessCapability() else { return }
             throw MultiToolBuilderError(
                 kind: .notAvailable(mode: mode),
-                name: shell.noun,
-                message: "The \(shell.noun) capability is not available in the \(mode.rawValue) tool mode. "
-                    + "Remove withShell from the builder, or use the \(ToolMode.open.rawValue) tool mode.")
+                name: refused.noun,
+                message: "The \(refused.noun) capability starts a child process, "
+                    + "which the \(mode.rawValue) tool mode does not permit. "
+                    + "Remove it from the builder (connect an MCP server over HTTP, not over stdio), "
+                    + "or use the \(ToolMode.open.rawValue) tool mode.")
         }
 
-        /// The first shell capability of ``registrations``.
+        /// The first capability of ``registrations`` that starts a child
+        /// process — see ``startsChildProcess(_:)``.
         ///
-        /// - Returns: the shell capability, or `nil` when no shell capability
-        ///   is registered.
-        private func registeredShell() -> ShellCapability? {
-            registrations.lazy.compactMap { registration in
-                guard case .capability(let capability) = registration else { return nil }
-                return capability as? ShellCapability
+        /// - Returns: the capability, or `nil` when no registered capability
+        ///   starts a child process.
+        private func childProcessCapability() -> (any Capability)? {
+            registrations.lazy.compactMap { registration -> (any Capability)? in
+                guard case .capability(let capability) = registration, Self.startsChildProcess(capability)
+                else { return nil }
+                return capability
             }.first
+        }
+
+        /// Tells if `capability` starts a child process: a shell capability
+        /// always does, and an MCP capability does when its server connected
+        /// over stdio.
+        ///
+        /// - Parameter capability: the registered capability.
+        /// - Returns: `true` when `capability` starts a child process.
+        private static func startsChildProcess(_ capability: any Capability) -> Bool {
+            if capability is ShellCapability {
+                return true
+            }
+            return (capability as? MCPCapability)?.connectsOverChildProcess ?? false
         }
 
         // MARK: - Expansion

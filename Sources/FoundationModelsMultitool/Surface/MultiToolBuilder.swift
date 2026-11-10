@@ -59,11 +59,13 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// A capability was registered that cannot work in the tool mode of
         /// the builder. The error names the noun of that capability.
         ///
-        /// Only the shell gives this error now: in ``ToolMode/sandboxed``
-        /// mode, `buildRegistry()` refuses a `ShellCapability`. A host that
-        /// calls `withShell` in `sandboxed` mode has a bug, so the builder
-        /// gives a loud error, and does not skip the shell silently. Thus the
-        /// model never sees a shell in `sandboxed` mode.
+        /// In ``ToolMode/sandboxed`` mode, `buildRegistry()` refuses each
+        /// capability that starts a child process: a `ShellCapability`, and
+        /// an `MCPCapability` whose server connected over a
+        /// `StdioServerProcess`. A host that registers such a capability in
+        /// `sandboxed` mode has a bug, so the builder gives a loud error, and
+        /// does not skip the capability silently. Thus the model never sees
+        /// a shell or a stdio MCP server in `sandboxed` mode.
         ///
         /// - Parameter mode: the tool mode in which the capability is not
         ///   available.
@@ -143,10 +145,11 @@ extension MultiTool {
         ///   FoundationModelsExtras first. Thus `open` mode in a process in
         ///   the App Sandbox fails at composition time, and not at the first
         ///   tool call.
-        /// - In `sandboxed` mode, a shell capability makes them throw
+        /// - In `sandboxed` mode, a shell capability, or an MCP server that
+        ///   connected over a `StdioServerProcess`, makes them throw
         ///   ``MultiToolBuilderError/Kind/notAvailable(mode:)``. Files, git,
-        ///   snapshots, web, environment, sessions and operation tools
-        ///   register in both modes.
+        ///   snapshots, web, environment, sessions, operation tools, and an
+        ///   MCP server over HTTP or in memory register in both modes.
         ///
         /// - Parameters:
         ///   - mode: the tool mode of the registry. Defaults to `open`, which

@@ -494,6 +494,9 @@ extension MCPServer {
                 closeOpenTransport(transportID)
                 throw error
             }
+            if transport is any ChildProcessTransport {
+                connectsOverChildProcess = true
+            }
             guard
                 let made = await makeAttemptClient(
                     over: transport, transportID: transportID, generation: generation)

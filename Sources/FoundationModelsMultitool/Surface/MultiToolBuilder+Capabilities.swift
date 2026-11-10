@@ -278,6 +278,11 @@ extension MultiTool.Builder {
     /// Each server is also recorded into ``serverPool``, so the host's
     /// `MCPServerPool.shutdownAll()` after the session sweep reaches it.
     ///
+    /// In ``ToolMode/sandboxed`` mode, a server that connected over a
+    /// `StdioServerProcess` makes `buildRegistry()` throw
+    /// ``MultiToolBuilderError/Kind/notAvailable(mode:)``, named for the
+    /// server. A server over HTTP or in memory registers in both modes.
+    ///
     /// - Parameter servers: the servers the host connected, in the order
     ///   their groups render.
     /// - Throws: `MCPServerError.notReady(_:)` when a server is `.faulted`
