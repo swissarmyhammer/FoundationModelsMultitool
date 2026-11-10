@@ -93,6 +93,13 @@ struct ImaginedToolPath: Sendable {
 /// not have, so tier 1 sees the group prefix and never reaches tier 2. The
 /// alias table of `UnknownToolHint` answers them, and no ranker runs. Thus
 /// these two lines measure the table over the real surface, not a model.
+///
+/// **Why two run-a-command guesses now name the alias tier.** Since the
+/// dotask24 hint fix, a made-up group is read through its verb before the
+/// ranker runs: `run` and `runCommand` are synonyms of `shell.execute`, so
+/// `terminal.runCommand` and `bash.run` are answered by the alias table, with
+/// the same entry the ranker named. `terminal.runTests` has no verb synonym,
+/// so it still measures the ranker.
 let imaginedToolPaths = [
     ImaginedToolPath(
         shape: "a spelling mistake",
@@ -107,12 +114,12 @@ let imaginedToolPaths = [
     ImaginedToolPath(
         shape: "a wrong noun that asks to run a command",
         imaginedPath: "terminal.runCommand",
-        tier: .catalogRelevance,
+        tier: .verbAlias,
         bestPath: "shell.execute"),
     ImaginedToolPath(
         shape: "a wrong noun that asks to run a command",
         imaginedPath: "bash.run",
-        tier: .catalogRelevance,
+        tier: .verbAlias,
         bestPath: "shell.execute"),
     ImaginedToolPath(
         shape: "a wrong noun that asks to run a command",
