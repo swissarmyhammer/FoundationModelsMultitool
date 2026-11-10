@@ -21,7 +21,7 @@ struct StringArgumentCoercionTests {
     @Test("dotask24 14672 seq 12313: execute with command as an array runs it as argv")
     func aCommandArrayRunsAsArgv() async throws {
         let root = TestSupport.makeTemporaryDirectory(named: "StringArgumentCoercionTests")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withShell(storeDirectory: root.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()
         let output = try await MultiTool(registry: registry).call(

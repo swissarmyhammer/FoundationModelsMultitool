@@ -104,7 +104,7 @@ extension MultiTool {
     /// catalog, with no model wiring in it.
     ///
     /// ```swift
-    /// let surface = try MultiTool.Builder()
+    /// let surface = try MultiTool.Builder(mode: .open)
     ///     .addTool(WeatherTool())                 // any FoundationModels.Tool
     ///     .addTool(thirdPartyToolFromSomePackage)
     ///     .addTools(myToolArray)
@@ -117,7 +117,7 @@ extension MultiTool {
     /// mutates this builder's recorded registrations in place and returns
     /// `self` so the fluent chain above type-checks with no intermediate
     /// `var builder = ...` — a `struct`'s `mutating` methods can't be called
-    /// directly on the un-named temporary `MultiTool.Builder()` returns,
+    /// directly on the un-named temporary `MultiTool.Builder(mode: .open)` returns,
     /// only a reference type's in-place mutation supports this chained
     /// style.
     ///
@@ -152,12 +152,12 @@ extension MultiTool {
         ///   MCP server over HTTP or in memory register in both modes.
         ///
         /// - Parameters:
-        ///   - mode: the tool mode of the registry. Defaults to `open`, which
-        ///     registers each capability.
+        ///   - mode: the tool mode of the registry. It has no default value,
+        ///     so each host names its mode. `open` registers each capability.
         ///   - sandboxProbe: tells if the process is in the App Sandbox.
         ///     Defaults to `.live`, which reads the current process. A test
         ///     gives `.fixed(_:)`.
-        public init(mode: ToolMode = .open, sandboxProbe: SandboxProbe = .live) {
+        public init(mode: ToolMode, sandboxProbe: SandboxProbe = .live) {
             source = MultiTool.RegistrySource(mode: mode, sandboxProbe: sandboxProbe)
             spawnObserver = nil
         }

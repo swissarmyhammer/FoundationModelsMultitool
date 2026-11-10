@@ -30,7 +30,7 @@ extension MultiTool {
     /// keeps this value instead.
     ///
     /// ```swift
-    /// let builder = try await MultiTool.Builder()
+    /// let builder = try await MultiTool.Builder(mode: .open)
     ///     .withShell()
     ///     .withMCP(servers: [github])
     /// let first = try builder.buildRegistry()

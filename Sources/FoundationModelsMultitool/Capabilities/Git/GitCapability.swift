@@ -30,7 +30,7 @@ import FoundationModels
 /// contains the root.
 ///
 /// ```swift
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withGit(root: workspaceURL)        // tools.git.*
 ///     .build()
 /// ```

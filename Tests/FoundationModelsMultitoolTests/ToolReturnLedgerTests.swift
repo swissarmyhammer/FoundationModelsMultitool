@@ -31,7 +31,7 @@ struct ToolReturnLedgerTests {
     /// - Returns: the rendered `runCode` output.
     /// - Throws: whatever `MultiTool.call(arguments:)` throws.
     private static func run(_ code: String) async throws -> String {
-        let registry = try MultiTool.Builder().addTool(IssueCountTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(IssueCountTool()).buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 

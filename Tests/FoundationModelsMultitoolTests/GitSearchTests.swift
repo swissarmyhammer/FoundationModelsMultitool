@@ -61,7 +61,7 @@ struct GitSearchTests {
     /// - Returns: The registry.
     /// - Throws: What `buildRegistry()` throws.
     private static func makeRegistry(over repository: TemporaryGitRepository) throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .withGit(root: repository.workDirectory)
             .withFiles(root: repository.workDirectory)
             .buildRegistry()

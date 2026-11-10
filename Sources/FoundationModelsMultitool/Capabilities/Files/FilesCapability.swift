@@ -35,7 +35,7 @@ import FoundationModels
 /// The files capability: one noun, and the ten verbs of the file session.
 ///
 /// ```swift
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withFiles(root: workspaceURL)      // tools.files.read, .write, .makeDirectory,
 ///     .build()                            //   .removeDirectory, .delete, .edit, .patch, .list, .glob, .grep
 /// ```

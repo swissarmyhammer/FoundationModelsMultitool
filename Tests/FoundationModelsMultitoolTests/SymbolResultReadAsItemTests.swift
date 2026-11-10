@@ -141,7 +141,7 @@ struct SymbolResultReadAsItemTests {
     private static func run(_ code: String) async throws -> String {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .addGroup(named: "code_context", [SymbolReadGetSymbolTool(), SymbolReadEmptyGrepTool()] as [any Tool])
             .buildRegistry()

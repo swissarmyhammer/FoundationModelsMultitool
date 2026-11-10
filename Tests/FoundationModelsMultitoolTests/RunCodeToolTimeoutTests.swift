@@ -36,7 +36,7 @@ struct RunCodeToolTimeoutTests {
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
             let mounted = try Self.mountedRunCode(
-                registry: try MultiTool.Builder().buildRegistry(),
+                registry: try MultiTool.Builder(mode: .open).buildRegistry(),
                 window: Self.stallWindowSeconds,
                 on: context
             )
@@ -67,7 +67,7 @@ struct RunCodeToolTimeoutTests {
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
             let mounted = try Self.mountedRunCode(
-                registry: try MultiTool.Builder().buildRegistry(),
+                registry: try MultiTool.Builder(mode: .open).buildRegistry(),
                 window: Self.stallWindowSeconds,
                 on: context
             )
@@ -123,7 +123,7 @@ struct RunCodeToolTimeoutTests {
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
             let mounted = try Self.mountedRunCode(
-                registry: try MultiTool.Builder().withCapability(web).buildRegistry(),
+                registry: try MultiTool.Builder(mode: .open).withCapability(web).buildRegistry(),
                 window: Self.stallWindowSeconds,
                 on: context
             )
@@ -166,7 +166,7 @@ struct RunCodeToolTimeoutTests {
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
             let mounted = try Self.mountedRunCode(
-                registry: try MultiTool.Builder().addTool(pause).buildRegistry(),
+                registry: try MultiTool.Builder(mode: .open).addTool(pause).buildRegistry(),
                 window: Self.progressWindowSeconds,
                 on: context,
                 postingTo: sink
@@ -391,7 +391,7 @@ struct RunCodeToolTimeoutTests {
         let gated = GatedTool(latch: latch)
         let clock = ManualRunClock()
         try await withOuterRunContext(runClock: clock) { context in
-            let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
+            let mounted = try mount(try MultiTool.Builder(mode: .open).addTool(gated).buildRegistry(), context)
 
             let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
             // The wait for the start also ends when the run ends, and the test

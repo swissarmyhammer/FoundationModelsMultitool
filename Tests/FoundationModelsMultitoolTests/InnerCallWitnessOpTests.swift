@@ -113,7 +113,7 @@ struct InnerCallWitnessOpTests {
         let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         try Data(Self.seededContent.utf8)
             .write(to: root.appendingPathComponent(Self.seededFileName, isDirectory: false))
-        return try MultiTool.Builder()
+        return try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .addGroup(named: Self.codeContextGroup, [AmbientRecordingTool(name: Self.getSymbolVerb)])
             .buildRegistry()

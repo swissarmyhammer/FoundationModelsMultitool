@@ -137,7 +137,7 @@ public func makeLargeCatalogSurface(
         scriptedServers.append(scripted)
         connectedServers.append(connected)
     }
-    let registry = try await MultiTool.Builder()
+    let registry = try await MultiTool.Builder(mode: .open)
         .withFiles(root: root, readOnly: false)
         .withShell(
             storeDirectory: root.appendingPathComponent(shellStoreDirectoryName, isDirectory: true))

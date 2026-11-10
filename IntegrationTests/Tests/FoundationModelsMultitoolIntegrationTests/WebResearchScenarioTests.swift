@@ -32,7 +32,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// The gated scenario that proves that a real model uses the web
 /// capability: `web.md` § "Testing", Level 3.
 ///
-/// **The mount.** `MultiTool.Builder().withWeb(configuration: .keyless)`,
+/// **The mount.** `MultiTool.Builder(mode: .open).withWeb(configuration: .keyless)`,
 /// vended through `MultiTool.Registry.makeSessionTools(selection:embedder:sampleModel:)` and
 /// mounted on the `RoutedSession` that the resolved `.standard` slot vends.
 /// This is the wiring that a Router host makes. `.keyless` reads no
@@ -70,7 +70,7 @@ struct WebResearchScenarioTests {
 
     @Test("the model calls tools.web.search from a snippet and answers with swift.org")
     func searchesTheWebAndNamesTheSwiftHomePage() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withWeb(configuration: .keyless)
             .buildRegistry()
         try await runGatedAnswerScenario(

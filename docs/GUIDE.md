@@ -29,8 +29,8 @@ builder:
 let builder = MultiTool.Builder(mode: .sandboxed)
 ```
 
-Give the mode in each host. Do not use the default value of
-`init(mode:sandboxProbe:)` (`open`). A later change removes that default.
+The `mode` argument of `init(mode:sandboxProbe:)` has no default value. Each
+host must give the mode.
 
 | Mode | Capabilities |
 |---|---|
@@ -72,7 +72,7 @@ Give `excludePatterns` to hide files from the search verbs. The patterns use
 the gitignore syntax, and they are relative to `root`:
 
 ```swift
-let builder = MultiTool.Builder()
+let builder = MultiTool.Builder(mode: .open)
     .withFiles(root: workspaceURL, excludePatterns: [".acp-agent/", "*.log", "!keep.log"])
 ```
 

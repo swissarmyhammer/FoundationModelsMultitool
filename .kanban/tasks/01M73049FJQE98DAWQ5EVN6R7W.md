@@ -22,12 +22,28 @@ comments:
     - evidence: 4 files — docs/GUIDE.md (shell line, new "Modes" section), docs/SECURITY.md (new "Tool modes and the shell" section), README.md (link text), Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift (comment). `grep -rni --exclude-dir=.build -e seatbelt -e sandbox-exec Sources Tests IntegrationTests docs README.md` gives no lines; swift build: Build complete, no compiler warning. swift test not run (comments and docs only).
     - next: /review
   timestamp: 2026-11-10T17:11:14.471548+00:00
+- actor: claude-code
+  id: 01m73764jkj9kb977b7tzzd3mk
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (b3c6e19b): counts findings 0, confirmed 0, refuted 0. The engine reviewed Execute.swift. No validator matches README.md, docs/GUIDE.md or docs/SECURITY.md, so I checked those docs against the code by hand. Each claim agrees with the code: `init(mode: ToolMode = .open, sandboxProbe: SandboxProbe = .live)`; `build()` and `rebuildRegistry()` go through `RegistrySource.buildRegistry()`, which calls `validateToolMode()` -> `mode.validate(probe:)` first; the `sandboxed` refusal throws `MultiToolBuilderError(kind: .notAvailable(mode:), name: noun)` with a hint for the shell and a hint for stdio MCP; `StdioServerProcess.respawn()` throws `StdioServerProcessError.notAvailable(mode:)` in `sandboxed` mode; `SandboxProbe.live` and `.fixed(_:)` exist in FoundationModelsExtras. `git grep -i -e seatbelt -e sandbox-exec -- Sources Tests IntegrationTests docs README.md` gives no lines (the only disk hits are in the gitignored IntegrationTests/.build checkout). The Execute.swift comment keeps "UPSTREAM_ASKS.md Ask 6", which is the working-directory ask, not the Seatbelt item.
+    - next: none. The task is in done.
+  timestamp: 2026-11-10T17:13:12.531036+00:00
+- actor: claude-code
+  id: 01m7376qwsgva017grzp704tge
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (docs/GUIDE.md, docs/SECURITY.md, README.md, Execute.swift comment)
+    - test: green — swift build complete, 0 compiler warnings; no code changed, so no swift test; git grep seatbelt/sandbox-exec on tracked files: 0 lines
+    - commit: b3c6e19b (pushed to origin/main)
+    - review: clean — 0 findings; docs checked by hand against the code
+  timestamp: 2026-11-10T17:13:32.313353+00:00
 depends_on:
 - 01M7302A77H9QHS2YHJ0PN6G8D
 - 01M73030WWZF8M6HM1S3XS0D60
 - 01M7303G0Q7Q2N9GHQ1T8YE77Q
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fffffff580
 title: 'MT-15: Docs for the modes and for no Seatbelt'
 ---
 ## What

@@ -27,7 +27,7 @@ struct BuilderSurfaceTests {
 
     @Test("a builder with a fixture set of standalone and grouped tools renders byte-identical to the golden file")
     func fixtureSetMatchesGoldenFile() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addTool(WeatherTool())
             .addTool(PlainTextTool())
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
@@ -48,7 +48,7 @@ struct BuilderSurfaceTests {
         let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
             serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
         try await MCPTestSupport.withConnection(of: server) {
-            let surface = try await MultiTool.Builder()
+            let surface = try await MultiTool.Builder(mode: .open)
                 .withMCP(servers: [server])
                 .build()
 
@@ -63,7 +63,7 @@ struct BuilderSurfaceTests {
     @Test("two standalone tools with the same name make build() throw, naming the collision")
     func duplicateStandaloneNameThrows() throws {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addTool(WeatherTool())
                 .addTool(WeatherTool())
                 .build()
@@ -75,7 +75,7 @@ struct BuilderSurfaceTests {
 
     @Test("addGroup(named: \"github\", …) renders tools.github.<name> entries")
     func addGroupNamespacesEntries() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
 
@@ -93,7 +93,7 @@ struct BuilderSurfaceTests {
         // A group is a merge, and a capability is a claim. `withCapability(_:)`
         // owns its noun and rejects a second registration under it; a group
         // name stays open, so the two calls below make one namespace.
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubCreateIssueTool()])
             .addGroup(named: "github", [GithubSearchTool()])
             .build()
@@ -104,7 +104,7 @@ struct BuilderSurfaceTests {
 
     @Test("two tools in different groups may share the same bare name — duplicates across groups are fine")
     func duplicateNameAcrossDifferentGroupsIsFine() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubSearchTool()])
             .addGroup(named: "gitlab", [GitlabSearchTool()])
             .build()
@@ -115,7 +115,7 @@ struct BuilderSurfaceTests {
     @Test("two tools in the same group with the same name make build() throw, naming the collision")
     func duplicateNameWithinSameGroupThrows() throws {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addGroup(named: "github", [GithubSearchTool(), GithubSearchTool()])
                 .build()
         } throws: { error in
@@ -127,7 +127,7 @@ struct BuilderSurfaceTests {
     @Test("a group name that isn't a legal TypeScript identifier makes build() throw")
     func illegalGroupNameThrows() throws {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addGroup(named: "bad group!", [GithubSearchTool()])
                 .build()
         } throws: { error in
@@ -140,7 +140,7 @@ struct BuilderSurfaceTests {
     func standaloneNameCollidingWithGroupNameThrows() throws {
         // Standalone added before the colliding group.
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addTool(GithubSearchTool()) // name: "search"
                 .addGroup(named: "search", [GithubCreateIssueTool()])
                 .build()
@@ -152,7 +152,7 @@ struct BuilderSurfaceTests {
         // Same collision, reversed add order — the post-loop check is
         // order-independent.
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addGroup(named: "search", [GithubCreateIssueTool()])
                 .addTool(GithubSearchTool()) // name: "search"
                 .build()
@@ -165,7 +165,7 @@ struct BuilderSurfaceTests {
     @Test("a tool that can't be fully rendered makes build() throw, not emit a lossy stub")
     func unrenderableToolThrows() throws {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .addTool(IllegalNameTool())
                 .build()
         } throws: { error in
@@ -175,7 +175,7 @@ struct BuilderSurfaceTests {
 
     @Test("addTools(_:) queues every tool in the array, equivalent to calling addTool(_:) per element")
     func addToolsQueuesEveryElement() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addTools([WeatherTool(), PlainTextTool()])
             .build()
 

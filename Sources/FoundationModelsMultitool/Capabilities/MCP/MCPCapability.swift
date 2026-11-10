@@ -81,7 +81,7 @@ import MCP
 /// let github = MCPServer(name: "github", userPresence: .interactive)
 /// try await github.connect(via: transport)
 ///
-/// let registry = try await MultiTool.Builder()
+/// let registry = try await MultiTool.Builder(mode: .open)
 ///     .withMCP(servers: [github])       // tools.github.<tool>, one for each catalog entry
 ///     .buildRegistry()
 /// ```

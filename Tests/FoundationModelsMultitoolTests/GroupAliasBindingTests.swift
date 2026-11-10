@@ -23,7 +23,7 @@ import Testing
     private static func run(_ code: String) async throws -> String {
         let root = TestSupport.makeTemporaryDirectory(named: "GroupAliasBindingTests")
         try Data("hello\nlabel = 1\n".utf8).write(to: root.appendingPathComponent("a.txt"))
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .addGroup(named: "web", [CatalogEntryTool(name: "search", description: "Searches the web.")])
             .addGroup(named: "code_context", [CatalogEntryTool(name: "grepCode", description: "Greps code.")])

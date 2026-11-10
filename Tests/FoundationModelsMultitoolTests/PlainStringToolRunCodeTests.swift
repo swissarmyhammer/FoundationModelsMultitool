@@ -121,7 +121,7 @@ struct PlainStringToolRunCodeTests {
     /// - Returns: The rendered output of `runCode`.
     /// - Throws: What `buildRegistry()` or `MultiTool.call(arguments:)` throws.
     private static func run(_ code: String, over tool: TextAnswerTool) async throws -> String {
-        let multiTool = MultiTool(registry: try MultiTool.Builder().addTool(tool).buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).addTool(tool).buildRegistry())
         return try await multiTool.call(arguments: RunCodeArguments(code: code))
     }
 

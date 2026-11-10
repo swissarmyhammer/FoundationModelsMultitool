@@ -4,7 +4,7 @@ import Testing
 /// shell capability is the reference emitter, and that "its detached commands
 /// prove the background path end to end."
 ///
-/// One live message and its answer on the shipped configuration: `MultiTool.Builder().withShell()`
+/// One live message and its answer on the shipped configuration: `MultiTool.Builder(mode: .open).withShell()`
 /// vended through `makeSessionTools(selection:embedder:sampleModel:)` and mounted on a
 /// `RoutedSession`. The model discovers `tools.shell.execute` and starts a
 /// never-ending command from a `runCode` snippet. Under the settle-period rule

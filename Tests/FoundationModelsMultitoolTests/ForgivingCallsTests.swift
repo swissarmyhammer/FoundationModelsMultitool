@@ -58,7 +58,7 @@ import Testing
     /// - Returns: the rendered output, as the model would read it.
     /// - Throws: whatever `MultiTool.call(arguments:)` throws.
     private static func run(_ code: String) async throws -> String {
-        let registry = try MultiTool.Builder().withFiles(root: try makeRoot()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: try makeRoot()).buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 
@@ -277,7 +277,7 @@ import Testing
         // bench24-1023b, django__django-14238 (seq 8967), with the root of
         // this test for the run's checkout.
         let root = try Self.makeRoot().path
-        let registry = try MultiTool.Builder().withFiles(root: URL(fileURLWithPath: root)).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: URL(fileURLWithPath: root)).buildRegistry()
         let output = try await MultiTool(registry: registry).call(
             arguments: RunCodeArguments(
                 code: """

@@ -130,7 +130,7 @@ struct EnvironmentNowTests {
     /// `tools.environment.now({})` renders in a snippet and gives each field.
     @Test("tools.environment.now({}) renders and gives each field")
     func theSnippetRendersAndGivesEachField() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withEnvironment(context: Self.context(at: Self.instant))
             .buildRegistry()
 

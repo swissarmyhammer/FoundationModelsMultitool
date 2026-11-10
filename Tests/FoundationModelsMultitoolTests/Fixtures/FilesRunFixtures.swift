@@ -3,7 +3,7 @@
 //
 // A suite that proves what the files verbs deliver to a session needs the
 // same ground each time: a canonical root the test owns, a registry built
-// with `MultiTool.Builder().withFiles(root:recordsChanges:)` over it, the
+// with `MultiTool.Builder(mode: .open).withFiles(root:recordsChanges:)` over it, the
 // change journal of that registry, and a stub run from `makeStubRun()` whose
 // transcript the suite reads back. `makeFilesRun(named:recordsChanges:alongside:)`
 // is that ground, built one time here rather than once for each suite.
@@ -66,7 +66,7 @@ func makeFilesRun(
     named directoryName: String, recordsChanges: Bool, alongside tools: [any Tool] = []
 ) async throws -> FilesRun {
     let root = TestSupport.makeCanonicalTemporaryDirectory(named: directoryName)
-    let registry = try MultiTool.Builder()
+    let registry = try MultiTool.Builder(mode: .open)
         .withFiles(root: root, recordsChanges: recordsChanges)
         .addTools(tools)
         .buildRegistry()

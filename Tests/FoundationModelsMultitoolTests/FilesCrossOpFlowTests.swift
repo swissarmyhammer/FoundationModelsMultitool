@@ -201,7 +201,7 @@ struct FilesCrossOpFlowTests {
     /// - Returns: the rendered output, as the model would read it.
     /// - Throws: whatever `MultiTool.call(arguments:)` throws.
     private static func run(_ code: String, root: URL) async throws -> String {
-        let registry = try MultiTool.Builder().withFiles(root: root).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: root).buildRegistry()
         return try await MultiTool(registry: registry)
             .call(arguments: RunCodeArguments(code: code))
     }

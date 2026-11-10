@@ -63,7 +63,7 @@ struct HintRankingTests {
     /// - Throws: When the directory, the store or the registry does not prepare.
     private func makeBundle() throws -> (registry: MultiTool.Registry, bundle: MultiTool.RegistryBundle) {
         let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root, readOnly: false)
             .withShell(
                 storeDirectory: root.appendingPathComponent(

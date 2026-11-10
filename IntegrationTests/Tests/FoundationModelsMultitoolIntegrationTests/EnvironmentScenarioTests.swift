@@ -7,7 +7,7 @@ import Testing
 /// The gated scenario that proves that a real model reads the date through
 /// the environment capability (task `^w2kryyf`).
 ///
-/// **The mount.** `MultiTool.Builder().withEnvironment(context:)` and no
+/// **The mount.** `MultiTool.Builder(mode: .open).withEnvironment(context:)` and no
 /// other capability, vended through `makeSessionTools(of:on:)` and mounted by
 /// `runGatedAnswerScenario(named:prompt:tools:reading:)` on the `RoutedSession`
 /// that the resolved `.standard` slot vends. This is the wiring that a Router
@@ -70,7 +70,7 @@ struct EnvironmentScenarioTests {
 
     @Test("the model reads the injected date from a snippet, and no verb answers a correction")
     func theModelReadsTheInjectedDate() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withEnvironment(context: InjectedDate.context())
             .buildRegistry()
         try await runGatedAnswerScenario(

@@ -70,7 +70,7 @@ struct VerbAliasHintTests {
         includesFiles: Bool = true, includesWeb: Bool = false
     ) throws -> (registry: MultiTool.Registry, bundle: MultiTool.RegistryBundle) {
         let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let builder = MultiTool.Builder()
+        let builder = MultiTool.Builder(mode: .open)
         if includesFiles {
             builder.withFiles(root: root, readOnly: false)
         }

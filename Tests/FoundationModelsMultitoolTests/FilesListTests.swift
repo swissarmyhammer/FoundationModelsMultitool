@@ -54,7 +54,7 @@ import Testing
     private static func list(
         _ call: String, root: URL, excludePatterns: [String] = []
     ) async throws -> ListValue {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root, excludePatterns: excludePatterns)
             .buildRegistry()
         let output = try await MultiTool(registry: registry).call(

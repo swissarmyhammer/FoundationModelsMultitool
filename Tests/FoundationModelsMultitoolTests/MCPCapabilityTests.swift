@@ -101,7 +101,7 @@ struct MCPCapabilityTests {
     /// - Returns: The registry.
     /// - Throws: What `withMCP(servers:)` or `buildRegistry()` throws.
     private static func makeRegistry(over server: MCPServer) async throws -> MultiTool.Registry {
-        try await MultiTool.Builder()
+        try await MultiTool.Builder(mode: .open)
             .withMCP(servers: [server])
             .buildRegistry()
     }
@@ -240,7 +240,7 @@ struct MCPCapabilityTests {
             over: .inMemory, name: Self.filesNoun)
         try await MCPTestSupport.withConnection(of: server) {
             let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-            let builder = try await MultiTool.Builder()
+            let builder = try await MultiTool.Builder(mode: .open)
                 .withFiles(root: root)
                 .withMCP(servers: [server])
 
@@ -265,7 +265,7 @@ struct MCPCapabilityTests {
         await server.disconnect()
 
         await #expect {
-            try await MultiTool.Builder().withMCP(servers: [server])
+            try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
         } throws: { error in
             guard case .notReady = error as? MCPServerError else { return false }
             return true

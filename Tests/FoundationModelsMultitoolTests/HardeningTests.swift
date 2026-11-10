@@ -80,7 +80,7 @@ struct HardeningTests {
     /// - Throws: When the registry does not build.
     private static func makeReportingMultiTool() throws -> (multiTool: MultiTool, started: WindowRecordingTool) {
         let started = WindowRecordingTool(name: startedToolName)
-        let registry = try MultiTool.Builder().addTool(started).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(started).buildRegistry()
         return (makeMultiTool(registry: registry), started)
     }
 
@@ -158,7 +158,7 @@ struct HardeningTests {
         // run executing JS — a different code path M10's cancellation
         // guarantee must also reach.
         let slowTool = WindowRecordingTool(name: "slow")
-        let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(slowTool).buildRegistry()
         let multiTool = Self.makeMultiTool(registry: registry)
 
         // The event: the pending call started, so the snippet awaits it. The

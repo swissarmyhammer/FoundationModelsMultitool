@@ -169,7 +169,7 @@ private let runCodeToolName = "runCode"
 func runShellBackgroundScenario(name: String) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let observer = ShellRunContextObserver()
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(observer.makeShellCapability(storeDirectory: LiveRouterFixture.makeTempDir()))
             .buildRegistry()
         let declaredJournalOp = registry.surface.entries.first { $0.path == shellExecutePath }?.journalOp

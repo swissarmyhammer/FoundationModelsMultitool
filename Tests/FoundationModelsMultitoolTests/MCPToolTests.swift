@@ -512,7 +512,7 @@ struct MCPToolTests {
 
             #expect(tool.name == Self.illegalToolName)
             #expect {
-                try MultiTool.Builder()
+                try MultiTool.Builder(mode: .open)
                     .addTool(tool)
                     .buildRegistry()
             } throws: { error in

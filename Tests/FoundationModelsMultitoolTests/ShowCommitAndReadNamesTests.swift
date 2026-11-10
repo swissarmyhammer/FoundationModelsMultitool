@@ -40,7 +40,7 @@ import Testing
 
     /// Runs `code` on a surface with the git capability over `repository`.
     private static func runGit(_ code: String, in repository: TemporaryGitRepository) async throws -> String {
-        let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 
@@ -131,7 +131,7 @@ import Testing
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(content.utf8).write(to: url)
         }
-        let registry = try MultiTool.Builder().withFiles(root: root).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: root).buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 

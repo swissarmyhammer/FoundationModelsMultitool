@@ -812,7 +812,7 @@ struct MCPElicitationTests {
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
         try await MCPTestSupport.withConnection(of: server) {
-            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            let registry = try await MultiTool.Builder(mode: .open).withMCP(servers: [server]).buildRegistry()
             let multiTool = MultiTool(registry: registry)
             try await BoundRun.with { run in
                 let context = run.context
@@ -843,7 +843,7 @@ struct MCPElicitationTests {
     func aServerQuestionHasTheServerNameAsItsSource() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
         try await MCPTestSupport.withConnection(of: server) {
-            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            let registry = try await MultiTool.Builder(mode: .open).withMCP(servers: [server]).buildRegistry()
             try await withStubRun { stub in
                 try await withScriptedElicitationSink(run: stub, answering: Self.scriptedAccept) { sink in
                     _ = try await runSnippet(Self.elicitEchoSnippet, over: registry, under: stub.context)
@@ -1972,7 +1972,7 @@ struct MCPElicitationTests {
     func twoInnerCallsOfOneSnippetLinkTheQuestionToTheSnippetRun(kind: MCPTransportKind) async throws {
         let (scripted, server, held) = try await Self.connectedForTwoCalls(over: kind)
         try await MCPTestSupport.withConnection(of: server) {
-            let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
+            let registry = try await MultiTool.Builder(mode: .open).withMCP(servers: [server]).buildRegistry()
             let multiTool = MultiTool(registry: registry)
             let (snippetRun, _) = Self.twoRunsOfOneSession()
             let context = snippetRun.context

@@ -66,7 +66,7 @@ struct UnknownToolHintTests {
 
     @Test("calling an unknown tools.* name suggests the closest real path")
     func unknownToolsCallSuggestsClosestRealPath() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .addTool(TempTool())
             .buildRegistry()
@@ -85,7 +85,7 @@ struct UnknownToolHintTests {
 
     @Test("calling an invented sub-path on a real tool suggests the real tool itself")
     func inventedSubPathSuggestsTheRealTool() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(TempTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -132,7 +132,7 @@ struct UnknownToolHintTests {
 
     @Test("an invented name spelling out a real tool's name resolves to that tool")
     func inventedGetWeatherForecastResolvesToGetWeather() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -154,7 +154,7 @@ struct UnknownToolHintTests {
     /// block is the only one that says "itinerary".
     @Test("an invented name resembling nothing still resolves by catalog relevance")
     func inventedGetItineraryResolvesToGetTrip() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
@@ -165,7 +165,7 @@ struct UnknownToolHintTests {
 
     @Test("a catalog-relevance hint names only its best match, not its runners-up")
     func catalogRelevanceHintNamesOnlyItsBestMatch() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
@@ -191,7 +191,7 @@ struct UnknownToolHintTests {
     /// the loose one — and the third is new.
     @Test("a snippet whose every tools.* path is unknown is steered to searchTools, not back to runCode")
     func snippetNamingNothingRealIsSteeredToDiscovery() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -207,7 +207,7 @@ struct UnknownToolHintTests {
 
     @Test("a snippet that already reached a real tool keeps the repair-and-retry closing")
     func snippetThatReachedARealToolKeepsTheRepairClosing() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -230,7 +230,7 @@ struct UnknownToolHintTests {
 
     @Test("a single-tool snippet written without any searchTools call still runs and returns its value")
     func singleToolSnippetWithoutPriorDiscoveryStillSucceeds() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -248,7 +248,7 @@ struct UnknownToolHintTests {
 
     @Test("a mis-called existing tool keeps its plain repairable error, with no does-not-exist hint")
     func misCalledExistingToolGetsNoHint() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(TempTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -296,7 +296,7 @@ struct UnknownToolHintTests {
     ///   path.
     /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
     private static func resolve(_ failedPath: String) async throws -> UnknownToolHint.Resolution? {
-        let registry = try MultiTool.Builder().addTools(travelCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTools(travelCatalog()).buildRegistry()
         return await hint(
             message: "tools.\(failedPath) is not a function",
             snippet: "return tools.\(failedPath)();",
@@ -336,7 +336,7 @@ struct UnknownToolHintTests {
         // with: `getCities` neither contains nor is contained by
         // `sendEmail`, and the retrieval tier ranks only entries some signal
         // genuinely matched.
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
 
         let resolution = try #require(
             await Self.hint(
@@ -359,7 +359,7 @@ struct UnknownToolHintTests {
 
     @Test("an unknown tools.* path reaches the log at the notice level, exactly once")
     func unknownPathIsLoggedOnce() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let (records, labels) = try await TelemetryCapture.run(forbidding: []) { context in
@@ -390,7 +390,7 @@ struct UnknownToolHintTests {
 
     @Test("a mis-called existing tool reaches the log not at all")
     func misCalledExistingToolIsNotLogged() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTools(Self.travelCatalog())
             .addTool(TempTool())
             .buildRegistry()
@@ -426,7 +426,7 @@ struct UnknownToolHintTests {
     /// - Returns: the registry.
     /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
     private static func notesRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(NotesOperationTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(NotesOperationTool()).buildRegistry()
     }
 
     /// The uncaught form of the namespace call: no `try`, so the `TypeError`
@@ -511,7 +511,7 @@ struct UnknownToolHintTests {
         let tools: [any Tool] = (1...verbCount).map { number in
             CatalogEntryTool(name: "verb\(number)", description: "Verb \(number) of the wide group.")
         }
-        let registry = try MultiTool.Builder().addGroup(named: Self.wideGroup, tools).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addGroup(named: Self.wideGroup, tools).buildRegistry()
         let verbPaths = registry.surface.entries.map(\.path)
         let hiddenPath = try #require(verbPaths.last)
 

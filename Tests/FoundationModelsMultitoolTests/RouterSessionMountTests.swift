@@ -99,7 +99,7 @@ struct RouterSessionMountTests {
             // before the session closes. A second release has no effect.
             try await ensuring({ await gate.release() }) {
                 let runCode = MultiTool(
-                    registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
+                    registry: try MultiTool.Builder(mode: .open).addTool(GatedCodeTool(gate: gate)).buildRegistry(),
                     configuration: MultiToolConfiguration(inlineSettleGrace: 0)
                 )
                 let mounted = try #require(
@@ -147,7 +147,7 @@ struct RouterSessionMountTests {
 
     /// A registry carrying one real tool.
     private static func registry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
     }
 
     /// Wraps `tool` the way a Router session wraps every tool it mounts.

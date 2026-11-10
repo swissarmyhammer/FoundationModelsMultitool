@@ -172,7 +172,7 @@ struct ShellHistoryOpsTests {
     @Test("Each verb renders under the shell noun with a runnable example")
     func eachVerbRendersUnderTheShellNounWithARunnableExample() throws {
         let state = try makeState()
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: Self.shellNoun, [GetLines(state: state), GrepHistory(state: state)])
             .build()
 

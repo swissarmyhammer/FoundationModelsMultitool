@@ -53,7 +53,7 @@ struct HostAndEmitterTests {
     func innerToolEventsReachTheSessionSinkAfterTheRunGoesToTheBackground() async throws {
         let latch = ToolReleaseLatch()
         let recorder = AmbientRecordingTool(name: "recorder")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(GatedTool(latch: latch))
             .addTool(recorder)
             .buildRegistry()
@@ -120,7 +120,7 @@ struct HostAndEmitterTests {
     @Test("runCode casts to ForkableTool off an any Tool existential, and the erased forked() return downcasts and serves the registry")
     func runCodeCastsToForkableToolAndTheErasedForkDowncastsAndServesTheRegistry() async throws {
         let recorder = AmbientRecordingTool(name: "recorder")
-        let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(recorder).buildRegistry()
         // Exactly how a host derives a child session's instance: a conformance
         // cast against the `any Tool` existential — the shape `ForkableTool`
         // declares no associated types to support — and then `forked()`. The

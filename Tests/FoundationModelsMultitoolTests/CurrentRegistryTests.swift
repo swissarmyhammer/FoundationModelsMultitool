@@ -24,14 +24,14 @@ struct CurrentRegistryTests {
     /// A registry over `CitiesTool` alone, mounted. Returns the root `runCode`
     /// and the staging half of its holder.
     private static func mountedRoot() throws -> (root: MultiTool, staging: any RegistryStaging) {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
         let (tools, staging) = try registry.makeSessionToolsAndStaging(selection: nil)
         return (try runCode(in: tools), staging)
     }
 
     /// A registry over `TempTool` alone.
     private static func temperatureRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
     }
 
     @Test("a sub-agent built from currentRegistry after a catalog change sees the new verbs")

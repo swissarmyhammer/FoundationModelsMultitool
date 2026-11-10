@@ -20,7 +20,7 @@ struct TypedMockDryRunTests {
     /// tool, a tool with an optional enum-constrained argument, and a tool
     /// whose argument object is `getCities`'s own result shape.
     static func surface() throws -> APISurface {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .addTool(TempTool())
             .addTool(ForecastTool())
@@ -83,7 +83,7 @@ struct TypedMockDryRunTests {
     /// (`Fixtures/OperationToolFixtures.swift`). Each verb returns a parsed
     /// JSON value, and `listNote` returns a JSON array.
     static func notesEntries() throws -> [APISurface.Entry] {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .addTool(NotesOperationTool())
             .build()
             .entries

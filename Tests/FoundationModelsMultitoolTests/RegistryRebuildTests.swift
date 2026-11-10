@@ -237,7 +237,7 @@ struct RegistryRebuildTests {
     func rebuildAfterAnAddGivesTheNewVerbAndKeepsTheFirstRegistry() async throws {
         let (scripted, server) = try await Self.connectedDynamicServer()
         try await MCPTestSupport.withConnection(of: server) {
-            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
             let first = try builder.buildRegistry()
             let source = builder.registrySource
             #expect(Self.paths(of: first) == [Self.counterPath])
@@ -259,7 +259,7 @@ struct RegistryRebuildTests {
     func rebuildAfterARemoveDropsTheVerb() async throws {
         let (scripted, server) = try await Self.connectedDynamicServer()
         try await MCPTestSupport.withConnection(of: server) {
-            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
             let source = builder.registrySource
 
             // The first stage adds the greeter.
@@ -292,7 +292,7 @@ struct RegistryRebuildTests {
     func rebuildThatCollidesThrowsAndKeepsTheOldRegistry() async throws {
         let (scripted, server) = try await Self.connectedEchoServer()
         try await MCPTestSupport.withConnection(of: server) {
-            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
             let first = try builder.buildRegistry()
             let source = builder.registrySource
 
@@ -320,7 +320,7 @@ struct RegistryRebuildTests {
     func rebuildWithAnIllegalVerbThrowsAndKeepsTheOldRegistry() async throws {
         let (scripted, server) = try await Self.connectedEchoServer()
         try await MCPTestSupport.withConnection(of: server) {
-            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
             let first = try builder.buildRegistry()
             let source = builder.registrySource
 
@@ -345,7 +345,7 @@ struct RegistryRebuildTests {
         try await MCPTestSupport.withConnection(of: server) {
             let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
             let storeDirectory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-            let builder = try await MultiTool.Builder()
+            let builder = try await MultiTool.Builder(mode: .open)
                 .withShell(storeDirectory: storeDirectory)
                 .withFiles(root: root)
                 .withMCP(servers: [server])

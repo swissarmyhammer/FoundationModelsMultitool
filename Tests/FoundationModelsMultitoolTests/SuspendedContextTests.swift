@@ -267,7 +267,7 @@ struct SuspendedContextTests {
     /// - Parameter gated: the tool to expose.
     /// - Returns: the registry.
     private static func registry(exposing gated: GatedTool) throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(gated).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(gated).buildRegistry()
     }
 
     /// Mounts a `runCode` tool over one gated tool.

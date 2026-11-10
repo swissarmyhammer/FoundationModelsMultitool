@@ -239,7 +239,7 @@ struct SurfaceRefresherTests {
     /// - Returns: The ground of one case.
     /// - Throws: What the build or the mount throws.
     private static func makeGround(over server: MCPServer) async throws -> Ground {
-        let builder = try await MultiTool.Builder().withMCP(servers: [server])
+        let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
         let (tools, staging) = try builder.buildRegistry()
             .makeSessionToolsAndStaging(selection: nil, embedder: nil, sampleModel: nil)
         let recording = RecordingStaging(passingTo: staging)

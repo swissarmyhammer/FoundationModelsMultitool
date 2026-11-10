@@ -15,7 +15,7 @@ import FoundationModelsExtras
 ///     let tools: [any Tool] = [EditTool(), ReadTool()]   // names: edit, read
 /// }
 ///
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withCapability(FilesCapability())  // tools.files.edit, tools.files.read
 ///     .build()
 /// ```

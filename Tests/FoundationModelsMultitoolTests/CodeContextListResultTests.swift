@@ -134,7 +134,7 @@ struct CodeContextListResultTests {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let text = (1...100).map { "line \($0)" }.joined(separator: "\n") + "\n"
         try Data(text.utf8).write(to: url)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .addGroup(
                 named: "code_context",

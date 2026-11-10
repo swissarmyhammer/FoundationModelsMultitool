@@ -83,7 +83,7 @@ struct InnerTerminalEventTests {
     private static func run(snippet: String) async throws -> RecordedRun {
         try await withOuterRunContext { context in
             let sink = RecordingEventSink()
-            let registry = try MultiTool.Builder().addTool(FailingTool()).buildRegistry()
+            let registry = try MultiTool.Builder(mode: .open).addTool(FailingTool()).buildRegistry()
             // A settle period of 0 sends the run to the background at once, so that
             // the run plane keeps a terminal event for the runCode completion token.
             let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))

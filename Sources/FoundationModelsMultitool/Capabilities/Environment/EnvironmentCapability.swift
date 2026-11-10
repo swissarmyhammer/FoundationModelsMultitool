@@ -26,7 +26,7 @@ import FoundationModels
 /// that runs the session.
 ///
 /// ```swift
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withEnvironment()        // tools.environment.*
 ///     .build()
 /// ```

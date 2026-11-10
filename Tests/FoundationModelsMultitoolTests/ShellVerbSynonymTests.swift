@@ -17,7 +17,7 @@ struct ShellVerbSynonymTests {
     private static func run(_ code: String) async throws -> String {
         let root = TestSupport.makeTemporaryDirectory(named: "shell-verb-synonyms")
         let store = TestSupport.makeTemporaryDirectory(named: "shell-verb-synonyms-store")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))

@@ -500,7 +500,7 @@ struct ScenarioGradingTests {
     /// - Returns: the rendered `runCode` output.
     /// - Throws: whatever building the registry or calling `MultiTool` throws.
     private static func runComposeSnippet(_ code: String, log: ScenarioCallLog) async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTools([IntegrationTripTool(log: log), IntegrationWeatherTool(log: log)])
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))

@@ -30,7 +30,7 @@ struct ScenarioFixtureTests {
 
     @Test("the trip tool renders as a multi-field object rather than a bare list of cities")
     func tripToolRendersAsAMultiFieldObject() throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
 
         let source = registry.surface.source
 
@@ -68,7 +68,7 @@ struct ScenarioFixtureTests {
 
     @Test("a snippet reaches the itinerary through the trip result's cities field")
     func tripSnippetNavigatesToCities() async throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -80,7 +80,7 @@ struct ScenarioFixtureTests {
 
     @Test("a snippet that treats the whole trip result as the city list gets a repairable error")
     func tripSnippetThatSkipsCitiesFails() async throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -246,7 +246,7 @@ struct ScenarioFixtureTests {
         // from several calls in flight at the same time.
         let log = ScenarioCallLog()
         let weather = IntegrationWeatherTool(log: log)
-        let registry = try MultiTool.Builder().addTool(weather).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(weather).buildRegistry()
         let multiTool = MultiTool(registry: registry)
         let calls = integrationCityWeather
             .map { "tools.\(weather.name)({ city: \"\($0.code)\" })" }
@@ -282,7 +282,7 @@ struct ScenarioFixtureTests {
         // read off the snippet's source text. Both calls threw; nothing ran;
         // the temperature in the reply came from nowhere.
         let log = ScenarioCallLog()
-        let registry = try MultiTool.Builder().addTool(IntegrationWeatherTool(log: log)).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(IntegrationWeatherTool(log: log)).buildRegistry()
         let multiTool = MultiTool(registry: registry)
         let code = #"""
             const trip = await tools.getItinerary();

@@ -3,7 +3,7 @@
 //
 // A suite that proves what the web verbs give to a snippet needs the same
 // ground each time: a `WebStub` that answers each request, a registry built
-// with `MultiTool.Builder().withWeb(...)` over the stub session, and a
+// with `MultiTool.Builder(mode: .open).withWeb(...)` over the stub session, and a
 // `MultiTool` over that registry. `WebRun` is that ground, built one time here
 // rather than once for each test.
 //
@@ -45,7 +45,7 @@ struct WebRun {
     init(routes: [String: WebStubReply]) throws {
         stub = WebStub(routes: routes)
         let configuration = WebConfiguration(providers: [.braveAPI(.literal(Self.testKey))])
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withWeb(
                 configuration: configuration, sessionConfiguration: stub.sessionConfiguration,
                 resolver: PublicHostResolver())

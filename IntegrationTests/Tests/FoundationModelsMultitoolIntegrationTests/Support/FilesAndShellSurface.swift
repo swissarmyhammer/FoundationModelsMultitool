@@ -84,7 +84,7 @@ func makeFilesAndShellSurface(
     over fixture: LiveRouterFixture, adding tools: [any Tool] = []
 ) throws -> FilesAndShellSurface {
     let root = LiveRouterFixture.makeTempDir()
-    let registry = try MultiTool.Builder()
+    let registry = try MultiTool.Builder(mode: .open)
         .withFiles(root: root, readOnly: false)
         .withShell(storeDirectory: root.appendingPathComponent(filesAndShellStoreDirectoryName, isDirectory: true))
         .addTools(tools)

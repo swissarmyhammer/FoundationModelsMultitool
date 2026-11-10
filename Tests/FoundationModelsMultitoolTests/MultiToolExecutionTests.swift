@@ -22,7 +22,7 @@ struct MultiToolExecutionTests {
 
     @Test("runCode's schema exposes code alone — waiting is not one of its options")
     func runCodeSchemaExposesCodeAlone() throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
 
         let schema = try ToolAPIRenderer.jsonSchemaString(for: MultiTool(registry: registry).parameters)
 
@@ -41,7 +41,7 @@ struct MultiToolExecutionTests {
     @Test("runCode declares the background mount, and bounds each call at the configured ceiling")
     func runCodeDeclaresTheBackgroundMount() throws {
         let ceiling: TimeInterval = 30
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let multiTool = MultiTool(
             registry: registry, configuration: MultiToolConfiguration(executionTimeLimit: ceiling))
 
@@ -56,7 +56,7 @@ struct MultiToolExecutionTests {
     @Test("a nested runCode states no tool-level timeout, so the outer runCode clock is its one clock")
     func nestedRunCodeStatesNoTimeout() throws {
         let ceiling: TimeInterval = 30
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let nested = MultiTool(
             registry: registry, configuration: MultiToolConfiguration(executionTimeLimit: ceiling), depth: 1)
 
@@ -67,7 +67,7 @@ struct MultiToolExecutionTests {
 
     @Test("runCode arguments carrying only code still decode")
     func runCodeArgumentsDecodeFromCodeAlone() async throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let content = try ArgumentMarshaler.marshalArguments(.object(["code": .string("return 1 + 1;")]))
 
         let arguments = try RunCodeArguments(content)
@@ -80,7 +80,7 @@ struct MultiToolExecutionTests {
 
     @Test("composing two tools in one snippet returns only the final value; intermediates never appear in the rendered output")
     func composedSnippetReturnsOnlyFinalValue() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .addTool(TempTool())
             .buildRegistry()
@@ -107,7 +107,7 @@ struct MultiToolExecutionTests {
 
     @Test("tools.github.<name> dispatches to the correct grouped tool")
     func groupedCallDispatchesToCorrectTool() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [IssueCountTool()])
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -124,7 +124,7 @@ struct MultiToolExecutionTests {
     @Test("an async (delayed) tool's result arrives through the promise-pump bridge, off the main thread, when the snippet's unawaited return settles at the boundary")
     func delayedToolResolvesThroughTheAsyncBridge() async throws {
         let delayedTool = DelayedTool()
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(delayedTool)
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -144,7 +144,7 @@ struct MultiToolExecutionTests {
     @Test("an explicitly awaited tools.* call resolves to the tool's real result")
     func awaitedDelayedToolCallResolvesToItsValue() async throws {
         let delayedTool = DelayedTool()
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(delayedTool)
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -167,7 +167,7 @@ struct MultiToolExecutionTests {
     @Test("Promise.all over two tools.* calls runs both at the same time")
     func promiseAllRunsToolCallsConcurrently() async throws {
         let rendezvous = Rendezvous(partySize: Self.concurrentCallCount)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(RendezvousTool(rendezvous: rendezvous))
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -197,7 +197,7 @@ struct MultiToolExecutionTests {
     func floatingToolCallSettlesBeforeReturn() async throws {
         let snippetEnded = TestGate()
         let delayedTool = DelayedTool(hold: HeldCall(release: snippetEnded))
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(delayedTool)
             .buildRegistry()
         let multiTool = MultiTool(registry: registry, interpreter: SnippetEndSignalingInterpreter(opening: snippetEnded))
@@ -221,7 +221,7 @@ struct MultiToolExecutionTests {
 
     @Test("a validation failure inside an awaited tools.* call rejects with the identical ToolInvokerError message text the v1 blocking bridge produced")
     func awaitedValidationFailureRejectsWithIdenticalMessageText() async throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -243,7 +243,7 @@ struct MultiToolExecutionTests {
 
     @Test("a mis-called tool (missing required argument) surfaces ResultRenderer's repairable error text, not a crash")
     func misCalledToolSurfacesRepairableErrorText() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(TempTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
@@ -258,7 +258,7 @@ struct MultiToolExecutionTests {
 
     @Test("runCode's description alone carries the searchTools-first workflow and the error-recovery contract — no system prompt required")
     func descriptionCarriesTheErrorRecoveryContract() throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         // Collapse the multiline literal's hard line-wraps to single spaces
         // so an assertion probes the guidance, not incidental wrapping.
         let description = MultiTool(registry: registry)
@@ -334,7 +334,7 @@ struct MultiToolExecutionTests {
 
     @Test("registry.directMode() drops the searchTools affordance; neither arm reports a wait tool")
     func directModeReportsRunCodeOnlySurface() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
 
@@ -358,7 +358,7 @@ struct MultiToolExecutionTests {
 
     @Test("makeSessionTools() presents searchTools before runCode")
     func sessionToolsPresentDiscoveryBeforeExecution() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
 
@@ -371,7 +371,7 @@ struct MultiToolExecutionTests {
 
     @Test("A direct-mode registry vends runCode alone — there is no searchTools to present and no wait tool")
     func directModeSessionToolsOmitSearchTools() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
             .directMode()
@@ -389,7 +389,7 @@ struct MultiToolExecutionTests {
     /// - Returns: the mounted `runCode` and the registry it reads.
     /// - Throws: what the build or the mount throws, or a missing `runCode`.
     private func mountDirectModeRunCode() throws -> (runCode: MultiTool, registry: MultiTool.Registry) {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .addGroup(named: "github", [IssueCountTool()])
             .buildRegistry()
@@ -424,7 +424,7 @@ struct MultiToolExecutionTests {
 
     @Test("Both vended tools are backed by the registry they were vended from, not an empty one")
     func vendedToolsAreBackedByTheirOwnRegistry() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .buildRegistry()
 
@@ -476,7 +476,7 @@ struct MultiToolExecutionTests {
     /// - Returns: The tool.
     private static func gatedRunCode(gate: ReleaseGate, inlineSettleGrace: TimeInterval) throws -> MultiTool {
         MultiTool(
-            registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
+            registry: try MultiTool.Builder(mode: .open).addTool(GatedCodeTool(gate: gate)).buildRegistry(),
             configuration: MultiToolConfiguration(inlineSettleGrace: inlineSettleGrace)
         )
     }
@@ -642,7 +642,7 @@ struct MultiToolExecutionTests {
     func overlongBackgroundRunCodeDetailStaysWithinTheCaps() async throws {
         try await withOuterRunContext { context in
             let runCode = MultiTool(
-                registry: try MultiTool.Builder().addTool(TempTool()).buildRegistry(),
+                registry: try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry(),
                 configuration: Self.overflowConfiguration
             )
             let mounted = try #require(

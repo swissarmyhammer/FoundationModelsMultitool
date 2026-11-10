@@ -39,7 +39,7 @@ struct InlineSettleGraceTests {
 
     /// A registry carrying one real tool.
     private static func registry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
     }
 
     /// The context of an outer run on a session whose run clock is a
@@ -134,7 +134,7 @@ struct InlineSettleGraceTests {
         let hog = CooperativePoolHogTool(latch: latch)
         try await Self.withContextOnStoppedClock { context in
             try await Self.withContextOnStoppedClock { quickContext in
-                let registry = try MultiTool.Builder().addTool(hog).buildRegistry()
+                let registry = try MultiTool.Builder(mode: .open).addTool(hog).buildRegistry()
                 let slowMount = try Self.mounted(
                     MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)), on: context)
                 let quickMount = try Self.mounted(

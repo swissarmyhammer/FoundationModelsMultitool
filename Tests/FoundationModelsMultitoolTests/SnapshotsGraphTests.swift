@@ -478,7 +478,7 @@ struct SnapshotsGraphTests {
     @Test("MultiTool gives the snapshots endpoint of a registered snapshots capability")
     func multiToolGivesTheSnapshotsEndpoint() throws {
         let store = SnapshotStore(directory: TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName))
-        let registry = try MultiTool.Builder().withCapability(SnapshotsCapability(store: store)).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: store)).buildRegistry()
 
         let names = MultiTool(registry: registry).graphQLEndpoints.map(\.name)
 

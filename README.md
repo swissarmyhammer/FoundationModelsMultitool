@@ -18,7 +18,7 @@ import FoundationModelsMultitool
 
 // Standalone tools render at tools.<name>; a group nests its tools under
 // tools.<group>.<name>.
-let registry = try MultiTool.Builder()
+let registry = try MultiTool.Builder(mode: .open)
     .addTool(TripCitiesTool())
     .addGroup(named: "weather", [WeatherTool()])
     .buildRegistry()

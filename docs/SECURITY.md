@@ -164,8 +164,8 @@ as it gets file access from the files capability. The web verbs are such tools.
 
 Each `MultiTool.Builder` has a tool mode, the `ToolMode` of
 FoundationModelsExtras. The host gives the mode in
-`MultiTool.Builder(mode:sandboxProbe:)`. Give the mode in each host, and do
-not use the default value (`open`): a later change removes that default.
+`MultiTool.Builder(mode:sandboxProbe:)`. The `mode` argument has no default
+value, so each host must give the mode.
 The [Modes](GUIDE.md#modes) section of the guide gives an example.
 
 - **`open` mode** has all capabilities: files, shell, git, snapshots, web,

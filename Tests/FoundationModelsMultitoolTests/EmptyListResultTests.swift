@@ -43,7 +43,7 @@ struct EmptyListResultTests {
         let url = root.appendingPathComponent("docs/ref/forms.txt")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("Forms\n=====\n".utf8).write(to: url)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .addGroup(named: "code_context", [RepairMatchesTool()])
             .buildRegistry()

@@ -53,7 +53,7 @@ struct SandboxGlobalsTests {
 
     @Test("the globals are not discoverable entries — help() and the searchTools surface list none of them")
     func globalsAreNotDiscoverableEntries() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return help();"))

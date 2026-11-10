@@ -103,7 +103,7 @@ struct ShellCapabilityTests {
     /// - Throws: When the store does not prepare, or the surface does not
     ///   render.
     private func makeShellRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .withShell(
                 storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
             .buildRegistry()
@@ -204,7 +204,7 @@ struct ShellCapabilityTests {
     func withShellPassesTheDefaultWorkingDirectoryThrough() throws {
         let sessionRoot = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
 
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withShell(
                 storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix),
                 defaultWorkingDirectory: sessionRoot)
@@ -236,7 +236,7 @@ struct ShellCapabilityTests {
     /// capability claims no part of that namespace.
     @Test("a builder with no withShell renders no entry under the shell noun")
     func aBuilderWithNoWithShellRendersNoShellEntry() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
 
         // The unrelated tool proves the surface was really built, thus the two
         // expectations below read an answer rather than an empty catalog.
@@ -268,7 +268,7 @@ struct ShellCapabilityTests {
     /// qualified with the noun so a model can call it as written.
     @Test("searchTools finds each shell verb, with the runnable example of that verb")
     func searchToolsFindsEachShellVerbWithItsRunnableExample() async throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .withShell(
                 storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
             .build()

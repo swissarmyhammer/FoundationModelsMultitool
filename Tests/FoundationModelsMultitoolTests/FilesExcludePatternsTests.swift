@@ -240,7 +240,7 @@ import Testing
     /// snippet calls.
     @Test func builderGivesThePatternsToTheSnippetVerbs() async throws {
         let root = try Self.makeAgentTree()
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root, excludePatterns: Self.agentFolderPatterns)
             .buildRegistry()
         let output = try await MultiTool(registry: registry).call(

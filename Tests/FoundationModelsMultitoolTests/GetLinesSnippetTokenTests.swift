@@ -20,7 +20,7 @@ import Testing
     /// getLines verb and the completion token of that runCode run.
     private static func runSnippet(_ code: String) async throws -> (getLines: GetLines, token: String) {
         let root = TestSupport.makeTemporaryDirectory(named: "GetLinesSnippetTokenTests")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withShell(storeDirectory: root.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()
         let getLines = try #require(registry.tools["shell.getLines"] as? GetLines)

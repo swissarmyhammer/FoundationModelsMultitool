@@ -542,7 +542,7 @@ struct SessionsToolMessageTests {
         let other = Fixtures.summary()
         directory.register(other)
         let tool = try SessionsTool(directory: directory)
-        let multiTool = MultiTool(registry: try MultiTool.Builder().withSessions(tool).buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).withSessions(tool).buildRegistry())
 
         let (output, questionID) = try await Fixtures.asCaller(in: directory) { callerID in
             let questionID = try await Self.ask(from: .session(other.id), to: callerID, in: directory)

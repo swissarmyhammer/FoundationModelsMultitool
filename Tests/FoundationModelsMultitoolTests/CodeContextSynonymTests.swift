@@ -42,7 +42,7 @@ struct StandInCodeContextTool: Tool {
     /// Runs `code` on a surface with the stand-in `code_context` group and,
     /// when `files` is set, the files capability.
     private static func run(_ code: String, files: Bool = false) async throws -> String {
-        var builder = MultiTool.Builder().addGroup(named: "code_context", verbs.map { StandInCodeContextTool(name: $0) })
+        var builder = MultiTool.Builder(mode: .open).addGroup(named: "code_context", verbs.map { StandInCodeContextTool(name: $0) })
         if files {
             builder = builder.withFiles(root: TestSupport.makeTemporaryDirectory(named: "CodeContextSynonymTests"))
         }

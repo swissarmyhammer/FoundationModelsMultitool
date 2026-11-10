@@ -66,7 +66,7 @@ struct NoTurnGrepCodeTool: Tool {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("print('ok')\n".utf8).write(to: url)
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .addGroup(named: "code_context", [NoTurnGrepCodeTool()] as [any Tool])

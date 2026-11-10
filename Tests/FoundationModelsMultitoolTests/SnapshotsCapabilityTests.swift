@@ -272,7 +272,7 @@ struct SnapshotsCapabilityTests {
     /// - Returns: The output of the snippet.
     /// - Throws: What the surface, the snippet or the store throws.
     private static func runSnippetThenTake(_ code: String, in fixture: Fixture) async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: fixture.repository.workDirectory, readOnly: false)
             .withCapability(SnapshotsCapability(store: fixture.store))
             .buildRegistry()
@@ -1009,7 +1009,7 @@ struct SnapshotsCapabilityTests {
         let fixture = try await Self.makeFixture()
         try fixture.repository.write("changed\n", to: Self.baseFile)
         let multiTool = MultiTool(
-            registry: try MultiTool.Builder().withCapability(SnapshotsCapability(store: fixture.store))
+            registry: try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: fixture.store))
                 .buildRegistry())
 
         let output = try await HookSession.$current.withValue(fixture.session) {
@@ -1029,7 +1029,7 @@ struct SnapshotsCapabilityTests {
     @Test("searchTools finds the three snapshots verbs")
     func searchToolsFindsTheThreeSnapshotsVerbs() async throws {
         let fixture = try await Self.makeFixture()
-        let surface = try MultiTool.Builder().withCapability(SnapshotsCapability(store: fixture.store)).build()
+        let surface = try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: fixture.store)).build()
 
         let feedback = try await CapabilityDiscoveryProbe.searchToolsFeedback(
             over: surface, selecting: Self.snapshotPaths, task: Self.discoveryTask)
@@ -1046,7 +1046,7 @@ struct SnapshotsCapabilityTests {
     @Test("snapshots.reset and snapshots.rewind are answered with snapshots.rollback", arguments: ["reset", "rewind"])
     func resetAndRewindAreAnsweredWithRollback(verb: String) async throws {
         let fixture = try await Self.makeFixture()
-        let registry = try MultiTool.Builder().withCapability(SnapshotsCapability(store: fixture.store))
+        let registry = try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: fixture.store))
             .buildRegistry()
         let shape = MultiTool.RegistryBundleShape(bindsSearchTools: false, discovery: .none, embedder: nil)
         let bundle = MultiTool.RegistryBundle(registry: registry, shape: shape)

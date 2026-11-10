@@ -95,7 +95,7 @@ struct SelectionWordingTests {
     /// - Throws: When the directory, the store or the surface does not prepare.
     private func makeSurface() throws -> APISurface {
         let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        return try MultiTool.Builder()
+        return try MultiTool.Builder(mode: .open)
             .withFiles(root: root, readOnly: false)
             .withShell(
                 storeDirectory: root.appendingPathComponent(

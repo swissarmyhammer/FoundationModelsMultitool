@@ -51,7 +51,7 @@ struct SymbolResultShapeTests {
 
     @Test("both syms.symbols.filter and syms.filter work on a symbol result", arguments: ["listSymbol", "getSymbol"])
     func bothFormsWork(verb: String) async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(
                 named: "code_context",
                 [StandInSymbolTool(name: "listSymbol"), StandInSymbolTool(name: "getSymbol")]

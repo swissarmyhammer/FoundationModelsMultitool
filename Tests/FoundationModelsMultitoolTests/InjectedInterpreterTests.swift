@@ -56,7 +56,7 @@ struct InjectedInterpreterTests {
     @Test("MultiTool.call runs the snippet in the injected interpreter instance")
     func callRunsTheSnippetInTheInjectedInterpreter() async throws {
         let interpreter = RecordingInterpreter()
-        let multiTool = MultiTool(registry: try MultiTool.Builder().buildRegistry(), interpreter: interpreter)
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).buildRegistry(), interpreter: interpreter)
 
         _ = try await multiTool.call(arguments: RunCodeArguments(code: Self.snippet))
 

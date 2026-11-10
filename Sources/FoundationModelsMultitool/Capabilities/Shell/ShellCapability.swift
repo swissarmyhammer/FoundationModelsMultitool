@@ -39,7 +39,7 @@ import FoundationModels
 /// The shell capability: one noun, and the three verbs of the virtual shell.
 ///
 /// ```swift
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withShell()                        // tools.shell.execute, .getLines, .grepHistory
 ///     .build()
 /// ```

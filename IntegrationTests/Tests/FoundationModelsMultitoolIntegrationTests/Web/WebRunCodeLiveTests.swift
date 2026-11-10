@@ -7,7 +7,7 @@ import Testing
 /// `MultiTool` and with no model (web.md § "Testing", Level 2, the
 /// `WebRunCodeLiveTests` row).
 ///
-/// The registry comes from `MultiTool.Builder().withWeb(configuration:
+/// The registry comes from `MultiTool.Builder(mode: .open).withWeb(configuration:
 /// .keyless)`, the public mount of a host, with the default `.ephemeral`
 /// session. The snippet goes through `MultiTool.call(arguments:)`: the JSC
 /// interpreter, the `tools.web` bindings, and `ToolInvoker`. The search goes
@@ -47,7 +47,7 @@ struct WebRunCodeLiveTests {
 
     @Test("the goal snippet returns pages with a URL and a title, one with content, or a recognized block")
     func goalSnippetReturnsPages() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withWeb(configuration: .keyless)
             .buildRegistry()
 

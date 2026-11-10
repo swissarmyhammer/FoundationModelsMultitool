@@ -56,7 +56,7 @@ struct EnvironmentOperatingSystemTests {
     /// the injected facts.
     @Test("tools.environment.os({}) renders and gives each field")
     func theSnippetRendersAndGivesEachField() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withEnvironment(context: EnvironmentContext(operatingSystem: { Self.injected }))
             .buildRegistry()
 

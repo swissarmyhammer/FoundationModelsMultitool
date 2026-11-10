@@ -20,7 +20,7 @@ struct InnerCallLeaseTests {
         let delayed = DelayedTool()
         let snippetEnded = TestGate()
         let multiTool = MultiTool(
-            registry: try MultiTool.Builder().addTool(delayed).buildRegistry(),
+            registry: try MultiTool.Builder(mode: .open).addTool(delayed).buildRegistry(),
             interpreter: SnippetEndSignalingInterpreter(opening: snippetEnded))
         let context = session.context
 
@@ -43,7 +43,7 @@ struct InnerCallLeaseTests {
     func anAwaitedInnerCallHoldsNoLease() async throws {
         let session = LeasedSession()
         let delayed = DelayedTool()
-        let multiTool = MultiTool(registry: try MultiTool.Builder().addTool(delayed).buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).addTool(delayed).buildRegistry())
         let context = session.context
         let recorder = WorkTransitionsRecorder(session.registry)
 
@@ -62,7 +62,7 @@ struct InnerCallLeaseTests {
         let delayed = DelayedTool()
         let snippetEnded = TestGate()
         let multiTool = MultiTool(
-            registry: try MultiTool.Builder().addTool(delayed).buildRegistry(),
+            registry: try MultiTool.Builder(mode: .open).addTool(delayed).buildRegistry(),
             interpreter: SnippetEndSignalingInterpreter(opening: snippetEnded))
         let context = session.context
 
@@ -89,7 +89,7 @@ struct InnerCallLeaseTests {
         let session = LeasedSession()
         let delayed = DelayedTool()
         let multiTool = MultiTool(
-            registry: try MultiTool.Builder().addTool(delayed).buildRegistry(),
+            registry: try MultiTool.Builder(mode: .open).addTool(delayed).buildRegistry(),
             configuration: MultiToolConfiguration(inlineSettleGrace: 0))
         let engine = SessionMount.synchronous(multiTool, on: session.context)
         let typed = try #require(engine as? any FoundationModels.Tool<RunCodeArguments, String>)

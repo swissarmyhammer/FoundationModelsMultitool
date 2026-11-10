@@ -25,7 +25,7 @@ struct UnavailableGlobalHintTests {
     /// - Returns: the tool.
     /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
     private static func makeMultiTool() throws -> MultiTool {
-        MultiTool(registry: try MultiTool.Builder().addTool(CitiesTool()).buildRegistry())
+        MultiTool(registry: try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry())
     }
 
     @Test("a snippet that uses Buffer gets a hint that says Buffer is not available")

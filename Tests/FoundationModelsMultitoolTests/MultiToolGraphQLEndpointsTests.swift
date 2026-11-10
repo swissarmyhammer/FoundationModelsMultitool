@@ -157,13 +157,13 @@ struct MultiToolGraphQLEndpointsTests {
 
     @Test("a cast of runCode from any Tool to GraphQLEndpointTool succeeds")
     func castFromAnyToolSucceeds() throws {
-        let tool: any Tool = MultiTool(registry: try MultiTool.Builder().buildRegistry())
+        let tool: any Tool = MultiTool(registry: try MultiTool.Builder(mode: .open).buildRegistry())
         #expect(tool is any GraphQLEndpointTool)
     }
 
     @Test("a capability whose tool conforms gives its endpoints through runCode")
     func capabilityGivesItsEndpoints() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(Self.capability("snapshots", giving: [Self.snapshotsEndpoint]))
             .buildRegistry()
 
@@ -174,7 +174,7 @@ struct MultiToolGraphQLEndpointsTests {
 
     @Test("an operation tool mounted with withOperationTool gives its endpoints, although it renders as verbs")
     func operationToolGivesItsEndpoints() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withOperationTool(
                 noun: "settings", tool: EndpointOperationTool(graphQLEndpoints: [Self.settingsEndpoint]))
             .buildRegistry()
@@ -186,7 +186,7 @@ struct MultiToolGraphQLEndpointsTests {
 
     @Test("two endpoints with one name and one scope give the first in capability order")
     func repeatedEndpointsKeepTheFirst() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(Self.capability("board", giving: [Self.boardEndpoint]))
             .withCapability(
                 Self.capability("mirror", giving: [Self.repeatedBoardEndpoint, Self.serverBoardEndpoint]))
@@ -199,7 +199,7 @@ struct MultiToolGraphQLEndpointsTests {
 
     @Test("a registry with no endpoint gives none")
     func registryWithNoEndpointGivesNone() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(Self.capability("plain", giving: []))
             .addTool(CitiesTool())
             .buildRegistry()
@@ -209,7 +209,7 @@ struct MultiToolGraphQLEndpointsTests {
 
     @Test("direct mode keeps the endpoints of the registry")
     func directModeKeepsTheEndpoints() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(Self.capability("snapshots", giving: [Self.snapshotsEndpoint]))
             .buildRegistry()
             .directMode()
@@ -222,12 +222,12 @@ struct MultiToolGraphQLEndpointsTests {
     @Test("after a registry swap runCode gives the endpoints of the new registry")
     func registrySwapGivesTheNewEndpoints() async throws {
         let runCode = MultiTool(
-            registry: try MultiTool.Builder()
+            registry: try MultiTool.Builder(mode: .open)
                 .withCapability(Self.capability("snapshots", giving: [Self.snapshotsEndpoint]))
                 .buildRegistry())
 
         runCode.stage(
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(Self.capability("settings", giving: [Self.settingsEndpoint]))
                 .buildRegistry())
         await runCode.submissionWillBegin()

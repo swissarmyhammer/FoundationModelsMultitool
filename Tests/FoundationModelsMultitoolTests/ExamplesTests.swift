@@ -151,7 +151,7 @@ struct ExamplesTests {
     func authorCatalogStandaloneAndGrouped() throws {
         // Standalone tools render flat, at tools.<name>; a named group nests
         // its tools under tools.<group>.<name> (plan.md's namespacing).
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addTool(WeatherTool())
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
@@ -177,7 +177,7 @@ struct ExamplesTests {
         // tools.notes({op}) entry. README.md `## Operation tools` states
         // the contract. The fixture here is the hand-conformed notes tool
         // of Fixtures/OperationToolFixtures.swift.
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(NotesOperationTool())
             .buildRegistry()
 
@@ -199,7 +199,7 @@ struct ExamplesTests {
 
     @Test("Register MultiTool directly with Apple's LanguageModelSession, and show a tool call round-tripping")
     func registerMultiToolWithLanguageModelSession() async throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         // The stub "model": call runCode once, then answer once the tool ran.
@@ -236,7 +236,7 @@ struct ExamplesTests {
 
     @Test("The searchTools -> runCode discovery-then-call handoff, via native tool-calling")
     func searchToolsThenRunCodeHandoff() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [IssueCountTool()])
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)

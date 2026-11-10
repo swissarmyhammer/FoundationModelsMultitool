@@ -272,7 +272,7 @@ struct SessionsToolReadTests {
         let sender = Fixtures.summary(title: Self.reviewTitle)
         directory.register(sender)
         let tool = try SessionsTool(directory: directory)
-        let multiTool = MultiTool(registry: try MultiTool.Builder().withSessions(tool).buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).withSessions(tool).buildRegistry())
 
         let output = try await Fixtures.asCaller(in: directory) { callerID in
             try await Self.send(from: sender.id, to: callerID, in: directory)

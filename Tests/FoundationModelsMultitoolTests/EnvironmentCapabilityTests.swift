@@ -50,7 +50,7 @@ struct EnvironmentCapabilityTests {
     /// `withEnvironment()` renders each verb under the `environment` noun.
     @Test("withEnvironment renders each verb under the environment noun")
     func withEnvironmentRendersEachVerbUnderTheEnvironmentNoun() throws {
-        let surface = try MultiTool.Builder().withEnvironment().build()
+        let surface = try MultiTool.Builder(mode: .open).withEnvironment().build()
 
         #expect(surface.entries.map(\.path) == Self.verbNames.map { Self.environmentPathPrefix + $0 })
     }
@@ -105,7 +105,7 @@ struct EnvironmentCapabilityTests {
     @Test("withEnvironment claims the environment noun, and a second registration under it makes buildRegistry() throw")
     func withEnvironmentClaimsTheEnvironmentNoun() {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withEnvironment()
                 .register(noun: Self.environmentNoun, tool: WeatherTool())
                 .buildRegistry()
@@ -121,7 +121,7 @@ struct EnvironmentCapabilityTests {
     @Test("a second withEnvironment registration makes buildRegistry() throw")
     func aSecondWithEnvironmentRegistrationThrows() {
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withEnvironment()
                 .withEnvironment()
                 .buildRegistry()
@@ -134,7 +134,7 @@ struct EnvironmentCapabilityTests {
     /// a test gives, under the same noun.
     @Test("withEnvironment(context:) renders each verb under the environment noun")
     func withEnvironmentContextRendersEachVerbUnderTheEnvironmentNoun() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .withEnvironment(context: EnvironmentContext(variables: { [:] }))
             .build()
 
@@ -146,7 +146,7 @@ struct EnvironmentCapabilityTests {
     /// environment capability renders nothing under its noun.
     @Test("a builder with no withEnvironment renders no entry under the environment noun")
     func aBuilderWithNoWithEnvironmentRendersNoEnvironmentEntry() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
 
         // The unrelated tool proves the surface was really built, thus the two
         // expectations below read an answer rather than an empty catalog.

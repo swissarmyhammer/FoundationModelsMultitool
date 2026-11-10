@@ -7,7 +7,7 @@ import Testing
 /// One snippet that calls each verb of the environment capability, through a
 /// real `MultiTool` and with no model (task `^pykbc2k`).
 ///
-/// The registry comes from `MultiTool.Builder().withEnvironment(context:)`
+/// The registry comes from `MultiTool.Builder(mode: .open).withEnvironment(context:)`
 /// over ``InjectedEnvironment``. The snippet goes through
 /// `MultiTool.call(arguments:)`: the JSC interpreter, the
 /// `tools.environment` bindings, and `ToolInvoker`. Each input is injected,
@@ -62,7 +62,7 @@ struct EnvironmentGoalSnippetTests {
     /// - Returns: The rendered output of the run.
     /// - Throws: What `buildRegistry()` or the run throws.
     private static func runGoalSnippet() async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withEnvironment(context: InjectedEnvironment.context())
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: goalSnippet))

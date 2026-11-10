@@ -12,7 +12,7 @@ import Testing
 struct APISurfaceSearchableMetadataTests {
     @Test("a standalone entry's id and renderBlock() are its path and block")
     func standaloneEntryIdAndRenderBlockMatchPathAndBlock() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
         let entry = try #require(surface.entries.first)
 
         #expect(entry.group == nil)
@@ -22,7 +22,7 @@ struct APISurfaceSearchableMetadataTests {
 
     @Test("a grouped entry's id and renderBlock() are its path and block")
     func groupedEntryIdAndRenderBlockMatchPathAndBlock() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
         let entry = try #require(surface.entries.first)
@@ -46,7 +46,7 @@ struct APISurfaceSearchableMetadataTests {
     /// `tools.github.createIssue` — a grouped entry, so the banner carries a
     /// path the bare tool name does not.
     private static func githubCreateIssueEntry() throws -> APISurface.Entry {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
         return try #require(surface.entries.first)
@@ -99,7 +99,7 @@ struct APISurfaceSearchableMetadataTests {
 
     @Test("a MetadataSearcher over a real built surface ranks the expected tool first for a keyword query")
     func retrievalSearchRanksExpectedToolFirst() async throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addTool(WeatherTool())
             .addTool(TripCitiesTool())
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])

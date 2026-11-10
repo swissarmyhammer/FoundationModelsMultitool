@@ -68,7 +68,7 @@ struct EnvironmentSearchTests {
     /// - Throws: What `InjectedEnvironment.context()` or `buildRegistry()`
     ///   throws.
     private static func makeRegistry(over repository: TemporaryGitRepository) throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .withEnvironment(context: InjectedEnvironment.context())
             .withGit(root: repository.workDirectory)
             .withFiles(root: repository.workDirectory)

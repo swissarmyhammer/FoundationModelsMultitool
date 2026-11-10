@@ -154,7 +154,7 @@ struct ShellStoreSharingTests {
         let store = try ShellStore(
             storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
 
-        let registry = try MultiTool.Builder().withShell(store: store).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withShell(store: store).buildRegistry()
 
         let execute = try #require(registry.tools["shell.execute"] as? Execute)
         #expect(execute.runner.state === store.state)
@@ -366,7 +366,7 @@ struct ShellStoreSharingTests {
         let store = try ShellStore(
             storeDirectory: scratch.makeShellStoreDirectory(prefix: Self.testDirectoryNamePrefix))
 
-        let registry = try MultiTool.Builder().withShell(store: store, sessionID: { Self.sessionA }).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withShell(store: store, sessionID: { Self.sessionA }).buildRegistry()
 
         let execute = try #require(registry.tools["shell.execute"] as? Execute)
         #expect(execute.runner.sessionID() == Self.sessionA)

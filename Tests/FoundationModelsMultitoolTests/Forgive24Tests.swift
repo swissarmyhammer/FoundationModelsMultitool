@@ -28,7 +28,7 @@ import Testing
         try Data("import sys\nlabel = 'a'\nprint(label)\n".utf8).write(to: url)
         try Data("x = 1\nlabel_b = 2\n".utf8).write(to: root.appendingPathComponent("tests/other.py"))
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()

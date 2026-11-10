@@ -23,7 +23,7 @@ import FoundationModelsHooks
 ///
 /// ```swift
 /// let store = SnapshotStore(directory: snapshotsURL)
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withCapability(SnapshotsCapability(store: store))   // tools.snapshots.*
 ///     .build()
 /// ```

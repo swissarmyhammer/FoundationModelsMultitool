@@ -103,7 +103,7 @@ struct TelemetryContentSafetyTests {
 
     @Test("no span, span event, log record or metric carries JS source, tool, search or MCP content")
     func noTelemetryCarriesTheContentOfTheCaller() async throws {
-        let registry = try MultiTool.Builder().addTool(MarkerTool(output: Self.toolReturnMarker)).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(MarkerTool(output: Self.toolReturnMarker)).buildRegistry()
         let multiTool = MultiTool(registry: registry)
         let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         let scripted = await Self.scriptedServer()

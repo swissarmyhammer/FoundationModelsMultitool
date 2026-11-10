@@ -157,7 +157,7 @@ struct SiblingToolPathTests {
     /// A registry carrying one real tool, so a nested snippet has a catalog
     /// entry to reach for beyond the siblings themselves.
     private static func registry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
     }
 
     /// Renders `value` as a JavaScript string literal.

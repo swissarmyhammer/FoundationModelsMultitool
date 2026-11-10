@@ -166,7 +166,7 @@ struct MCPSessionSweepTests {
         let (server, wire) = try await MCPTestSupport.connectedRecordingMCPServer(
             to: scripted, name: serverName)
         return try await MCPTestSupport.withConnection(of: server) {
-            let builder = try await MultiTool.Builder().withMCP(servers: [server])
+            let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [server])
             let registry = try builder.buildRegistry()
             let ground = SweepGround(
                 scripted: scripted, held: held, server: server, wire: wire, pool: builder.serverPool)
@@ -400,7 +400,7 @@ struct MCPSessionSweepTests {
     /// nothing to do.
     @Test("a session with no MCP servers holds an empty pool, and shutdownAll does nothing")
     func aSessionWithNoServersIsUnchanged() async {
-        let builder = MultiTool.Builder()
+        let builder = MultiTool.Builder(mode: .open)
 
         await builder.serverPool.shutdownAll()
 

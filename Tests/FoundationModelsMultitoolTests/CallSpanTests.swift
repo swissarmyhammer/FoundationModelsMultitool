@@ -113,7 +113,7 @@ struct CallSpanTests {
     /// - Returns: The tool.
     /// - Throws: What `MultiTool.Builder.buildRegistry()` throws.
     private static func makeMultiTool(gate: ReleaseGate = ReleaseGate()) throws -> MultiTool {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(TempTool())
             .addTool(ThrowingTool())
             .addTool(GatedCodeTool(gate: gate))
@@ -214,7 +214,7 @@ struct CallSpanTests {
 
     @Test("a searchTools call gives a span with a search child and a sample child, and one enter record each")
     func searchToolsSpanHasSearchAndSampleChildren() async throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         try await TelemetryCapture.run(forbidding: [Self.taskMarker]) { context in
             _ = try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
@@ -261,7 +261,7 @@ struct CallSpanTests {
 
     @Test("each turn of the sample session of a searchTools call gives one respond span inside the sample span")
     func sampleTurnsAreRespondSpansInsideTheSampleSpan() async throws {
-        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
         let attempts = SampleSnippetConfig.defaultAttemptLimit
         let model = ScriptedLanguageModel(Array(repeating: Self.unfencedSampleReply, count: attempts))
         let searchTools = try SearchToolsTool(registry: registry, selection: nil, sampleModel: model)

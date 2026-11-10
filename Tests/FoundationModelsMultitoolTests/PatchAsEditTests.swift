@@ -19,7 +19,7 @@ import Testing
         let root = TestSupport.makeTemporaryDirectory(named: "PatchAsEditTests")
         let url = root.appendingPathComponent("s.py")
         try Data("APPS = [\n    'django.contrib.admin',\n    'x',\n]\n".utf8).write(to: url)
-        let registry = try MultiTool.Builder().withFiles(root: root, readOnly: false).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: root, readOnly: false).buildRegistry()
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
         return (output, try String(contentsOf: url, encoding: .utf8))
     }

@@ -22,7 +22,7 @@ struct SearchToolsToolTests {
 
     @Test("a scripted selection's matched standalone entry splices SearchToolsTool's output verbatim, via one new session with the catalog prefix as its instructions")
     func standaloneSelectionSplicesVerbatimBlockAndExample() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
         let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
         let searcher = MetadataSearcher(
@@ -50,7 +50,7 @@ struct SearchToolsToolTests {
 
     @Test("a grouped tool's selected match splices its qualified tools.<group>.<name> banner verbatim")
     func groupedSelectionSplicesQualifiedPath() async throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addGroup(named: "github", [GithubCreateIssueTool()])
             .build()
         let entry = try #require(surface.entries.first)
@@ -82,7 +82,7 @@ struct SearchToolsToolTests {
 
     @Test("an empty selection formats as a clear \"no matching functions\" message, not an empty string")
     func emptySelectionFormatsAsNoMatchMessage() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).build()
         let model = ScriptedLanguageModel([#"{"ids":[]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
@@ -98,7 +98,7 @@ struct SearchToolsToolTests {
 
     @Test(".auto mode without a configured selection tier still returns retrieval-only results, with no session involved")
     func autoModeWithNoSelectionTierFallsBackToRetrieval() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
         // No `selection:` configured at all — `.auto` degrades to `.retrieval`
         // (plan.md §7), so this searcher never needs a model.
@@ -113,7 +113,7 @@ struct SearchToolsToolTests {
 
     @Test("a non-empty result ends with the imperative call-runCode-now footer, after the match blocks")
     func nonEmptyResultEndsWithImperativeFooter() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
         let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
@@ -131,7 +131,7 @@ struct SearchToolsToolTests {
 
     @Test("searchTools's description alone carries the whole contract — the mounted tools are the entire integration, with no session instructions")
     func descriptionCarriesTheNoSystemPromptScaffolding() throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).buildRegistry()
         // Collapse the multiline literal's hard line-wraps to single spaces
         // so an assertion probes the guidance, not incidental wrapping.
         let description = try SearchToolsTool(registry: registry, selection: nil)
@@ -186,7 +186,7 @@ struct SearchToolsToolTests {
 
     @Test("the production registry initializer wires .auto mode over the registry's own surface entries with no selection tier")
     func registryInitializerBuildsAutoModeSearcherWithNoSelection() async throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).buildRegistry()
 
         // `selection: nil` — no selection tier configured, so `.auto` must
         // still answer via retrieval alone, proving this initializer never
@@ -203,7 +203,7 @@ struct SearchToolsToolTests {
 
     @Test("a host's SelectionConfig over a scripted model drives selection end to end, with the catalog ids handed to its factory")
     func hostSelectionConfigDrivesSelectionEndToEnd() async throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
         let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
         let receivedIds = Mutex<[[String]]>([])
@@ -226,7 +226,7 @@ struct SearchToolsToolTests {
 
     @Test("a host's SelectionConfig drives selection through the mounted searchTools")
     func hostSelectionConfigDrivesTheMountedSearchTools() async throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
         let model = ScriptedLanguageModel([#"{"ids":["getTrip"]}"#])
 
@@ -243,7 +243,7 @@ struct SearchToolsToolTests {
 
     @Test("a host's selection factory that throws stops the build of the session tools")
     func throwingSelectionFactoryStopsTheBuild() throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(TripCitiesTool()).buildRegistry()
 
         #expect(throws: SelectionFactoryFailure.self) {
             try registry.makeSessionTools(selection: { _ in throw SelectionFactoryFailure() })
@@ -252,7 +252,7 @@ struct SearchToolsToolTests {
 
     @Test("a host's sample model backs the sample the registry initializer generates")
     func hostSampleModelBacksTheSample() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
         let model = ScriptedLanguageModel([Self.sampleReply])
 
         let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: model)
@@ -284,7 +284,7 @@ struct SearchToolsToolTests {
     static func toolWithScriptedGenerator(
         replies: [String]?
     ) throws -> (surface: APISurface, tool: SearchToolsTool) {
-        let surface = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).addTool(TempTool()).build()
         let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
         let sample = replies.map { replies in
             SampleSnippetConfig(model: ScriptedLanguageModel(replies), interpreter: JSCInterpreter())
@@ -329,7 +329,7 @@ struct SearchToolsToolTests {
 
     @Test("a generator is never asked for a sample when nothing matched")
     func noMatchesNeverAsksTheGenerator() async throws {
-        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).build()
         let selectionModel = ScriptedLanguageModel([#"{"ids":[]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
@@ -351,7 +351,7 @@ struct SearchToolsToolTests {
 
     @Test("the production initializer leaves sample generation unconfigured unless a generator is supplied")
     func productionInitializerLeavesSampleGenerationOff() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
 
         let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: nil)
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "trip cities"))
@@ -366,7 +366,7 @@ struct SearchToolsToolTests {
 
     @Test("a librarian whose session fails gives that error as the tool error")
     func failedLibrarianGivesItsErrorAsTheToolError() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
         let tool = try SearchToolsTool(registry: registry, selection: { _ in
             SelectionConfig(
                 model: ScriptedLanguageModel(answers: [.failure(Self.sessionFailure)]),
@@ -382,7 +382,7 @@ struct SearchToolsToolTests {
 
     @Test("a sample session that throws gives a visible note with its error, and the signatures")
     func throwingSampleSessionGivesAVisibleNote() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
         let failing = ScriptedLanguageModel(answers: [.failure(Self.sessionFailure)])
         let tool = try SearchToolsTool(registry: registry, selection: nil, sampleModel: failing)
@@ -404,7 +404,7 @@ struct SearchToolsToolTests {
 
     @Test("a slow discovery call returns its catalog inline, even mounted by a site that backgrounds")
     func discoveryNeverReturnsAPendingEnvelope() async throws {
-        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).build()
         // Slow, not broken: the model answers a genuine selection in the end.
         // The test holds the model answer until the model call comes, and then
         // releases it. The hold is what gives a background mount its chance to
@@ -441,7 +441,7 @@ struct SearchToolsToolTests {
 
     @Test("a searcher that fails surfaces its own error, never a timeout and never a token")
     func aFailingSearcherSurfacesAsAnError() async throws {
-        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(CitiesTool()).build()
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,

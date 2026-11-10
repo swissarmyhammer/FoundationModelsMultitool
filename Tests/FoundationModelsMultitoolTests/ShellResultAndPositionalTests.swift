@@ -47,7 +47,7 @@ import Testing
     private static func run(_ code: (URL) -> String) async throws -> String {
         let root = try makeRoot()
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)
             .withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
             .buildRegistry()

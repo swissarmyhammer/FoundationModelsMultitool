@@ -98,7 +98,7 @@ struct OperationMountTests {
 
     @Test("addTool(fixture) mounts one verb for each operation under the tool name, and no fused entry")
     func standaloneMountsTheVerbsUnderTheToolName() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(NotesOperationTool())
             .buildRegistry()
 
@@ -109,7 +109,7 @@ struct OperationMountTests {
 
     @Test("the surface of a standalone operation tool renders byte-identical to the golden file")
     func standaloneSurfaceMatchesGoldenFile() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(NotesOperationTool())
             .buildRegistry()
 
@@ -122,7 +122,7 @@ struct OperationMountTests {
 
     @Test("addGroup(named:_:) flattens the verbs into the group, with no tool-name level")
     func groupedMountFlattensTheVerbsIntoTheGroup() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: Self.codeGroup, [NotesOperationTool()])
             .buildRegistry()
 
@@ -132,7 +132,7 @@ struct OperationMountTests {
 
     @Test("a capability that holds the fixture mounts the verbs under its noun, and owns that noun")
     func capabilityMountsTheVerbsUnderItsNoun() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withCapability(FixtureCapability(noun: Self.memoNoun, tools: [NotesOperationTool()]))
             .buildRegistry()
 
@@ -144,7 +144,7 @@ struct OperationMountTests {
 
     @Test("withOperationTool(noun:tool:) mounts the verbs under the host noun, with no tool-name level")
     func hostMountsTheVerbsUnderTheHostNoun() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withOperationTool(noun: Self.hostNoun, tool: NotesOperationTool())
             .buildRegistry()
 
@@ -157,7 +157,7 @@ struct OperationMountTests {
     func hostNounIsOwned() throws {
         let error = try #require(
             Self.builderError {
-                try MultiTool.Builder()
+                try MultiTool.Builder(mode: .open)
                     .withOperationTool(noun: Self.hostNoun, tool: NotesOperationTool())
                     .register(
                         noun: Self.hostNoun,
@@ -175,7 +175,7 @@ struct OperationMountTests {
     func sharedOpStringInOneGroupIsADuplicateName() throws {
         let error = try #require(
             Self.builderError {
-                try MultiTool.Builder()
+                try MultiTool.Builder(mode: .open)
                     .addGroup(named: Self.notesGroup, [NotesOperationTool(), NotesOperationTool()])
                     .buildRegistry()
             })
@@ -189,7 +189,7 @@ struct OperationMountTests {
     func illegalToolNameIsAnIllegalGroupName() throws {
         let error = try #require(
             Self.builderError {
-                try MultiTool.Builder()
+                try MultiTool.Builder(mode: .open)
                     .addTool(RenamedNotesOperationTool(name: Self.illegalToolName))
                     .buildRegistry()
             })
@@ -202,7 +202,7 @@ struct OperationMountTests {
     func plainToolNamedLikeTheOperationToolIsADuplicateName() throws {
         let error = try #require(
             Self.builderError {
-                try MultiTool.Builder()
+                try MultiTool.Builder(mode: .open)
                     .addTool(CatalogEntryTool(name: Self.notesGroup, description: "A plain tool named notes."))
                     .addTool(NotesOperationTool())
                     .buildRegistry()
@@ -216,7 +216,7 @@ struct OperationMountTests {
 
     @Test("rebuildRegistry() keeps the verb paths, and the verbs share the parent store across the rebuild")
     func rebuildKeepsTheVerbsOverTheSameParentStore() async throws {
-        let builder = MultiTool.Builder().addTool(NotesOperationTool())
+        let builder = MultiTool.Builder(mode: .open).addTool(NotesOperationTool())
         let first = try builder.buildRegistry()
 
         let rebuilt = try await builder.rebuildRegistry()

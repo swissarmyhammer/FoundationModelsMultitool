@@ -34,7 +34,7 @@ import Testing
     private static func run(_ code: String, shell: Bool = true) async throws -> String {
         let root = TestSupport.makeTemporaryDirectory(named: testDirectoryName)
         let store = TestSupport.makeTemporaryDirectory(named: testDirectoryName + "-store")
-        var builder = MultiTool.Builder().withFiles(root: root)
+        var builder = MultiTool.Builder(mode: .open).withFiles(root: root)
         if shell {
             builder = try builder.withShell(storeDirectory: store.appendingPathComponent(".shell"), defaultWorkingDirectory: root)
         }

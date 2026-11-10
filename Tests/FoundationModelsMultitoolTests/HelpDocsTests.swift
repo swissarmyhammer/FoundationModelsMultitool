@@ -22,7 +22,7 @@ struct HelpDocsTests {
     /// (`github.createIssue`), so `help()`'s grouped-layout entry (plan.md
     /// Resolved #5) has something real to report.
     private func makeRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .addTool(WeatherTool())
             .addGroup(named: "github", [GithubCreateIssueTool()])
             .buildRegistry()
@@ -86,7 +86,7 @@ struct HelpDocsTests {
 
     @Test("docs() with no registered tools still returns a helpful, non-crashing message")
     func docsUnknownNameWithNoCandidatesStillDegradesGracefully() async throws {
-        let registry = try MultiTool.Builder().buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs('anything');"))

@@ -19,7 +19,7 @@ struct CapabilityRegistrationTests {
     func capabilityRendersOneEntryForEachTool() throws {
         let capability = FixtureCapability(noun: "demo", tools: [DemoFirstTool(), DemoSecondTool()])
 
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .withCapability(capability)
             .build()
 
@@ -29,7 +29,7 @@ struct CapabilityRegistrationTests {
 
     @Test("register(noun:tool:) renders the tool at tools.<noun>.<Tool.name>")
     func registerRendersTheToolUnderTheNoun() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .register(noun: "demo", tool: DemoFirstTool())
             .buildRegistry()
 
@@ -45,7 +45,7 @@ struct CapabilityRegistrationTests {
         let capability = FixtureCapability(noun: "bad noun!", tools: [DemoFirstTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(capability)
                 .buildRegistry()
         } throws: { error in
@@ -62,7 +62,7 @@ struct CapabilityRegistrationTests {
         let capability = FixtureCapability(noun: "demo", tools: [DemoFirstTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(capability)
                 .withCapability(capability)
                 .buildRegistry()
@@ -81,7 +81,7 @@ struct CapabilityRegistrationTests {
         let second = SecondCapability(noun: "demo", tools: [DemoSecondTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(first)
                 .withCapability(second)
                 .buildRegistry()
@@ -97,7 +97,7 @@ struct CapabilityRegistrationTests {
         let second = SecondCapability(noun: "demo", tools: [DemoSecondTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(first)
                 .withCapability(second)
                 .buildRegistry()
@@ -114,7 +114,7 @@ struct CapabilityRegistrationTests {
         let capability = FixtureCapability(noun: "demo", tools: [DemoFirstTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(capability)
                 .addGroup(named: "demo", [DemoSecondTool()])
                 .buildRegistry()
@@ -131,7 +131,7 @@ struct CapabilityRegistrationTests {
         let capability = FixtureCapability(noun: "first", tools: [DemoSecondTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(capability)
                 .addTool(DemoFirstTool())
                 .buildRegistry()
@@ -150,7 +150,7 @@ struct CapabilityRegistrationTests {
         let files = FixtureCapability(noun: "files", tools: [DemoFirstTool()])
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withCapability(files)
                 .register(noun: "files", tool: DemoSecondTool())
                 .buildRegistry()

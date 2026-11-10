@@ -24,7 +24,7 @@ struct SampleSnippetTests {
 
     /// The catalog the gate checks a candidate against.
     static func entries() throws -> [APISurface.Entry] {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .addTool(CitiesTool())
             .addTool(TempTool())
             .build()

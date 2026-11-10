@@ -96,7 +96,7 @@ struct WebCapabilityTests {
     ///
     /// - Returns: The builder.
     private func makeWebBuilder() -> MultiTool.Builder {
-        MultiTool.Builder()
+        MultiTool.Builder(mode: .open)
             .withWeb(configuration: .keyless, sessionConfiguration: stub.sessionConfiguration)
     }
 
@@ -223,7 +223,7 @@ struct WebCapabilityTests {
     /// it claims no part of the `web` namespace.
     @Test("a builder with no withWeb renders no entry under the web noun")
     func aBuilderWithNoWithWebRendersNoWebEntry() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
 
         #expect(surface.entries.map(\.path) == [Self.unrelatedToolPath])
         #expect(!surface.entries.contains { $0.path.hasPrefix(Self.webPathPrefix) })
@@ -235,7 +235,7 @@ struct WebCapabilityTests {
     /// configuration of the last call.
     @Test("a second withWeb replaces the first, and the last configuration wins")
     func aSecondWithWebReplacesTheFirst() throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withWeb(
                 configuration: Self.webConfiguration(maxBytes: Self.replacedByteLimit),
                 sessionConfiguration: stub.sessionConfiguration)

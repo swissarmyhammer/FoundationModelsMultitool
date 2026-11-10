@@ -53,7 +53,7 @@ struct SymbolKindTool: Tool {
 
     /// Runs `tools.code_context.searchSymbol({ query: "X", kind })`.
     private static func call(kind: String) async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "code_context", [SymbolKindTool()])
             .buildRegistry()
         return try await MultiTool(registry: registry).call(

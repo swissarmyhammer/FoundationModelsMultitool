@@ -168,7 +168,7 @@ struct ShellExecuteTests {
     /// - Returns: The rendered surface.
     /// - Throws: When the surface does not render.
     private func renderedSurface(over state: ShellState) throws -> APISurface {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .addGroup(named: Self.shellNoun, [makeVerb(over: state)])
             .build()
     }

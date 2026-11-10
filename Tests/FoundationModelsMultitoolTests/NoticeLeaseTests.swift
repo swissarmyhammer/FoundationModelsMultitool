@@ -19,7 +19,7 @@ struct NoticeLeaseTests {
     func aNoticeHoldsALeaseUntilItIsDelivered() async throws {
         let delivery = TestGate()
         let session = LeasedSession(holdingProgress: delivery)
-        let multiTool = MultiTool(registry: try MultiTool.Builder().buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).buildRegistry())
         let context = session.context
         let sink = session.sink.recording
 
@@ -44,7 +44,7 @@ struct NoticeLeaseTests {
     func aNoticeIsNotWorkAfterTheRegistryClosed() async throws {
         let delivery = TestGate()
         let session = LeasedSession(holdingProgress: delivery)
-        let multiTool = MultiTool(registry: try MultiTool.Builder().buildRegistry())
+        let multiTool = MultiTool(registry: try MultiTool.Builder(mode: .open).buildRegistry())
         let context = session.context
         let sink = session.sink.recording
 

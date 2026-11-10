@@ -30,7 +30,7 @@ struct DiscoveryEmbedderTests {
     /// A two-entry catalog, so a batch of "every summary block" is visibly a
     /// batch.
     private static func makeRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
     }
 
     /// The shape `makeSessionToolsAndStaging` builds, with `embedder` in it and

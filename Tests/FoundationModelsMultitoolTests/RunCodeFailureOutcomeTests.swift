@@ -49,7 +49,7 @@ struct RunCodeFailureOutcomeTests {
     /// - Throws: When the mount, the call or the wait fails.
     private static func terminal(running snippet: String) async throws -> OperationEvent {
         try await withOuterRunContext { context in
-            let registry = try MultiTool.Builder().buildRegistry()
+            let registry = try MultiTool.Builder(mode: .open).buildRegistry()
             let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
             let mounted = try #require(
                 context.mount(runCode, as: .synchronous, postingTo: RecordingEventSink())

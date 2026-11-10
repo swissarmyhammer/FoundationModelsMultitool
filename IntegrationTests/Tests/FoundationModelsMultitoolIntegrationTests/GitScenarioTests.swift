@@ -9,7 +9,7 @@ import Testing
 /// the git capability (task `^xd2dbd1`, git.md § "Proposed order of the
 /// tasks", item 11).
 ///
-/// **The mount.** `MultiTool.Builder().withGit(root:)` over the work folder of
+/// **The mount.** `MultiTool.Builder(mode: .open).withGit(root:)` over the work folder of
 /// ``GitScenarioHistory``, vended through `makeSessionTools(of:on:)` and
 /// mounted by `runGatedAnswerScenario(named:prompt:tools:reading:)` on the
 /// `RoutedSession` that the resolved `.standard` slot vends. This is the
@@ -81,7 +81,7 @@ struct GitScenarioTests {
     @Test("the model diffs the renamed function from a snippet, and no verb answers a correction")
     func theModelDiffsTheRenamedFunction() async throws {
         let repository = try GitScenarioHistory.make()
-        let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).buildRegistry()
         // The release of `repository` removes its work folder, thus the
         // repository must live until the answer ends.
         defer { withExtendedLifetime(repository) {} }

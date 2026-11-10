@@ -496,7 +496,7 @@ struct SessionsGraphQueryTests {
     @Test("MultiTool gives the sessions endpoint of withSessions")
     func multiToolGivesTheSessionsEndpoint() throws {
         let tool = try SessionsTool(directory: InMemorySessionDirectory())
-        let registry = try MultiTool.Builder().withSessions(tool).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withSessions(tool).buildRegistry()
 
         let names = MultiTool(registry: registry).graphQLEndpoints.map(\.name)
 

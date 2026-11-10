@@ -73,7 +73,7 @@ struct SnippetRepairTests {
 
     /// Runs `code` on a surface with the stand-in `code_context` group.
     private func run(_ code: String) async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "code_context", [RepairGrepCodeTool()])
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
@@ -136,7 +136,7 @@ struct SnippetRepairTests {
 
     @Test("a closer missing before the ';' of a middle line is added there")
     func aMissingCloserInTheMiddleIsRepaired() async throws {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "code_context", [RepairMatchesTool()])
             .buildRegistry()
         let output = try await MultiTool(registry: registry).call(
@@ -151,7 +151,7 @@ struct SnippetRepairTests {
     /// Runs `code` on a surface with the stand-in `grepCode` that answers
     /// matches.
     private func runMatches(_ code: String) async throws -> String {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "code_context", [RepairMatchesTool()])
             .buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))

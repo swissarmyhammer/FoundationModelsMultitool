@@ -7,7 +7,7 @@ import Testing
 /// The snippet of git.md § "Goal", through a real `MultiTool` and with no
 /// model (task `^xd2dbd1`).
 ///
-/// The registry comes from `MultiTool.Builder().withGit(root:)`, the public
+/// The registry comes from `MultiTool.Builder(mode: .open).withGit(root:)`, the public
 /// mount of a host. The snippet goes through `MultiTool.call(arguments:)`: the
 /// JSC interpreter, the `tools.git` bindings, and `ToolInvoker`. The
 /// repository is ``GitScenarioHistory``: the work folder renames one function
@@ -34,7 +34,7 @@ struct GitGoalSnippetTests {
     @Test("the goal snippet gives the branch and one diff that names the renamed function")
     func theGoalSnippetGivesTheBranchAndTheDiff() async throws {
         let repository = try GitScenarioHistory.make()
-        let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).buildRegistry()
 
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: Self.goalSnippet))
 

@@ -120,7 +120,7 @@ struct MetricsTests {
     /// - Returns: The tool.
     /// - Throws: What `MultiTool.Builder.buildRegistry()` throws.
     private static func makeMultiTool() throws -> MultiTool {
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(TempTool())
             .addTool(ThrowingTool())
             .buildRegistry()

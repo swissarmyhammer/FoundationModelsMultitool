@@ -85,7 +85,7 @@ struct RegisteredJournalOpTests {
 
     @Test("the snippet path and the journal op are derived from the one noun/verb pair")
     func theSnippetPathAndTheJournalOpComeFromOnePair() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .register(noun: Self.demoNoun, tool: AmbientRecordingTool(name: Self.demoVerb))
             .build()
 
@@ -112,7 +112,7 @@ struct RegisteredJournalOpTests {
         let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
             serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
         try await MCPTestSupport.withConnection(of: server) {
-            let surface = try await MultiTool.Builder()
+            let surface = try await MultiTool.Builder(mode: .open)
                 .withMCP(servers: [server])
                 .build()
 
@@ -125,7 +125,7 @@ struct RegisteredJournalOpTests {
 
     @Test("a standalone tool has no noun, so it declares no journal op of its own")
     func aStandaloneEntryDeclaresNoJournalOp() throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .addTool(AmbientRecordingTool(name: Self.demoVerb))
             .build()
 
@@ -139,7 +139,7 @@ struct RegisteredJournalOpTests {
     @Test("a verb registered under a noun runs stamped with the pair, and its tool stays the verb")
     func aVerbRegisteredUnderANounRunsStampedWithThePair() async throws {
         let probe = AmbientRecordingTool(name: Self.demoVerb)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .register(noun: Self.demoNoun, tool: probe)
             .buildRegistry()
         try await withOuterRunContext { context in
@@ -157,7 +157,7 @@ struct RegisteredJournalOpTests {
     @Test("a tool registered with no noun keeps its own name as its op, so nothing that renders today changes")
     func aToolRegisteredWithNoNounKeepsItsOwnNameAsItsOp() async throws {
         let probe = AmbientRecordingTool(name: Self.demoVerb)
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(probe)
             .buildRegistry()
         try await withOuterRunContext { context in
@@ -255,7 +255,7 @@ struct RegisteredJournalOpTests {
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.mcpServerName)
         let stampedOp = try await MCPTestSupport.withConnection(of: server) {
-            let registry = try await MultiTool.Builder()
+            let registry = try await MultiTool.Builder(mode: .open)
                 .withMCP(servers: [server])
                 .buildRegistry()
             // The `ensuring` releases the held call on each path.
@@ -297,7 +297,7 @@ struct RegisteredJournalOpTests {
     /// - Throws: What `makeShellStoreDirectory(prefix:)`, `withShell(storeDirectory:)` or
     ///   `buildRegistry()` throws.
     private static func makeShellRegistry(in scratch: TestScratch) throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .withShell(
                 storeDirectory: scratch.makeShellStoreDirectory(prefix: testDirectoryNamePrefix))
             .buildRegistry()
@@ -319,7 +319,7 @@ struct RegisteredJournalOpTests {
             storeDirectory: scratch.makeShellStoreDirectory(prefix: testDirectoryNamePrefix))
         var runner = ShellRunner(state: store.state)
         runner.runWillSpawn = { _ in probe.recordCurrentStamp() }
-        return try MultiTool.Builder()
+        return try MultiTool.Builder(mode: .open)
             .withCapability(ShellCapability(runner: runner))
             .buildRegistry()
     }

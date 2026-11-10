@@ -43,7 +43,7 @@ import Synchronization
 /// A host makes one of these after it mounts the session tools:
 ///
 /// ```swift
-/// let builder = try await MultiTool.Builder().withMCP(servers: [github])
+/// let builder = try await MultiTool.Builder(mode: .open).withMCP(servers: [github])
 /// let (tools, staging) = try builder.buildRegistry()
 ///     .makeSessionToolsAndStaging(selection: nil)
 /// let refresher = SurfaceRefresher(

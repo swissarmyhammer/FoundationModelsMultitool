@@ -57,7 +57,7 @@ struct RunBindingTests {
     func parallelInnerCallsCorrelateIndependently() async throws {
         let alpha = AmbientRecordingTool(name: "alpha")
         let beta = AmbientRecordingTool(name: "beta")
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addTool(alpha)
             .addTool(beta)
             .buildRegistry()
@@ -91,7 +91,7 @@ struct RunBindingTests {
     @Test("two MultiTool instances over one registry never cross-route their runs' events")
     func concurrentInstancesOverOneRegistryNeverCrossRoute() async throws {
         let shared = AmbientRecordingTool(name: "shared")
-        let registry = try MultiTool.Builder().addTool(shared).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(shared).buildRegistry()
         try await withStubRun { firstRun in
             try await withStubRun { secondRun in
                 let firstContext = firstRun.context
@@ -125,7 +125,7 @@ struct RunBindingTests {
     @Test("a tools.* call re-binds the ambient context explicitly, and work that inherits no task-locals inside it sees none")
     func innerCallRebindsTheAmbientContextExplicitly() async throws {
         let recorder = AmbientRecordingTool(name: "recorder")
-        let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).addTool(recorder).buildRegistry()
         let multiTool = MultiTool(registry: registry)
         try await withOuterRunContext { context in
             _ = try await ToolContext.$current.withValue(context) {

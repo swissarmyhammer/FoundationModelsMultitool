@@ -83,17 +83,17 @@ struct RegistrySwapTests {
 
     /// A registry over `CitiesTool` alone.
     private static func citiesRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(CitiesTool()).buildRegistry()
     }
 
     /// A registry over `TempTool` alone.
     private static func temperatureRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(TempTool()).buildRegistry()
     }
 
     /// A registry over `IssueCountTool` under ``issueGroup``.
     private static func issueRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addGroup(named: issueGroup, [IssueCountTool()]).buildRegistry()
+        try MultiTool.Builder(mode: .open).addGroup(named: issueGroup, [IssueCountTool()]).buildRegistry()
     }
 
     /// The mounted `runCode` and `searchTools` of `tools`, found by type.
@@ -158,7 +158,7 @@ struct RegistrySwapTests {
     func inFlightRunKeepsItsRegistry() async throws {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
-        let first = try MultiTool.Builder().addTool(gated).addTool(CitiesTool()).buildRegistry()
+        let first = try MultiTool.Builder(mode: .open).addTool(gated).addTool(CitiesTool()).buildRegistry()
         let runCode = MultiTool(registry: first)
         // On each path the latch opens, thus the run can end.
         defer { latch.release() }

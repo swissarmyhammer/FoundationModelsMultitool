@@ -199,7 +199,7 @@ struct BackgroundSettleGraceTests {
         grace: TimeInterval? = nil, snippetEnded: TestGate? = nil
     ) throws -> (runCode: MultiTool, state: ShellState) {
         let verbs = try shellVerbs()
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .addGroup(named: "shell", [verbs.execute, verbs.getLines])
             .buildRegistry()
         let configuration = grace.map { MultiToolConfiguration(inlineSettleGrace: $0) } ?? .default

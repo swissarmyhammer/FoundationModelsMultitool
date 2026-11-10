@@ -102,7 +102,7 @@ struct OperationRunCodeTests {
     /// - Returns: The `runCode` tool.
     /// - Throws: What `buildRegistry()` throws.
     private static func makeMultiTool(over parent: NotesOperationTool) throws -> MultiTool {
-        MultiTool(registry: try MultiTool.Builder().addTool(parent).buildRegistry())
+        MultiTool(registry: try MultiTool.Builder(mode: .open).addTool(parent).buildRegistry())
     }
 
     /// Runs one snippet over a registry that holds `parent`, with no ambient context.
@@ -185,7 +185,7 @@ struct OperationRunCodeTests {
     func hostToolIsCalledUnderTheHostNoun() async throws {
         let parent = NotesOperationTool()
         let multiTool = MultiTool(
-            registry: try MultiTool.Builder().withOperationTool(noun: "settings", tool: parent).buildRegistry())
+            registry: try MultiTool.Builder(mode: .open).withOperationTool(noun: "settings", tool: parent).buildRegistry())
 
         let output = try await multiTool.call(
             arguments: RunCodeArguments(

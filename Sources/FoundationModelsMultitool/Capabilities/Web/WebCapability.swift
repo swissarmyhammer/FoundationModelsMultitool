@@ -25,7 +25,7 @@ import FoundationModels
 /// read a page.
 ///
 /// ```swift
-/// let surface = try MultiTool.Builder()
+/// let surface = try MultiTool.Builder(mode: .open)
 ///     .withWeb()          // tools.web.search, tools.web.fetch
 ///     .build()
 /// ```

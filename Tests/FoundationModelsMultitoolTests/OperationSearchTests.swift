@@ -53,7 +53,7 @@ struct OperationSearchTests {
     /// - Returns: The registry.
     /// - Throws: What `buildRegistry()` throws.
     private static func makeRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder().addTool(NotesOperationTool()).buildRegistry()
+        try MultiTool.Builder(mode: .open).addTool(NotesOperationTool()).buildRegistry()
     }
 
     /// The entry of `registry` at `path`.

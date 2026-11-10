@@ -390,7 +390,7 @@ struct MCPServerCallTests {
         let (scripted, server) = try await Self.connected(serving: [])
         try await MCPTestSupport.withConnection(of: server) {
             await scripted.addTransportDroppingTool(named: Self.droppingToolName)
-            let registry = try MultiTool.Builder()
+            let registry = try MultiTool.Builder(mode: .open)
                 .addTool(Self.probe(server, tool: Self.droppingToolName))
                 .buildRegistry()
             try await withOuterRunContext { context in

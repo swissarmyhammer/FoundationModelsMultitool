@@ -755,7 +755,7 @@ func makeScenarioSurface(
     on fixture: LiveRouterFixture,
     direct: Bool = false
 ) throws -> ScenarioSurface {
-    var registry = try MultiTool.Builder().addTools(tools).buildRegistry()
+    var registry = try MultiTool.Builder(mode: .open).addTools(tools).buildRegistry()
     if direct {
         registry = registry.directMode()
     }

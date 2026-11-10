@@ -59,7 +59,7 @@ struct GitCapabilityTests {
     func withGitRendersEachVerbUnderTheGitNoun() throws {
         let repository = try TemporaryGitRepository()
 
-        let surface = try MultiTool.Builder().withGit(root: repository.workDirectory).build()
+        let surface = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).build()
 
         #expect(surface.entries.map(\.path) == Self.verbNames.map { Self.gitPathPrefix + $0 })
     }
@@ -73,7 +73,7 @@ struct GitCapabilityTests {
     func eachGitVerbNamesNoToolPathOutsideTheGitNoun() throws {
         let repository = try TemporaryGitRepository()
 
-        let surface = try MultiTool.Builder().withGit(root: repository.workDirectory).build()
+        let surface = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).build()
 
         let foreignPathsByVerb = Dictionary(
             uniqueKeysWithValues: surface.entries.map { entry in (entry.path, Self.foreignToolPaths(in: entry.block)) })
@@ -104,7 +104,7 @@ struct GitCapabilityTests {
         let repository = try TemporaryGitRepository()
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withGit(root: repository.workDirectory)
                 .register(noun: Self.gitNoun, tool: WeatherTool())
                 .buildRegistry()
@@ -122,7 +122,7 @@ struct GitCapabilityTests {
         let repository = try TemporaryGitRepository()
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withGit(root: repository.workDirectory)
                 .withGit(root: repository.workDirectory)
                 .buildRegistry()
@@ -137,7 +137,7 @@ struct GitCapabilityTests {
     /// capability renders nothing under its noun.
     @Test("a builder with no withGit renders no entry under the git noun")
     func aBuilderWithNoWithGitRendersNoGitEntry() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
 
         // The unrelated tool proves the surface was really built, thus the two
         // expectations below read an answer rather than an empty catalog.
@@ -152,7 +152,7 @@ struct GitCapabilityTests {
     func aRootOutsideAnyRepositoryGivesNoThrowAtBuildTime() throws {
         let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
 
-        let registry = try MultiTool.Builder()
+        let registry = try MultiTool.Builder(mode: .open)
             .withGit(root: outside)
             .addTool(WeatherTool())
             .buildRegistry()

@@ -99,7 +99,7 @@ struct FilesCapabilityTests {
     /// - Returns: The registry.
     /// - Throws: When the surface does not render.
     private func makeFilesRegistry() throws -> MultiTool.Registry {
-        try MultiTool.Builder()
+        try MultiTool.Builder(mode: .open)
             .withFiles(root: makeRoot())
             .buildRegistry()
     }
@@ -247,7 +247,7 @@ struct FilesCapabilityTests {
     /// capability claims no part of that namespace.
     @Test("a builder with no withFiles renders no entry under the files noun")
     func aBuilderWithNoWithFilesRendersNoFilesEntry() throws {
-        let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
+        let surface = try MultiTool.Builder(mode: .open).addTool(WeatherTool()).build()
 
         // The unrelated tool proves the surface was really built, thus the two
         // expectations below read an answer rather than an empty catalog.
@@ -266,7 +266,7 @@ struct FilesCapabilityTests {
         let root = makeRoot()
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withFiles(root: root)
                 .register(noun: Self.filesNoun, tool: WeatherTool())
                 .buildRegistry()
@@ -284,7 +284,7 @@ struct FilesCapabilityTests {
         let root = makeRoot()
 
         #expect {
-            try MultiTool.Builder()
+            try MultiTool.Builder(mode: .open)
                 .withFiles(root: root)
                 .withFiles(root: root)
                 .buildRegistry()
@@ -304,7 +304,7 @@ struct FilesCapabilityTests {
     /// qualified with the noun so a model can call it as written.
     @Test("searchTools finds each files verb, with the runnable example of that verb")
     func searchToolsFindsEachFilesVerbWithItsRunnableExample() async throws {
-        let surface = try MultiTool.Builder()
+        let surface = try MultiTool.Builder(mode: .open)
             .withFiles(root: makeRoot())
             .build()
         let selection = ScriptedLanguageModel([Self.selectionReply])

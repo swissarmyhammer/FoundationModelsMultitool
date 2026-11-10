@@ -26,7 +26,7 @@ import Testing
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data("x\n".utf8).write(to: url)
         }
-        let registry = try MultiTool.Builder().withFiles(root: root).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withFiles(root: root).buildRegistry()
         return (try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code)), root)
     }
 
