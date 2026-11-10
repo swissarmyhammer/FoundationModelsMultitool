@@ -26,21 +26,18 @@ extension MultiTool.Builder {
     ///     call runs in when it omits `workingDirectory`. Defaults to the
     ///     current directory of this process. A host with a session root
     ///     passes that root.
-    /// - Throws: what
-    ///   `ShellCapability.init(storeDirectory:outputChunkStream:defaultWorkingDirectory:)`
-    ///   throws when the store cannot prepare.
+    /// - Throws: what `ShellStore.init(storeDirectory:)` throws when the
+    ///   store cannot prepare.
     @discardableResult
     public func withShell(
         storeDirectory: URL? = nil,
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) throws -> Self {
-        let capability = try ShellCapability(
-            storeDirectory: storeDirectory,
+        withShell(
+            store: try ShellStore(storeDirectory: storeDirectory),
             outputChunkStream: outputChunkStream,
-            defaultWorkingDirectory: defaultWorkingDirectory
-        )
-        return withCapability(capability)
+            defaultWorkingDirectory: defaultWorkingDirectory)
     }
 
     /// Queues the three verbs of the shell capability over a store that other
@@ -68,12 +65,16 @@ extension MultiTool.Builder {
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) -> Self {
-        withCapability(
+        // The spawn observer of this builder, when a test gave one, sees
+        // each spawn of the shell.
+        let observer = spawnObserver
+        return withCapability(
             ShellCapability(
                 store: store,
                 sessionID: sessionID,
                 outputChunkStream: outputChunkStream,
-                defaultWorkingDirectory: defaultWorkingDirectory))
+                defaultWorkingDirectory: defaultWorkingDirectory,
+                runWillSpawn: { _ in observer?() }))
     }
 
     /// Queues the ten verbs of the files capability — `tools.files.read`,

@@ -66,6 +66,12 @@ public actor MCPServerPool {
         servers.append(server)
     }
 
+    /// The number of subprocesses recorded.
+    ///
+    /// This is an internal read for the tests. A test of a `sandboxed`
+    /// builder reads it to prove that the pool holds no `StdioServerProcess`.
+    var processCount: Int { processes.count }
+
     /// Records `process`, so ``shutdownAll()`` shuts it down.
     ///
     /// - Parameter process: The subprocess to record.

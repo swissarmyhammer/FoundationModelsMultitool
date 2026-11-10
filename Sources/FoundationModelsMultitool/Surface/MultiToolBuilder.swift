@@ -159,7 +159,39 @@ extension MultiTool {
         ///     gives `.fixed(_:)`.
         public init(mode: ToolMode = .open, sandboxProbe: SandboxProbe = .live) {
             source = MultiTool.RegistrySource(mode: mode, sandboxProbe: sandboxProbe)
+            spawnObserver = nil
         }
+
+        /// Creates an empty builder in a tool mode, with a spawn observer.
+        ///
+        /// This is an internal hook for the tests. The rules of
+        /// ``init(mode:sandboxProbe:)`` apply.
+        ///
+        /// - Parameters:
+        ///   - mode: the tool mode of the registry.
+        ///   - sandboxProbe: tells if the process is in the App Sandbox.
+        ///   - spawnObserver: the closure that each shell capability of this
+        ///     builder calls before it spawns a child process — see
+        ///     ``spawnObserver``.
+        init(mode: ToolMode, sandboxProbe: SandboxProbe, spawnObserver: @escaping SpawnObserver) {
+            source = MultiTool.RegistrySource(mode: mode, sandboxProbe: sandboxProbe)
+            self.spawnObserver = spawnObserver
+        }
+
+        /// A closure that a capability calls before it spawns a child process.
+        typealias SpawnObserver = @Sendable () -> Void
+
+        /// The closure that each shell capability of this builder calls
+        /// before it spawns a child process, or `nil` for none.
+        ///
+        /// This is an internal hook for the tests. It belongs to one builder,
+        /// thus a test counts the spawns of its own registry. Other tests that
+        /// start processes in parallel do not change that count.
+        ///
+        /// The builder does not make a `StdioServerProcess`, because the host
+        /// makes it. Thus this observer does not see a stdio spawn. A test of
+        /// a stdio server gives the process a private `ProcessRegistry`.
+        let spawnObserver: SpawnObserver?
 
         /// The pool that holds every server ``withMCP(servers:)`` recorded.
         ///

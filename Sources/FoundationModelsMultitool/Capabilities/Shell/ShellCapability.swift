@@ -139,11 +139,40 @@ public struct ShellCapability: Capability {
         outputChunkStream: ShellOutputChunkStream? = nil,
         defaultWorkingDirectory: URL? = nil
     ) {
+        self.init(
+            store: store, sessionID: sessionID, outputChunkStream: outputChunkStream,
+            defaultWorkingDirectory: defaultWorkingDirectory, runWillSpawn: { _ in })
+    }
+
+    /// Makes the shell capability over a store, with a closure that each run
+    /// calls before it spawns its child.
+    ///
+    /// This is an internal hook for the tests. The rules of
+    /// ``init(store:sessionID:outputChunkStream:defaultWorkingDirectory:)``
+    /// apply.
+    ///
+    /// - Parameters:
+    ///   - store: The history and output store this capability records into.
+    ///   - sessionID: The session this capability runs commands for.
+    ///   - outputChunkStream: The live view of the output a subscribed host
+    ///     reads.
+    ///   - defaultWorkingDirectory: The directory a `tools.shell.execute` call
+    ///     runs in when it omits `workingDirectory`.
+    ///   - runWillSpawn: The closure that each run calls before it spawns its
+    ///     child — see `ShellRunner.runWillSpawn`.
+    init(
+        store: ShellStore,
+        sessionID: @escaping @Sendable () -> String?,
+        outputChunkStream: ShellOutputChunkStream?,
+        defaultWorkingDirectory: URL?,
+        runWillSpawn: @escaping @Sendable (ShellRunner.Request) -> Void
+    ) {
         // The runner carries the store, the live view and the default
         // directory to the run plane.
         var runner = ShellRunner(state: store.state, outputChunkStream: outputChunkStream)
         runner.defaultWorkingDirectory = defaultWorkingDirectory?.path
         runner.sessionID = sessionID
+        runner.runWillSpawn = runWillSpawn
         self.init(runner: runner)
     }
 
