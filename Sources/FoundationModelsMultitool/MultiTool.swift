@@ -653,8 +653,12 @@ public struct MultiTool: GraphQLEndpointTool {
         // code of *this* snippet holds a lease in the registry of the session
         // of the binding (see ``InFlightInnerCalls``).
         let inFlight = InFlightInnerCalls(leasingIn: binding?.context, after: snippetEnd)
+        // One record per invocation, once more: it keeps the errors the
+        // `tools.*` calls of *this* run returned as values, so a failed
+        // snippet can show them (see ``ToolErrorRecord``).
+        let toolErrors = ToolErrorRecord()
         let records = InnerCallRecords(
-            ledger: ledger, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls,
+            ledger: ledger, toolErrors: toolErrors, lostRuns: lostRuns, inFlight: inFlight, pendingCalls: pendingCalls,
             snippetEnd: snippetEnd)
         let outcome = await Self.runCapturingOutcome(
             code: Self.wrappingSnippet(arguments.code, after: bundle.preamble),
@@ -740,12 +744,16 @@ public struct MultiTool: GraphQLEndpointTool {
             // An `elicit` that is missing because no user is present gets its
             // own hint: the static rows of `UnavailableGlobalHint` hold only
             // names that are missing in each sandbox.
+            let hint = resolution?.text
+                ?? Self.headlessElicitHint(message: interpreterError.message, asksUser: asksUser)
+                ?? UnavailableGlobalHint.hint(message: interpreterError.message)
+                ?? EmptyListHint.hint(message: interpreterError.message, snippet: arguments.code)
+            // The errors the tool calls returned come first: they are most
+            // often the cause of the JS error (planner24 django__django-14411).
+            let hints = [toolErrors.section, hint].compactMap { $0 }
             let rendered = ResultRenderer.render(
                 interpreterError,
-                hint: resolution?.text
-                    ?? Self.headlessElicitHint(message: interpreterError.message, asksUser: asksUser)
-                    ?? UnavailableGlobalHint.hint(message: interpreterError.message)
-                    ?? EmptyListHint.hint(message: interpreterError.message, snippet: arguments.code),
+                hint: hints.isEmpty ? nil : hints.joined(separator: "\n\n"),
                 directive: resolution?.directive ?? .repairSnippet
             )
             // A snippet that failed can still have started a call that it did
@@ -1068,6 +1076,9 @@ public struct MultiTool: GraphQLEndpointTool {
         /// The record of what each binding returned.
         let ledger: ToolReturnLedger
 
+        /// The record of the errors each binding returned as values.
+        let toolErrors: ToolErrorRecord
+
         /// The record of the `LostRunError` a binding threw.
         let lostRuns: LostRunRecord
 
@@ -1093,6 +1104,7 @@ public struct MultiTool: GraphQLEndpointTool {
         ///   - value: the value that the binding gave.
         ///   - callName: the name of the binding.
         func account(for value: InterpreterValue, of callName: InnerCallName) {
+            toolErrors.record(value, from: callName.path)
             guard snippetEnd.hasEnded else {
                 ledger.record(value)
                 return
