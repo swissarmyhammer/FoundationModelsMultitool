@@ -1,0 +1,1 @@
+{"id":"01M7302J0VJCG5VQM45HPYBC48","timestamp":"2026-11-10T15:08:55.195797Z","op":"create","item_id":"01M7302J0V4CH2KX2YD34PKPWB","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 7057ff\n+tag_name: step1\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 7057ff\n-tag_name: step1\n","transaction_id":null}

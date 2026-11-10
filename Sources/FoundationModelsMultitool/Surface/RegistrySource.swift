@@ -102,8 +102,23 @@ extension MultiTool {
         /// Every registration so far, in registration order.
         var registrations: [Registration] = []
 
+        /// The tool mode in which this source renders. See
+        /// ``validateToolMode()``.
+        let mode: ToolMode
+
+        /// Tells if the process is in the App Sandbox, for the shared check
+        /// of ``mode``.
+        let sandboxProbe: SandboxProbe
+
         /// Creates an empty source.
-        init() {}
+        ///
+        /// - Parameters:
+        ///   - mode: the tool mode in which the source renders.
+        ///   - sandboxProbe: tells if the process is in the App Sandbox.
+        init(mode: ToolMode, sandboxProbe: SandboxProbe) {
+            self.mode = mode
+            self.sandboxProbe = sandboxProbe
+        }
 
         // MARK: - Building
 
@@ -121,6 +136,9 @@ extension MultiTool {
         /// Validates one rule more: a noun a capability claims is owned whole,
         /// so nothing else may register under it.
         ///
+        /// Before all of these, it validates the tool mode — see
+        /// ``validateToolMode()``.
+        ///
         /// An `OperationDescribing` tool renders as one verb for each of its
         /// operations, under the group its registration gives — see
         /// ``expanded()``. Each verb renders through its own
@@ -136,7 +154,11 @@ extension MultiTool {
         ///   instances and the GraphQL endpoints of its capabilities, in
         ///   `.directMode() == false` (both `runCode` and `searchTools`
         ///   surfaced).
-        /// - Throws: `ToolAPIRendererError`, propagated unchanged and never
+        /// - Throws: `ToolModeError.openModeInSandbox` when ``mode`` is
+        ///   `open` and the process is in the App Sandbox.
+        ///   `MultiToolBuilderError` with the kind `.notAvailable(mode:)`
+        ///   when ``mode`` is `sandboxed` and a shell capability is
+        ///   registered. `ToolAPIRendererError`, propagated unchanged and never
         ///   wrapped — the same posture `ToolInvoker` takes toward a tool's
         ///   own thrown error — when a queued tool cannot be fully rendered.
         ///   A tool that cannot be fully rendered fails loudly here rather
@@ -148,6 +170,7 @@ extension MultiTool {
         ///   when anything other than the owning capability registers under a
         ///   noun a capability claimed.
         public func buildRegistry() throws -> MultiTool.Registry {
+            try validateToolMode()
             let graphQLEndpoints = capabilityEndpoints()
             let expansion = try expanded()
             var entries: [APISurface.Entry] = []
@@ -253,7 +276,7 @@ extension MultiTool {
         /// - Returns: the refreshed source.
         /// - Throws: what `MCPCapability.refreshed()` throws.
         private func refreshed() async throws -> RegistrySource {
-            var refreshed = RegistrySource()
+            var refreshed = RegistrySource(mode: mode, sandboxProbe: sandboxProbe)
             for registration in registrations {
                 guard case .capability(let capability) = registration,
                     let mcp = capability as? MCPCapability
@@ -264,6 +287,42 @@ extension MultiTool {
                 refreshed.registrations.append(.capability(try await mcp.refreshed()))
             }
             return refreshed
+        }
+
+        // MARK: - Tool mode
+
+        /// Makes sure that each registration can work in ``mode``.
+        ///
+        /// It calls the shared check `ToolMode.validate(probe:)` of
+        /// FoundationModelsExtras first, so `open` mode in a process in the
+        /// App Sandbox fails at composition time. Then, in `sandboxed` mode,
+        /// it refuses a shell capability: the App Sandbox does not let a
+        /// process spawn a command, and a host that registers the shell in
+        /// this mode has a bug. The other capabilities work in both modes.
+        ///
+        /// - Throws: `ToolModeError.openModeInSandbox` from the shared check.
+        ///   `MultiToolBuilderError` with the kind `.notAvailable(mode:)`,
+        ///   named for the noun of the shell, when ``mode`` is `sandboxed`
+        ///   and a shell capability is registered.
+        private func validateToolMode() throws {
+            try mode.validate(probe: sandboxProbe)
+            guard mode == .sandboxed, let shell = registeredShell() else { return }
+            throw MultiToolBuilderError(
+                kind: .notAvailable(mode: mode),
+                name: shell.noun,
+                message: "The \(shell.noun) capability is not available in the \(mode.rawValue) tool mode. "
+                    + "Remove withShell from the builder, or use the \(ToolMode.open.rawValue) tool mode.")
+        }
+
+        /// The first shell capability of ``registrations``.
+        ///
+        /// - Returns: the shell capability, or `nil` when no shell capability
+        ///   is registered.
+        private func registeredShell() -> ShellCapability? {
+            registrations.lazy.compactMap { registration in
+                guard case .capability(let capability) = registration else { return nil }
+                return capability as? ShellCapability
+            }.first
         }
 
         // MARK: - Expansion

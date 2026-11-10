@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 
 /// A failure raised by `MultiTool.Builder.build()`.
 ///
@@ -54,6 +55,19 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// verb already under the noun, the failure is `duplicateName`, and
         /// not this case. A second identical capability is that failure.
         case duplicateNoun
+
+        /// A capability was registered that cannot work in the tool mode of
+        /// the builder. The error names the noun of that capability.
+        ///
+        /// Only the shell gives this error now: in ``ToolMode/sandboxed``
+        /// mode, `buildRegistry()` refuses a `ShellCapability`. A host that
+        /// calls `withShell` in `sandboxed` mode has a bug, so the builder
+        /// gives a loud error, and does not skip the shell silently. Thus the
+        /// model never sees a shell in `sandboxed` mode.
+        ///
+        /// - Parameter mode: the tool mode in which the capability is not
+        ///   available.
+        case notAvailable(mode: ToolMode)
     }
 
     /// What kind of failure this was.
@@ -114,14 +128,35 @@ extension MultiTool {
     public final class Builder {
         /// Every registration so far, in registration order — the value a
         /// session keeps after `build()`.
-        private var source = MultiTool.RegistrySource()
+        private var source: MultiTool.RegistrySource
 
         /// The servers ``withMCP(servers:)`` recorded, for the shutdown that
         /// follows the session sweep — see ``serverPool``.
         private let pool = MCPServerPool()
 
-        /// Creates an empty builder.
-        public init() {}
+        /// Creates an empty builder in a tool mode.
+        ///
+        /// The host sets the mode one time, here. `buildRegistry()` and
+        /// `rebuildRegistry()` apply it each time they render:
+        ///
+        /// - They call the shared check `ToolMode.validate(probe:)` of
+        ///   FoundationModelsExtras first. Thus `open` mode in a process in
+        ///   the App Sandbox fails at composition time, and not at the first
+        ///   tool call.
+        /// - In `sandboxed` mode, a shell capability makes them throw
+        ///   ``MultiToolBuilderError/Kind/notAvailable(mode:)``. Files, git,
+        ///   snapshots, web, environment, sessions and operation tools
+        ///   register in both modes.
+        ///
+        /// - Parameters:
+        ///   - mode: the tool mode of the registry. Defaults to `open`, which
+        ///     registers each capability.
+        ///   - sandboxProbe: tells if the process is in the App Sandbox.
+        ///     Defaults to `.live`, which reads the current process. A test
+        ///     gives `.fixed(_:)`.
+        public init(mode: ToolMode = .open, sandboxProbe: SandboxProbe = .live) {
+            source = MultiTool.RegistrySource(mode: mode, sandboxProbe: sandboxProbe)
+        }
 
         /// The pool that holds every server ``withMCP(servers:)`` recorded.
         ///
