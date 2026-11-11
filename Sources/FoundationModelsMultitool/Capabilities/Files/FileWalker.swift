@@ -18,6 +18,7 @@
 
 import Darwin
 import Foundation
+import Logging
 
 /// The shared search-root resolution and git-aware walk behind the glob and grep engines.
 ///
@@ -34,6 +35,7 @@ import Foundation
 ///   process (``LibGit2Repository/listedFiles()``). Thus ignored files — and,
 ///   crucially, whole ignored directories such as a `build/` tree — are
 ///   never descended into; otherwise a plain `FileManager` walk is used.
+///   Each enumeration gives only regular files (see ``isRegularFile(_:)``).
 /// - **Collect-filter-assemble** — ``walkAndFilter(walkRoot:sessionRoot:respectGitIgnore:excludePatterns:accept:build:)``
 ///   is the single loop that enumerates, computes relative paths, skips the
 ///   files that the host ``ExcludePatterns`` exclude, applies a
@@ -58,7 +60,8 @@ enum FileWalker {
     /// do not exclude, in the process. Thus ignored files are skipped without
     /// hand-rolled gitignore parsing. Otherwise, and whenever libgit2 cannot
     /// read the listing or the directory is not in a work folder, a plain
-    /// `FileManager` walk is used.
+    /// `FileManager` walk is used. Each of the two gives only the regular
+    /// files that the folder holds now.
     ///
     /// - Parameters:
     ///   - walkRoot: the canonical search root.
@@ -140,6 +143,13 @@ enum FileWalker {
     /// function keeps the files below the directory, and makes each path
     /// relative to it.
     ///
+    /// The function also keeps only the paths that are regular files of the
+    /// work folder now (``isRegularFile(_:)``), the same as the plain walk.
+    /// Thus a tracked file that the work folder no longer holds, a gitlink
+    /// (the folder of a submodule), and a tracked symbolic link are not in
+    /// the result, and the result does not change with the presence of a
+    /// repository.
+    ///
     /// A folder outside a repository, a bare repository, a folder in the
     /// repository data (the `.git` folder), and a listing that libgit2 cannot
     /// read each give `nil`, thus the caller falls back to a plain walk.
@@ -148,13 +158,64 @@ enum FileWalker {
     /// - Returns: the paths relative to `directory`, or `nil` when the
     ///   caller must walk the directory.
     private static func gitListedFiles(in directory: URL) -> [String]? {
-        guard let repository = try? LibGit2Repository(discoveringFrom: directory),
+        guard let repository = openRepository(containing: directory),
             let prefix = workFolderPrefix(of: directory, in: repository),
-            let listed = try? repository.listedFiles()
+            let listed = readListing(of: repository)
         else {
             return nil
         }
-        return listed.compactMap { path in relativePath(ofAbsolute: path, under: prefix) }.filter { !$0.isEmpty }
+        return listed.compactMap { path in relativePath(ofAbsolute: path, under: prefix) }
+            .filter { path in !path.isEmpty && isRegularFile(directory.appendingPathComponent(path)) }
+    }
+
+    /// Opens the repository that contains a directory, or gives `nil` when
+    /// libgit2 cannot open one.
+    ///
+    /// A directory that no repository contains (``LibGit2Error/isNotFound``)
+    /// is the usual case, and gives `nil` with no log record. Each other
+    /// failure gives `nil` and an `error` log record, thus the caller uses
+    /// the plain walk and a developer can see why.
+    ///
+    /// - Parameter directory: the canonical directory to start the search at.
+    /// - Returns: the open repository, or `nil` when the caller must walk the
+    ///   directory.
+    private static func openRepository(containing directory: URL) -> LibGit2Repository? {
+        do {
+            return try LibGit2Repository(discoveringFrom: directory)
+        } catch {
+            if !error.isNotFound { logListingFailure(error) }
+            return nil
+        }
+    }
+
+    /// The listing of a repository, or `nil` when libgit2 cannot read it.
+    ///
+    /// libgit2 opened the repository, thus a failure to read the index or
+    /// the status is unexpected. It gives `nil` and an `error` log record,
+    /// thus the caller uses the plain walk and a developer can see why.
+    ///
+    /// - Parameter repository: the open repository.
+    /// - Returns: the paths relative to the work folder, or `nil` when the
+    ///   caller must walk the directory.
+    private static func readListing(of repository: LibGit2Repository) -> [String]? {
+        do {
+            return try repository.listedFiles()
+        } catch {
+            logListingFailure(error)
+            return nil
+        }
+    }
+
+    /// Writes the `error` log record of a git-aware listing that libgit2
+    /// could not give.
+    ///
+    /// The record holds the type and the code of the error, and not its
+    /// text, because the text can name a path of the user.
+    ///
+    /// - Parameter error: the libgit2 failure.
+    private static func logListingFailure(_ error: LibGit2Error) {
+        MultitoolTelemetry.logger.log(
+            .fileListingReadFailed, level: .error, metadata: MultitoolTelemetry.errorMetadata(of: error))
     }
 
     /// The path of a directory relative to the work folder of a repository,
@@ -181,8 +242,9 @@ enum FileWalker {
 
     /// The absolute paths of the regular files under a directory, walked recursively.
     ///
-    /// Directories are traversed but only regular files are returned, thus
-    /// the result is directly comparable to the git-aware listing.
+    /// Directories are traversed but only regular files are returned
+    /// (``isRegularFile(_:)``), thus the result is directly comparable to the
+    /// git-aware listing, which applies the same test.
     ///
     /// - Parameter root: the canonical search root to walk.
     /// - Returns: the absolute paths of the regular files found.
@@ -198,11 +260,24 @@ enum FileWalker {
             return []
         }
         var paths: [String] = []
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
-            if values?.isRegularFile == true { paths.append(url.path) }
+        for case let url as URL in enumerator where isRegularFile(url) {
+            paths.append(url.path)
         }
         return paths
+    }
+
+    /// Whether a path names a regular file now.
+    ///
+    /// The test does not follow a symbolic link: a link is not a regular
+    /// file, also when it points at one. A path with no entry, and a path
+    /// whose attributes cannot be read, are not regular files. The plain walk
+    /// and the git-aware listing both apply this test, thus the two give the
+    /// same kind of entry.
+    ///
+    /// - Parameter url: the file URL to test.
+    /// - Returns: `true` when the path names a regular file.
+    private static func isRegularFile(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
     // MARK: Filesystem probes

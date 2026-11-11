@@ -104,10 +104,7 @@ struct LibGit2Status: Equatable, Sendable {
 extension LibGit2Repository {
 
     /// The version of `git_status_options` that this layer fills.
-    ///
-    /// Internal, not private, thus the listing of `LibGit2ListedFiles.swift`
-    /// fills the same version.
-    static let statusOptionsVersion = UInt32(GIT_STATUS_OPTIONS_VERSION)
+    private static let statusOptionsVersion = UInt32(GIT_STATUS_OPTIONS_VERSION)
 
     /// The `git_status_opt_t` flags of the status: untracked files, one entry
     /// for each file in a new folder, and staged renames. Ignored files are
@@ -124,16 +121,38 @@ extension LibGit2Repository {
     /// - Returns: The status.
     /// - Throws: ``LibGit2Error`` when the status cannot be read.
     func status() throws(LibGit2Error) -> LibGit2Status {
+        let entries = try statusEntries(
+            show: GIT_STATUS_SHOW_INDEX_AND_WORKDIR, flags: Self.statusFlags, copying: Self.statusEntry(of:))
+        return LibGit2Status(entries: entries)
+    }
+
+    /// Reads one status list of the repository, and copies a value from each
+    /// of its entries.
+    ///
+    /// Each function of the `LibGit2` layer that reads a status list reads it
+    /// here, thus the options, the list, and its free step are written one
+    /// time.
+    ///
+    /// - Parameters:
+    ///   - show: The sides that the status compares (`git_status_show_t`).
+    ///   - flags: The `git_status_opt_t` flags of the status.
+    ///   - copy: Copies a value from one entry, or gives `nil` to skip the
+    ///     entry. The status list owns the entry, thus `copy` must copy each
+    ///     path that it keeps.
+    /// - Returns: The copied values, in the order of libgit2 (by path).
+    /// - Throws: ``LibGit2Error`` when the status cannot be read.
+    func statusEntries<Value>(
+        show: git_status_show_t, flags: UInt32, copying copy: (git_status_entry) -> Value?
+    ) throws(LibGit2Error) -> [Value] {
         var options = git_status_options()
         try LibGit2.check(git_status_options_init(&options, Self.statusOptionsVersion))
-        options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR
-        options.flags = Self.statusFlags
+        options.show = show
+        options.flags = flags
         let list = try LibGit2.makeHandle { list in git_status_list_new(&list, handle, &options) }
         defer { git_status_list_free(list) }
-        let entries = (0..<git_status_list_entrycount(list)).compactMap { index in
-            git_status_byindex(list, index).flatMap { entry in Self.statusEntry(of: entry.pointee) }
+        return (0..<git_status_list_entrycount(list)).compactMap { position in
+            git_status_byindex(list, position).flatMap { entry in copy(entry.pointee) }
         }
-        return LibGit2Status(entries: entries)
     }
 
     /// Copies the paths and the flags of one status entry.

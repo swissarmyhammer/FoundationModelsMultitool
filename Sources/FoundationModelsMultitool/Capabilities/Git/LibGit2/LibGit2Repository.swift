@@ -63,4 +63,20 @@ final class LibGit2Repository {
     var workDirectory: URL? {
         git_repository_workdir(handle).map { URL(fileURLWithPath: String(cString: $0), isDirectory: true) }
     }
+
+    /// Opens the index of the repository, runs `body` with it, and frees it.
+    ///
+    /// Each function of the `LibGit2` layer that reads the index opens it
+    /// here, thus the open step and the free step are written one time.
+    ///
+    /// - Parameter body: The work to do with the index. The index is valid
+    ///   only while `body` runs.
+    /// - Returns: The value of `body`.
+    /// - Throws: ``LibGit2Error`` when the index cannot be opened, or the
+    ///   error of `body`.
+    func withIndex<Value>(_ body: (_ index: OpaquePointer) throws(LibGit2Error) -> Value) throws(LibGit2Error) -> Value {
+        let index = try LibGit2.makeHandle { index in git_repository_index(&index, handle) }
+        defer { git_index_free(index) }
+        return try body(index)
+    }
 }

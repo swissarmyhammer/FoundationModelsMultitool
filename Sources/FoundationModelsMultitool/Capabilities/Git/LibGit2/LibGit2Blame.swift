@@ -154,11 +154,8 @@ extension LibGit2Repository {
     /// - Returns: `true` when the index holds the path; `false` too when the
     ///   index cannot be read.
     private func isInIndex(_ path: String) -> Bool {
-        guard let index = try? LibGit2.makeHandle({ index in git_repository_index(&index, handle) }) else {
-            return false
-        }
-        defer { git_index_free(index) }
-        return git_index_get_bypath(index, path, Self.normalIndexStage) != nil
+        let isInIndex = try? withIndex { index in git_index_get_bypath(index, path, Self.normalIndexStage) != nil }
+        return isInIndex ?? false
     }
 
     /// Whether the tree of HEAD holds `path`.

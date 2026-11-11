@@ -1,4 +1,6 @@
 import Foundation
+import Logging
+import TelemetryTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -112,6 +114,16 @@ import Testing
     /// to the work folder.
     private static let ignoredBuildOutput = "pkg/build/out.txt"
 
+    /// The folder of the submodule entry, relative to the work folder.
+    private static let submoduleFolder = "pkg/vendored"
+
+    /// The index file of the repository, relative to the work folder.
+    private static let indexFile = ".git/index"
+
+    /// Text that is not an index file. libgit2 refuses to read it as the
+    /// index.
+    private static let unreadableIndexText = "not an index\n"
+
     /// Writes `contents` to the file at `path` below `root`, and makes each
     /// parent folder that is missing.
     ///
@@ -158,15 +170,58 @@ import Testing
                 == Set([Self.trackedBelowWalkRoot, Self.untrackedInNestedFolder].map { root.path + "/" + $0 }))
     }
 
-    /// A tracked file that the work folder no longer holds stays in the
-    /// listing, because the listing reads each entry of the index.
-    @Test func collectFilesInARepositoryKeepsATrackedFileThatTheWorkFolderLost() async throws {
+    /// A tracked file that the work folder no longer holds is not in the
+    /// listing: the index holds its entry, but the plain walk would not give
+    /// it, and the listing keeps only the regular files of the work folder.
+    @Test func collectFilesInARepositoryDropsATrackedFileThatTheWorkFolderLost() async throws {
         let root = try Self.makeListingRepository()
         try FileManager.default.removeItem(at: root.appendingPathComponent(Self.trackedAboveWalkRoot))
 
         let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
 
-        #expect(collected.contains(root.path + "/" + Self.trackedAboveWalkRoot))
+        #expect(!collected.contains(root.path + "/" + Self.trackedAboveWalkRoot))
+    }
+
+    /// A gitlink (the index entry of a submodule) names a folder, not a
+    /// regular file, thus it is not in the listing, the same as in the plain
+    /// walk.
+    @Test func collectFilesInARepositoryDropsASubmoduleFolderEntry() async throws {
+        let root = try Self.makeListingRepository()
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(Self.submoduleFolder, isDirectory: true), withIntermediateDirectories: true)
+        try GitFixture.addGitlink(at: Self.submoduleFolder, in: root)
+
+        let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
+
+        #expect(!collected.contains(root.path + "/" + Self.submoduleFolder))
+    }
+
+    /// When libgit2 cannot read the index of the repository, the walk logs
+    /// the failure at the `error` level before it uses the plain walk.
+    @Test func collectFilesWithAnUnreadableIndexLogsTheListingFailure() async throws {
+        let root = try Self.makeListingRepository()
+        try Self.unreadableIndexText.write(
+            to: root.appendingPathComponent(Self.indexFile), atomically: true, encoding: .utf8)
+
+        let records = try await TelemetryCapture.run(forbidding: []) { context in
+            _ = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
+            return LogReadback.records(.fileListingReadFailed, in: context)
+        }
+
+        #expect(records.map(\.level) == [.error])
+    }
+
+    /// A folder that no repository contains is the usual case, thus the walk
+    /// logs no listing failure.
+    @Test func collectFilesOutsideARepositoryLogsNoListingFailure() async throws {
+        let (root, _, _) = try Self.makeTree()
+
+        let records = try await TelemetryCapture.run(forbidding: []) { context in
+            _ = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
+            return LogReadback.records(.fileListingReadFailed, in: context)
+        }
+
+        #expect(records.isEmpty)
     }
 
     /// A walk root in the `.git` folder is not in the work folder, thus the

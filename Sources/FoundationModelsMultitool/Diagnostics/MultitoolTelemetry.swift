@@ -375,6 +375,12 @@ enum MultitoolTelemetry {
         /// branch, and its lists stand. Level: `error`.
         case gitBranchReadFailed = "git branch read failed"
 
+        /// libgit2 could not open the repository of a walk root, or could not
+        /// read its file listing. The walk of the files capability then uses
+        /// a plain walk of the folder. A folder that no repository contains
+        /// is the usual case, and gives no record. Level: `error`.
+        case fileListingReadFailed = "file listing read failed"
+
         /// The `os` verb of the environment capability could not read the
         /// name of the host. The result gives an empty host name, and its
         /// other facts stand. Level: `error`.

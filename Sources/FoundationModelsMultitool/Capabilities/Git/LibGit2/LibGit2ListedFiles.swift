@@ -12,7 +12,13 @@
 // of the work folder that the index does not hold and that the ignore rules
 // do not exclude is in it too (the `--others --exclude-standard` part). The
 // status list gives that second part: the work folder side only, with each
-// file of a new folder as its own entry.
+// file of a new folder as its own entry. The status list and the index are
+// read through the shared helpers of the layer (`statusEntries` and
+// `withIndex`).
+//
+// The listing holds each index entry, also a gitlink (the entry of a
+// submodule). `FileWalker` keeps only the paths that are regular files of the
+// work folder, the same as its plain walk.
 //
 // The free rules are the same as in `LibGit2Status.swift`: each index entry
 // and each status entry belong to their owner, thus the layer copies each
@@ -62,10 +68,10 @@ extension LibGit2Repository {
     ///   index.
     /// - Throws: ``LibGit2Error`` when the index cannot be read.
     private func indexPaths() throws(LibGit2Error) -> [String] {
-        let index = try LibGit2.makeHandle { index in git_repository_index(&index, handle) }
-        defer { git_index_free(index) }
-        return (0..<git_index_entrycount(index)).compactMap { position in
-            git_index_get_byindex(index, position).flatMap { entry in entry.pointee.path.map { String(cString: $0) } }
+        try withIndex { index in
+            (0..<git_index_entrycount(index)).compactMap { position in
+                git_index_get_byindex(index, position).flatMap { entry in entry.pointee.path.map { String(cString: $0) } }
+            }
         }
     }
 
@@ -76,15 +82,8 @@ extension LibGit2Repository {
     ///   libgit2 (by path).
     /// - Throws: ``LibGit2Error`` when the status cannot be read.
     private func untrackedPaths() throws(LibGit2Error) -> [String] {
-        var options = git_status_options()
-        try LibGit2.check(git_status_options_init(&options, Self.statusOptionsVersion))
-        options.show = GIT_STATUS_SHOW_WORKDIR_ONLY
-        options.flags = Self.listingStatusFlags
-        let list = try LibGit2.makeHandle { list in git_status_list_new(&list, handle, &options) }
-        defer { git_status_list_free(list) }
-        return (0..<git_status_list_entrycount(list)).compactMap { position in
-            git_status_byindex(list, position).flatMap { entry in Self.untrackedPath(of: entry.pointee) }
-        }
+        try statusEntries(
+            show: GIT_STATUS_SHOW_WORKDIR_ONLY, flags: Self.listingStatusFlags, copying: Self.untrackedPath(of:))
     }
 
     /// Copies the path of one status entry when the entry is an untracked

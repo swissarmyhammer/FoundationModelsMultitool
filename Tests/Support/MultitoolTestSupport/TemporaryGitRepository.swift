@@ -34,10 +34,6 @@ final class TemporaryGitRepository {
     /// is traceable to this helper.
     private static let directoryNamePrefix = "TemporaryGitRepository"
 
-    /// The `is_bare` flag value that makes `git_repository_init` write a
-    /// repository with a work folder.
-    private static let workFolderRepositoryFlag: UInt32 = 0
-
     /// The name that each commit records.
     private static let signatureName = "Test"
 
@@ -122,13 +118,7 @@ final class TemporaryGitRepository {
     /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
     @discardableResult
     func commit(message: String) throws -> String {
-        let tree = try stageWorkFolder()
-        defer { git_tree_free(tree) }
-        let parent = try headCommit()
-        defer { git_commit_free(parent) }
-        var commitID = try createCommit(
-            of: tree, parents: parent.map { [$0] } ?? [], updating: Self.headReference, message: message)
-        return String(cString: git_oid_tostr_s(&commitID))
+        try commitOnHead(mergingBranch: nil, message: message)
     }
 
     /// Stages each change of the work folder, and commits the index as a
@@ -142,19 +132,11 @@ final class TemporaryGitRepository {
     ///   - name: The branch to merge, without `refs/heads/`.
     ///   - message: The commit message.
     /// - Returns: The 40-hex SHA of the new commit.
-    /// - Throws: ``LibGit2Error`` when HEAD names no commit, when the branch
-    ///   does not exist, or when a libgit2 call fails.
+    /// - Throws: ``LibGit2Error`` when the branch does not exist, or when a
+    ///   libgit2 call fails.
     @discardableResult
     func commitMerge(ofBranch name: String, message: String) throws -> String {
-        let tree = try stageWorkFolder()
-        defer { git_tree_free(tree) }
-        let parent = try commitObject(named: Self.headReference)
-        defer { git_object_free(parent) }
-        let mergedTip = try commitObject(named: "\(Self.branchReferencePrefix)\(name)")
-        defer { git_object_free(mergedTip) }
-        var commitID = try createCommit(
-            of: tree, parents: [parent, mergedTip], updating: Self.headReference, message: message)
-        return String(cString: git_oid_tostr_s(&commitID))
+        try commitOnHead(mergingBranch: name, message: message)
     }
 
     /// Makes the lightweight tag `name` at the commit `sha`.
@@ -310,10 +292,7 @@ final class TemporaryGitRepository {
     ///
     /// - Returns: The repository. The caller owns it and frees it.
     private static func makeRepository(at directory: URL) throws -> OpaquePointer {
-        try LibGit2.start()
-        let repository = try LibGit2.makeHandle { repository in
-            git_repository_init(&repository, directory.path, workFolderRepositoryFlag)
-        }
+        let repository = try GitFixture.makeRepository(at: directory)
         do {
             try LibGit2.check(git_repository_set_head(repository, "\(branchReferencePrefix)\(defaultBranch)"))
         } catch {
@@ -323,20 +302,43 @@ final class TemporaryGitRepository {
         return repository
     }
 
-    /// Adds each new and changed file of the work folder to the index,
-    /// removes each file that the work folder no longer holds, writes the
-    /// index, and gives its tree.
+    /// Stages each change of the work folder (see
+    /// ``GitFixture/stageWorkFolder(in:)``), and gives the tree of the index.
     ///
     /// - Returns: The tree of the index. The caller frees it.
     private func stageWorkFolder() throws -> OpaquePointer {
         try withIndex { index in
-            try LibGit2.check(git_index_add_all(index, nil, GIT_INDEX_ADD_DEFAULT.rawValue, nil, nil))
-            try LibGit2.check(git_index_update_all(index, nil, nil, nil))
-            try LibGit2.check(git_index_write(index))
+            try GitFixture.stageWorkFolder(in: index)
             var treeID = git_oid()
             try LibGit2.check(git_index_write_tree(&treeID, index))
             return try LibGit2.makeHandle { tree in git_tree_lookup(&tree, repository, &treeID) }
         }
+    }
+
+    /// Stages each change of the work folder, and commits the index on the
+    /// branch that HEAD names.
+    ///
+    /// The commit that HEAD names becomes the first parent; the first commit
+    /// has no such parent. The tip of the branch `mergedBranch`, when it is
+    /// given, becomes the next parent, thus the commit is a merge.
+    ///
+    /// - Parameters:
+    ///   - mergedBranch: The branch to merge, without `refs/heads/`, or `nil`
+    ///     for a commit that merges no branch.
+    ///   - message: The commit message.
+    /// - Returns: The 40-hex SHA of the new commit.
+    /// - Throws: ``LibGit2Error`` when the branch does not exist, or when a
+    ///   libgit2 call fails.
+    private func commitOnHead(mergingBranch mergedBranch: String?, message: String) throws -> String {
+        let tree = try stageWorkFolder()
+        defer { git_tree_free(tree) }
+        let parent = try headCommit()
+        defer { git_commit_free(parent) }
+        let mergedTip = try mergedBranch.map { name in try commitObject(named: "\(Self.branchReferencePrefix)\(name)") }
+        defer { git_object_free(mergedTip) }
+        let parents = [parent, mergedTip].compactMap { $0 }
+        var commitID = try createCommit(of: tree, parents: parents, updating: Self.headReference, message: message)
+        return String(cString: git_oid_tostr_s(&commitID))
     }
 
     /// The object that a revision names, for example `HEAD`, a full ref
