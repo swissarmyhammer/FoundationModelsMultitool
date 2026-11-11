@@ -104,7 +104,10 @@ struct LibGit2Status: Equatable, Sendable {
 extension LibGit2Repository {
 
     /// The version of `git_status_options` that this layer fills.
-    private static let statusOptionsVersion = UInt32(GIT_STATUS_OPTIONS_VERSION)
+    ///
+    /// Internal, not private, thus the listing of `LibGit2ListedFiles.swift`
+    /// fills the same version.
+    static let statusOptionsVersion = UInt32(GIT_STATUS_OPTIONS_VERSION)
 
     /// The `git_status_opt_t` flags of the status: untracked files, one entry
     /// for each file in a new folder, and staged renames. Ignored files are

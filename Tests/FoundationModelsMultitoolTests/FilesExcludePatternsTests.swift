@@ -123,7 +123,7 @@ import Testing
     /// `respectGitIgnore: false` does not turn the host patterns off.
     @Test func globSkipsTheExcludedFolderWhenRespectGitIgnoreIsFalse() async throws {
         let root = try Self.makeAgentTree()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         let files = try await Self.globbedFiles(
             root: root, excludePatterns: Self.agentFolderPatterns, respectGitIgnore: false)
         #expect(files == [Self.notesPath])
@@ -157,11 +157,11 @@ import Testing
     }
 
     /// In a repository the grep skips the excluded folder also when git
-    /// tracks the file, which `git ls-files --exclude` cannot do.
+    /// tracks the file, which an ignore rule of the repository cannot do.
     @Test func grepSkipsATrackedFileInTheExcludedFolder() async throws {
         let root = try Self.makeAgentTree()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
-        try await TestSupport.runGit(["add", "."], in: root)
+        try GitFixture.initRepository(at: root)
+        try GitFixture.stageAll(in: root)
         let files = try await Self.greppedFiles(root: root, excludePatterns: Self.agentFolderPatterns)
         #expect(files == [Self.notesPath])
     }

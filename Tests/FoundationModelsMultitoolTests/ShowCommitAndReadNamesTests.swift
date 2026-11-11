@@ -39,7 +39,7 @@ import Testing
     }
 
     /// Runs `code` on a surface with the git capability over `repository`.
-    private static func runGit(_ code: String, in repository: TemporaryGitRepository) async throws -> String {
+    private static func runSnippet(_ code: String, in repository: TemporaryGitRepository) async throws -> String {
         let registry = try MultiTool.Builder(mode: .open).withGit(root: repository.workDirectory).buildRegistry()
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
@@ -55,7 +55,7 @@ import Testing
     func showWithNoPathGivesTheWholeCommit() async throws {
         let (repository, sha) = try Self.repositoryWithTwoCommits()
 
-        let output = try await Self.runGit(
+        let output = try await Self.runSnippet(
             #"const r = await tools.git.show({ sha: "\#(sha)" }); return r;"#, in: repository)
 
         #expect(!output.contains("missing its required argument"), "output was: \(output)")
@@ -76,7 +76,7 @@ import Testing
     func eachNameOfTheRefIsAccepted(name: String) async throws {
         let (repository, sha) = try Self.repositoryWithTwoCommits()
 
-        let output = try await Self.runGit(
+        let output = try await Self.runSnippet(
             #"return await tools.git.show({ \#(name): "HEAD~1", path: "src/a.txt" });"#, in: repository)
 
         let value = try RunOutput.decoded(ShowValue.self, from: output)
@@ -89,7 +89,7 @@ import Testing
     func showWithAStringReadsThePath() async throws {
         let (repository, _) = try Self.repositoryWithTwoCommits()
 
-        let output = try await Self.runGit(#"return await tools.git.show("src/a.txt");"#, in: repository)
+        let output = try await Self.runSnippet(#"return await tools.git.show("src/a.txt");"#, in: repository)
 
         let value = try RunOutput.decoded(ShowValue.self, from: output)
         #expect(value.content == Self.secondText, "output was: \(output)")
@@ -99,7 +99,7 @@ import Testing
     func showWithNothingGivesHead() async throws {
         let (repository, sha) = try Self.repositoryWithTwoCommits()
 
-        let output = try await Self.runGit("return await tools.git.show({});", in: repository)
+        let output = try await Self.runSnippet("return await tools.git.show({});", in: repository)
 
         let value = try RunOutput.decoded(ShowValue.self, from: output)
         #expect(value.content?.hasPrefix("commit \(sha)\n") == true, "output was: \(output)")
@@ -109,7 +109,7 @@ import Testing
     func showWithAnUnknownRefIsACorrection() async throws {
         let (repository, _) = try Self.repositoryWithTwoCommits()
 
-        let output = try await Self.runGit(#"return await tools.git.show({ sha: "nosuchref" });"#, in: repository)
+        let output = try await Self.runSnippet(#"return await tools.git.show({ sha: "nosuchref" });"#, in: repository)
 
         let value = try RunOutput.decoded(ShowValue.self, from: output)
         #expect(value.content == nil, "output was: \(output)")

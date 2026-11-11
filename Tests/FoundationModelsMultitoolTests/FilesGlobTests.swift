@@ -12,6 +12,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the ``GlobEngine`` and the `tools.files.glob` verb.
 ///
@@ -93,7 +94,7 @@ import Testing
     /// git-aware inside a repository.
     @Test func gitignoredFileIsAbsentByDefault() async throws {
         let root = Self.makeDirectory()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("debug.log", in: root)
@@ -109,7 +110,7 @@ import Testing
     /// With `respectGitIgnore` off, the walk shows the gitignored file.
     @Test func gitignoredFileIsPresentWhenRespectGitIgnoreIsFalse() async throws {
         let root = Self.makeDirectory()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("debug.log", in: root)
@@ -124,7 +125,7 @@ import Testing
     /// Tracked and untracked files that no ignore rule covers stay visible.
     @Test func gitTrackedAndUntrackedNonIgnoredFilesAreVisible() async throws {
         let root = Self.makeDirectory()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try Self.write(".gitignore", in: root, contents: "*.log\n")
         try Self.write("keep.txt", in: root)
         try Self.write("notes.txt", in: root)
@@ -140,7 +141,7 @@ import Testing
     /// session root, not to the subdirectory.
     @Test func gitScopedSubdirectoryReturnsSessionRelativePaths() async throws {
         let root = Self.makeDirectory()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try Self.write("sub/a.txt", in: root)
         try Self.write("sub/deep/b.txt", in: root)
         try Self.write("top.txt", in: root)

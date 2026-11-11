@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the ``FileWalker`` shared walk helpers.
 ///
@@ -83,7 +84,7 @@ import Testing
     /// thus a file under it never appears among the candidates.
     @Test func collectFilesHonorsGitIgnoreInsideARepository() async throws {
         let (root, rootFile, _) = try Self.makeTree()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try "build/\n".write(to: root.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
         let ignored = root.appendingPathComponent("build", isDirectory: true)
         try FileManager.default.createDirectory(at: ignored, withIntermediateDirectories: true)
@@ -94,65 +95,97 @@ import Testing
         #expect(!collected.contains { $0.hasPrefix(ignored.path + "/") })
     }
 
+    /// The walk root of the repository listing tests, relative to the work folder.
+    private static let listingWalkRoot = "pkg"
+
+    /// The tracked file below the walk root, relative to the work folder.
+    private static let trackedBelowWalkRoot = "pkg/tracked.txt"
+
+    /// The tracked file above the walk root, relative to the work folder.
+    private static let trackedAboveWalkRoot = "top.txt"
+
+    /// The untracked file in a nested untracked folder below the walk root,
+    /// relative to the work folder.
+    private static let untrackedInNestedFolder = "pkg/new/deep/untracked.txt"
+
+    /// The file in the ignored `build/` folder below the walk root, relative
+    /// to the work folder.
+    private static let ignoredBuildOutput = "pkg/build/out.txt"
+
+    /// Writes `contents` to the file at `path` below `root`, and makes each
+    /// parent folder that is missing.
+    ///
+    /// - Parameters:
+    ///   - path: The path of the file, relative to `root`.
+    ///   - root: The folder that holds the file.
+    private static func writeFile(_ path: String, in root: URL) throws {
+        let url = root.appendingPathComponent(path, isDirectory: false)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "text\n".write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Makes a repository with two tracked files (one above the walk root),
+    /// an ignored `build/` folder, and an untracked file in a nested
+    /// untracked folder. Only the tracked files are staged.
+    ///
+    /// - Returns: The canonical work folder.
+    private static func makeListingRepository() throws -> URL {
+        let root = TestSupport.canonicalDirectory(TestSupport.makeTemporaryDirectory(named: "FileWalkerTests"))
+        try GitFixture.initRepository(at: root)
+        try "build/\n".write(to: root.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+        try writeFile(trackedBelowWalkRoot, in: root)
+        try writeFile(trackedAboveWalkRoot, in: root)
+        try GitFixture.stageAll(in: root)
+        try writeFile(untrackedInNestedFolder, in: root)
+        try writeFile(ignoredBuildOutput, in: root)
+        return root
+    }
+
+    /// A walk root that is a subfolder of a repository gives the tracked file
+    /// and the untracked file of a nested untracked folder below it, and no
+    /// file above it or in its ignored `build/` folder.
+    ///
+    /// The plain walk would also give the ignored file, thus this set comes
+    /// from the repository listing.
+    @Test func collectFilesInASubfolderOfARepositoryGivesTheTrackedAndUntrackedFilesBelowIt() async throws {
+        let root = try Self.makeListingRepository()
+        let walkRoot = root.appendingPathComponent(Self.listingWalkRoot, isDirectory: true)
+
+        let collected = await FileWalker.collectFiles(walkRoot: walkRoot, respectGitIgnore: true)
+
+        #expect(
+            Set(collected)
+                == Set([Self.trackedBelowWalkRoot, Self.untrackedInNestedFolder].map { root.path + "/" + $0 }))
+    }
+
+    /// A tracked file that the work folder no longer holds stays in the
+    /// listing, because the listing reads each entry of the index.
+    @Test func collectFilesInARepositoryKeepsATrackedFileThatTheWorkFolderLost() async throws {
+        let root = try Self.makeListingRepository()
+        try FileManager.default.removeItem(at: root.appendingPathComponent(Self.trackedAboveWalkRoot))
+
+        let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true)
+
+        #expect(collected.contains(root.path + "/" + Self.trackedAboveWalkRoot))
+    }
+
+    /// A walk root in the `.git` folder is not in the work folder, thus the
+    /// walk falls back to the plain enumeration of that folder.
+    @Test func collectFilesInTheGitFolderFallsBackToAPlainWalk() async throws {
+        let root = try Self.makeListingRepository()
+        let gitFolder = root.appendingPathComponent(".git", isDirectory: true)
+
+        let collected = await FileWalker.collectFiles(walkRoot: gitFolder, respectGitIgnore: true)
+
+        #expect(collected.contains(gitFolder.path + "/HEAD"))
+    }
+
     /// Outside a repository the git listing yields nothing, thus the walk
     /// falls back to the plain enumeration and still returns the files.
     @Test func collectFilesFallsBackToAPlainWalkOutsideARepository() async throws {
         let (root, rootFile, nestedFile) = try Self.makeTree()
         let collected = await FileWalker.collectFiles(walkRoot: root, respectGitIgnore: true).sorted()
         #expect(collected == [root.path + "/" + rootFile, root.path + "/" + nestedFile])
-    }
-
-    // MARK: Listing program
-
-    /// The shell that runs the stand-in listing program.
-    private static let shellPath = "/bin/sh"
-
-    /// The flag that makes the shell read its script from the next argument.
-    private static let shellScriptFlag = "-c"
-
-    /// More bytes than one pipe holds: a pipe on Darwin holds at most 64 KiB.
-    /// A listing program that writes this much to its standard error stops
-    /// in its write until a reader drains the pipe.
-    private static let overfullStandardErrorByteCount = 131_072
-
-    /// The paths the stand-in listing program writes, in order.
-    private static let listedPaths = ["a.txt", "sub/b.txt"]
-
-    /// A listing program that writes more to its standard error than a pipe
-    /// holds, and only then writes its listing, still gives its listing.
-    ///
-    /// The program must finish its write to the standard error before it
-    /// writes the standard output. Thus a walk that reads the standard
-    /// error only after the end of the standard output never sees a
-    /// listing: the program and the walk wait on each other. A walk that
-    /// drains both streams at the same time gets the listing. The program
-    /// is `/bin/sh`, and not `git`, because no git command writes a known
-    /// quantity to its standard error.
-    ///
-    /// A walk that reads in that order does not fail this test: it stops in
-    /// the read. Thus this test is not run on that code; see the card of
-    /// this fix.
-    @Test func aListingProgramThatFillsItsStandardErrorStillGivesItsListing() async throws {
-        let (root, _, _) = try Self.makeTree()
-        let listing = Self.listedPaths.map { "\($0)\\0" }.joined()
-        let script =
-            "head -c \(Self.overfullStandardErrorByteCount) /dev/zero >&2; printf '\(listing)'"
-
-        let listed = await FileWalker.listedFiles(
-            byRunning: Self.shellPath, arguments: [Self.shellScriptFlag, script], in: root)
-
-        #expect(listed == Self.listedPaths)
-    }
-
-    /// A listing program that exits with a status other than zero gives no
-    /// listing, thus the walk falls back to the plain enumeration.
-    @Test func aListingProgramThatFailsGivesNoListing() async throws {
-        let (root, _, _) = try Self.makeTree()
-
-        let listed = await FileWalker.listedFiles(
-            byRunning: Self.shellPath, arguments: [Self.shellScriptFlag, "printf 'a.txt\\0'; exit 1"], in: root)
-
-        #expect(listed == nil)
     }
 
     // MARK: Collect-filter-assemble

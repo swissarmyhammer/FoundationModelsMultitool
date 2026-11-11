@@ -15,6 +15,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the ``GrepEngine`` and the `tools.files.grep` verb.
 ///
@@ -496,7 +497,7 @@ import Testing
     /// An unscoped search never descends into a gitignored directory.
     @Test func gitignoredDirectoryIsNeverSearchedUnscoped() async throws {
         let root = Self.makeDirectory()
-        try await TestSupport.runGit(["init", "--quiet"], in: root)
+        try GitFixture.initRepository(at: root)
         try Self.write(".gitignore", in: root, contents: "build/\n")
         try Self.write("keep.txt", in: root, contents: "match\n")
         try Self.write("build/generated.txt", in: root, contents: "match\n")

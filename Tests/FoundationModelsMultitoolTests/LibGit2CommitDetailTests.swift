@@ -20,9 +20,9 @@ struct LibGit2CommitDetailTests {
     /// `TemporaryGitRepository.defaultBranch`.
     private static let sideBranch = "side"
 
-    /// The `-c` options that give the `git` binary an identity, thus a commit
-    /// and a merge do not depend on the host configuration.
-    private static let gitIdentity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"]
+    /// The file that the merge test commits on
+    /// `TemporaryGitRepository.defaultBranch` only, and not on ``sideBranch``.
+    private static let mainOnlyPath = "main.txt"
 
     /// The detail of a commit with a body gives the whole message: the
     /// subject, the blank line, and the body.
@@ -81,22 +81,20 @@ struct LibGit2CommitDetailTests {
     /// A merge commit diffs from its first parent only, thus a file that only
     /// the second parent added is not in the list.
     @Test("a merge commit uses only its first parent")
-    func aMergeCommitUsesOnlyItsFirstParent() async throws {
+    func aMergeCommitUsesOnlyItsFirstParent() throws {
         let repository = try TemporaryGitRepository()
         try repository.write("a\n", to: "a.txt")
         try repository.commit(message: "first")
         try repository.createBranch(named: Self.sideBranch)
-        try repository.write("main\n", to: "main.txt")
+        try repository.write("main\n", to: Self.mainOnlyPath)
         let mainTip = try repository.commit(message: "second")
-        try await Self.git(["checkout", "--quiet", Self.sideBranch], in: repository)
+        try repository.pointHead(atBranch: Self.sideBranch)
+        try FileManager.default.removeItem(at: repository.workDirectory.appendingPathComponent(Self.mainOnlyPath))
         try repository.write("side\n", to: "side.txt")
-        try await Self.git(["add", "side.txt"], in: repository)
-        try await Self.git(Self.gitIdentity + ["commit", "--quiet", "-m", "side"], in: repository)
-        try await Self.git(["checkout", "--quiet", TemporaryGitRepository.defaultBranch], in: repository)
-        try await Self.git(
-            Self.gitIdentity + ["merge", "--quiet", "--no-ff", "-m", "merge", Self.sideBranch], in: repository)
-
-        let sideTip = try #require(try Self.detail(of: repository, revision: Self.sideBranch)).facts.sha
+        let sideTip = try repository.commit(message: "side")
+        try repository.pointHead(atBranch: TemporaryGitRepository.defaultBranch)
+        try repository.write("main\n", to: Self.mainOnlyPath)
+        try repository.commitMerge(ofBranch: Self.sideBranch, message: "merge")
 
         let detail = try #require(try Self.detail(of: repository))
 
@@ -164,15 +162,5 @@ struct LibGit2CommitDetailTests {
         revision: String = headRevision
     ) throws -> LibGit2CommitDetail? {
         try LibGit2Repository(discoveringFrom: repository.workDirectory).commitDetail(forRevision: revision)
-    }
-
-    /// Runs the `git` binary in the work folder of `repository`.
-    ///
-    /// - Parameters:
-    ///   - arguments: The `git` subcommand and its arguments.
-    ///   - repository: The repository.
-    /// - Throws: When the process cannot start.
-    private static func git(_ arguments: [String], in repository: TemporaryGitRepository) async throws {
-        try await TestSupport.runGit(arguments, in: repository.workDirectory)
     }
 }

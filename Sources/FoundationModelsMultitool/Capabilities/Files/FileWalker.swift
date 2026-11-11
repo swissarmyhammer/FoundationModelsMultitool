@@ -10,11 +10,14 @@
 // eventplan.md § "Consolidation of the siblings": the glob and grep verbs
 // resolve, bound, and enumerate a search root the same way, thus the steps
 // they share live here one time rather than as copies.
+//
+// The git-aware listing reads the repository through the `LibGit2` layer in
+// the process, and starts no `git` child process: in the App Sandbox the
+// `/usr/bin/git` shim refuses to run, and a Mac with no developer tools has
+// no git.
 
 import Darwin
 import Foundation
-import Subprocess
-import System
 
 /// The shared search-root resolution and git-aware walk behind the glob and grep engines.
 ///
@@ -26,10 +29,11 @@ import System
 ///   URL, and ``boundDirectory(_:in:)`` refuses the filesystem root before
 ///   returning a canonical directory URL.
 /// - **Enumeration** — when a repository is present and its ignore rules are
-///   being honored, the git-aware listing (`git ls-files --cached --others
-///   --exclude-standard`) is used, thus ignored files — and, crucially,
-///   whole ignored directories such as a `build/` tree — are never descended
-///   into; otherwise a plain `FileManager` walk is used.
+///   being honored, the git-aware listing is used: libgit2 reads the index
+///   and the untracked files that the ignore rules do not exclude, in the
+///   process (``LibGit2Repository/listedFiles()``). Thus ignored files — and,
+///   crucially, whole ignored directories such as a `build/` tree — are
+///   never descended into; otherwise a plain `FileManager` walk is used.
 /// - **Collect-filter-assemble** — ``walkAndFilter(walkRoot:sessionRoot:respectGitIgnore:excludePatterns:accept:build:)``
 ///   is the single loop that enumerates, computes relative paths, skips the
 ///   files that the host ``ExcludePatterns`` exclude, applies a
@@ -48,11 +52,12 @@ enum FileWalker {
 
     /// Enumerates the candidate files under a search root as absolute paths.
     ///
-    /// When `respectGitIgnore` is set and `walkRoot` is inside a git
-    /// repository, the git-aware listing (`git ls-files --cached --others
-    /// --exclude-standard`) is used, thus ignored files are skipped without
-    /// hand-rolled gitignore parsing; otherwise, and whenever git is
-    /// unavailable or the directory is not a repository, a plain
+    /// When `respectGitIgnore` is set and `walkRoot` is inside the work
+    /// folder of a git repository, the git-aware listing is used: libgit2
+    /// reads the tracked files and the untracked files that the ignore rules
+    /// do not exclude, in the process. Thus ignored files are skipped without
+    /// hand-rolled gitignore parsing. Otherwise, and whenever libgit2 cannot
+    /// read the listing or the directory is not in a work folder, a plain
     /// `FileManager` walk is used.
     ///
     /// - Parameters:
@@ -60,7 +65,7 @@ enum FileWalker {
     ///   - respectGitIgnore: whether to prefer the git-aware listing.
     /// - Returns: the absolute paths of the candidate regular files.
     static func collectFiles(walkRoot: URL, respectGitIgnore: Bool) async -> [String] {
-        if respectGitIgnore, let relativePaths = await gitListedFiles(in: walkRoot) {
+        if respectGitIgnore, let relativePaths = gitListedFiles(in: walkRoot) {
             return relativePaths.map { walkRoot.path + "/" + $0 }
         }
         return enumeratedRegularFiles(under: walkRoot)
@@ -85,9 +90,9 @@ enum FileWalker {
     /// own result type through the closures.
     ///
     /// The host patterns go through ``ExcludePatterns`` here and not through
-    /// git, because `git ls-files --exclude` applies to untracked files only,
-    /// and the plain walk does not run git. Thus one matcher applies the
-    /// host patterns to each walk.
+    /// the ignore rules of the repository, because an ignore rule applies to
+    /// untracked files only, and the plain walk does not read the repository.
+    /// Thus one matcher applies the host patterns to each walk.
     ///
     /// - Parameters:
     ///   - walkRoot: the canonical directory to enumerate.
@@ -123,62 +128,55 @@ enum FileWalker {
         return results
     }
 
-    /// The git-listed files under a directory, or `nil` when it is not a repository.
+    /// The repository-listed files under a directory, or `nil` when no
+    /// work folder of a repository holds it.
     ///
-    /// Runs `git ls-files --cached --others --exclude-standard -z` with the
-    /// given directory as the working directory, thus the output is the
-    /// repository's tracked and untracked-but-not-ignored files under that
-    /// directory, one NUL-separated relative path each. A nonzero exit (most
-    /// commonly "not a git repository") or a launch failure yields `nil`,
-    /// signaling the caller to fall back to a plain walk.
+    /// Reads the listing of the repository that contains the directory
+    /// through libgit2 in the process (``LibGit2Repository/listedFiles()``),
+    /// and starts no child process. The listing holds the tracked files and
+    /// the untracked files that the ignore rules do not exclude: the same
+    /// files that the file listing of the git command line gives with
+    /// `--cached --others --exclude-standard`. This
+    /// function keeps the files below the directory, and makes each path
+    /// relative to it.
     ///
-    /// - Parameter directory: the directory to list, used as git's working directory.
-    /// - Returns: the NUL-separated relative paths, or `nil` when git is
-    ///   unavailable or the directory is not a repository.
-    private static func gitListedFiles(in directory: URL) async -> [String]? {
-        await listedFiles(byRunning: environmentProgramPath, arguments: gitListingArguments, in: directory)
-    }
-
-    /// The program that finds `git` on the `PATH` of this process.
-    private static let environmentProgramPath = "/usr/bin/env"
-
-    /// The arguments of `environmentProgramPath` that list the tracked and
-    /// the untracked-but-not-ignored files, one NUL-terminated path each.
-    private static let gitListingArguments = ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
-
-    /// The NUL-separated paths that a listing program writes to its standard
-    /// output, or `nil` when the program does not start or does not exit
-    /// with status zero.
+    /// A folder outside a repository, a bare repository, a folder in the
+    /// repository data (the `.git` folder), and a listing that libgit2 cannot
+    /// read each give `nil`, thus the caller falls back to a plain walk.
     ///
-    /// `Subprocess.run` reads the standard output and drops the standard
-    /// error at the same time, and it waits for the exit with no blocked
-    /// thread. Thus a program that writes more to its standard error than a
-    /// pipe holds cannot stop the read of its standard output, and the
-    /// caller holds no thread of the Swift cooperative pool.
-    ///
-    /// - Parameters:
-    ///   - executable: the absolute path of the listing program.
-    ///   - arguments: the arguments of the program.
-    ///   - directory: the working directory of the program.
-    /// - Returns: the NUL-separated paths, or `nil` when the program fails.
-    static func listedFiles(byRunning executable: String, arguments: [String], in directory: URL) async
-        -> [String]?
-    {
-        do {
-            let result = try await Subprocess.run(
-                .path(FilePath(executable)),
-                arguments: Arguments(arguments),
-                workingDirectory: FilePath(directory.path),
-                input: .none,
-                output: .bytes(limit: .max),
-                error: .discarded
-            )
-            guard case .exited(0) = result.terminationStatus else { return nil }
-            let text = String(decoding: result.standardOutput, as: UTF8.self)
-            return text.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
-        } catch {
+    /// - Parameter directory: the canonical directory to list.
+    /// - Returns: the paths relative to `directory`, or `nil` when the
+    ///   caller must walk the directory.
+    private static func gitListedFiles(in directory: URL) -> [String]? {
+        guard let repository = try? LibGit2Repository(discoveringFrom: directory),
+            let prefix = workFolderPrefix(of: directory, in: repository),
+            let listed = try? repository.listedFiles()
+        else {
             return nil
         }
+        return listed.compactMap { path in relativePath(ofAbsolute: path, under: prefix) }.filter { !$0.isEmpty }
+    }
+
+    /// The path of a directory relative to the work folder of a repository,
+    /// or `nil` when the repository has no work folder or the work folder
+    /// does not hold the directory.
+    ///
+    /// libgit2 gives real paths (`/private/var/...` on macOS), thus each
+    /// side of the comparison goes through ``resolvedPath(_:)``. A directory
+    /// in the repository data is in no work folder, also when the repository
+    /// data is below the work folder.
+    ///
+    /// - Parameters:
+    ///   - directory: the directory to find in the work folder.
+    ///   - repository: the open repository.
+    /// - Returns: the relative path (empty for the work folder itself), or
+    ///   `nil` when no work folder of `repository` holds `directory`.
+    private static func workFolderPrefix(of directory: URL, in repository: LibGit2Repository) -> String? {
+        guard let workDirectory = repository.workDirectory else { return nil }
+        let resolvedDirectory = resolvedPath(directory.path)
+        let repositoryData = resolvedPath(repository.repositoryDirectory.path)
+        guard relativePath(ofAbsolute: resolvedDirectory, under: repositoryData) == nil else { return nil }
+        return relativePath(ofAbsolute: resolvedDirectory, under: resolvedPath(workDirectory.path))
     }
 
     /// The absolute paths of the regular files under a directory, walked recursively.

@@ -72,8 +72,9 @@ enum GlobOutput: CorrectiveEncodable, Sendable {
 /// The engine validates the pattern (length, syntax, and — when the walk is
 /// unscoped by a `path` — the broad-pattern guard), resolves and bounds the
 /// search root through the context's ``PathGuard`` (refusing the filesystem
-/// root), enumerates candidate files (via `git ls-files` when a repository is
-/// present and gitignore is respected, else a plain `FileManager` walk),
+/// root), enumerates candidate files (via the libgit2 listing of the
+/// repository when a repository is present and gitignore is respected, else
+/// a plain `FileManager` walk),
 /// matches each candidate against the pattern, and returns the matches
 /// relative to the session root sorted by modification time with the newest
 /// first.
@@ -121,7 +122,7 @@ struct GlobEngine: Sendable {
     ///   - path: the directory to search, or `nil` to search the session root.
     ///   - caseSensitive: whether matching is case-sensitive; defaults to `false`.
     ///   - respectGitIgnore: whether a present repository's ignore rules are
-    ///     honored (via `git ls-files`); defaults to `true`. `false` does not
+    ///     honored (via the libgit2 listing); defaults to `true`. `false` does not
     ///     turn off the host exclude patterns of `context`: the model sets
     ///     this argument, but the host patterns are the rule of the host,
     ///     and the model must not turn them off.

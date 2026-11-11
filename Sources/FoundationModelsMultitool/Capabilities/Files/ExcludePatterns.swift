@@ -2,12 +2,12 @@
 // gitignore syntax.
 //
 // Why this matcher exists: the files capability has no gitignore matcher of
-// its own. For `.gitignore`, `FileWalker` asks git (`git ls-files
-// --exclude-standard`), and git applies the rules. Git cannot apply the host
-// patterns on each walk. `git ls-files --exclude` applies to untracked files
-// only, thus a tracked file under an excluded folder stays in the list. And
-// the plain `FileManager` walk (no repository, or `respectGitIgnore: false`)
-// does not run git at all. Thus the host patterns go through this one
+// its own. For `.gitignore`, `FileWalker` reads the listing of the repository
+// through libgit2, and libgit2 applies the rules. The ignore rules of a
+// repository cannot apply the host patterns on each walk. An ignore rule
+// applies to untracked files only, thus a tracked file under an excluded
+// folder stays in the list. And the plain `FileManager` walk (no repository,
+// or `respectGitIgnore: false`) does not read the repository at all. Thus the host patterns go through this one
 // in-process matcher, which `FileWalker.walkAndFilter` applies to each file
 // of each walk.
 //

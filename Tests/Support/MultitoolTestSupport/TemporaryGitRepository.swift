@@ -49,6 +49,10 @@ final class TemporaryGitRepository {
     /// that already exists.
     private static let keepExistingBranch: Int32 = 0
 
+    /// The `force` flag value that makes `git_tag_create_lightweight` fail on
+    /// a tag that already exists.
+    private static let keepExistingTag: Int32 = 0
+
     /// The ref name that names the commit HEAD points at.
     private static let headReference = "HEAD"
 
@@ -127,6 +131,46 @@ final class TemporaryGitRepository {
         return String(cString: git_oid_tostr_s(&commitID))
     }
 
+    /// Stages each change of the work folder, and commits the index as a
+    /// merge on the branch that HEAD names.
+    ///
+    /// The commit has two parents: first the commit that HEAD names, then
+    /// the tip of the branch `name`. The tree is the work folder, thus the
+    /// test writes the merge result into the work folder first.
+    ///
+    /// - Parameters:
+    ///   - name: The branch to merge, without `refs/heads/`.
+    ///   - message: The commit message.
+    /// - Returns: The 40-hex SHA of the new commit.
+    /// - Throws: ``LibGit2Error`` when HEAD names no commit, when the branch
+    ///   does not exist, or when a libgit2 call fails.
+    @discardableResult
+    func commitMerge(ofBranch name: String, message: String) throws -> String {
+        let tree = try stageWorkFolder()
+        defer { git_tree_free(tree) }
+        let parent = try commitObject(named: Self.headReference)
+        defer { git_object_free(parent) }
+        let mergedTip = try commitObject(named: "\(Self.branchReferencePrefix)\(name)")
+        defer { git_object_free(mergedTip) }
+        var commitID = try createCommit(
+            of: tree, parents: [parent, mergedTip], updating: Self.headReference, message: message)
+        return String(cString: git_oid_tostr_s(&commitID))
+    }
+
+    /// Makes the lightweight tag `name` at the commit `sha`.
+    ///
+    /// - Parameters:
+    ///   - name: The tag name, without `refs/tags/`.
+    ///   - sha: The 40-hex SHA of the commit.
+    /// - Throws: ``LibGit2Error`` when the tag exists, when no commit has
+    ///   `sha`, or when a libgit2 call fails.
+    func createLightweightTag(named name: String, at sha: String) throws {
+        let commit = try commitObject(named: sha)
+        defer { git_object_free(commit) }
+        var tagID = git_oid()
+        try LibGit2.check(git_tag_create_lightweight(&tagID, repository, name, commit, Self.keepExistingTag))
+    }
+
     /// Stages the file at `path`, and writes the index. No commit is made.
     ///
     /// A file in the work folder goes into the index, thus a new file is
@@ -202,9 +246,7 @@ final class TemporaryGitRepository {
     /// - Throws: ``LibGit2Error`` when HEAD names no commit, when the branch
     ///   exists, or when a libgit2 call fails.
     func createBranch(named name: String) throws {
-        let commit = try LibGit2.makeHandle { commit in
-            git_revparse_single(&commit, repository, Self.headReference)
-        }
+        let commit = try commitObject(named: Self.headReference)
         defer { git_object_free(commit) }
         try makeBranch(named: name, at: commit)
     }
@@ -295,6 +337,16 @@ final class TemporaryGitRepository {
             try LibGit2.check(git_index_write_tree(&treeID, index))
             return try LibGit2.makeHandle { tree in git_tree_lookup(&tree, repository, &treeID) }
         }
+    }
+
+    /// The object that a revision names, for example `HEAD`, a full ref
+    /// name, or a SHA.
+    ///
+    /// - Parameter revision: The revision.
+    /// - Returns: The object. The caller frees it with `git_object_free`.
+    /// - Throws: ``LibGit2Error`` when no object has that name.
+    private func commitObject(named revision: String) throws -> OpaquePointer {
+        try LibGit2.makeHandle { object in git_revparse_single(&object, repository, revision) }
     }
 
     /// Makes the branch `name` at `commit`.

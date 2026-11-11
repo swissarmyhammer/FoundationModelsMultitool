@@ -1,8 +1,6 @@
 import Darwin
 import Foundation
 import FoundationModels
-import Subprocess
-import System
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -203,36 +201,6 @@ enum TestSupport {
     static func setImmutable(_ path: String, to immutable: Bool) -> Bool {
         chflags(path, immutable ? UInt32(UF_IMMUTABLE) : 0) == 0
     }
-
-    /// Run a `git` subcommand in a directory, and fail the test on a nonzero exit.
-    ///
-    /// The git-aware suites prepare a repository fixture the same way, thus
-    /// the launch, the drain, and the exit check live here one time and no
-    /// suite carries a near-identical copy.
-    ///
-    /// `Subprocess.run` drops the standard output and the standard error of
-    /// git, thus no pipe fills, and it waits for the exit with no blocked
-    /// thread. Thus the test holds no thread of the Swift cooperative pool
-    /// while git runs.
-    ///
-    /// - Parameters:
-    ///   - arguments: the `git` subcommand and its arguments.
-    ///   - directory: git's working directory.
-    /// - Throws: What `Subprocess.run` throws when git does not start.
-    static func runGit(_ arguments: [String], in directory: URL) async throws {
-        let result = try await Subprocess.run(
-            .path(FilePath(gitLauncherPath)),
-            arguments: Arguments(["git"] + arguments),
-            workingDirectory: FilePath(directory.path),
-            input: .none,
-            output: .discarded,
-            error: .discarded
-        )
-        #expect(result.terminationStatus.isSuccess, "git \(arguments.joined(separator: " ")) failed")
-    }
-
-    /// The program that finds `git` on the `PATH` of this process.
-    private static let gitLauncherPath = "/usr/bin/env"
 
     /// The names of directory entries whose name marks them as a leftover
     /// temporary file.
