@@ -312,4 +312,15 @@ enum NoProgramProbe {
     }
 }
 
-exit(await NoProgramProbe.run())
+/// The entry point of the probe: runs each check, and exits with the status
+/// of ``NoProgramProbe/run()``.
+///
+/// The entry is a `@main` type and not top-level code in `main.swift`, thus
+/// a dead-code check sees the start of each call chain of the probe.
+@main
+enum GitNoProgramProbeMain {
+    /// Runs the probe, and exits with its status.
+    static func main() async {
+        exit(await NoProgramProbe.run())
+    }
+}

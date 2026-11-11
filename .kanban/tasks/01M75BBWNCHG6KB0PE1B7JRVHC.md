@@ -30,9 +30,16 @@ comments:
     - evidence: Package.swift; Tests/Support/GitNoProgramProbe/main.swift (new); Tests/FoundationModelsMultitoolTests/GitNoProgramTests.swift (new); Tests/FoundationModelsMultitoolTests/RunOutputTests.swift (new); Tests/FoundationModelsMultitoolTests/Support/TestServerLocator.swift; Tests/Support/MultitoolTestSupport/RunOutput.swift. `swift test`: 2881 tests in 257 suites passed, exit 0. One build-system warning: "missing creator for mutated node" for .build/out/Products/Debug/mlx-swift_Cmlx.bundle (a dependency bundle, not a source file of this change). env -i check: /usr/bin/git exit 1, /usr/bin/env git exit 127.
     - next: /review
   timestamp: 2026-11-11T13:39:34.428292+00:00
+- actor: claude-code
+  id: 01m75dgkx1w3150fk63gq1r8w2
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (e3fa1a6c); 21 findings, 21 confirmed, 0 refuted; all code-hygiene/dead-code-swift in Tests/Support/GitNoProgramProbe/main.swift:17, 37, 87, 90, 94, 99, 102, 105, 109, 112, 117, 121, 126, 150, 162, 171, 226, 250, 262, 293, 310
+    - next: implement the 21 open items in the "Review Findings (2026-11-11 07:40)" section. The task stays in review.
+  timestamp: 2026-11-11T13:42:16.225869+00:00
 depends_on:
 - 01M75B8B21R92BKCSGQJK087E3
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: 'Test: each git verb and the file listing run with no git program'
 ---
@@ -56,3 +63,32 @@ A test in the test process cannot change PATH: the suites run in parallel. Thus:
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #step1
+
+## Review Findings (2026-11-11 07:40)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:17` `code-hygiene/dead-code-swift` — struct `ProbeCheck` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:37` `code-hygiene/dead-code-swift` — enum `ProbeRepository` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:87` `code-hygiene/dead-code-swift` — var.static `passStatus` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:90` `code-hygiene/dead-code-swift` — var.static `failStatus` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:94` `code-hygiene/dead-code-swift` — var.static `visibleTextFiles` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:99` `code-hygiene/dead-code-swift` — var.static `textFilePattern` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:102` `code-hygiene/dead-code-swift` — var.static `filesWithMatchesMode` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:105` `code-hygiene/dead-code-swift` — var.static `snapshotSessionKey` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:109` `code-hygiene/dead-code-swift` — var.static `snapshotOwner` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:112` `code-hygiene/dead-code-swift` — var.static `snapshotLabel` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:117` `code-hygiene/dead-code-swift` — var.static `snapshotFile` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:121` `code-hygiene/dead-code-swift` — var.static `temporaryFolderPrefix` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:126` `code-hygiene/dead-code-swift` — function.method.static `run()` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:150` `code-hygiene/dead-code-swift` — function.method.static `check(_:_:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:162` `code-hygiene/dead-code-swift` — function.method.static `failure(ofCorrection:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:171` `code-hygiene/dead-code-swift` — function.method.static `gitChecks(in:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:226` `code-hygiene/dead-code-swift` — function.method.static `fileChecks(in:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:250` `code-hygiene/dead-code-swift` — function.method.static `failure(ofListing:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:262` `code-hygiene/dead-code-swift` — function.method.static `snapshotCheck(in:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:293` `code-hygiene/dead-code-swift` — function.method.static `openStore(in:over:)` is unused.
+- [ ] `Tests/Support/GitNoProgramProbe/main.swift:310` `code-hygiene/dead-code-swift` — function.method.static `write(_:)` is unused.
