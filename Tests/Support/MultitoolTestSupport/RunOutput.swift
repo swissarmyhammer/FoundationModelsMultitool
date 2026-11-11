@@ -7,9 +7,33 @@
 // one time here rather than once for each suite. The unit test target and the
 // live web suites of `IntegrationTests/` both read it, thus it stands in the
 // `MultitoolTestSupport` product and not in one test target.
+//
+// The file does not import `Testing`. A failed decode throws an error that
+// names the output, and the test runner records that error. Thus the
+// `MultitoolTestSupport` product links no test framework, and an executable
+// such as `GitNoProgramProbe` can link the product and run outside a test
+// bundle.
 
 import Foundation
-import Testing
+
+/// The error of a failed decode of a `runCode` output. Its description names
+/// the type and the raw output, thus the failure says what came back.
+struct RunOutputDecodingError: Error, CustomStringConvertible {
+
+    /// The name of the value type that the decode expected.
+    let typeName: String
+
+    /// The rendered run output that did not decode.
+    let output: String
+
+    /// The error of the JSON decoder.
+    let underlying: any Error
+
+    /// The type, the raw output, and the decoder error.
+    var description: String {
+        "the output did not decode as \(typeName): \(output) (\(underlying))"
+    }
+}
 
 /// Reads the rendered output of a `runCode` snippet.
 enum RunOutput {
@@ -19,14 +43,14 @@ enum RunOutput {
     ///   - type: The value type to decode.
     ///   - output: The rendered run output.
     /// - Returns: The decoded value.
-    /// - Throws: When `output` is not the JSON text of `type`. The raw output
-    ///   is recorded first, thus the failure names what came back.
+    /// - Throws: ``RunOutputDecodingError`` when `output` is not the JSON text
+    ///   of `type`. The error names the raw output, thus the failure names
+    ///   what came back.
     static func decoded<Value: Decodable>(_ type: Value.Type, from output: String) throws -> Value {
         do {
             return try JSONDecoder().decode(type, from: Data(output.utf8))
         } catch {
-            Issue.record("the output did not decode as \(type): \(output)")
-            throw error
+            throw RunOutputDecodingError(typeName: "\(type)", output: output, underlying: error)
         }
     }
 }

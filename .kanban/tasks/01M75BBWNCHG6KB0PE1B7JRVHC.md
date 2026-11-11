@@ -1,9 +1,38 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m75cx5hfftpf8c16v6hnjtc2
+  text: |-
+    Research done.
+    - The verbs are internal types (Blame, Show, Log, Commit, Status, Branches, Changes, Diff). Each takes a GitContext. GitCapability(root:) holds the one context as `context` (internal). The probe reads it with `@testable import FoundationModelsMultitool` (each debug build enables testability, as MultitoolTestSupport does).
+    - Files: Glob and Grep take FileContext(root:). An unscoped `**/*.txt` is a broad pattern; give `path` to permit it.
+    - Snapshots: SnapshotStore(directory:), open(sessionKey:owner:workingDirectory:), take(...), then ListSnapshots(context: SnapshotsContext(store:)) under HookSession.$current.withValue.
+    - The probe can not use TestSupport.makeTemporaryDirectory (test target only). It makes its own folders.
+    - Package.swift says a test target can not depend on an executable; `swift test` builds each target. The probe follows the mcp-test-server pattern: an executable target plus an executable product, and the test finds it with TestServerLocator (generalized to a name).
+    - Subprocess gives `Environment.custom([...])` for an exact environment.
+  timestamp: 2026-11-11T13:31:38.927127+00:00
+- actor: claude-code
+  id: 01m75dbjs4bekfy77nc8hw7rvt
+  text: |-
+    Implementation landed.
+    - Correction to the research comment: the probe is an executable target only, not a product. SwiftPM builds it for `swift test`, and the test finds it with `TestServerLocator.executableURL(named:)` (new; `executableURL()` calls it).
+    - Discovery: `MultitoolTestSupport` linked Testing.framework through `RunOutput.swift` (`import Testing` for `Issue.record`). An executable that links the product stops at launch in dyld ("Library not loaded: @rpath/Testing.framework"). Fix: `RunOutput.decoded` now throws `RunOutputDecodingError`, whose description names the type and the raw output. Each caller uses `try`, thus the failure still names the output. New RunOutputTests (2 tests) covers it.
+    - A snapshot `take` after `open` with no change gives no checkpoint. The probe writes one file after the open.
+    - Proof that the test is meaningful: with the FileWalker from before 15f48d13 put back for a short time, the probe gave `FAIL files.glob` and `FAIL files.grep` (the plain walk listed build/ignored.txt), exit 1. The current FileWalker was then put back (cmp equal).
+    - `env -i PATH= DEVELOPER_DIR=/nonexistent /usr/bin/git --version` gives "xcrun: error: missing DEVELOPER_DIR path: /nonexistent", exit 1. `env -i PATH= DEVELOPER_DIR=/nonexistent /usr/bin/env git --version` gives "env: git: No such file or directory", exit 127. The probe has no git call.
+  timestamp: 2026-11-11T13:39:31.236250+00:00
+- actor: claude-code
+  id: 01m75dbnwws0wwez1t0hrnyccw
+  text: |-
+    ### implement — changed
+    - evidence: Package.swift; Tests/Support/GitNoProgramProbe/main.swift (new); Tests/FoundationModelsMultitoolTests/GitNoProgramTests.swift (new); Tests/FoundationModelsMultitoolTests/RunOutputTests.swift (new); Tests/FoundationModelsMultitoolTests/Support/TestServerLocator.swift; Tests/Support/MultitoolTestSupport/RunOutput.swift. `swift test`: 2881 tests in 257 suites passed, exit 0. One build-system warning: "missing creator for mutated node" for .build/out/Products/Debug/mlx-swift_Cmlx.bundle (a dependency bundle, not a source file of this change). env -i check: /usr/bin/git exit 1, /usr/bin/env git exit 127.
+    - next: /review
+  timestamp: 2026-11-11T13:39:34.428292+00:00
 depends_on:
 - 01M75B8B21R92BKCSGQJK087E3
-position_column: todo
+position_column: doing
 position_ordinal: '80'
 title: 'Test: each git verb and the file listing run with no git program'
 ---
@@ -17,13 +46,13 @@ A test in the test process cannot change PATH: the suites run in parallel. Thus:
 - New test Tests/FoundationModelsMultitoolTests/GitNoProgramTests.swift starts the probe with the environment `PATH=` (empty) and `DEVELOPER_DIR=/nonexistent`, thus `/usr/bin/env git` finds nothing and the `/usr/bin/git` shim fails. The test expects exit status 0, and gives the output of the probe on a failure.
 
 ## Acceptance Criteria
-- [ ] The probe runs each of the 8 git verbs, the glob, the grep, and a snapshot list.
-- [ ] The test passes with an empty PATH and a bad DEVELOPER_DIR.
-- [ ] Before the FileWalker fix, the glob of the probe fails (or gives the plain walk, which the probe detects with an ignored file).
+- [x] The probe runs each of the 8 git verbs, the glob, the grep, and a snapshot list.
+- [x] The test passes with an empty PATH and a bad DEVELOPER_DIR.
+- [x] Before the FileWalker fix, the glob of the probe fails (or gives the plain walk, which the probe detects with an ignored file).
 
 ## Tests
-- [ ] Tests/FoundationModelsMultitoolTests/GitNoProgramTests.swift
-- [ ] `swift test` passes.
+- [x] Tests/FoundationModelsMultitoolTests/GitNoProgramTests.swift
+- [x] `swift test` passes.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #step1

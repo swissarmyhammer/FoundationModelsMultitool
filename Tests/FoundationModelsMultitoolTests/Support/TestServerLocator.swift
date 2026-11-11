@@ -14,6 +14,10 @@ import Foundation
 /// running test binary — for every test that spawns it as a real
 /// subprocess (`StdioServerProcessTests`), so the `--test-bundle-path` /
 /// `.xctest` products-directory resolution stands in one place.
+///
+/// ``executableURL(named:)`` finds another test-support executable in the
+/// same products directory, such as the `GitNoProgramProbe` that
+/// `GitNoProgramTests` starts.
 enum TestServerLocator {
     /// The product name of the executable, as `Package.swift` declares it.
     static let executableName = "mcp-test-server"
@@ -44,8 +48,8 @@ enum TestServerLocator {
         /// not a directory.
         case productsDirectoryNotFound(path: String, derivedFromArgument: String)
 
-        /// No executable file stands at `path`.
-        case testServerNotFound(path: String)
+        /// No executable file with the product name `name` stands at `path`.
+        case executableNotFound(name: String, path: String)
 
         /// A human-readable description of this error.
         var description: String {
@@ -56,9 +60,9 @@ enum TestServerLocator {
             case .productsDirectoryNotFound(let path, let derivedFromArgument):
                 return
                     "Derived products directory \"\(path)\" (from argument \"\(derivedFromArgument)\") does not exist or is not a directory; the test-bundle argument parsing may no longer match this build's layout."
-            case .testServerNotFound(let path):
+            case .executableNotFound(let name, let path):
                 return
-                    "Could not find the \(executableName) executable at \(path); `swift build` (or `swift test`, which builds every target) must produce it beside this test bundle."
+                    "Could not find the \(name) executable at \(path); `swift build` (or `swift test`, which builds every target) must produce it beside this test bundle."
             }
         }
     }
@@ -139,9 +143,21 @@ enum TestServerLocator {
     /// - Throws: ``LocatorError`` when ``productsDirectoryURL()`` rejects the
     ///   resolution, or when no executable file stands at the expected path.
     static func executableURL() throws -> URL {
-        let candidate = try productsDirectoryURL().appendingPathComponent(executableName)
+        try executableURL(named: executableName)
+    }
+
+    /// Locates the test-support executable with the product name `name`,
+    /// which SwiftPM built beside the running test binary.
+    ///
+    /// - Parameter name: The product name of the executable, as
+    ///   `Package.swift` declares it.
+    /// - Returns: The file URL of the executable.
+    /// - Throws: ``LocatorError`` when ``productsDirectoryURL()`` rejects the
+    ///   resolution, or when no executable file stands at the expected path.
+    static func executableURL(named name: String) throws -> URL {
+        let candidate = try productsDirectoryURL().appendingPathComponent(name)
         guard FileManager.default.isExecutableFile(atPath: candidate.path) else {
-            throw LocatorError.testServerNotFound(path: candidate.path)
+            throw LocatorError.executableNotFound(name: name, path: candidate.path)
         }
         return candidate
     }

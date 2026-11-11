@@ -450,6 +450,19 @@ private let multitoolTestSupportTargetName = "MultitoolTestSupport"
 /// that mode names, and serves until the connection closes.
 private let testServerExecutableName = "mcp-test-server"
 
+/// The name of the executable that runs the git verbs, the files glob and
+/// grep, and a snapshot list with no `git` program.
+///
+/// **Test support, and not a product.** `GitNoProgramTests` starts this
+/// binary as a child process with an empty `PATH` and a bad `DEVELOPER_DIR`,
+/// because a test can not change the `PATH` of the test process: the suites
+/// run in parallel. The test finds the binary beside the test bundle, as it
+/// finds `testServerExecutableName`. No other package starts it, thus no
+/// product exports it. It links the library target and
+/// `multitoolTestSupportTargetName`, and reads both with `@testable import`,
+/// for the same reason as the unit test target.
+private let gitNoProgramProbeExecutableName = "GitNoProgramProbe"
+
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -458,10 +471,11 @@ private let sourcesPath = "Sources/"
 /// below.
 private let testsPath = "Tests/"
 
-/// The `Tests/Support/` subdirectory prefix used by the five test-support
+/// The `Tests/Support/` subdirectory prefix used by the six test-support
 /// targets (`testServerTargetName`, `testConcurrencyTargetName`,
 /// `scenarioGradingTargetName`, `multitoolTestSupportTargetName`,
-/// `testServerExecutableName`) below. A target of
+/// `testServerExecutableName`, `gitNoProgramProbeExecutableName`) below. A
+/// target of
 /// test support is not a test target, so it cannot stand under
 /// `Tests/<Name>Tests`, and it is not shipped, so it does not stand under
 /// `Sources/`.
@@ -691,6 +705,19 @@ let package = Package(
                 .target(name: testServerTargetName)
             ] + mcpProducts,
             path: "\(testSupportPath)\(testServerExecutableName)"
+        ),
+        // The probe that `GitNoProgramTests` starts with no `git` program —
+        // see `gitNoProgramProbeExecutableName`. The `hooksDependencyName`
+        // product again: the probe makes a `SnapshotStore` and binds a
+        // `HookSession` for the snapshot list.
+        .executableTarget(
+            name: gitNoProgramProbeExecutableName,
+            dependencies: [
+                .target(name: packageName),
+                .target(name: multitoolTestSupportTargetName),
+                .product(name: hooksDependencyName, package: hooksDependencyName),
+            ],
+            path: "\(testSupportPath)\(gitNoProgramProbeExecutableName)"
         ),
         // `shellProducts` and `mcpProducts` again: `DependencyReachTests`
         // imports `Subprocess` and `MCP` directly, and this target declares
