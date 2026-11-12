@@ -36,6 +36,14 @@
 // the `ToolContext` the engine bound around its own inner call, and
 // `ToolContext.post(_:)` re-stamps the event with the outer `runCode` run's
 // `tool`, `op` and `completionToken` (see `RunBinding.invoke`).
+//
+// **The display diff.** The `fileChanges` envelope goes only to a recording
+// session. A client must also show the diff of each change when the session
+// does not record. Thus, under an ambient context, `commit` also posts one
+// `ToolDisplayEvent` for each changed file: a `.contentChunk` that holds a
+// `ToolDisplayContent.diff(path:oldText:newText:)`. It does this also when the
+// journal does not record. The display event never goes into the model input,
+// and the journal never keeps it.
 
 import Foundation
 import FoundationModelsExtras
@@ -91,6 +99,20 @@ actor FileChangeJournal {
     /// only a recording session needs.
     nonisolated var isRecording: Bool { mode == .recording }
 
+    /// Whether a verb must capture the text of its change before it writes.
+    ///
+    /// The capture is necessary when the journal records, and also when the
+    /// call has an ambient context, because ``commit(_:through:)`` then posts
+    /// the display diff of each change. `nonisolated`, thus a verb can
+    /// consult it before the write, with no wait.
+    ///
+    /// - Parameter context: the ambient `ToolContext` the verb read at the
+    ///   start of its call, or `nil` on a bare session.
+    /// - Returns: `true` when the verb must capture the text of its change.
+    nonisolated func capturesChanges(through context: ToolContext?) -> Bool {
+        isRecording || context != nil
+    }
+
     // MARK: State
 
     /// Whether the journal records changes.
@@ -131,7 +153,10 @@ actor FileChangeJournal {
     /// before the verb returns its correction, thus a partially applied
     /// patch is reported as what it changed rather than as nothing at all.
     ///
-    /// Returns at once when the journal is disabled or `changes` is empty.
+    /// Returns at once when `changes` is empty. When `context` is not `nil`,
+    /// posts one display diff for each change first (see
+    /// ``displayDiff(of:)``), also when the journal is disabled. Then returns
+    /// when the journal is disabled.
     /// When `context` is not `nil`, delivers the changes both ways and keeps
     /// nothing: ONE `.progress` event whose `detail` is the `fileChanges`
     /// envelope of a ``FileChangeSet`` rooted at ``root``, and ONE
@@ -149,7 +174,13 @@ actor FileChangeJournal {
     ///   - context: the ambient `ToolContext` the verb read at the start of
     ///     its call, or `nil` on a bare session.
     func commit(_ changes: [FileChange], through context: ToolContext?) async {
-        guard isRecording, !changes.isEmpty else { return }
+        guard !changes.isEmpty else { return }
+        if let context {
+            for diff in changes.compactMap(Self.displayDiff(of:)) {
+                await context.emit(chunk: diff)
+            }
+        }
+        guard isRecording else { return }
         guard let context else {
             for change in changes { record(change) }
             return
@@ -169,6 +200,41 @@ actor FileChangeJournal {
         context.attach(
             ToolCallAttachment(
                 schemaName: FileChangeSet.operationEventDetailKey, contentJSON: envelope))
+    }
+
+    // MARK: Display diff
+
+    /// The display diff of one change, for the client of the host.
+    ///
+    /// - An add or a copy gives the destination path, no old text, and the
+    ///   new text.
+    /// - A modify gives the path, the old text and the new text.
+    /// - A move gives the destination path, the old text of the source and
+    ///   the new text.
+    /// - A delete gives the path, the old text and an empty new text.
+    ///
+    /// A change gives no diff when a side that exists has no text: the file
+    /// is binary, or the verb could not read it. A diff with a `nil` old text
+    /// tells the client that the file is new, thus a missing old text of a
+    /// file that existed must not become a diff.
+    ///
+    /// - Parameter change: the committed change.
+    /// - Returns: the diff content, or `nil` when the change has no text diff.
+    static func displayDiff(of change: FileChange) -> ToolDisplayContent? {
+        switch change.kind {
+        case .add, .copy:
+            guard let newText = change.newContent else { return nil }
+            return .diff(path: change.destinationPath ?? change.path, oldText: nil, newText: newText)
+        case .modify:
+            guard let oldText = change.oldContent, let newText = change.newContent else { return nil }
+            return .diff(path: change.path, oldText: oldText, newText: newText)
+        case .move:
+            guard let oldText = change.oldContent, let newText = change.newContent else { return nil }
+            return .diff(path: change.destinationPath ?? change.path, oldText: oldText, newText: newText)
+        case .delete:
+            guard let oldText = change.oldContent else { return nil }
+            return .diff(path: change.path, oldText: oldText, newText: "")
+        }
     }
 
     // MARK: Recording

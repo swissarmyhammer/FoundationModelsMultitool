@@ -151,8 +151,10 @@ extension Patch {
     /// the result. Nothing here throws for a bad envelope, path, file, or
     /// commit.
     ///
-    /// Content capture is asked for only when the session records changes,
-    /// so a non-recording patch does exactly the IO it always did. A
+    /// Content capture is asked for when the session records changes, or
+    /// when the call has an ambient context, because the journal then posts
+    /// one display diff for each changed file. A bare call with no
+    /// recording does exactly the IO it always did. A
     /// failure commits too: a patch that fails after some of its writes
     /// have committed carries those files on
     /// ``PatchEngine/Failure/committedOutcomes``, and they are committed
@@ -175,7 +177,7 @@ extension Patch {
 
         return await PatchParser.parse(arguments.patch)
             .resolveAsync(corrective: Self.corrective) { hunks in
-                let capturingContent = context.changes.isRecording
+                let capturingContent = context.changes.capturesChanges(through: toolContext)
                 switch PatchEngine.apply(hunks, using: context.pathGuard, capturingContent: capturingContent) {
                 case .success(let outcomes):
                     await Self.commit(outcomes, in: context, through: toolContext)
@@ -400,7 +402,8 @@ extension Patch {
 /// near-miss diffs the `edit` verb reports — says how to retry. The
 /// session's ``FileChangeJournal`` delivers every committed mutation to the
 /// session as one event when it is recording, a partially-committed
-/// failure's landed writes included. An envelope that cannot parse, a path outside the root, an
+/// failure's landed writes included. Under an ambient context, the journal
+/// also posts one display diff for each changed file to the client. An envelope that cannot parse, a path outside the root, an
 /// add onto an existing file, a delete of a missing file, a binary update
 /// target, a cross-file conflict, a read-only session, and a failed
 /// stage/commit/unlink each come back as a `correction` rather than as an

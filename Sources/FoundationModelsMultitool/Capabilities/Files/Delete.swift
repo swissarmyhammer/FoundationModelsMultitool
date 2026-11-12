@@ -128,7 +128,8 @@ extension Delete {
     // MARK: Execution
 
     /// Deletes one regular file, or a symlink as a link, and records the
-    /// delete change.
+    /// delete change. Under an ambient context, the journal also posts the
+    /// display diff of the delete: the old text and an empty new text.
     ///
     /// - Parameters:
     ///   - url: the resolved URL to delete.
@@ -137,7 +138,7 @@ extension Delete {
     /// - Returns: the envelope, or the correction.
     private func deleteFile(at url: URL, path: String, toolContext: ToolContext?) async -> DeleteResult {
         let changes =
-            context.changes.isRecording
+            context.changes.capturesChanges(through: toolContext)
             ? [FileChange(kind: .delete, path: url.path, oldContent: AtomicWriter.decodedText(at: url))] : []
         do {
             try FileManager.default.removeItem(at: url)

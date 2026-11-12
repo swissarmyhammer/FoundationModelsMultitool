@@ -91,6 +91,9 @@ actor RecordingEventSink: OperationEventSink {
     /// Each question that the run plane ended, in arrival order.
     private(set) var endedElicitations: [EndedElicitation] = []
 
+    /// Every display event posted to this sink, in arrival order.
+    private(set) var displayEvents: [ToolDisplayEvent] = []
+
     /// Each wait of ``waitUntilEvent(where:)`` and of
     /// ``waitUntilElicitationSettled()`` that did not end yet.
     private let waiters = WaitList<AwaitedPost>()
@@ -101,6 +104,10 @@ actor RecordingEventSink: OperationEventSink {
             guard case .event(let isMet) = awaited else { return false }
             return isMet(event)
         }
+    }
+
+    func post(display event: ToolDisplayEvent) async {
+        displayEvents.append(event)
     }
 
     func post(elicitationEnded elicitationId: ULID, response: ElicitationResponse) async {

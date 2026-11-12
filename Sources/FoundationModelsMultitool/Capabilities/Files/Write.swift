@@ -166,10 +166,12 @@ extension Write {
     /// Rejects a read-only session, then over-cap content, then validates
     /// the path via the context's ``PathGuard`` for a write, then writes
     /// the UTF-8 content through ``AtomicWriter``. When the session's
-    /// ``FileChangeJournal`` records, the change is captured before the
-    /// write (the overwritten text is gone afterward) and committed once the
-    /// write lands: delivered to the session as one `.progress` event, or
-    /// kept for a drain on a bare session. Each recoverable failure comes
+    /// ``FileChangeJournal`` records, or the call has an ambient context, the
+    /// change is captured before the write (the overwritten text is gone
+    /// afterward) and committed once the write lands. Under an ambient
+    /// context, the journal posts the display diff of the change. When it
+    /// records, it also delivers the change to the session as one `.progress`
+    /// event, or keeps it for a drain on a bare session. Each recoverable failure comes
     /// back as the `correction` field of the result; nothing here throws for
     /// an over-cap content, a bad path, or a failed write.
     ///
@@ -191,7 +193,7 @@ extension Write {
         return await context.pathGuard.validate(arguments.path, for: .write)
             .resolveAsync(corrective: Self.corrective) { url in
                 // Captured before the write: afterward the overwritten text is gone.
-                let change = context.changes.isRecording ? Self.change(writing: arguments.content, to: url) : nil
+                let change = context.changes.capturesChanges(through: toolContext) ? Self.change(writing: arguments.content, to: url) : nil
                 let data = Data(arguments.content.utf8)
                 do {
                     try AtomicWriter.write(data, to: url)
@@ -232,7 +234,8 @@ extension Write {
 /// computes them, thus a chained edit resolves anchors without an
 /// intervening read. The path is bounded through the session's
 /// ``PathGuard``, and the session's ``FileChangeJournal`` delivers the
-/// change to the session when it is recording. Content over the 10 MiB cap, a path
+/// change to the session when it is recording. Under an ambient context, the
+/// journal also posts the display diff of the change to the client. Content over the 10 MiB cap, a path
 /// outside the root, a read-only target, a read-only session, and a
 /// failed write each come back as a `correction` rather than as an error.
 ///

@@ -333,7 +333,9 @@ extension Edit {
     /// an unresolved batch (which commits nothing) delivers nothing. The
     /// journal delivers the change to the session through `toolContext`, or
     /// keeps it for a drain when there is none, and it drops the change when
-    /// the session is not recording.
+    /// the session is not recording. Under an ambient context, the journal
+    /// also posts the display diff of the change, also when it does not
+    /// record.
     ///
     /// - Parameters:
     ///   - content: the fully rewritten content to commit.
@@ -438,7 +440,8 @@ extension Edit {
 /// `alreadyApplied`, `consumedTarget`) with its JSON `outcomes` says how
 /// to retry. The path is bounded through the session's ``PathGuard``, and
 /// the session's ``FileChangeJournal`` delivers a landed commit to the
-/// session when it is recording. A pair whose `find` and `replace` are
+/// session when it is recording. Under an ambient context, the journal also
+/// posts the display diff of the change to the client. A pair whose `find` and `replace` are
 /// identical once `N:HH|` prefixes are removed makes no change: it is
 /// skipped, the other pairs still apply, and the result's `skipped` and
 /// `note` name it. A `replace` whose every line carries a pasted `N:HH|`
