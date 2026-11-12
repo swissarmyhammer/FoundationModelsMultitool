@@ -106,7 +106,7 @@ import Testing
 
         #expect(!output.contains("is not a function"), "output was: \(output)")
         #expect(
-            output.contains(#"[["Ran 3 tests","OK"],"3",true,true,2,"1: Ran 3 tests",2]"#),
+            output.contains(#"[["Ran 3 tests","OK"],"3",true,true,2,"Ran 3 tests",2]"#),
             "output was: \(output)")
     }
 
@@ -124,12 +124,14 @@ import Testing
         #expect(output.contains(#"[6,true,true,0,21]"#), "output was: \(output)")
     }
 
-    @Test("an execute result still serializes its output as the list of lines")
+    @Test("in a snippet, an execute result's output serializes as its raw lines")
     func aShellOutputStillSerializesAsItsLines() async throws {
+        // checked24 django__django-13710: in a snippet `r.output` is the raw
+        // lines, so `/^FAIL:/` matches; `r.lines` keeps the "N: text" form.
         let output = try await Self.run(
             #"const r = await tools.shell.execute({ command: "echo hi" }); return JSON.stringify(r.output);"#)
 
-        #expect(try RunOutput.decoded(String.self, from: output) == #"["1: hi"]"#, "output was: \(output)")
+        #expect(try RunOutput.decoded(String.self, from: output) == #"["hi"]"#, "output was: \(output)")
     }
 
     @Test("a workingDirectory that names the root's own folder, and is not in it, runs in the root with a note")

@@ -477,7 +477,7 @@ struct BackgroundSettleGraceTests {
             let all = prompts.all
 
             #expect(!PendingRunEnvelope.isRendered(text: result), "answer was: \(result)")
-            #expect(try Self.returnedValue(of: result) == .array([.string("1: hi")]), "answer was: \(result)")
+            #expect(try Self.returnedValue(of: result) == .array([.string("hi")]), "answer was: \(result)")
             #expect(!result.contains(PendingInnerCalls.noticeLead), "answer was: \(result)")
             #expect(all.count == 2, "a mail submission came: \(all)")
             await Self.expectNoRunMail(in: log, followUp: followUp)

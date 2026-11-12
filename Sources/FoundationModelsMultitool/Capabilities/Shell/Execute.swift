@@ -216,14 +216,44 @@ extension Execute: SnippetOutputShaping {
     /// - Returns: The value for the snippet.
     func snippetValue(ofOutput output: String) async -> InterpreterValue {
         if let decoded = try? JSONDecoder().decode(InterpreterValue.self, from: Data(output.utf8)),
-            case .object = decoded
+            case .object(var fields) = decoded
         {
-            return decoded
+            if case .string(let commandID)? = fields[Self.commandIDField] {
+                fields[Self.wholeOutputField] = await Self.wholeOutput(of: commandID, in: runner.state)
+            }
+            return .object(fields)
         }
         guard let commandID = Self.leadingCommandID(in: output) else {
             return .string(output)
         }
-        return .object(await Self.reportFields(of: commandID, in: runner.state))
+        var fields = await Self.reportFields(of: commandID, in: runner.state)
+        fields[Self.wholeOutputField] = await Self.wholeOutput(of: commandID, in: runner.state)
+        return .object(fields)
+    }
+
+    /// The hidden field that carries the whole stored output of a run to the
+    /// snippet. The shell shape of the bindings moves it out of the fields a
+    /// report serializes, and `r.output` and `r.lines` read it (checked24
+    /// django__django-13710: `r.output.filter(l => /^FAIL:/.test(l))` on a
+    /// 32-line tail found nothing, and the model ran the suite again 9 times).
+    /// Inside a snippet a value costs no tokens; only what it returns is
+    /// rendered and capped.
+    static let wholeOutputField = "__wholeOutput"
+
+    /// The most lines ``wholeOutputField`` carries: the last ones, when a run
+    /// printed more.
+    static let maximumSnippetLines = 20_000
+
+    /// The texts of the last ``maximumSnippetLines`` stored lines of a run,
+    /// without line numbers.
+    ///
+    /// - Parameters:
+    ///   - completionToken: The completion token of the run.
+    ///   - state: The store the run recorded into.
+    /// - Returns: The texts, as an array.
+    static func wholeOutput(of completionToken: String, in state: ShellState) async -> InterpreterValue {
+        let stored = (try? await state.getLines(commandID: completionToken)) ?? []
+        return .array(stored.suffix(maximumSnippetLines).map { .string($0.text) })
     }
 
     /// The name of the field that holds the identifier of a run.
@@ -910,9 +940,12 @@ struct Execute: Tool {
         the tail of its output, its status and its exit code. A command that runs longer \
         continues in the background, and the answer is pending. \(PendingRunEnvelope.pendingWorkInstruction) \
         In a snippet the report is an object, so read \
-        r.exitCode, r.output and r.commandID. r.lines is the same array of output lines as \
-        r.output, each "N: text", and r.lineCount is how many lines the command printed in all; \
-        a pending result is {pending: true, commandID}. \
+        r.exitCode, r.output and r.commandID. In the snippet, r.output is every line the command \
+        printed, as raw text, so r.output.filter(l => /^FAIL/.test(l)) finds a line anywhere in it; \
+        r.lines is the same lines, each "N: text"; r.text is the output as one string; and \
+        r.lineCount is how many lines it printed in all. A report you return or read shows only \
+        the last 32 lines, so filter in the snippet and return what you found. \
+        A pending result is {pending: true, commandID}. \
         commandID is the run's completion token: \
         pass it to tools.shell.getLines to read everything the command printed so far, and to \
         tools.shell.grepHistory to search it. Give timeout to bound the command, \

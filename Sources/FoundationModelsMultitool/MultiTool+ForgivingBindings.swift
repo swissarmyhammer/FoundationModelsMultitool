@@ -21,7 +21,15 @@
 //    one string, without the `N: ` of each line), `stderr` (`""`: the shell
 //    merges the two streams), `code`, `returncode`, `exit` (its `exitCode`),
 //    and `ok`, `success` (django__django-14534: `r.stdout.slice(-3000)`).
-//    Its `output` stays the list of lines, and each string method an array
+//    Its `output` is the list of every line the command printed, as raw
+//    text, and its `lines` the same lines as `N: text`, read from the whole
+//    stored output that `Execute.wholeOutputField` carries; the report it
+//    serializes keeps the 32-line tail (checked24 django__django-13710:
+//    `r.output.filter(l => /^FAIL:/.test(l))` found nothing in the tail, and
+//    the model ran the full suite 9 times). `includes` and `indexOf` also
+//    find a line by its `N: text`. An output-size argument the verb does not
+//    have (`maxOutputChars`, `maxLines`, ...) adds a note that says so. Each
+//    string method an array
 //    lacks (`trim`, `split`, `match`, ...) and `toString` work on that same
 //    one string (noqueue24 django__django-14752: `r1.output.split is not a
 //    function`). A method an array has (`slice`, `includes`, `join`, ...)
@@ -246,14 +254,25 @@ extension MultiTool {
             if (typeof k === "string" && field !== "entries" && a[0] && typeof a[0] === "object") { return a[0][k]; } \
             return undefined; } }); }; \
             const shellNames = { stdout: "text", out: "text", text: "text", stderr: "stderr", code: "code", returncode: "code", exit: "code", exitstatus: "code", ok: "ok", success: "ok" }; \
-            const asShell = (v) => { if (!v || typeof v !== "object") { return v; } \
-            const text = () => (Array.isArray(v.output) ? v.output : []).map((l) => String(l).replace(/^\\d+: /, "")).join("\\n"); \
+            const outputLimitNames = ["maxoutputchars", "maxoutput", "maxchars", "maxlines", "maxoutputlines", "outputlimit", "limit", "maxbytes", "maxoutputbytes"]; \
+            const asShell = (v, args) => { if (!v || typeof v !== "object") { return v; } \
+            const whole = Array.isArray(v.\(Execute.wholeOutputField)) ? v.\(Execute.wholeOutputField) : undefined; delete v.\(Execute.wholeOutputField); \
+            const a0 = args && args[0]; const limitKeys = a0 && typeof a0 === "object" ? Object.keys(a0).filter((k) => outputLimitNames.includes(norm(k))) : []; \
+            if (limitKeys.length > 0) { v.notes = [...(Array.isArray(v.notes) ? v.notes : []), \
+            `${limitKeys.join(", ")} is not an argument of shell.execute and was ignored. In the snippet, r.output holds the whole output as raw lines; filter it there, and return what you found.`]; } \
+            const raw = whole || (Array.isArray(v.output) ? v.output : []).map((l) => String(l).replace(/^\\d+: /, "")); \
+            const firstNumber = typeof v.lineCount === "number" ? v.lineCount - raw.length + 1 : 1; \
+            const numbered = whole ? whole.map((l, i) => `${firstNumber + i}: ${l}`) : v.lines; \
+            const text = () => raw.join("\\n"); \
             const output = (a) => new Proxy(a, { get(lines, k) { \
             if (k === Symbol.toPrimitive) { return () => text(); } \
             if (typeof k === "string" && typeof String.prototype[k] === "function" && (k === "toString" || !(k in lines))) { return String.prototype[k].bind(text()); } \
+            if ((k === "includes" || k === "indexOf") && Array.isArray(numbered)) { return (x) => { const i = lines.indexOf(x); const j = i >= 0 ? i : numbered.indexOf(x); return k === "includes" ? j >= 0 : j; }; } \
             return Reflect.get(lines, k); } }); \
             return new Proxy(v, { get(target, k) { \
-            if (k === "output" && Array.isArray(target.output)) { return output(target.output); } \
+            if (k === "toJSON" && whole) { return () => target; } \
+            if (k === "output" && Array.isArray(target.output)) { return output(raw); } \
+            if (k === "lines" && Array.isArray(numbered)) { return numbered; } \
             if (typeof k !== "string" || Reflect.has(target, k)) { return Reflect.get(target, k); } \
             const kind = shellNames[norm(k)]; \
             if (kind === "text") { return text(); } \
@@ -277,7 +296,7 @@ extension MultiTool {
             for (const path of Object.keys(shapes)) { const [g, verb] = path.split("."); \
             if (tools[g] && typeof tools[g][verb] === "function") { const kind = shapes[path]; \
             const fn = path === "code_context.grepCode" ? literal(tools[g][verb]) : tools[g][verb]; \
-            tools[g][verb] = shaped(fn, kind === "text" ? asText : kind === "shell" ? asShell : (v) => asArray(typeof v === "string" ? fromText(v, kind) : v, kind)); } } \
+            tools[g][verb] = kind === "shell" ? function (...args) { return shaped(fn, (v) => asShell(v, args))(...args); } : shaped(fn, kind === "text" ? asText : (v) => asArray(typeof v === "string" ? fromText(v, kind) : v, kind)); } } \
             const oldNames = ["oldtext", "oldstring", "old", "find", "search", "from", "before", "original"]; \
             const newNames = ["newtext", "newstring", "new", "replace", "to", "after", "replacement"]; \
             const pick = (e, names) => { const k = Object.keys(e).find((x) => names.includes(norm(x))); return k === undefined ? undefined : e[k]; }; \
