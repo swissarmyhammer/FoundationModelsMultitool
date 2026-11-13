@@ -15,7 +15,9 @@ import Testing
 ///
 /// 1. A bundle built with an embedder embeds its catalog ONE time, at the
 ///    first search, and every query once — through the discovery searcher
-///    and through the hint searcher alike.
+///    and through the hint searcher alike. Both searchers share that one
+///    catalog embed, and each session with an equal catalog and the same
+///    embedder shares it too (``SearchIndexCache``).
 /// 2. The host-facing factories take the host's embedder as a
 ///    FoundationModelsExtras `PooledEmbedding`. The Router adapter has its own suite,
 ///    `RouterDiscoverySeamsTests`, in the nested `IntegrationTests` package.
@@ -122,5 +124,117 @@ struct DiscoveryEmbedderTests {
         // The first batch is the catalog, so the mounted searcher ranked with
         // the host's embedder and not with a copy of it.
         #expect(embedder.batches.first == registry.surface.entries.map(\.summaryBlock))
+    }
+
+    // MARK: - One catalog embed
+
+    /// A struct embedder that a host makes again for each session, over one
+    /// shared base embedder. It gives the identity of the base, so the cache
+    /// knows that each value is the same embedder.
+    private struct IdentifiedWrapper: IdentifiedEmbedding {
+        /// The shared embedder that does the embeds.
+        let base: RecordingEmbedder
+
+        var embeddingIdentity: ObjectIdentifier { ObjectIdentifier(base) }
+
+        func embed(texts: [String]) async throws -> [[Float]] {
+            try await base.embed(texts: texts)
+        }
+    }
+
+    /// A struct embedder with no identity, made again for each session.
+    private struct AnonymousWrapper: PooledEmbedding {
+        /// The shared embedder that does the embeds.
+        let base: RecordingEmbedder
+
+        func embed(texts: [String]) async throws -> [[Float]] {
+            try await base.embed(texts: texts)
+        }
+    }
+
+    /// Composes one session over a new registry with `embedder` and `cache`,
+    /// and runs one `searchTools` call in it.
+    ///
+    /// - Parameters:
+    ///   - embedder: the embedder of the session.
+    ///   - cache: the search index cache of the session.
+    /// - Throws: what composing the session or the search throws.
+    private static func searchInNewSession(
+        embedder: any PooledEmbedding, cache: SearchIndexCache
+    ) async throws {
+        let mounted = try Self.makeRegistry().makeSessionToolsAndStaging(
+            selection: nil, embedder: embedder, sampleModel: nil, indexCache: cache)
+        let searchTools = try #require(mounted.tools.compactMap { $0 as? SearchToolsTool }.first)
+        _ = try await searchTools.call(arguments: SearchToolsArguments(task: "trip cities"))
+    }
+
+    @Test("the hint searcher and the discovery searcher of one bundle embed the catalog one time")
+    func bothSearchersOfOneBundleEmbedTheCatalogOneTime() async throws {
+        let registry = try Self.makeRegistry()
+        let embedder = RecordingEmbedder()
+        let bundle = MultiTool.RegistryBundle(
+            registry: registry,
+            shape: MultiTool.RegistryBundleShape(
+                bindsSearchTools: true, discovery: .configured(selection: nil), embedder: embedder,
+                indexCache: SearchIndexCache()))
+
+        _ = try await bundle.hintSearcher.search(intent: "get itinerary", limit: 1)
+        _ = try await #require(bundle.discoverySearcher).search(intent: "trip cities", limit: 1)
+
+        #expect(
+            embedder.batches == [registry.surface.entries.map(\.summaryBlock), ["get itinerary"], ["trip cities"]])
+    }
+
+    @Test("two sessions with the same tool set and the same embedder object embed the catalog one time")
+    func twoSessionsWithTheSameEmbedderObjectEmbedOneTime() async throws {
+        let cache = SearchIndexCache()
+        let embedder = RecordingEmbedder()
+
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+
+        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
+        #expect(embedder.batches == [catalog, ["trip cities"], ["trip cities"]])
+        #expect(cache.sharedEmbeddings == 1)
+    }
+
+    @Test("two sessions with a new identified embedder value each embed the catalog one time")
+    func twoSessionsWithAnIdentifiedEmbedderEmbedOneTime() async throws {
+        let cache = SearchIndexCache()
+        let base = RecordingEmbedder()
+
+        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
+        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
+
+        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
+        #expect(base.batches.filter { $0 == catalog }.count == 1)
+        #expect(cache.sharedEmbeddings == 1)
+    }
+
+    @Test("two sessions with an embedder that has no identity each embed the catalog")
+    func twoSessionsWithAnAnonymousEmbedderEachEmbed() async throws {
+        let cache = SearchIndexCache()
+        let base = RecordingEmbedder()
+
+        try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
+        try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
+
+        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
+        #expect(base.batches.filter { $0 == catalog }.count == 2)
+        #expect(cache.sharedEmbeddings == 2)
+        #expect(cache.builds == 1)
+    }
+
+    @Test("a failed shared embed is dropped, and the next session with the same embedder embeds again")
+    func failedSharedEmbedIsDroppedFromTheCache() async throws {
+        let cache = SearchIndexCache()
+        let embedder = RecordingEmbedder(alwaysFails: true)
+
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+
+        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
+        #expect(embedder.batches == [catalog, catalog])
+        #expect(cache.sharedEmbeddings == 2)
     }
 }

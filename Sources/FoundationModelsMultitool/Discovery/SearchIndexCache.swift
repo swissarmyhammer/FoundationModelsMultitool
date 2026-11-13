@@ -10,11 +10,46 @@
 // the same for each session of the same mode and selection.
 //
 // `MetadataIndex` is a value with no embedding in it when it is built. Thus
-// one built index can go to each searcher: each searcher keeps its own copy,
-// and embeds into its own copy at its first search.
+// one built index can go to each searcher: each searcher keeps its own copy.
+//
+// **The catalog embed.** With an embedder, each searcher also embedded the
+// whole catalog at its first search. Thus one bundle embedded it two times,
+// and each session embedded it again. The cache also keeps one
+// `SharedCatalogEmbedding` (FoundationModelsMetadataRegistry) for each catalog
+// and embedder. Both searchers of a bundle, and each bundle with an equal
+// catalog and the same embedder, share its one catalog embed.
+//
+// An embedder is the same embedder when it is the same object (a class
+// instance), or when it conforms to `IdentifiedEmbedding` and gives an equal
+// identity. The cache keeps a strong reference to the embedder of each slot,
+// thus the identity of an object cannot go to a new object while the slot
+// exists. An embedder with no identity shares its embed only inside one
+// bundle.
+//
+// A shared catalog embed that failed does not embed again. Thus the cache
+// drops a slot after an embed of its embedder failed, and the next bundle
+// makes a new shared embed that tries again.
 
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Synchronization
+
+/// An embedder that tells the search index cache which embedders are the
+/// same.
+///
+/// A host that makes a new embedder value for each session (for example, a
+/// struct that wraps a shared model handle) conforms the value to this
+/// protocol. Then each session with an equal catalog shares one catalog
+/// embed. A class instance does not need this protocol: the cache uses the
+/// identity of the object.
+public protocol IdentifiedEmbedding: PooledEmbedding {
+    /// The identity of this embedder: the `ObjectIdentifier` of an object
+    /// that this embedder holds, for example the shared model handle. Two
+    /// embedders with an equal identity must give the same vector for the
+    /// same text. The cache keeps this embedder, and thus the object, while
+    /// it keeps the identity. Thus the identity cannot go to a new object.
+    var embeddingIdentity: ObjectIdentifier { get }
+}
 
 /// A process-wide cache of built search indexes, keyed by the catalog
 /// entries.
@@ -43,13 +78,35 @@ final class SearchIndexCache: Sendable {
         let index: MetadataIndex<APISurface.Entry>
     }
 
+    /// One cached shared catalog embed.
+    private struct EmbeddingSlot: Sendable {
+        /// The catalog entries of the embed.
+        let entries: [APISurface.Entry]
+
+        /// The identity of the embedder of the embed.
+        let identity: ObjectIdentifier
+
+        /// The embedder that records whether an embed failed.
+        let embedder: FailureObservingEmbedding
+
+        /// The shared catalog embed.
+        let shared: SharedCatalogEmbedding<APISurface.Entry>
+    }
+
     /// What the lock guards.
     private struct State: Sendable {
         /// The cached catalogs. The catalog that was used last is first.
         var slots: [Slot] = []
 
+        /// The cached shared catalog embeds. The embed that was used last is
+        /// first.
+        var embeddingSlots: [EmbeddingSlot] = []
+
         /// The number of indexes that this cache built.
         var builds = 0
+
+        /// The number of shared catalog embeds that this cache made.
+        var sharedEmbeddings = 0
     }
 
     /// The number of catalogs that this cache keeps.
@@ -70,6 +127,68 @@ final class SearchIndexCache: Sendable {
     /// the builds.
     var builds: Int {
         state.withLock { $0.builds }
+    }
+
+    /// The number of shared catalog embeds that this cache made. A test
+    /// reads it to count them.
+    var sharedEmbeddings: Int {
+        state.withLock { $0.sharedEmbeddings }
+    }
+
+    /// The shared catalog embed of `entries` with `embedder`: the cached
+    /// embed of an equal catalog and the same embedder, or a new embed.
+    ///
+    /// The cache keeps a new embed only when `embedder` has an identity (see
+    /// ``IdentifiedEmbedding``). It drops a cached embed after an embed of
+    /// its embedder failed, and makes a new one.
+    ///
+    /// - Parameters:
+    ///   - entries: the catalog entries.
+    ///   - embedder: the embedder of the catalog and of each query.
+    /// - Returns: the shared catalog embed.
+    func sharedEmbedding(
+        for entries: [APISurface.Entry], embedder: any PooledEmbedding
+    ) -> SharedCatalogEmbedding<APISurface.Entry> {
+        let index = index(for: entries)
+        let identity = Self.identity(of: embedder)
+        return state.withLock { state in
+            state.embeddingSlots.removeAll { $0.embedder.hasFailed }
+            if let identity,
+                let position = state.embeddingSlots.firstIndex(where: {
+                    $0.identity == identity && $0.entries == entries
+                })
+            {
+                let slot = state.embeddingSlots.remove(at: position)
+                state.embeddingSlots.insert(slot, at: 0)
+                return slot.shared
+            }
+            let observing = FailureObservingEmbedding(base: embedder)
+            let shared = SharedCatalogEmbedding(index: index, embedder: observing)
+            state.sharedEmbeddings += 1
+            if let identity {
+                state.embeddingSlots.insert(
+                    EmbeddingSlot(entries: entries, identity: identity, embedder: observing, shared: shared), at: 0)
+                if state.embeddingSlots.count > capacity {
+                    state.embeddingSlots.removeLast(state.embeddingSlots.count - capacity)
+                }
+            }
+            return shared
+        }
+    }
+
+    /// The identity of `embedder`, or `nil` when it has none.
+    ///
+    /// - Parameter embedder: the embedder.
+    /// - Returns: the ``IdentifiedEmbedding/embeddingIdentity`` of the
+    ///   embedder, the `ObjectIdentifier` of a class instance, or `nil`.
+    private static func identity(of embedder: any PooledEmbedding) -> ObjectIdentifier? {
+        if let identified = embedder as? any IdentifiedEmbedding {
+            return identified.embeddingIdentity
+        }
+        if type(of: embedder) is AnyClass {
+            return ObjectIdentifier(embedder as AnyObject)
+        }
+        return nil
     }
 
     /// The search index of `entries`: the cached index of an equal catalog,
@@ -95,6 +214,46 @@ final class SearchIndexCache: Sendable {
                 state.slots.removeLast(state.slots.count - capacity)
             }
             return index
+        }
+    }
+}
+
+/// An embedder that forwards each embed to its base embedder, and records
+/// whether an embed failed.
+///
+/// ``SearchIndexCache`` drops a shared catalog embed after its embedder
+/// failed one time. A failed shared embed does not embed again, so a new
+/// shared embed must try again.
+final class FailureObservingEmbedding: PooledEmbedding {
+    /// The embedder that does the embeds.
+    let base: any PooledEmbedding
+
+    /// Whether an embed failed.
+    private let failed = Mutex(false)
+
+    /// Creates the embedder over `base`.
+    ///
+    /// - Parameter base: the embedder that does the embeds.
+    init(base: any PooledEmbedding) {
+        self.base = base
+    }
+
+    /// Whether an embed of this embedder failed.
+    var hasFailed: Bool {
+        failed.withLock { $0 }
+    }
+
+    /// Embeds `texts` with the base embedder, and records a failure.
+    ///
+    /// - Parameter texts: the texts to embed.
+    /// - Returns: one vector for each text.
+    /// - Throws: what the base embedder throws.
+    func embed(texts: [String]) async throws -> [[Float]] {
+        do {
+            return try await base.embed(texts: texts)
+        } catch {
+            failed.withLock { $0 = true }
+            throw error
         }
     }
 }

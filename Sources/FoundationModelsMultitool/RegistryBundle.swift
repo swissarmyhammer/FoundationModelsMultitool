@@ -164,6 +164,12 @@ extension MultiTool {
         /// index at most one time, and not at all when the cache holds the
         /// index of an equal catalog.
         ///
+        /// With an embedder, both searchers share the one catalog embed that
+        /// the cache gives (``SearchIndexCache/sharedEmbedding(for:embedder:)``).
+        /// Thus the bundle embeds its catalog at most one time, at the first
+        /// search of either searcher, and not at all when an earlier bundle
+        /// with an equal catalog and the same embedder embedded it.
+        ///
         /// - Parameters:
         ///   - registry: the catalog + live tool instances to expose as
         ///     `tools.*`.
@@ -173,16 +179,29 @@ extension MultiTool {
             self.shape = shape
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
-            let index = shape.indexCache.index(for: registry.surface.entries)
+            let entries = registry.surface.entries
+            guard let embedder = shape.embedder else {
+                let index = shape.indexCache.index(for: entries)
+                self.hintSearcher = MetadataSearcher(
+                    index: index, mode: .retrieval, weights: MultiTool.hintSearchWeights, embedder: nil,
+                    selection: nil)
+                switch shape.discovery {
+                case .none:
+                    self.discoverySearcher = nil
+                case .configured(let selection):
+                    self.discoverySearcher = SearchToolsTool.makeSearcher(
+                        over: index, selection: selection, embedder: nil)
+                }
+                return
+            }
+            let shared = shape.indexCache.sharedEmbedding(for: entries, embedder: embedder)
             self.hintSearcher = MetadataSearcher(
-                index: index, mode: .retrieval,
-                weights: MultiTool.hintSearchWeights, embedder: shape.embedder, selection: nil)
+                sharing: shared, mode: .retrieval, weights: MultiTool.hintSearchWeights)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil
             case .configured(let selection):
-                self.discoverySearcher = SearchToolsTool.makeSearcher(
-                    over: index, selection: selection, embedder: shape.embedder)
+                self.discoverySearcher = MetadataSearcher(sharing: shared, mode: .auto, selection: selection)
             }
         }
     }
