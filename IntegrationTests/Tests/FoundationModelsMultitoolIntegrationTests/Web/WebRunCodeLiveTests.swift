@@ -26,23 +26,29 @@ import Testing
 /// **The pages (``FetchedPagesRule``, card `^4dfyx4q`).** The snippet also
 /// returns the `correction` of each fetch, thus the test sees a failed fetch.
 /// Each page must have a valid URL and a title, and its fetch must not fail.
-/// At least one page must have content. A page that JavaScript draws gives
+/// At least one page must have content. The snippet fetches each hit, not
+/// the first 3, because the first hits can all be pages that JavaScript draws. A page that JavaScript draws gives
 /// empty content, and it passes with those checks.
 @Suite(
     "Live: the search-then-fetch snippet of web.md runs through runCode",
     .serialized
 )
 struct WebRunCodeLiveTests {
-    /// The snippet of web.md § "Goal", with two changes: one added line
-    /// after the search, `if (hits.correction) return hits;`, and the
-    /// `correction` of each fetch in the returned pages.
+    /// The snippet of web.md § "Goal", with four changes: one added line
+    /// after the search, `if (hits.correction) return hits;`, the
+    /// `correction` of each fetch in the returned pages, a fetch of each hit,
+    /// not of the first 3, and a `head` of 80 characters, not 400, which
+    /// keeps the pages of each hit under the cap of a return value. On
+    /// 2026-11-11 the first 3 hits of the query were DocC pages, which
+    /// JavaScript draws, thus no page had content and the test failed though
+    /// each fetch was right.
     private static let goalSnippet = """
         const hits = await tools.web.search({ query: "swift structured concurrency" });
         if (hits.correction) return hits;
         const pages = await Promise.all(
-          hits.results.slice(0, 3).map(r => tools.web.fetch({ url: r.url, maxCharacters: 4000 })));
+          hits.results.map(r => tools.web.fetch({ url: r.url, maxCharacters: 4000 })));
         return pages.map(p => ({
-          url: p.url, title: p.title, head: p.content.slice(0, 400), correction: p.correction }));
+          url: p.url, title: p.title, head: p.content.slice(0, 80), correction: p.correction }));
         """
 
     @Test("the goal snippet returns pages with a URL and a title, one with content, or a recognized block")
