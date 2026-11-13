@@ -154,23 +154,19 @@ final class SearchIndexCache: Sendable {
         return state.withLock { state in
             state.embeddingSlots.removeAll { $0.embedder.hasFailed }
             if let identity,
-                let position = state.embeddingSlots.firstIndex(where: {
+                let slot = state.embeddingSlots.moveToFront(where: {
                     $0.identity == identity && $0.entries == entries
                 })
             {
-                let slot = state.embeddingSlots.remove(at: position)
-                state.embeddingSlots.insert(slot, at: 0)
                 return slot.shared
             }
             let observing = FailureObservingEmbedding(base: embedder)
             let shared = SharedCatalogEmbedding(index: index, embedder: observing)
             state.sharedEmbeddings += 1
             if let identity {
-                state.embeddingSlots.insert(
-                    EmbeddingSlot(entries: entries, identity: identity, embedder: observing, shared: shared), at: 0)
-                if state.embeddingSlots.count > capacity {
-                    state.embeddingSlots.removeLast(state.embeddingSlots.count - capacity)
-                }
+                state.embeddingSlots.insertAtFront(
+                    EmbeddingSlot(entries: entries, identity: identity, embedder: observing, shared: shared),
+                    keeping: capacity)
             }
             return shared
         }
@@ -202,18 +198,41 @@ final class SearchIndexCache: Sendable {
     /// - Returns: the index of `entries`.
     func index(for entries: [APISurface.Entry]) -> MetadataIndex<APISurface.Entry> {
         state.withLock { state in
-            if let position = state.slots.firstIndex(where: { $0.entries == entries }) {
-                let slot = state.slots.remove(at: position)
-                state.slots.insert(slot, at: 0)
+            if let slot = state.slots.moveToFront(where: { $0.entries == entries }) {
                 return slot.index
             }
             let index = MetadataIndex(items: entries)
             state.builds += 1
-            state.slots.insert(Slot(entries: entries, index: index), at: 0)
-            if state.slots.count > capacity {
-                state.slots.removeLast(state.slots.count - capacity)
-            }
+            state.slots.insertAtFront(Slot(entries: entries, index: index), keeping: capacity)
             return index
+        }
+    }
+}
+
+/// The order rule of the slots of ``SearchIndexCache``: the slot that was
+/// used last is first, and the array keeps a maximum number of slots.
+extension Array {
+    /// Moves the first element that `isMatch` accepts to the front.
+    ///
+    /// - Parameter isMatch: the test of one element.
+    /// - Returns: the moved element, or `nil` when no element matches.
+    fileprivate mutating func moveToFront(where isMatch: (Element) -> Bool) -> Element? {
+        guard let position = firstIndex(where: isMatch) else { return nil }
+        let element = remove(at: position)
+        insert(element, at: 0)
+        return element
+    }
+
+    /// Inserts `element` at the front, then removes the elements at the end
+    /// that are more than `capacity`.
+    ///
+    /// - Parameters:
+    ///   - element: the element to insert.
+    ///   - capacity: the maximum number of elements to keep.
+    fileprivate mutating func insertAtFront(_ element: Element, keeping capacity: Int) {
+        insert(element, at: 0)
+        if count > capacity {
+            removeLast(count - capacity)
         }
     }
 }

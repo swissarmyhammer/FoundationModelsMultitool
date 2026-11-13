@@ -179,29 +179,55 @@ extension MultiTool {
             self.shape = shape
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
-            let entries = registry.surface.entries
-            guard let embedder = shape.embedder else {
-                let index = shape.indexCache.index(for: entries)
-                self.hintSearcher = MetadataSearcher(
-                    index: index, mode: .retrieval, weights: MultiTool.hintSearchWeights, embedder: nil,
-                    selection: nil)
-                switch shape.discovery {
-                case .none:
-                    self.discoverySearcher = nil
-                case .configured(let selection):
-                    self.discoverySearcher = SearchToolsTool.makeSearcher(
-                        over: index, selection: selection, embedder: nil)
-                }
-                return
-            }
-            let shared = shape.indexCache.sharedEmbedding(for: entries, embedder: embedder)
-            self.hintSearcher = MetadataSearcher(
-                sharing: shared, mode: .retrieval, weights: MultiTool.hintSearchWeights)
+            let source = SearchSource(entries: registry.surface.entries, shape: shape)
+            self.hintSearcher = source.makeSearcher(
+                mode: .retrieval, weights: MultiTool.hintSearchWeights, selection: nil)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil
             case .configured(let selection):
-                self.discoverySearcher = MetadataSearcher(sharing: shared, mode: .auto, selection: selection)
+                self.discoverySearcher = source.makeSearcher(mode: .auto, weights: Weights(), selection: selection)
+            }
+        }
+    }
+
+    /// What both searchers of one bundle search: the cached index alone, or
+    /// the cached shared catalog embed when the bundle has an embedder.
+    enum SearchSource {
+        /// The index of the catalog, with no embedder.
+        case index(MetadataIndex<APISurface.Entry>)
+
+        /// The shared catalog embed of the catalog and the embedder.
+        case shared(SharedCatalogEmbedding<APISurface.Entry>)
+
+        /// Gets the source of `entries` from the cache of `shape`.
+        ///
+        /// - Parameters:
+        ///   - entries: the catalog entries.
+        ///   - shape: the shape that gives the embedder and the cache.
+        init(entries: [APISurface.Entry], shape: RegistryBundleShape) {
+            if let embedder = shape.embedder {
+                self = .shared(shape.indexCache.sharedEmbedding(for: entries, embedder: embedder))
+            } else {
+                self = .index(shape.indexCache.index(for: entries))
+            }
+        }
+
+        /// Makes one searcher over this source.
+        ///
+        /// - Parameters:
+        ///   - mode: the search mode of the searcher.
+        ///   - weights: the per-signal fusion weights.
+        ///   - selection: the selection tier, or `nil` for none.
+        /// - Returns: the searcher.
+        func makeSearcher(
+            mode: SearchMode, weights: Weights, selection: SelectionConfig?
+        ) -> MetadataSearcher<APISurface.Entry> {
+            switch self {
+            case .index(let index):
+                MetadataSearcher(index: index, mode: mode, weights: weights, embedder: nil, selection: selection)
+            case .shared(let shared):
+                MetadataSearcher(sharing: shared, mode: mode, weights: weights, selection: selection)
             }
         }
     }
