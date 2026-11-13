@@ -91,6 +91,31 @@ extension MultiTool {
         /// `makeSessionToolsAndStaging(selection:embedder:sampleModel:)`
         /// is where the host hands it over.
         let embedder: (any PooledEmbedding)?
+
+        /// The cache that gives both searchers of the bundle their index.
+        /// Thus a bundle builds its index one time, and each bundle over an
+        /// equal catalog uses the same index.
+        let indexCache: SearchIndexCache
+
+        /// Creates a shape.
+        ///
+        /// - Parameters:
+        ///   - bindsSearchTools: whether the preamble binds `tools.searchTools`.
+        ///   - discovery: how the bundle builds its discovery searcher.
+        ///   - embedder: the embedder of both searchers, or `nil`.
+        ///   - indexCache: the cache of the search index. The default is
+        ///     ``SearchIndexCache/shared``.
+        init(
+            bindsSearchTools: Bool,
+            discovery: DiscoverySearch,
+            embedder: (any PooledEmbedding)?,
+            indexCache: SearchIndexCache = .shared
+        ) {
+            self.bindsSearchTools = bindsSearchTools
+            self.discovery = discovery
+            self.embedder = embedder
+            self.indexCache = indexCache
+        }
     }
 
     /// The catalog, the live tools, and every value `runCode` precomputes
@@ -134,6 +159,11 @@ extension MultiTool {
 
         /// Builds every value a run needs from `registry`, in `shape`.
         ///
+        /// Both searchers use the one index that ``RegistryBundleShape/indexCache``
+        /// gives for the entries of `registry`. Thus the bundle builds its
+        /// index at most one time, and not at all when the cache holds the
+        /// index of an equal catalog.
+        ///
         /// - Parameters:
         ///   - registry: the catalog + live tool instances to expose as
         ///     `tools.*`.
@@ -143,15 +173,16 @@ extension MultiTool {
             self.shape = shape
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
+            let index = shape.indexCache.index(for: registry.surface.entries)
             self.hintSearcher = MetadataSearcher(
-                index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
+                index: index, mode: .retrieval,
                 weights: MultiTool.hintSearchWeights, embedder: shape.embedder, selection: nil)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil
             case .configured(let selection):
                 self.discoverySearcher = SearchToolsTool.makeSearcher(
-                    over: registry.surface.entries, selection: selection, embedder: shape.embedder)
+                    over: index, selection: selection, embedder: shape.embedder)
             }
         }
     }

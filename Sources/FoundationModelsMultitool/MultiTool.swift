@@ -221,6 +221,31 @@ extension MultiTool {
             embedder: (any PooledEmbedding)? = nil,
             sampleModel: (any LanguageModel)? = nil
         ) throws -> (tools: [any Tool], staging: any RegistryStaging) {
+            try makeSessionToolsAndStaging(
+                selection: selection, embedder: embedder, sampleModel: sampleModel, indexCache: .shared)
+        }
+
+        /// ``makeSessionToolsAndStaging(selection:embedder:sampleModel:)``
+        /// with the cache that gives the search index. Each session over an
+        /// equal catalog uses the index that the cache built one time. A test
+        /// gives a cache of its own to count the builds.
+        ///
+        /// - Parameters:
+        ///   - selection: see ``makeSessionTools(selection:embedder:sampleModel:)``.
+        ///   - embedder: see ``makeSessionTools(selection:embedder:sampleModel:)``.
+        ///   - sampleModel: see
+        ///     ``makeSessionTools(selection:embedder:sampleModel:)``.
+        ///   - indexCache: the cache of the search index.
+        /// - Returns: the tools in mount order, and the staging half of the
+        ///   holder they share.
+        /// - Throws: what ``makeSessionTools(selection:embedder:sampleModel:)``
+        ///   throws.
+        func makeSessionToolsAndStaging(
+            selection: SearchToolsTool.SelectionFactory?,
+            embedder: (any PooledEmbedding)?,
+            sampleModel: (any LanguageModel)?,
+            indexCache: SearchIndexCache
+        ) throws -> (tools: [any Tool], staging: any RegistryStaging) {
             // No `wait` tool in either mode. A wait inside a submission holds
             // the model for every session on it, and a settled background run
             // comes back to the session as mail (Router `generation-queue.md`
@@ -229,7 +254,8 @@ extension MultiTool {
                 let holder = RegistryHolder(
                     current: RegistryBundle(
                         registry: self,
-                        shape: RegistryBundleShape(bindsSearchTools: false, discovery: .none, embedder: embedder)))
+                        shape: RegistryBundleShape(
+                            bindsSearchTools: false, discovery: .none, embedder: embedder, indexCache: indexCache)))
                 return ([MultiTool(holder: holder)], holder)
             }
             let holder = RegistryHolder(
@@ -240,7 +266,8 @@ extension MultiTool {
                         discovery: .configured(
                             selection: try SearchToolsTool.makeSelection(
                                 selection, ids: surface.entries.map(\.path))),
-                        embedder: embedder)))
+                        embedder: embedder,
+                        indexCache: indexCache)))
             let searchTools = SearchToolsTool(
                 holder: holder,
                 sample: SearchToolsTool.makeSample(model: sampleModel)

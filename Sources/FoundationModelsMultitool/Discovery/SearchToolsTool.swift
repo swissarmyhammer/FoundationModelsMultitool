@@ -136,7 +136,8 @@ public struct SearchToolsTool: Tool {
 
     /// The searcher over `entries` a `searchTools` tool forwards to, in
     /// `.auto` mode: selection when `selection` is configured, retrieval
-    /// alone otherwise.
+    /// alone otherwise. The index of `entries` comes from
+    /// ``SearchIndexCache/shared``, so an equal catalog is not indexed again.
     ///
     /// The one place a discovery searcher is built. `init(registry:...)`
     /// builds one here for a fixed catalog, and `MultiTool.RegistryBundle`
@@ -169,8 +170,24 @@ public struct SearchToolsTool: Tool {
     static func makeSearcher(
         over entries: [APISurface.Entry], selection: SelectionConfig?, embedder: (any PooledEmbedding)?
     ) -> MetadataSearcher<APISurface.Entry> {
-        MetadataSearcher(
-            index: MetadataIndex(items: entries), mode: .auto, embedder: embedder, selection: selection)
+        makeSearcher(over: SearchIndexCache.shared.index(for: entries), selection: selection, embedder: embedder)
+    }
+
+    /// The searcher over a built `index` that a `searchTools` tool forwards
+    /// to, as ``makeSearcher(over:selection:embedder:)`` describes. A
+    /// `MultiTool.RegistryBundle` gives the index that its hint searcher also
+    /// uses, so the bundle builds its index one time.
+    ///
+    /// - Parameters:
+    ///   - index: the built index of the catalog.
+    ///   - selection: the selection tier, or `nil` for retrieval alone.
+    ///   - embedder: the embedder the searcher ranks with from its first
+    ///     search on, or `nil` for keyword-only ranking.
+    /// - Returns: the searcher.
+    static func makeSearcher(
+        over index: MetadataIndex<APISurface.Entry>, selection: SelectionConfig?, embedder: (any PooledEmbedding)?
+    ) -> MetadataSearcher<APISurface.Entry> {
+        MetadataSearcher(index: index, mode: .auto, embedder: embedder, selection: selection)
     }
 
     /// The searcher and the limit one call uses, read at the call.
