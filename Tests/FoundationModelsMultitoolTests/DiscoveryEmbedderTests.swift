@@ -193,20 +193,6 @@ struct DiscoveryEmbedderTests {
             embedder.batches == [registry.surface.entries.map(\.summaryBlock), ["get itinerary"], ["trip cities"]])
     }
 
-    @Test("two sessions with the same tool set and the same embedder object embed the catalog one time")
-    func twoSessionsWithTheSameEmbedderObjectEmbedOneTime() async throws {
-        let cache = SearchIndexCache()
-        let embedder = RecordingEmbedder()
-
-        let first = try await Self.searchInNewSession(embedder: embedder, cache: cache)
-        let second = try await Self.searchInNewSession(embedder: embedder, cache: cache)
-
-        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
-        #expect(embedder.batches == [catalog, ["trip cities"], ["trip cities"]])
-        #expect(cache.sharedEmbeddings == 1)
-        withExtendedLifetime((first, second)) {}
-    }
-
     @Test("two sessions with a new identified embedder value each embed the catalog one time")
     func twoSessionsWithAnIdentifiedEmbedderEmbedOneTime() async throws {
         let cache = SearchIndexCache()
@@ -221,7 +207,7 @@ struct DiscoveryEmbedderTests {
         withExtendedLifetime((first, second)) {}
     }
 
-    @Test("two sessions with an embedder that has no identity each embed the catalog")
+    @Test("two sessions with an embedder that is not an IdentifiedEmbedding each embed the catalog")
     func twoSessionsWithAnAnonymousEmbedderEachEmbed() async throws {
         let cache = SearchIndexCache()
         let base = RecordingEmbedder()
@@ -241,8 +227,8 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let embedder = RecordingEmbedder(alwaysFails: true)
 
-        let first = try await Self.searchInNewSession(embedder: embedder, cache: cache)
-        let second = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let first = try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: embedder), cache: cache)
+        let second = try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: embedder), cache: cache)
         withExtendedLifetime((first, second)) {}
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
@@ -265,7 +251,7 @@ struct DiscoveryEmbedderTests {
         let owner = RecordingEmbedder()
         let embedder = RecordingEmbedder()
         try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: owner), cache: cache)
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: embedder), cache: cache)
         return (WeakReference(owner), WeakReference(embedder))
     }
 
@@ -286,8 +272,8 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let embedder = RecordingEmbedder()
 
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
-        let open = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: embedder), cache: cache)
+        let open = try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: embedder), cache: cache)
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
         #expect(embedder.batches.filter { $0 == catalog }.count == 2)

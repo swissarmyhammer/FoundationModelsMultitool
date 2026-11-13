@@ -24,3 +24,6 @@ Request from foundationmodelsacpagent-ec (ACPAgent card ^wpsm1jx) and testudoapp
 
 ## Workflow
 - Use `/tdd`. #step1
+## Review Findings (2026-11-12 23:07)
+
+- [x] `Sources/FoundationModelsMultitool/Discovery/SearchIndexCache.swift:326` `code-hygiene/disallowed-constructs-swift` — no_unchecked_sendable: Instead of @unchecked Sendable, write a plain Sendable conformance or a @preconcurrency import. Fixed: `WeakReference<Object: AnyObject & Sendable>: Sendable` with `weak let`. Only an `IdentifiedEmbedding` embedder now shares its embed between sessions; another embedder shares it only inside one bundle.

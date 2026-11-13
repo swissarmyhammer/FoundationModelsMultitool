@@ -19,10 +19,9 @@
 // and embedder. Both searchers of a bundle, and each bundle with an equal
 // catalog and the same embedder, share its one catalog embed.
 //
-// An embedder is the same embedder when it is the same object (a class
-// instance), or when it conforms to `IdentifiedEmbedding` and gives the same
-// owner object. An embedder with no identity shares its embed only inside
-// one bundle.
+// An embedder is the same embedder when it conforms to `IdentifiedEmbedding`
+// and gives the same owner object. An embedder that does not conform shares
+// its embed only inside one bundle.
 //
 // **The cache keeps no embedder alive.** An embedder can hold a loaded model,
 // and a model can use GBs of memory. Thus a cached embed slot holds only weak
@@ -48,9 +47,9 @@ import Synchronization
 /// A host that makes a new embedder value for each session (for example, a
 /// struct that wraps a shared model handle) conforms the value to this
 /// protocol. Then each session with an equal catalog and the same owner
-/// shares one catalog embed, while one of these sessions is open. A class
-/// instance does not need this protocol: the cache uses the object itself as
-/// the owner.
+/// shares one catalog embed, while one of these sessions is open. An
+/// embedder that does not conform shares its catalog embed only between the
+/// two searchers of one bundle.
 public protocol IdentifiedEmbedding: PooledEmbedding {
     /// The object that identifies this embedder, for example the shared
     /// model handle that it wraps. Two embedders with the same owner object
@@ -103,7 +102,7 @@ public final class SearchIndexCache: Sendable {
         let entries: [APISurface.Entry]
 
         /// The owner object of the embedder of the embed.
-        let owner: WeakReference<AnyObject>
+        let owner: WeakReference<any AnyObject & Sendable>
 
         /// The embedder that records whether an embed failed.
         let embedder: WeakReference<FailureObservingEmbedding>
@@ -215,15 +214,9 @@ public final class SearchIndexCache: Sendable {
     ///
     /// - Parameter embedder: the embedder.
     /// - Returns: the ``IdentifiedEmbedding/embeddingOwner`` of the
-    ///   embedder, the embedder itself when it is a class instance, or `nil`.
-    private static func owner(of embedder: any PooledEmbedding) -> AnyObject? {
-        if let identified = embedder as? any IdentifiedEmbedding {
-            return identified.embeddingOwner
-        }
-        if type(of: embedder) is AnyClass {
-            return embedder as AnyObject
-        }
-        return nil
+    ///   embedder, or `nil` when the embedder does not conform.
+    private static func owner(of embedder: any PooledEmbedding) -> (any AnyObject & Sendable)? {
+        (embedder as? any IdentifiedEmbedding)?.embeddingOwner
     }
 
     /// The search index of `entries`: the cached index of an equal catalog,
@@ -319,13 +312,11 @@ final class FailureObservingEmbedding: PooledEmbedding {
 /// A weak reference to an object, which the slots of ``SearchIndexCache``
 /// hold so that the cache keeps nothing alive.
 ///
-/// `@unchecked Sendable`: the reference is set one time, in `init`, and the
-/// cache only reads it and compares it under its lock. Each object that the
-/// cache gives to it comes from a `Sendable` value: an embedder, its owner,
-/// or a shared catalog embed.
-struct WeakReference<Object: AnyObject>: @unchecked Sendable {
+/// The reference is set one time, in `init`, and the object is `Sendable`,
+/// thus the reference is `Sendable`.
+struct WeakReference<Object: AnyObject & Sendable>: Sendable {
     /// The object, or `nil` after it was released.
-    private(set) weak var object: Object?
+    weak let object: Object?
 
     /// Creates a weak reference to `object`.
     ///
