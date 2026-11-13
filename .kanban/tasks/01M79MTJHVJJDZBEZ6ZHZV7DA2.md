@@ -1,8 +1,16 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '80'
+comments:
+- actor: claude-code
+  id: 01m79ndd6s30eq77x33pby13sy
+  text: |-
+    ### review — clean
+    - evidence: swift test, 2905 tests in 260 suites passed. review sha 6c0e3de5: 1 finding, fixed in 66ef5975. review sha HEAD~1..HEAD (66ef5975): 0 findings, 7 validator runs, 0 failed.
+    - next: none. The task is in done.
+  timestamp: 2026-11-13T05:17:17.401395+00:00
+position_column: done
+position_ordinal: fffffffd80
 title: SearchIndexCache keeps no embedder alive, and gives a public test seam
 ---
 ## What
