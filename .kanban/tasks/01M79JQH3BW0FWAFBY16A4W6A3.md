@@ -1,8 +1,16 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '80'
+comments:
+- actor: claude-code
+  id: 01m79jt951k12e0gf2bzpqws6c
+  text: |-
+    ### review — clean
+    - evidence: swift test, 2899 tests in 260 suites passed. review sha HEAD~1..HEAD (b4a9d353): 0 findings, 7 validator runs, 0 failed.
+    - next: none. The task is in done.
+  timestamp: 2026-11-13T04:31:53.505396+00:00
+position_column: done
+position_ordinal: fffffffb80
 title: Build the tool search index one time and share it between sessions
 ---
 ## What
