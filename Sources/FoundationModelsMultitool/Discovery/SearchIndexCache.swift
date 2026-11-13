@@ -20,11 +20,19 @@
 // catalog and the same embedder, share its one catalog embed.
 //
 // An embedder is the same embedder when it is the same object (a class
-// instance), or when it conforms to `IdentifiedEmbedding` and gives an equal
-// identity. The cache keeps a strong reference to the embedder of each slot,
-// thus the identity of an object cannot go to a new object while the slot
-// exists. An embedder with no identity shares its embed only inside one
-// bundle.
+// instance), or when it conforms to `IdentifiedEmbedding` and gives the same
+// owner object. An embedder with no identity shares its embed only inside
+// one bundle.
+//
+// **The cache keeps no embedder alive.** An embedder can hold a loaded model,
+// and a model can use GBs of memory. Thus a cached embed slot holds only weak
+// references: to the owner, to the embedder, and to the shared embed. The
+// searchers of each session hold the shared embed, and through it the
+// embedder. When the last session that uses an embed ends, the shared embed
+// and the embedder go, and the slot is empty. The cache drops each empty
+// slot. A weak reference to the owner also makes the key safe: a released
+// owner never matches a new object, also when the new object gets the same
+// address.
 //
 // A shared catalog embed that failed does not embed again. Thus the cache
 // drops a slot after an embed of its embedder failed, and the next bundle
@@ -39,35 +47,45 @@ import Synchronization
 ///
 /// A host that makes a new embedder value for each session (for example, a
 /// struct that wraps a shared model handle) conforms the value to this
-/// protocol. Then each session with an equal catalog shares one catalog
-/// embed. A class instance does not need this protocol: the cache uses the
-/// identity of the object.
+/// protocol. Then each session with an equal catalog and the same owner
+/// shares one catalog embed, while one of these sessions is open. A class
+/// instance does not need this protocol: the cache uses the object itself as
+/// the owner.
 public protocol IdentifiedEmbedding: PooledEmbedding {
-    /// The identity of this embedder: the `ObjectIdentifier` of an object
-    /// that this embedder holds, for example the shared model handle. Two
-    /// embedders with an equal identity must give the same vector for the
-    /// same text. The cache keeps this embedder, and thus the object, while
-    /// it keeps the identity. Thus the identity cannot go to a new object.
-    var embeddingIdentity: ObjectIdentifier { get }
+    /// The object that identifies this embedder, for example the shared
+    /// model handle that it wraps. Two embedders with the same owner object
+    /// must give the same vector for the same text. The cache holds the
+    /// owner with a weak reference only, so it does not keep the owner, or
+    /// the model that the owner holds, alive.
+    var embeddingOwner: any AnyObject & Sendable { get }
 }
 
-/// A process-wide cache of built search indexes, keyed by the catalog
-/// entries.
+/// A process-wide cache of built search indexes and shared catalog embeds,
+/// keyed by the catalog entries (and the embedder for an embed).
 ///
 /// ``index(for:)`` gives the index of a catalog. It builds the index only
 /// when the cache holds no index for an equal catalog. The cache keeps the
 /// indexes of the ``capacity`` catalogs that were used last. Thus a host that
 /// changes its tool set many times does not keep each old index.
 ///
+/// ``sharedEmbedding(for:embedder:)`` gives the shared catalog embed of a
+/// catalog and an embedder. The cache holds each shared embed with a weak
+/// reference only, so an embed lives only while a session uses it.
+///
 /// The build runs under the lock. Thus two sessions that start at the same
 /// time with the same catalog build the index one time, not two times.
-final class SearchIndexCache: Sendable {
+///
+/// A host uses ``shared``. A test gives a cache of its own to
+/// `MultiTool.Registry.makeSessionToolsAndStaging(selection:embedder:sampleModel:indexCache:)`,
+/// so that no other test changes what the cache holds, and reads
+/// ``builds`` and ``sharedEmbeddings``.
+public final class SearchIndexCache: Sendable {
     /// The cache that each bundle and each `searchTools` tool uses when the
     /// caller gives no other cache.
-    static let shared = SearchIndexCache()
+    public static let shared = SearchIndexCache()
 
-    /// The default number of catalogs that a cache keeps.
-    static let defaultCapacity = 8
+    /// The default number of catalog indexes that a cache keeps.
+    public static let defaultCapacity = 8
 
     /// One cached catalog and its built index.
     private struct Slot: Sendable {
@@ -78,19 +96,27 @@ final class SearchIndexCache: Sendable {
         let index: MetadataIndex<APISurface.Entry>
     }
 
-    /// One cached shared catalog embed.
+    /// One cached shared catalog embed. Each reference is weak, so the slot
+    /// keeps nothing alive.
     private struct EmbeddingSlot: Sendable {
         /// The catalog entries of the embed.
         let entries: [APISurface.Entry]
 
-        /// The identity of the embedder of the embed.
-        let identity: ObjectIdentifier
+        /// The owner object of the embedder of the embed.
+        let owner: WeakReference<AnyObject>
 
         /// The embedder that records whether an embed failed.
-        let embedder: FailureObservingEmbedding
+        let embedder: WeakReference<FailureObservingEmbedding>
 
         /// The shared catalog embed.
-        let shared: SharedCatalogEmbedding<APISurface.Entry>
+        let shared: WeakReference<SharedCatalogEmbedding<APISurface.Entry>>
+
+        /// Whether the slot can give its embed: the owner and the embed
+        /// exist, and no embed of the embedder failed.
+        var isLive: Bool {
+            guard owner.object != nil, shared.object != nil, let embedder = embedder.object else { return false }
+            return !embedder.hasFailed
+        }
     }
 
     /// What the lock guards.
@@ -98,8 +124,7 @@ final class SearchIndexCache: Sendable {
         /// The cached catalogs. The catalog that was used last is first.
         var slots: [Slot] = []
 
-        /// The cached shared catalog embeds. The embed that was used last is
-        /// first.
+        /// The cached shared catalog embeds that a session still uses.
         var embeddingSlots: [EmbeddingSlot] = []
 
         /// The number of indexes that this cache built.
@@ -109,80 +134,94 @@ final class SearchIndexCache: Sendable {
         var sharedEmbeddings = 0
     }
 
-    /// The number of catalogs that this cache keeps.
-    let capacity: Int
+    /// The number of catalog indexes that this cache keeps.
+    public let capacity: Int
 
     /// The guarded state.
     private let state = Mutex(State())
 
     /// Creates an empty cache.
     ///
-    /// - Parameter capacity: the number of catalogs to keep. A value less
-    ///   than one keeps one catalog.
-    init(capacity: Int = defaultCapacity) {
+    /// - Parameter capacity: the number of catalog indexes to keep. A value
+    ///   less than one keeps one index.
+    public init(capacity: Int = defaultCapacity) {
         self.capacity = max(1, capacity)
     }
 
     /// The number of indexes that this cache built. A test reads it to count
     /// the builds.
-    var builds: Int {
+    public var builds: Int {
         state.withLock { $0.builds }
     }
 
     /// The number of shared catalog embeds that this cache made. A test
-    /// reads it to count them.
-    var sharedEmbeddings: Int {
+    /// reads it to count them: two sessions that share one embed make one.
+    public var sharedEmbeddings: Int {
         state.withLock { $0.sharedEmbeddings }
     }
 
-    /// The shared catalog embed of `entries` with `embedder`: the cached
-    /// embed of an equal catalog and the same embedder, or a new embed.
+    /// The number of shared catalog embeds that a session still uses. A
+    /// test reads it to see that the cache keeps no embed after the
+    /// sessions end.
+    public var liveSharedEmbeddings: Int {
+        state.withLock { state in
+            state.embeddingSlots.removeAll { !$0.isLive }
+            return state.embeddingSlots.count
+        }
+    }
+
+    /// The shared catalog embed of `entries` with `embedder`: the embed of
+    /// an equal catalog and the same embedder that a session still uses, or
+    /// a new embed.
     ///
-    /// The cache keeps a new embed only when `embedder` has an identity (see
-    /// ``IdentifiedEmbedding``). It drops a cached embed after an embed of
-    /// its embedder failed, and makes a new one.
+    /// The cache records a new embed only when `embedder` has an owner (see
+    /// ``IdentifiedEmbedding``). It drops an embed after an embed of its
+    /// embedder failed, and makes a new one.
     ///
     /// - Parameters:
     ///   - entries: the catalog entries.
     ///   - embedder: the embedder of the catalog and of each query.
-    /// - Returns: the shared catalog embed.
+    /// - Returns: the shared catalog embed. The caller must keep it: the
+    ///   cache does not.
     func sharedEmbedding(
         for entries: [APISurface.Entry], embedder: any PooledEmbedding
     ) -> SharedCatalogEmbedding<APISurface.Entry> {
         let index = index(for: entries)
-        let identity = Self.identity(of: embedder)
+        let owner = Self.owner(of: embedder)
         return state.withLock { state in
-            state.embeddingSlots.removeAll { $0.embedder.hasFailed }
-            if let identity,
-                let slot = state.embeddingSlots.moveToFront(where: {
-                    $0.identity == identity && $0.entries == entries
-                })
+            state.embeddingSlots.removeAll { !$0.isLive }
+            if let owner,
+                let slot = state.embeddingSlots.first(where: {
+                    $0.owner.object === owner && $0.entries == entries
+                }),
+                let shared = slot.shared.object
             {
-                return slot.shared
+                return shared
             }
             let observing = FailureObservingEmbedding(base: embedder)
             let shared = SharedCatalogEmbedding(index: index, embedder: observing)
             state.sharedEmbeddings += 1
-            if let identity {
-                state.embeddingSlots.insertAtFront(
-                    EmbeddingSlot(entries: entries, identity: identity, embedder: observing, shared: shared),
-                    keeping: capacity)
+            if let owner {
+                state.embeddingSlots.append(
+                    EmbeddingSlot(
+                        entries: entries, owner: WeakReference(owner), embedder: WeakReference(observing),
+                        shared: WeakReference(shared)))
             }
             return shared
         }
     }
 
-    /// The identity of `embedder`, or `nil` when it has none.
+    /// The owner object of `embedder`, or `nil` when it has none.
     ///
     /// - Parameter embedder: the embedder.
-    /// - Returns: the ``IdentifiedEmbedding/embeddingIdentity`` of the
-    ///   embedder, the `ObjectIdentifier` of a class instance, or `nil`.
-    private static func identity(of embedder: any PooledEmbedding) -> ObjectIdentifier? {
+    /// - Returns: the ``IdentifiedEmbedding/embeddingOwner`` of the
+    ///   embedder, the embedder itself when it is a class instance, or `nil`.
+    private static func owner(of embedder: any PooledEmbedding) -> AnyObject? {
         if let identified = embedder as? any IdentifiedEmbedding {
-            return identified.embeddingIdentity
+            return identified.embeddingOwner
         }
         if type(of: embedder) is AnyClass {
-            return ObjectIdentifier(embedder as AnyObject)
+            return embedder as AnyObject
         }
         return nil
     }
@@ -274,5 +313,24 @@ final class FailureObservingEmbedding: PooledEmbedding {
             failed.withLock { $0 = true }
             throw error
         }
+    }
+}
+
+/// A weak reference to an object, which the slots of ``SearchIndexCache``
+/// hold so that the cache keeps nothing alive.
+///
+/// `@unchecked Sendable`: the reference is set one time, in `init`, and the
+/// cache only reads it and compares it under its lock. Each object that the
+/// cache gives to it comes from a `Sendable` value: an embedder, its owner,
+/// or a shared catalog embed.
+struct WeakReference<Object: AnyObject>: @unchecked Sendable {
+    /// The object, or `nil` after it was released.
+    private(set) weak var object: Object?
+
+    /// Creates a weak reference to `object`.
+    ///
+    /// - Parameter object: the object to refer to.
+    init(_ object: Object) {
+        self.object = object
     }
 }

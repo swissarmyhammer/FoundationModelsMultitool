@@ -226,9 +226,14 @@ extension MultiTool {
         }
 
         /// ``makeSessionToolsAndStaging(selection:embedder:sampleModel:)``
-        /// with the cache that gives the search index. Each session over an
-        /// equal catalog uses the index that the cache built one time. A test
-        /// gives a cache of its own to count the builds.
+        /// with the cache that gives the search index and the shared catalog
+        /// embed. Each session over an equal catalog uses the index that the
+        /// cache built one time. Each open session with an equal catalog and
+        /// the same embedder shares one catalog embed. A host uses the form
+        /// with no cache, which uses ``SearchIndexCache/shared``. A test gives
+        /// a cache of its own, so that no other test changes what the cache
+        /// holds, and reads ``SearchIndexCache/builds`` and
+        /// ``SearchIndexCache/sharedEmbeddings``.
         ///
         /// - Parameters:
         ///   - selection: see ``makeSessionTools(selection:embedder:sampleModel:)``.
@@ -240,7 +245,7 @@ extension MultiTool {
         ///   holder they share.
         /// - Throws: what ``makeSessionTools(selection:embedder:sampleModel:)``
         ///   throws.
-        func makeSessionToolsAndStaging(
+        public func makeSessionToolsAndStaging(
             selection: SearchToolsTool.SelectionFactory?,
             embedder: (any PooledEmbedding)?,
             sampleModel: (any LanguageModel)?,

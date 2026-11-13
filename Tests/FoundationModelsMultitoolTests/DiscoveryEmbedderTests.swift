@@ -1,3 +1,4 @@
+import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Testing
@@ -129,13 +130,13 @@ struct DiscoveryEmbedderTests {
     // MARK: - One catalog embed
 
     /// A struct embedder that a host makes again for each session, over one
-    /// shared base embedder. It gives the identity of the base, so the cache
+    /// shared base embedder. It gives the base as its owner, so the cache
     /// knows that each value is the same embedder.
     private struct IdentifiedWrapper: IdentifiedEmbedding {
         /// The shared embedder that does the embeds.
         let base: RecordingEmbedder
 
-        var embeddingIdentity: ObjectIdentifier { ObjectIdentifier(base) }
+        var embeddingOwner: any AnyObject & Sendable { base }
 
         func embed(texts: [String]) async throws -> [[Float]] {
             try await base.embed(texts: texts)
@@ -155,17 +156,24 @@ struct DiscoveryEmbedderTests {
     /// Composes one session over a new registry with `embedder` and `cache`,
     /// and runs one `searchTools` call in it.
     ///
+    /// A cached shared embed lives only while a session holds it. Thus a
+    /// test that wants two sessions to share an embed keeps the tools of the
+    /// first session while it composes the second.
+    ///
     /// - Parameters:
     ///   - embedder: the embedder of the session.
     ///   - cache: the search index cache of the session.
+    /// - Returns: the tools of the session, which keep the session open.
     /// - Throws: what composing the session or the search throws.
+    @discardableResult
     private static func searchInNewSession(
         embedder: any PooledEmbedding, cache: SearchIndexCache
-    ) async throws {
+    ) async throws -> [any Tool] {
         let mounted = try Self.makeRegistry().makeSessionToolsAndStaging(
             selection: nil, embedder: embedder, sampleModel: nil, indexCache: cache)
         let searchTools = try #require(mounted.tools.compactMap { $0 as? SearchToolsTool }.first)
         _ = try await searchTools.call(arguments: SearchToolsArguments(task: "trip cities"))
+        return mounted.tools
     }
 
     @Test("the hint searcher and the discovery searcher of one bundle embed the catalog one time")
@@ -190,12 +198,13 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let embedder = RecordingEmbedder()
 
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let first = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let second = try await Self.searchInNewSession(embedder: embedder, cache: cache)
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
         #expect(embedder.batches == [catalog, ["trip cities"], ["trip cities"]])
         #expect(cache.sharedEmbeddings == 1)
+        withExtendedLifetime((first, second)) {}
     }
 
     @Test("two sessions with a new identified embedder value each embed the catalog one time")
@@ -203,12 +212,13 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let base = RecordingEmbedder()
 
-        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
-        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
+        let first = try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
+        let second = try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: base), cache: cache)
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
         #expect(base.batches.filter { $0 == catalog }.count == 1)
         #expect(cache.sharedEmbeddings == 1)
+        withExtendedLifetime((first, second)) {}
     }
 
     @Test("two sessions with an embedder that has no identity each embed the catalog")
@@ -216,8 +226,9 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let base = RecordingEmbedder()
 
-        try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
-        try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
+        let first = try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
+        let second = try await Self.searchInNewSession(embedder: AnonymousWrapper(base: base), cache: cache)
+        withExtendedLifetime((first, second)) {}
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
         #expect(base.batches.filter { $0 == catalog }.count == 2)
@@ -230,11 +241,58 @@ struct DiscoveryEmbedderTests {
         let cache = SearchIndexCache()
         let embedder = RecordingEmbedder(alwaysFails: true)
 
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
-        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let first = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let second = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        withExtendedLifetime((first, second)) {}
 
         let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
         #expect(embedder.batches == [catalog, catalog])
         #expect(cache.sharedEmbeddings == 2)
+    }
+
+    // MARK: - The cache keeps nothing alive
+
+    /// Composes one session with a new embedder and an owner object, runs
+    /// one search, and ends the session. Gives weak references to the owner
+    /// and to the embedder, so the test can see whether anything keeps them.
+    ///
+    /// - Parameter cache: the search index cache of the session.
+    /// - Returns: the weak references, after the session ended.
+    /// - Throws: what composing the session or the search throws.
+    private static func endedSession(
+        cache: SearchIndexCache
+    ) async throws -> (owner: WeakReference<RecordingEmbedder>, embedder: WeakReference<RecordingEmbedder>) {
+        let owner = RecordingEmbedder()
+        let embedder = RecordingEmbedder()
+        try await Self.searchInNewSession(embedder: IdentifiedWrapper(base: owner), cache: cache)
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        return (WeakReference(owner), WeakReference(embedder))
+    }
+
+    @Test("after its sessions end, the cache keeps no embedder, no owner and no shared embed")
+    func theCacheKeepsNoEmbedderAfterTheSessionsEnd() async throws {
+        let cache = SearchIndexCache()
+
+        let references = try await Self.endedSession(cache: cache)
+
+        #expect(references.owner.object == nil)
+        #expect(references.embedder.object == nil)
+        #expect(cache.liveSharedEmbeddings == 0)
+        #expect(cache.sharedEmbeddings == 2)
+    }
+
+    @Test("a session after the last session with the same embedder ended makes a new shared embed")
+    func aSessionAfterTheLastSessionEndedMakesANewEmbed() async throws {
+        let cache = SearchIndexCache()
+        let embedder = RecordingEmbedder()
+
+        try await Self.searchInNewSession(embedder: embedder, cache: cache)
+        let open = try await Self.searchInNewSession(embedder: embedder, cache: cache)
+
+        let catalog = try Self.makeRegistry().surface.entries.map(\.summaryBlock)
+        #expect(embedder.batches.filter { $0 == catalog }.count == 2)
+        #expect(cache.sharedEmbeddings == 2)
+        #expect(cache.liveSharedEmbeddings == 1)
+        withExtendedLifetime(open) {}
     }
 }
