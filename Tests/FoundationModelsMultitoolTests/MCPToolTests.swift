@@ -219,18 +219,6 @@ struct MCPToolTests {
             serving: tools, name: serverName, renderBudget: renderBudget)
     }
 
-    /// The verb of `server` for the tool named `name`.
-    ///
-    /// - Parameters:
-    ///   - name: The name of the discovered tool.
-    ///   - server: The connected server.
-    /// - Returns: The verb.
-    /// - Throws: When `server` discovered no tool named `name`.
-    private static func tool(named name: String, on server: MCPServer) async throws -> MCPTool {
-        let entry = try #require(await server.tool(named: name))
-        return MCPTool(entry: entry, server: server)
-    }
-
     /// The sorted-key JSON of `schema` — the one comparable form of a
     /// `GenerationSchema`, whose plain encoding orders its keys at random.
     ///
@@ -264,7 +252,7 @@ struct MCPToolTests {
         let (scripted, server) = try await Self.connected(
             serving: [Self.recordingTool(inputSchema: Self.anyObjectSchema, into: recorder)])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.recordingToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.recordingToolName, on: server)
 
             _ = try await tool.call(arguments: Self.echoArguments)
 
@@ -279,7 +267,7 @@ struct MCPToolTests {
         let (scripted, server) = try await Self.connected(
             serving: [Self.recordingTool(inputSchema: Self.anyObjectSchema, into: recorder)])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.recordingToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.recordingToolName, on: server)
             let inner = GeneratedContent(properties: [Self.cityArgument: Self.cityText])
             let arguments = GeneratedContent(
                 properties: [
@@ -306,7 +294,7 @@ struct MCPToolTests {
     func rendersSuccessResult() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.echoToolName, on: server)
 
             let output = try await tool.call(arguments: Self.echoArguments)
 
@@ -319,7 +307,7 @@ struct MCPToolTests {
     func rendersIsErrorResultWithoutThrowing() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.failingTool])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.failingToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.failingToolName, on: server)
 
             let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
 
@@ -333,7 +321,7 @@ struct MCPToolTests {
     func rendersStructuredContentAlongsideContent() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.structuredTool])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.structuredToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.structuredToolName, on: server)
 
             let output = try await tool.call(arguments: GeneratedContent(properties: [:]))
 
@@ -351,7 +339,7 @@ struct MCPToolTests {
             serving: [ScriptedServer.echoTool()],
             renderBudget: .limited(characters: Self.tightBudgetCharacters))
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.echoToolName, on: server)
 
             let output = try await tool.call(arguments: Self.oversizedEchoArguments)
 
@@ -366,7 +354,7 @@ struct MCPToolTests {
             serving: [ScriptedServer.echoTool()],
             renderBudget: .limited(characters: Self.tightBudgetCharacters))
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.echoToolName, on: server)
                 .rendering(withBudget: .unlimited)
 
             let output = try await tool.call(arguments: Self.oversizedEchoArguments)
@@ -382,7 +370,7 @@ struct MCPToolTests {
     func propagatesServerError() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.throwingTool])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.throwingToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.throwingToolName, on: server)
 
             await #expect(throws: MCPError.self) {
                 _ = try await tool.call(arguments: GeneratedContent(properties: [:]))
@@ -436,7 +424,7 @@ struct MCPToolTests {
     func includesSchemaInInstructionsIsAlwaysTrue() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.echoToolName, on: server)
 
             #expect(tool.includesSchemaInInstructions)
         }
@@ -465,7 +453,7 @@ struct MCPToolTests {
     func doesNotConformToBackgroundTool() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.echoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.echoToolName, on: server)
 
             #expect(!((tool as Any) is any BackgroundTool))
         }
@@ -508,7 +496,7 @@ struct MCPToolTests {
         let (scripted, server) = try await Self.connected(
             serving: [ScriptedServer.echoTool(named: Self.illegalToolName)])
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.illegalToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.illegalToolName, on: server)
 
             #expect(tool.name == Self.illegalToolName)
             #expect {

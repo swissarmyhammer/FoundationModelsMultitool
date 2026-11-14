@@ -19,6 +19,7 @@ import FoundationModelsExtras
 import Logging
 import MCP
 import MCPTestServer
+import Testing
 
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
@@ -398,5 +399,17 @@ enum MCPTestSupport {
             to: scripted, over: kind, name: name, connectAttemptClock: connectAttemptClock,
             elicitationHandler: elicitationHandler, userPresence: userPresence)
         return (scripted, server)
+    }
+
+    /// The verb of `server` for the tool named `name`.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the discovered tool.
+    ///   - server: The connected server.
+    /// - Returns: The verb.
+    /// - Throws: When `server` discovered no tool named `name`.
+    static func tool(named name: String, on server: MCPServer) async throws -> MCPTool {
+        let entry = try #require(await server.tool(named: name))
+        return MCPTool(entry: entry, server: server)
     }
 }

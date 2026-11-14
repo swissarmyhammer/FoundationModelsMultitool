@@ -41,6 +41,7 @@
 // and the tests reach the type with `@testable import`.
 
 import FoundationModels
+import FoundationModelsExtras
 import MCP
 
 /// The `FoundationModels.Tool` adapter that turns one MCP server tool into a
@@ -143,6 +144,12 @@ struct MCPTool: FoundationModels.Tool {
     /// a server that is not `.ready` and a bare call that exceeded
     /// `MCPServer.callTimeout`.
     ///
+    /// The text keeps only a placeholder for an image, audio or binary
+    /// block. Thus, under an ambient `ToolContext`, the verb also posts the
+    /// ordered blocks of a result with such a block to the host, as one
+    /// display chunk (see ``MCPToolContent``). The model does not read the
+    /// chunk. A text-only result posts no chunk.
+    ///
     /// - Parameter arguments: The generated arguments, already constrained
     ///   against ``parameters`` by the calling session.
     /// - Returns: The rendered `tools/call` result.
@@ -153,8 +160,12 @@ struct MCPTool: FoundationModels.Tool {
     ///   the transport dropped under the request, or the JSON-RPC error the
     ///   server answered with, unchanged.
     func call(arguments: GeneratedContent) async throws -> String {
+        let toolContext = ToolContext.current
         let mcpArguments = try GeneratedContentCodec.arguments(from: arguments)
         let result = try await server.call(name: entry.name, arguments: mcpArguments)
+        if let toolContext, let content = MCPToolContent.displayed(from: result) {
+            await toolContext.emit(chunk: content.display)
+        }
         return ToolContentRenderer.render(
             result: result, outputSchema: entry.outputSchema, budget: renderBudget ?? server.renderBudget)
     }

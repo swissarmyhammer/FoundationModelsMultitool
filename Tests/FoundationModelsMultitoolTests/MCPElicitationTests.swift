@@ -514,18 +514,6 @@ struct MCPElicitationTests {
         return (call, try #require(event.elicitation))
     }
 
-    /// The verb of `server` for the tool named `name`.
-    ///
-    /// - Parameters:
-    ///   - name: The name of the discovered tool.
-    ///   - server: The connected server.
-    /// - Returns: The verb.
-    /// - Throws: When `server` discovered no tool named `name`.
-    private static func tool(named name: String, on server: MCPServer) async throws -> MCPTool {
-        let entry = try #require(await server.tool(named: name))
-        return MCPTool(entry: entry, server: server)
-    }
-
     /// The answer field of the `structuredContent` of `result`.
     ///
     /// - Parameter result: The result of an eliciting tool.
@@ -863,7 +851,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.scriptedAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
 
@@ -881,7 +869,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
             let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
             #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
@@ -906,7 +894,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitURLToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitURLToolName, on: server)
 
             let call = try await Self.startHeldHostFlow(on: server) { try await Self.bareCall(tool) }
             try await scripted.sendElicitationCompleteThenDrop(elicitationId: ScriptedServer.elicitURLElicitationId)
@@ -1477,7 +1465,7 @@ struct MCPElicitationTests {
     func noContextAndNoHandlerCancels() async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
 
@@ -2052,7 +2040,7 @@ struct MCPElicitationTests {
         let (scripted, server) = try await Self.connected(
             over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             let output = try await Self.bareCall(tool)
 
@@ -2071,7 +2059,7 @@ struct MCPElicitationTests {
         let (scripted, server) = try await Self.connected(
             over: .inMemory, elicitationHandler: probe.handler, userPresence: .headless)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: ScriptedServer.elicitEchoToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: ScriptedServer.elicitEchoToolName, on: server)
 
             async let first = Self.bareCall(tool)
             async let second = Self.bareCall(tool)
@@ -2238,7 +2226,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: .decline)
         let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.invalidURLToolName, on: server)
             _ = try await Self.bareCall(tool)
 
             let received = await scripted.receivedElicitationResults.last
@@ -2278,7 +2266,7 @@ struct MCPElicitationTests {
         let probe = HandlerProbe(responding: .decline)
         let (scripted, server) = try await Self.connected(askingFor: url, elicitationHandler: probe.handler)
         try await MCPTestSupport.withConnection(of: server) {
-            let tool = try await Self.tool(named: Self.invalidURLToolName, on: server)
+            let tool = try await MCPTestSupport.tool(named: Self.invalidURLToolName, on: server)
             _ = try await Self.bareCall(tool)
 
             let requests = await probe.requests
