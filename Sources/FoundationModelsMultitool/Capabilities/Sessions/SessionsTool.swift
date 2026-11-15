@@ -15,15 +15,17 @@ import Operations
 
 /// The `sessions` tool: find the sessions of the server, check one of them,
 /// read the messages that other sessions sent to the caller session, send a
-/// message and reply to one, start a new session, tag, untag and rename a
-/// session, and archive a session.
+/// message and reply to one, start a new session, tag, untag, rename, pin
+/// and unpin a session, and archive a session.
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
-/// `untag session`, `rename session` and `archive session`. In code mode each
+/// `untag session`, `rename session`, `pin session`, `unpin session` and
+/// `archive session`. In code mode each
 /// one is a verb of `tools.sessions`: `listSessions`, `checkSession`,
 /// `readInbox`, `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
-/// `untagSession`, `renameSession` and `archiveSession`. Each answer is plain
+/// `untagSession`, `renameSession`, `pinSession`, `unpinSession` and
+/// `archiveSession`. Each answer is plain
 /// text, and each error is a corrective text the model reads in the same
 /// turn, never a thrown error.
 ///
@@ -82,6 +84,8 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(TagSession.self),
                 AnyOperation(UntagSession.self),
                 AnyOperation(RenameSession.self),
+                AnyOperation(PinSession.self),
+                AnyOperation(UnpinSession.self),
                 AnyOperation(ArchiveSession.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))

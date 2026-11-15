@@ -1,6 +1,7 @@
 // The mutations of the `sessions` GraphQL endpoint (MT-10, EXTRAS-9 rule 7):
 // `startSession`, `tagSession`, `untagSession`, `renameSession`,
-// `archiveSession`, `sendMessage` and `replyMessage`.
+// `pinSession`, `unpinSession`, `archiveSession`, `sendMessage` and
+// `replyMessage`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, and calls the work of that op in ``SessionsToolContext``:
@@ -12,7 +13,8 @@
 // Who acts (section 11.3): a client acts as its user, `user(clientID)`, and a
 // call with no viewer acts as the agent of the caller session, as the tool
 // does. An external client archives only the sessions that it can see; it
-// tags, untags, renames, sends and replies only to the sessions that it owns;
+// tags, untags, renames, pins, unpins, sends and replies only to the sessions
+// that it owns;
 // and it cannot start a session.
 
 import Foundation
@@ -49,6 +51,12 @@ struct SessionsGraphMutation: Sendable {
     /// `renameSession`.
     static let rename = Self(RenameSession.self, adding: sessionIDAliases)
 
+    /// `pinSession` (D118).
+    static let pin = Self(PinSession.self, adding: sessionIDAliases)
+
+    /// `unpinSession` (D118).
+    static let unpin = Self(UnpinSession.self, adding: sessionIDAliases)
+
     /// `archiveSession`.
     static let archive = Self(ArchiveSession.self, adding: sessionIDAliases)
 
@@ -59,7 +67,7 @@ struct SessionsGraphMutation: Sendable {
     static let reply = Self(ReplyMessage.self)
 
     /// Each mutation of the endpoint.
-    static let all = [start, tag, untag, rename, archive, send, reply]
+    static let all = [start, tag, untag, rename, pin, unpin, archive, send, reply]
 
     /// The tool op of the mutation. The module name tells it from the
     /// `OperationDefinition` of GraphQL.
@@ -331,6 +339,40 @@ extension SessionsGraphResolver {
         }
     }
 
+    /// Resolves `Mutation.pinSession` (D118): the session goes into the
+    /// Pinned list of this server. A second pin keeps its place.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: The input object.
+    /// - Returns: The session after the call.
+    /// - Throws: The coded error of a refusal, and each other error of the
+    ///   directory.
+    func pinSession(
+        context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphPinInput>
+    ) async throws -> SessionsGraphSession {
+        try await Self.changedSession(arguments.input.id, in: context) { target in
+            try await context.actions.setPinned(session: target, to: true)
+        }
+    }
+
+    /// Resolves `Mutation.unpinSession` (D118): the session goes out of the
+    /// Pinned list of this server.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: The input object.
+    /// - Returns: The session after the call.
+    /// - Throws: The coded error of a refusal, and each other error of the
+    ///   directory.
+    func unpinSession(
+        context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphUnpinInput>
+    ) async throws -> SessionsGraphSession {
+        try await Self.changedSession(arguments.input.id, in: context) { target in
+            try await context.actions.setPinned(session: target, to: false)
+        }
+    }
+
     /// Resolves `Mutation.archiveSession` (Session > Archive, D68): any
     /// session that the viewer can see (D72).
     ///
@@ -584,6 +626,26 @@ extension SessionsGraphAPI {
         .description("The new title of a session.")
     }
 
+    /// The `PinSessionInput` input object.
+    ///
+    /// - Returns: The input object.
+    static func pinInput() -> SchemaType {
+        Input(SessionsGraphPinInput.self, as: SessionsGraphMutation.pin.inputName) {
+            InputField("id", at: \.id).description(idDescription)
+        }
+        .description("The session to pin.")
+    }
+
+    /// The `UnpinSessionInput` input object.
+    ///
+    /// - Returns: The input object.
+    static func unpinInput() -> SchemaType {
+        Input(SessionsGraphUnpinInput.self, as: SessionsGraphMutation.unpin.inputName) {
+            InputField("id", at: \.id).description(idDescription)
+        }
+        .description("The session to unpin.")
+    }
+
     /// The `ArchiveSessionInput` input object.
     ///
     /// - Returns: The input object.
@@ -644,6 +706,13 @@ extension SessionsGraphAPI {
             mutationField(
                 .rename, at: SessionsGraphResolver.renameSession, input: "The session and its new title.",
                 description: "Sets the title of a session."),
+            mutationField(
+                .pin, at: SessionsGraphResolver.pinSession, input: "The session.",
+                description: "Pins a session: it goes into the Pinned list of this server, after the other pins. A "
+                    + "second pin keeps its place. Gives the session."),
+            mutationField(
+                .unpin, at: SessionsGraphResolver.unpinSession, input: "The session.",
+                description: "Unpins a session: it goes out of the Pinned list of this server. Gives the session."),
             mutationField(
                 .archive, at: SessionsGraphResolver.archiveSession, input: "The session.",
                 description: "Archives a session: stops its turn and ends its work. It takes no more messages, and its "

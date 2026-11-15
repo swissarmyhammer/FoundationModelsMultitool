@@ -52,6 +52,10 @@ enum SessionsToolFixtures {
     ///   - kind: The kind of the session. The default is a root session.
     ///   - parentID: The parent of a subagent, or the original of a fork.
     ///   - startedBy: The session that started this root session.
+    ///   - pinnedAt: The time of the pin, or `nil` for a session that is not
+    ///     pinned.
+    ///   - lastUsedAt: The last time that a client opened the session, or
+    ///     `nil` for a session that no client opened.
     /// - Returns: The summary.
     static func summary(
         id: ULID = ULID(),
@@ -61,12 +65,14 @@ enum SessionsToolFixtures {
         folder: URL = workingFolder,
         kind: SessionKind = .root,
         parentID: ULID? = nil,
-        startedBy: ULID? = nil
+        startedBy: ULID? = nil,
+        pinnedAt: Date? = nil,
+        lastUsedAt: Date? = nil
     ) -> SessionSummary {
         SessionSummary(
             id: id, agentID: agent, agentName: agentName, workingDirectory: folder, title: title, tags: tags,
             kind: kind, state: .idle, parentID: parentID, startedBy: startedBy, origin: .client, createdAt: fixedDate,
-            updatedAt: fixedDate, isLive: true)
+            updatedAt: fixedDate, isLive: true, pinnedAt: pinnedAt, lastUsedAt: lastUsedAt)
     }
 
     /// The `op` payload of one operation with its fields.

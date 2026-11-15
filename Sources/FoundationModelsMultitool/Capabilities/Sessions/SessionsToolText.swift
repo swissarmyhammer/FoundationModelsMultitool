@@ -102,6 +102,7 @@ enum SessionsToolText {
         [
             summary.title.map { "title \"\($0)\"" },
             summary.tags.isEmpty ? nil : "tags \(tagList(of: summary))",
+            summary.isPinned ? "pinned" : nil,
             summary.parentID.map { "parent \($0.ulidString)" },
             summary.startedBy.map { "started by \($0.ulidString)" },
         ].compactMap { $0 }

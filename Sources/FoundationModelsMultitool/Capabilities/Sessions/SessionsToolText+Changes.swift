@@ -56,6 +56,17 @@ extension SessionsToolText {
         "Session \(summary.id.ulidString) has the title \"\(summary.title ?? "")\"."
     }
 
+    /// The answer of `pin session` and `unpin session`: the pin state of
+    /// the session after the call.
+    ///
+    /// - Parameter summary: The session after the call.
+    /// - Returns: The answer.
+    static func pinState(of summary: SessionSummary) -> String {
+        summary.isPinned
+            ? "Session \(summary.id.ulidString) is pinned. It shows in the Pinned list of this server."
+            : "Session \(summary.id.ulidString) is not pinned."
+    }
+
     /// The answer of `archive session`: the session, its agent and its
     /// folder, then ``archiveSentence``.
     ///

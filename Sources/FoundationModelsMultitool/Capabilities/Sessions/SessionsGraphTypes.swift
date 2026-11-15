@@ -155,6 +155,17 @@ struct SessionsGraphSession: Sendable {
     /// True when the session is in memory now.
     let isLive: Bool
 
+    /// True when the session is in the Pinned list of this server (D118).
+    let pinned: Bool
+
+    /// The time of the pin, or `nil` when the session is not pinned. The
+    /// Pinned list is in the order of this time, the first pin first.
+    let pinnedAt: DateTime?
+
+    /// The last time that a client opened the session on this server, or
+    /// `nil` when no client opened it.
+    let lastUsedAt: DateTime?
+
     /// The session id, as the directory reads it.
     let sessionID: ULID
 
@@ -184,6 +195,9 @@ struct SessionsGraphSession: Sendable {
         updatedAt = DateTime(summary.updatedAt)
         lastSummary = summary.lastSummary
         isLive = summary.isLive
+        pinned = summary.isPinned
+        pinnedAt = summary.pinnedAt.map(DateTime.init)
+        lastUsedAt = summary.lastUsedAt.map(DateTime.init)
     }
 }
 
@@ -400,6 +414,18 @@ struct SessionsGraphRenameInput: Codable, Sendable {
 
     /// The new title.
     let title: String
+}
+
+/// The `PinSessionInput` input object of `Mutation.pinSession`.
+struct SessionsGraphPinInput: Codable, Sendable {
+    /// The session to pin, in any letter case.
+    let id: ToolkitID
+}
+
+/// The `UnpinSessionInput` input object of `Mutation.unpinSession`.
+struct SessionsGraphUnpinInput: Codable, Sendable {
+    /// The session to unpin, in any letter case.
+    let id: ToolkitID
 }
 
 /// The `ArchiveSessionInput` input object of `Mutation.archiveSession`.

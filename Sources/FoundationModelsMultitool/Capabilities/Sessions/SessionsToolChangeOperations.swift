@@ -1,6 +1,7 @@
 // The change operations of the `sessions` tool: `start session`,
-// `tag session`, `untag session`, `rename session` and `archive session`
-// (session.md section 8, D68, D72, D90, D100).
+// `tag session`, `untag session`, `rename session`, `pin session`,
+// `unpin session` and `archive session` (session.md section 8, D68, D72,
+// D90, D100, D118).
 //
 // Each operation acts for the caller session: a call with no caller gives a
 // corrective, as section 8.2 says. Each answer is plain text, and each error
@@ -215,6 +216,54 @@ extension RenameSession {
     }
 }
 
+/// Pins a session to the Pinned list of this server (`pin session`, D118,
+/// D100 (a): the agent can pin too).
+@Generable
+@Operation(
+    verb: "pin", noun: "session",
+    description: """
+        Pin a session: it shows in the Pinned list of the user on this Mac. A second pin keeps its place.
+        """)
+struct PinSession {
+    /// The id of the session to pin.
+    @Guide(description: "Optional. The id of the session. The default is your session.")
+    var id: String?
+}
+
+extension PinSession {
+    /// Pins the session `id`, or the caller session.
+    ///
+    /// - Parameter context: The shared context of the tool.
+    /// - Returns: The pin state of the session after the call, or a
+    ///   corrective.
+    func execute(in context: SessionsToolContext) async throws -> String {
+        await context.answerPinChange(of: id, to: true, opString: Self.opString)
+    }
+}
+
+/// Removes a session from the Pinned list of this server (`unpin session`,
+/// D118, D100 (a)).
+@Generable
+@Operation(
+    verb: "unpin", noun: "session",
+    description: "Unpin a session: it goes out of the Pinned list of the user on this Mac.")
+struct UnpinSession {
+    /// The id of the session to unpin.
+    @Guide(description: "Optional. The id of the session. The default is your session.")
+    var id: String?
+}
+
+extension UnpinSession {
+    /// Unpins the session `id`, or the caller session.
+    ///
+    /// - Parameter context: The shared context of the tool.
+    /// - Returns: The pin state of the session after the call, or a
+    ///   corrective.
+    func execute(in context: SessionsToolContext) async throws -> String {
+        await context.answerPinChange(of: id, to: false, opString: Self.opString)
+    }
+}
+
 /// Ends the work of a session (`archive session`, D68, D72).
 @Generable
 @Operation(
@@ -296,6 +345,38 @@ extension SessionsToolContext {
     func rename(session target: ULID, to title: String) async throws -> SessionSummary {
         let newTitle = try SessionsToolInput.requiredText(title, parameter: SessionsToolText.titleParameter)
         return try await directory.setTitle(newTitle, of: target)
+    }
+
+    /// Pins or unpins a session, for `pin session`, `unpin session` and the
+    /// `pinSession` and `unpinSession` mutations. A second pin keeps the
+    /// first pin time, thus the place of the session in the Pinned list.
+    ///
+    /// - Parameters:
+    ///   - target: The session.
+    ///   - pinned: True to pin, false to unpin.
+    /// - Returns: The session after the call.
+    /// - Throws: `SessionDirectoryError.unknownSession` when no session has
+    ///   the id, and each other error of `SessionDirectory.setPinned(_:of:)`.
+    func setPinned(session target: ULID, to pinned: Bool) async throws -> SessionSummary {
+        try await directory.setPinned(pinned, of: target)
+    }
+
+    /// Pins or unpins the session `id`, or the caller session, for `pin
+    /// session` and `unpin session`, and answers the pin state after the
+    /// call.
+    ///
+    /// - Parameters:
+    ///   - id: The text of the session id, or `nil` for the caller session.
+    ///   - pinned: True to pin, false to unpin.
+    ///   - opString: The op string of the operation.
+    /// - Returns: The pin state of the session after the call. A corrective
+    ///   for a call with no caller, an id that is not a session id or that no
+    ///   session has, or another error of the directory.
+    func answerPinChange(of id: String?, to pinned: Bool, opString: String) async -> String {
+        await answer(asCallerOf: opString) { callerID in
+            let target = try SessionsToolInput.sessionID(id, defaultingTo: callerID)
+            return SessionsToolText.pinState(of: try await setPinned(session: target, to: pinned))
+        }
     }
 
     /// Archives a session, for `archive session` and the `archiveSession`

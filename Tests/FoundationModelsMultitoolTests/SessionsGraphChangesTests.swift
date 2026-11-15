@@ -215,7 +215,8 @@ struct SessionsGraphChangesTests {
         var testDescription: String { name }
     }
 
-    /// Tag, send and archive, each of which gives one change of its target.
+    /// Tag, send, pin and archive, each of which gives one change of its
+    /// target.
     static let actionCases: [ActionCase] = [
         ActionCase(
             name: "tag",
@@ -231,6 +232,10 @@ struct SessionsGraphChangesTests {
                     + "{ outcome } }"
             }),
         ActionCase(
+            name: "pin",
+            prepare: { _, _ in },
+            mutation: { target in "mutation { pinSession(input: {id: \"\(target.ulidString)\"}) { id } }" }),
+        ActionCase(
             name: "archive",
             prepare: { _, _ in },
             mutation: { target in "mutation { archiveSession(input: {id: \"\(target.ulidString)\"}) { id } }" }),
@@ -239,7 +244,7 @@ struct SessionsGraphChangesTests {
     /// Each action gives one change that names its target, with a cursor
     /// after the cursor that the subscription resumed from; the next change
     /// is the change of the marker.
-    @Test("tag, send and archive each give one change with a newer cursor", arguments: actionCases)
+    @Test("tag, send, pin and archive each give one change with a newer cursor", arguments: actionCases)
     func eachActionGivesOneChange(_ action: ActionCase) async throws {
         let directory = Fixtures.directoryWithLauncher()
         let target = Fixtures.summary()
@@ -261,6 +266,38 @@ struct SessionsGraphChangesTests {
         #expect(second == Self.change(cursor: second.cursor, changed: marker.id))
         #expect(try Self.sequence(of: first.cursor) > Self.sequence(of: before))
         #expect(try Self.sequence(of: second.cursor) > Self.sequence(of: first.cursor))
+    }
+
+    /// Each change of the Pinned or Recent list gives one change of its
+    /// session (D118): an unpin, and a client that opens a session, which
+    /// marks it as used. A second pin changes no list, thus it gives no
+    /// change, and the next change is the change of the marker.
+    @Test("an unpin and a use each give one change, and a second pin gives none")
+    func eachChangeOfTheListsGivesOneChange() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let pinned = Fixtures.summary(pinnedAt: Fixtures.fixedDate)
+        let used = Fixtures.summary()
+        let marker = Fixtures.summary()
+        directory.register(pinned)
+        directory.register(used)
+        directory.register(marker)
+        let graph = SessionsGraph.endpoint(of: directory)
+        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+
+        let repin = try await Self.run(
+            "mutation { pinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", on: graph)
+        let unpin = try await Self.run(
+            "mutation { unpinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", on: graph)
+        _ = try await directory.markUsed(used.id)
+        try await Self.mark(marker, in: directory)
+        let changes = [
+            try await subscription.nextChange(), try await subscription.nextChange(),
+            try await subscription.nextChange(),
+        ]
+
+        #expect(repin.codes.isEmpty, "errors: \(repin.messages)")
+        #expect(unpin.codes.isEmpty, "errors: \(unpin.messages)")
+        #expect(changes.map(\.changed) == [[pinned.id.ulidString], [used.id.ulidString], [marker.id.ulidString]])
     }
 
     /// A start gives the new root session as added (section 11.5), then the

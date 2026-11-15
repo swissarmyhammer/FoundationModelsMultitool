@@ -125,6 +125,17 @@ type Session {
   """True when the session is in memory now."""
   isLive: Boolean!
 
+  """True when the session is in the Pinned list of this server."""
+  pinned: Boolean!
+
+  """The time of the pin, or null when the session is not pinned."""
+  pinnedAt: DateTime
+
+  """
+  The last time that a client opened the session on this server, or null.
+  """
+  lastUsedAt: DateTime
+
   """The count of the unread messages to this session."""
   unreadCount: Int!
 
@@ -285,6 +296,22 @@ input RenameSessionInput {
   title: String!
 }
 
+"""The session to pin."""
+input PinSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  """
+  id: ID!
+}
+
+"""The session to unpin."""
+input UnpinSessionInput {
+  """
+  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  """
+  id: ID!
+}
+
 """The session to archive."""
 input ArchiveSessionInput {
   """
@@ -369,6 +396,19 @@ type Query {
   ): [Message!]!
 
   """
+  The Pinned list of this server: each pinned session that you can see, the first pin first. pinSession and unpinSession change it.
+  """
+  pinnedSessions: [Session!]!
+
+  """
+  The Recent list of this server: the sessions that a client opened, the last one first. A pinned session is not in it.
+  """
+  recentSessions(
+    """The most sessions to give: 1 to 100."""
+    limit: Int = 20
+  ): [Session!]!
+
+  """
   The cursor of the newest change. Read the sessions, then subscribe to changes after this cursor.
   """
   cursor: String!
@@ -401,6 +441,22 @@ type Mutation {
   renameSession(
     """The session and its new title."""
     input: RenameSessionInput!
+  ): Session!
+
+  """
+  Pins a session: it goes into the Pinned list of this server, after the other pins. A second pin keeps its place. Gives the session.
+  """
+  pinSession(
+    """The session."""
+    input: PinSessionInput!
+  ): Session!
+
+  """
+  Unpins a session: it goes out of the Pinned list of this server. Gives the session.
+  """
+  unpinSession(
+    """The session."""
+    input: UnpinSessionInput!
   ): Session!
 
   """

@@ -68,6 +68,26 @@ struct ForwardingSessionDirectory: SessionDirectory {
         try await backing.setTitle(title, of: id)
     }
 
+    /// Pins or unpins a session in the backing directory.
+    ///
+    /// - Parameters:
+    ///   - pinned: True to pin, false to unpin.
+    ///   - id: The session id.
+    /// - Returns: The summary after the change.
+    /// - Throws: The error of the backing directory.
+    func setPinned(_ pinned: Bool, of id: ULID) async throws -> SessionSummary {
+        try await backing.setPinned(pinned, of: id)
+    }
+
+    /// Marks a session as used in the backing directory.
+    ///
+    /// - Parameter id: The session id.
+    /// - Returns: The summary with the new last-use time.
+    /// - Throws: The error of the backing directory.
+    func markUsed(_ id: ULID) async throws -> SessionSummary {
+        try await backing.markUsed(id)
+    }
+
     /// Sends a message through the backing directory.
     ///
     /// - Parameter message: The message.
