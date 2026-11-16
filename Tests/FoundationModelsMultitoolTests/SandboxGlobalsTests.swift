@@ -667,6 +667,41 @@ struct SandboxGlobalsTests {
         }
     }
 
+    /// `sensitive: true` tells the host that the answer holds a secret, so the
+    /// host records no content of it (D101). A request with no `sensitive`
+    /// field is not sensitive.
+    @Test("elicit({ message, requestedSchema, sensitive }) sends the sensitive flag; the default is false")
+    func elicitSendsTheSensitiveFlag() async throws {
+        for (field, expected) in [(", sensitive: true", true), ("", false)] {
+            try await withStubRun { stub in
+                try await withScriptedElicitationSink(run: stub, answering: .decline) { sink in
+                    _ = try await runSnippet(
+                        """
+                        const answer = await elicit({
+                            message: "Give the token",
+                            requestedSchema: { type: "object", properties: { token: { type: "string" } } }\(field),
+                        });
+                        return answer.action;
+                        """,
+                        under: stub.context
+                    )
+                    let request = try #require(await sink.observedRequest)
+
+                    #expect(request.sensitive == expected, "field was: \(field)")
+                }
+            }
+        }
+    }
+
+    @Test("elicit() with a sensitive field that is not a boolean throws its reason and usage text, and sends no request")
+    func elicitWithABadSensitiveField() async throws {
+        let message = try await elicitationArgumentErrorMessage(
+            of: #"elicit({ message: "Give the token", sensitive: "yes" })"#)
+
+        #expect(message.contains("sensitive must be true or false"), "the message was: \(message)")
+        #expect(message.contains(MultiTool.elicitUsage), "the message was: \(message)")
+    }
+
     /// A question of the snippet itself sets no `source`: the host shows
     /// the tool of the run, `runCode`, as the one that asks. Only a question
     /// of an MCP server sets the `source`, to the name of the server.

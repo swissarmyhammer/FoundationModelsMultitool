@@ -374,7 +374,8 @@ extension MultiTool {
     static let elicitUsage = """
         elicit("question") asks for a text: on an accept, content is the text. \
         elicit({ message, requestedSchema }) asks with a form: on an accept, \
-        content is the object of the fields. elicit({ message, url }) starts a URL flow.
+        content is the object of the fields. elicit({ message, url }) starts a URL flow. \
+        Add sensitive: true when the answer holds a secret: the host then records no content of the answer.
         """
 
     /// The TypeScript type of the `content` of an accepted `elicit()` answer:
@@ -395,7 +396,7 @@ extension MultiTool {
                 parameters: [
                     ElicitationParameter(
                         name: "request",
-                        tsType: "string | { message: string; requestedSchema?: object; url?: string }",
+                        tsType: "string | { message: string; requestedSchema?: object; url?: string; sensitive?: boolean }",
                         isOptional: false)
                 ],
                 contentType: elicitContentType)
@@ -447,14 +448,36 @@ extension MultiTool {
         guard case .object(let fields)? = argument, case .string(let message)? = fields["message"] else {
             throw .malformed
         }
+        let sensitive = try decodeElicitSensitive(fields["sensitive"])
         if let url = try decodeElicitURL(fields["url"]) {
-            return ElicitationRequest(message: message, elicitationId: elicitationId, url: url)
+            return ElicitationRequest(message: message, elicitationId: elicitationId, url: url, sensitive: sensitive)
         }
         return ElicitationRequest(
             message: message,
             elicitationId: elicitationId,
-            requestedSchema: try decodeRequestedSchema(fields["requestedSchema"])
+            requestedSchema: try decodeRequestedSchema(fields["requestedSchema"]),
+            sensitive: sensitive
         )
+    }
+
+    /// Decodes the `sensitive` field of an `elicit()` request object.
+    ///
+    /// `true` tells the host that the answer holds a secret, so the host
+    /// records no content of the answer (D101). The snippet still gets the
+    /// full answer.
+    ///
+    /// - Parameter value: the `sensitive` field, or `nil`/`null`.
+    /// - Returns: the flag. With no field, `false`.
+    /// - Throws: ``ElicitationArgumentError/undecodable(reason:)`` when the
+    ///   value is not a boolean.
+    private static func decodeElicitSensitive(_ value: InterpreterValue?) throws(ElicitationArgumentError) -> Bool {
+        guard let value, value != .null else {
+            return false
+        }
+        guard case .bool(let sensitive) = value else {
+            throw .undecodable(reason: "sensitive must be true or false")
+        }
+        return sensitive
     }
 
     /// The reason of a `url` that is not a string.
