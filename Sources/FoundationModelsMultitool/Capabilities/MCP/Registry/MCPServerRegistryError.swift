@@ -58,10 +58,12 @@ public enum MCPServerRegistryError: Error, Equatable, Sendable, CustomStringConv
             "The \(key) of MCP server \"\(server)\" must be a \(MCPSecretKey.keychainPrefix)<name> reference. "
                 + "Give the secret through the secret prompt, not as text."
         case .secretDeclined(let server, let key):
-            "The user did not give the \(key) of MCP server \"\(server)\". Nothing changed. "
-                + "Ask the user before you try again."
+            "The \(key) of MCP server \"\(server)\" was not given. Nothing changed. Make the change with no "
+                + "secret, then ask the user to add the secret to the MCP server in the app. Do not ask the user "
+                + "to type the secret in this conversation."
         case .noSecretStore:
-            "This host cannot store a secret. Nothing changed. Ask the user to add the secret in Settings."
+            "This host cannot store a secret. Nothing changed. Make the change with no secret, then ask the user "
+                + "to add the secret to the MCP server in the app."
         case .conflictingTransport(let server):
             "The change of MCP server \"\(server)\" mixes the two transports. Give a command with args and env "
                 + "(stdio), or a url with headers (http)."

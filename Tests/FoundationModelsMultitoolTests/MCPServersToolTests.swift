@@ -52,7 +52,7 @@ struct MCPServersToolTests {
         let storage: InMemoryMCPServerStorage
 
         /// The Keychain port.
-        let secrets = MCPServerSecretsTests.RecordingSecrets()
+        let secrets: MCPServerSecretsTests.RecordingSecrets
 
         /// The registry.
         let registry: MCPServerRegistry
@@ -68,7 +68,13 @@ struct MCPServersToolTests {
         /// - Parameters:
         ///   - entries: The first servers.
         ///   - userApproves: The answer of the approver.
-        init(_ entries: [MCPServerEntry] = [MCPServersToolTests.github], userApproves: Bool = true) throws {
+        ///   - hostAsksForSecrets: True when the Keychain port asks the user
+        ///     and gets each secret; false when it gives none.
+        init(
+            _ entries: [MCPServerEntry] = [MCPServersToolTests.github], userApproves: Bool = true,
+            hostAsksForSecrets: Bool = true
+        ) throws {
+            secrets = MCPServerSecretsTests.RecordingSecrets(userGives: hostAsksForSecrets)
             storage = InMemoryMCPServerStorage(entries)
             registry = MCPServerRegistry(storage: storage, secrets: secrets)
             let questions = questions
@@ -166,6 +172,19 @@ struct MCPServersToolTests {
         #expect(setup.secrets.stored.withLock { $0 } == ["mcp.remote.header.Authorization": Self.secretValue])
         #expect(try await setup.stored.first?.transport == .http(
             url: "https://example.com/mcp", headers: ["Authorization": "keychain:mcp.remote.header.Authorization"]))
+    }
+
+    @Test("add mcp server with a secret that the host does not ask for changes nothing and sends the user to the app")
+    func addWithASecretThatTheHostDoesNotAskFor() async throws {
+        let setup = try Setup([], hostAsksForSecrets: false)
+
+        let output = try await setup.call(
+            "add mcp server",
+            [("name", "remote"), ("url", "https://example.com/mcp"), ("secretHeaders", ["Authorization"])])
+
+        #expect(output.contains("add the secret to the MCP server in the app"), "output was: \(output)")
+        #expect(output.contains("Do not ask the user to type the secret"), "output was: \(output)")
+        #expect(try await setup.stored.isEmpty)
     }
 
     // MARK: - Edit

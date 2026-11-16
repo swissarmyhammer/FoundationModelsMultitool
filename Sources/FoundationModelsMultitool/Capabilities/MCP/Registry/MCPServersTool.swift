@@ -41,7 +41,9 @@ public struct MCPServersTool: Tool, OperationDescribing {
     static let toolDescription = """
         Manage the MCP servers of this Mac, one at a time: list, show, add, edit, remove, enable and disable. \
         The user approves each server that you add, and each new command, args or url. Never put a secret in a \
-        field: name the header or env variable in secretHeaders or secretEnv, and the user gives the value.
+        field, and never ask the user to type a secret in this conversation: name the header or env variable in \
+        secretHeaders or secretEnv. When the host cannot ask for the value, make the change with no secret, and \
+        ask the user to add the secret to the MCP server in the app.
         """
 
     /// The approver that asks the user through an elicitation of the
