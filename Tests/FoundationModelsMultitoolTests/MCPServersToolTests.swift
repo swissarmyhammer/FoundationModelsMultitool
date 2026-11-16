@@ -207,6 +207,7 @@ struct MCPServersToolTests {
         #expect(off.contains("(stdio, off)"), "output was: \(off)")
         #expect(on.contains("(stdio, on)"), "output was: \(on)")
         #expect(removed.hasPrefix("Removed MCP server github."), "output was: \(removed)")
+        #expect([off, on, removed].allSatisfy { $0.hasSuffix(MCPServersToolText.nextSession) })
         #expect(try await setup.stored.isEmpty)
         #expect(setup.questions.all.isEmpty)
     }

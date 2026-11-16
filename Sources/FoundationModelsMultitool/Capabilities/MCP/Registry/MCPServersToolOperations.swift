@@ -111,7 +111,7 @@ extension AddMCPServer {
             try await context.requireApproval(MCPServersToolText.approval(adding: entry))
             let references = try await context.registry.requestSecrets(keys, server: name)
             let added = try await context.registry.add(try entry.setting(references: references))
-            return "Added MCP server \(MCPServersToolText.line(added))"
+            return "Added MCP server \(MCPServersToolText.line(added))\n\(MCPServersToolText.nextSession)"
         }
     }
 }
@@ -176,7 +176,7 @@ extension EditMCPServer {
             }
             let references = try await context.registry.requestSecrets(keys, server: changed.name)
             let saved = try await context.registry.update(named: name, with: update, references: references)
-            return "Changed MCP server \(MCPServersToolText.line(saved))"
+            return "Changed MCP server \(MCPServersToolText.line(saved))\n\(MCPServersToolText.nextSession)"
         }
     }
 }
@@ -200,7 +200,7 @@ extension RemoveMCPServer {
     func execute(in context: MCPServersToolContext) async throws -> String {
         await context.answer {
             let removed = try await context.registry.remove(named: name)
-            return "Removed MCP server \(removed.name). Its tools go away when the session starts again."
+            return "Removed MCP server \(removed.name).\n\(MCPServersToolText.nextSession)"
         }
     }
 }
@@ -222,7 +222,7 @@ extension EnableMCPServer {
     func execute(in context: MCPServersToolContext) async throws -> String {
         await context.answer {
             let server = try await context.registry.setEnabled(true, named: name)
-            return "Turned on MCP server \(MCPServersToolText.line(server))"
+            return "Turned on MCP server \(MCPServersToolText.line(server))\n\(MCPServersToolText.nextSession)"
         }
     }
 }
@@ -244,7 +244,7 @@ extension DisableMCPServer {
     func execute(in context: MCPServersToolContext) async throws -> String {
         await context.answer {
             let server = try await context.registry.setEnabled(false, named: name)
-            return "Turned off MCP server \(MCPServersToolText.line(server))"
+            return "Turned off MCP server \(MCPServersToolText.line(server))\n\(MCPServersToolText.nextSession)"
         }
     }
 }
@@ -253,6 +253,10 @@ extension DisableMCPServer {
 
 /// The texts and the argument readers of the `mcpServers` tool.
 enum MCPServersToolText {
+    /// When a change applies: the host mounts the MCP servers when a session
+    /// starts, and does not change a running session.
+    static let nextSession = "The change applies to each session that starts after it, not to this session."
+
     /// One line for a server: its name, transport, switch, and what runs.
     /// It names each env variable and header, and shows no value.
     ///
