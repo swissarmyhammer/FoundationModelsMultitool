@@ -3,8 +3,8 @@ assignees:
 - claude-code
 depends_on:
 - 01M7JPDJGFNFN7NCC1RP0RJBX5
-position_column: todo
-position_ordinal: '8380'
+position_column: done
+position_ordinal: ffffffff8680
 title: 'MCP servers: the mcpServers tool for the model (D100)'
 ---
 `MCPServersTool` (public struct over `OperationTool`, the same form as `SessionsTool`), with `graphQLEndpoints` = [MCPServersGraph] over the same registry.
