@@ -22,7 +22,8 @@ import ULID
 @Generable
 @Operation(
     verb: "list", noun: "sessions",
-    description: "List the sessions on this server, the newest first. Each filter that you give must match.")
+    description: "List the sessions on this server, the newest first. Each filter that you give must match.",
+    isInferable: true)
 struct ListSessions {
     /// The working folder of the sessions.
     @Guide(description: "Optional. The absolute path of the working folder of the sessions. ~ expands.")
@@ -106,7 +107,8 @@ extension ListSessions {
 @Generable
 @Operation(
     verb: "check", noun: "session",
-    description: "Give the state, the agent, the folder, the tags and the last summary of a session. It never waits.")
+    description: "Give the state, the agent, the folder, the tags and the last summary of a session. It never waits.",
+    isInferable: true)
 struct CheckSession {
     /// The id of the session to check.
     @Guide(description: "The id of the session.")
