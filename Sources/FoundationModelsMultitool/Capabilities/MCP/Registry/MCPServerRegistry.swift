@@ -11,6 +11,7 @@
 // nothing and gives no change.
 
 import Foundation
+import Synchronization
 
 /// A change of one field or more of one MCP server. A field that is `nil`
 /// does not change.
@@ -152,7 +153,7 @@ public actor MCPServerRegistry {
     let secrets: (any MCPServerSecrets)?
 
     /// The subscribers of ``changes()``.
-    private var subscribers: [UUID: AsyncStream<MCPServerChange>.Continuation] = [:]
+    private let subscribers = Mutex<[UUID: AsyncStream<MCPServerChange>.Continuation]>([:])
 
     /// Makes a registry over the storage of a host.
     ///
@@ -307,31 +308,25 @@ public actor MCPServerRegistry {
     // MARK: - Changes
 
     /// A new stream of the changes after this call. The stream ends when the
-    /// subscriber stops it.
+    /// subscriber stops it. The call is not isolated, so the subscriber gets
+    /// each change that starts after the call returns.
     ///
     /// - Returns: The stream.
-    public func changes() -> AsyncStream<MCPServerChange> {
+    public nonisolated func changes() -> AsyncStream<MCPServerChange> {
         let (stream, continuation) = AsyncStream.makeStream(of: MCPServerChange.self)
         let id = UUID()
-        subscribers[id] = continuation
+        subscribers.withLock { $0[id] = continuation }
         continuation.onTermination = { [weak self] _ in
-            Task { await self?.unsubscribe(id) }
+            _ = self?.subscribers.withLock { $0.removeValue(forKey: id) }
         }
         return stream
-    }
-
-    /// Removes one subscriber.
-    ///
-    /// - Parameter id: The subscriber.
-    private func unsubscribe(_ id: UUID) {
-        subscribers[id] = nil
     }
 
     /// Gives a change to each subscriber.
     ///
     /// - Parameter change: The change.
     private func publish(_ change: MCPServerChange) {
-        for continuation in subscribers.values {
+        for continuation in subscribers.withLock({ Array($0.values) }) {
             continuation.yield(change)
         }
     }

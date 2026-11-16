@@ -80,7 +80,7 @@ struct MCPServerSecretsTests {
         let storage = InMemoryMCPServerStorage()
         let secrets = RecordingSecrets()
         let registry = MCPServerRegistry(storage: storage, secrets: secrets)
-        var events = await registry.changes().makeAsyncIterator()
+        var events = registry.changes().makeAsyncIterator()
 
         let added = try await registry.add(Self.remote, secrets: [.header("Authorization"): Self.token])
         let event = try #require(await events.next())

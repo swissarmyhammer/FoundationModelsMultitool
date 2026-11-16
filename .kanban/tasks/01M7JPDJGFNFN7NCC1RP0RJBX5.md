@@ -3,8 +3,8 @@ assignees:
 - claude-code
 depends_on:
 - 01M7JPDE7V421HS48XQMHTYQ47
-position_column: todo
-position_ordinal: '8280'
+position_column: done
+position_ordinal: ffffffff8580
 title: 'MCP servers: the mcpServers GraphQL endpoint'
 ---
 `MCPServersGraph` (GraphQLEndpoint, name `mcpServers`, version 1, scope server), over one `MCPServerRegistry`, in the same form as `SessionsGraph` (MT-10).

@@ -287,7 +287,7 @@ struct MCPServerRegistryTests {
     @Test("each change gives one event with the server after the change and the name before it")
     func eachChangeGivesOneEvent() async throws {
         let (_, registry) = Self.registry()
-        var events = await registry.changes().makeAsyncIterator()
+        var events = registry.changes().makeAsyncIterator()
 
         _ = try await registry.add(Self.github)
         _ = try await registry.update(named: "github", with: MCPServerUpdate(name: "gh"))
@@ -307,7 +307,7 @@ struct MCPServerRegistryTests {
     @Test("a refused change gives no event")
     func aRefusedChangeGivesNoEvent() async throws {
         let (_, registry) = Self.registry(holding: [Self.github])
-        var events = await registry.changes().makeAsyncIterator()
+        var events = registry.changes().makeAsyncIterator()
 
         _ = await Self.registryError { _ = try await registry.add(Self.github) }
         _ = try await registry.add(Self.linear)
