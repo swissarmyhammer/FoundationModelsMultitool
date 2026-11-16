@@ -28,6 +28,12 @@ public enum MCPServerRegistryError: Error, Equatable, Sendable, CustomStringConv
     /// reference (D101).
     case literalSecret(server: String, key: MCPSecretKey)
 
+    /// The user declined to give a secret, or the host could not ask.
+    case secretDeclined(server: String, key: MCPSecretKey)
+
+    /// The change gives a secret value, and the host has no Keychain port.
+    case noSecretStore
+
     /// The change gives the keys of two transports, or the keys of the
     /// other transport than the transport of the server.
     case conflictingTransport(server: String)
@@ -51,6 +57,11 @@ public enum MCPServerRegistryError: Error, Equatable, Sendable, CustomStringConv
         case .literalSecret(let server, let key):
             "The \(key) of MCP server \"\(server)\" must be a \(MCPSecretKey.keychainPrefix)<name> reference. "
                 + "Give the secret through the secret prompt, not as text."
+        case .secretDeclined(let server, let key):
+            "The user did not give the \(key) of MCP server \"\(server)\". Nothing changed. "
+                + "Ask the user before you try again."
+        case .noSecretStore:
+            "This host cannot store a secret. Nothing changed. Ask the user to add the secret in Settings."
         case .conflictingTransport(let server):
             "The change of MCP server \"\(server)\" mixes the two transports. Give a command with args and env "
                 + "(stdio), or a url with headers (http)."

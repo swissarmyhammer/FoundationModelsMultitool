@@ -3,8 +3,8 @@ assignees:
 - claude-code
 depends_on:
 - 01M7JPDAHVBEZTAPYAQTA3GEBF
-position_column: todo
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffffff8480
 title: 'MCP servers: secrets through a host secret port, never in a result'
 ---
 D101: the store holds only `keychain:<name>` references for secrets.

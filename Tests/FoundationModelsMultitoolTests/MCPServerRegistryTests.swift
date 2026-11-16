@@ -169,7 +169,8 @@ struct MCPServerRegistryTests {
 
         let expected = MCPServerEntry(
             name: "github",
-            transport: .stdio(command: "/usr/local/bin/github-mcp", args: ["--stdio", "--verbose"], env: ["LOG": "info"]))
+            transport: .stdio(
+                command: "/usr/local/bin/github-mcp", args: ["--stdio", "--verbose"], env: ["LOG": "info"]))
         #expect(updated == expected)
         #expect(try await storage.loadServers() == [expected, Self.linear])
     }

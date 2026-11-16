@@ -148,6 +148,9 @@ public actor MCPServerRegistry {
     /// The names that the host keeps for its own tools.
     private let reservedNames: Set<String>
 
+    /// The Keychain port of the host, or `nil` when the host gave none.
+    let secrets: (any MCPServerSecrets)?
+
     /// The subscribers of ``changes()``.
     private var subscribers: [UUID: AsyncStream<MCPServerChange>.Continuation] = [:]
 
@@ -157,9 +160,14 @@ public actor MCPServerRegistry {
     ///   - storage: The storage.
     ///   - reservedNames: The names that the host keeps for its own tools,
     ///     for example `files` and `shell`. A server cannot have one.
-    public init(storage: any MCPServerStorage, reservedNames: Set<String> = []) {
+    ///   - secrets: The Keychain port of the host, for a change that gives
+    ///     a secret value. With no port, such a change is refused.
+    public init(
+        storage: any MCPServerStorage, reservedNames: Set<String> = [], secrets: (any MCPServerSecrets)? = nil
+    ) {
         self.storage = storage
         self.reservedNames = reservedNames
+        self.secrets = secrets
     }
 
     // MARK: - Read
@@ -192,11 +200,7 @@ public actor MCPServerRegistry {
     ///   storage.
     @discardableResult
     public func add(_ entry: MCPServerEntry) async throws -> MCPServerEntry {
-        try check(entry)
-        var servers = try await storage.loadServers()
-        guard !servers.contains(where: { $0.name == entry.name }) else {
-            throw MCPServerRegistryError.duplicateName(entry.name)
-        }
+        var servers = try await validate(entry)
         servers.append(entry)
         try await storage.saveServers(servers)
         publish(.added(entry))
@@ -214,17 +218,62 @@ public actor MCPServerRegistry {
     ///   error of the storage.
     @discardableResult
     public func update(named name: String, with update: MCPServerUpdate) async throws -> MCPServerEntry {
+        try await self.update(named: name, with: update, references: [:])
+    }
+
+    /// Changes the given fields of one server, then sets a reference for
+    /// each secret key, and saves.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the server.
+    ///   - update: The change.
+    ///   - references: The reference of each secret key.
+    /// - Returns: The server after the change.
+    /// - Throws: ``MCPServerRegistryError`` for a refusal, and each error of
+    ///   the storage.
+    func update(
+        named name: String, with update: MCPServerUpdate, references: [MCPSecretKey: String]
+    ) async throws -> MCPServerEntry {
         var servers = try await storage.loadServers()
         let index = try Self.index(of: name, in: servers)
-        let changed = try update.applied(to: servers[index])
-        try check(changed)
-        if changed.name != name, servers.contains(where: { $0.name == changed.name }) {
-            throw MCPServerRegistryError.duplicateName(changed.name)
-        }
+        let changed = try update.applied(to: servers[index]).setting(references: references)
+        try check(changed, replacing: name, in: servers)
         servers[index] = changed
         try await storage.saveServers(servers)
         publish(.updated(changed, previousName: name))
         return changed
+    }
+
+    /// The server `name` after `update`, checked, with no save.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the server.
+    ///   - update: The change.
+    /// - Returns: The server after the change.
+    /// - Throws: ``MCPServerRegistryError`` for a refusal, and each error of
+    ///   the storage.
+    func changed(named name: String, with update: MCPServerUpdate) async throws -> MCPServerEntry {
+        let servers = try await storage.loadServers()
+        let changed = try update.applied(to: servers[try Self.index(of: name, in: servers)])
+        try check(changed, replacing: name, in: servers)
+        return changed
+    }
+
+    /// Checks a new server against the rules and the stored servers, with
+    /// no save.
+    ///
+    /// - Parameter entry: The server.
+    /// - Returns: The stored servers.
+    /// - Throws: ``MCPServerRegistryError`` for a refusal, and each error of
+    ///   the storage.
+    @discardableResult
+    func validate(_ entry: MCPServerEntry) async throws -> [MCPServerEntry] {
+        try check(entry)
+        let servers = try await storage.loadServers()
+        guard !servers.contains(where: { $0.name == entry.name }) else {
+            throw MCPServerRegistryError.duplicateName(entry.name)
+        }
+        return servers
     }
 
     /// Removes one server.
@@ -288,6 +337,22 @@ public actor MCPServerRegistry {
     }
 
     // MARK: - Rules
+
+    /// Checks a changed server against the rules and the other servers.
+    ///
+    /// - Parameters:
+    ///   - entry: The server after the change.
+    ///   - name: The name of the server before the change.
+    ///   - servers: The stored servers.
+    /// - Throws: ``MCPServerRegistryError`` for a refusal.
+    private func check(
+        _ entry: MCPServerEntry, replacing name: String, in servers: [MCPServerEntry]
+    ) throws(MCPServerRegistryError) {
+        try check(entry)
+        if entry.name != name, servers.contains(where: { $0.name == entry.name }) {
+            throw .duplicateName(entry.name)
+        }
+    }
 
     /// The index of the server with the name.
     ///
