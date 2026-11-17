@@ -14,9 +14,7 @@ import Operations
 
 /// Lists the MCP servers (`list mcp servers`).
 @Generable
-@Operation(
-    verb: "list", noun: "mcp servers", description: "List the MCP servers of this Mac, with their state.",
-    isInferable: true)
+@Operation(verb: "list", noun: "mcp servers", description: "List the MCP servers of this Mac, with their state.")
 struct ListMCPServers {}
 
 extension ListMCPServers {
@@ -37,7 +35,7 @@ extension ListMCPServers {
 
 /// Shows one MCP server (`show mcp server`).
 @Generable
-@Operation(verb: "show", noun: "mcp server", description: "Show one MCP server.", isInferable: true)
+@Operation(verb: "show", noun: "mcp server", description: "Show one MCP server.")
 struct ShowMCPServer {
     /// The name of the server.
     @Guide(description: "The name of the MCP server.")
