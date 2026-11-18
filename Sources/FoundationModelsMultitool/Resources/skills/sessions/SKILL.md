@@ -5,26 +5,26 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Sessions
 
 ## An agent is a session
 
-Each session has an **id** (a ULID that never changes), a **short id** (the last 7 characters of the id, in lower case) and a **name** (its title). The **slug** is the name in lower case, with each run of other characters changed to one hyphen.
+Each session has an **id** (a ULID that never changes), a **short id** (the last 7 characters of the id, in lower case) and a **name** (its title). The **slug** is the name in lower case, with each run of other characters changed to one hyphen. A session with no name has its short id as its slug. `list sessions` shows the short id and the slug of each session.
 
 A new session gets the name of its agent: `claude-code`. When the folder already has a session with that name, the new session gets the next number: `claude-code-2`. The name stays until a rename.
 
 An agent and a session have one namespace. `@claude-code` names the session with the slug `claude-code`. When no session has that slug and an agent has that name, a send starts a new session of that agent.
 
-Three forms name one session:
+These forms name one session:
 
-- `@01JD3X9K7QZ8M2N4P6R8T0V2W4` — the id. It always wins.
-- `@v2w4abc` — the short id.
-- `@claude-code-2` — the slug.
+- `@<id>` or `<id>`, for example `@01JD3X9K7QZ8M2N4P6R8T0V2W4`. The id always wins.
+- `@<short id>` or `<short id>`, for example `@v2w4abc`.
+- `@<slug>`, for example `@claude-code-2`. A slug always needs the `@`.
 
-The lookup tries the id, then the short id, then the slug. It looks first in the folder of the sender, then in all sessions. When two sessions match, nothing is sent, and the answer lists the matches. Then use the id or the short id.
+The lookup tries the id, then the short id, then the slug. For a short id and a slug, it looks first in the folder of your session, then in all sessions. An archived session matches only its id. When two sessions match, the call does nothing (code `AMBIGUOUS_REFERENCE`), and the answer lists each match with its id, name and folder. Then use the id or the short id.
 
 ## A mention in a user prompt: the app already sent it
 
@@ -36,7 +36,12 @@ Sent to claude-code-2 (v2w4abc): delivered
 ```
 
 - Do not send that message again. The receipt is the proof that it went.
-- `delivered`: the session was idle and starts a turn. `queued`: the session works and gets the message when its turn ends. `refused: <reason>`: the message did not go. Tell the user the reason. Send again only when the user asks.
+- Read the receipt word:
+  - `delivered`: the session was idle. The message starts a turn.
+  - `queued`: the session works. It gets the message when its turn ends.
+  - `sent`: the session is not live. The message is in its inbox, and no turn starts.
+  - `started`: no session had the name. A new session of that agent started with the message.
+  - `refused`: the message did not go. The reason follows the word, as `refused: <reason>`. Tell the user the reason. Send again only when the user asks.
 - Do the rest of the prompt that is for you. When the prompt has only the mention and the message, tell the user in one line that the message went, and stop.
 
 ## A send that you make
@@ -51,10 +56,12 @@ Use `send message` when you write `@<session>` yourself, or when the user asks f
 {"op": "send message", "to": "@v2w4abc", "message": "The schema changed. Pull before you continue."}
 ```
 
-- `to` takes `@<id>`, `@<short id>` or `@<slug>`. `#<tag>` sends to each live session with the tag, but not to you.
+- `to` takes one session in a form above. `@<agent name>` starts a new session of that agent when no session has that slug.
+- `#<tag>` sends to each live session with the tag, but not to you.
+- Two aliases: `@<agent>:/path` looks for `@<agent>` in that folder first, and a folder path alone (`/path` or `~/path`) names the newest root session in that folder. The answer then starts with a `Rewrite:` line that tells the form that the tool used.
 - The target sees only `message`. Put all the facts in it: the goal, the files, and what to send back.
 - When you do not know the target, find it first (below). Do not guess a slug.
-- Read the answer. It gives one receipt for each target. On `refused`, tell the user the reason.
+- Read the answer. It gives one line for each target, with the same words as the receipt: delivered, queued, sent, started or refused. On refused, tell the user the reason.
 - An archived session takes no messages. Start a new session for its work.
 
 ## Messages that come to you
@@ -92,19 +99,21 @@ A message that the user wrote in another session starts with a line that names t
 | List the sessions of a folder | `{"op": "list sessions", "cwd": "~/code/api"}` |
 | Find the sessions of an agent | `{"op": "list sessions", "agent": "claude-code"}` |
 | Find the working sessions | `{"op": "list sessions", "state": "working"}` |
-| Also find the sessions on disk only | add `"includeRecorded": true` |
+| Also find the sessions that are not live | `{"op": "list sessions", "includeRecorded": true}` |
 | Get the state and the last summary | `{"op": "check session", "id": "v2w4abc"}` |
 | Read the messages to you | `{"op": "read inbox"}` |
 | Start a session | `{"op": "start session", "agent": "claude-code", "cwd": "~/code/api", "message": "...", "title": "api-tests"}` |
-| Rename a session | `{"op": "rename session", "id": "v2w4abc", "title": "api-tests"}` |
+| Rename a session | `{"op": "rename session", "id": "@claude-code-2", "title": "api-tests"}` |
 | Pin or unpin a session | `{"op": "pin session", "id": "v2w4abc"}`, `{"op": "unpin session", "id": "v2w4abc"}` |
-| Tag or untag a session | `{"op": "tag session", "id": "v2w4abc", "tags": ["release"]}` |
+| Tag or untag a session | `{"op": "tag session", "id": "v2w4abc", "tags": ["release"]}`, `{"op": "untag session", "id": "v2w4abc", "tags": ["release"]}` |
 | Archive a session | `{"op": "archive session", "id": "v2w4abc"}` |
 
-- With no `id`, `rename session` renames your session.
+- The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
+- The `parent` and `startedBy` filters of `list sessions` take a full id only.
+- With no `id`, `rename session`, `pin session`, `unpin session`, `tag session` and `untag session` act on your session.
 - A rename changes the slug. Old `@<slug>` mentions then can name no session. The id and the short id do not change.
 - A session is stored in its working folder. The sessions of one folder work together and share the board of the folder.
 - `start session` opens no tab. The reply of the new session comes to you as a message.
 - `check session` never waits. Do not call it in a loop: the reply comes to you as a message.
 - Archive a session only when the user asks, or when you started it and its work is done.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, and so on.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, and so on.

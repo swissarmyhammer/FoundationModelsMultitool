@@ -17,7 +17,8 @@ import Testing
     private static let descriptionKey = "description: "
 
     /// The file of the `sessions` skill, below ``BuiltinSkills/directory``.
-    private static var sessionsSkillFile: URL {
+    /// `SessionsSkillTests` reads the text of the skill from this file too.
+    static var sessionsSkillFile: URL {
         BuiltinSkills.directory
             .appendingPathComponent("sessions", isDirectory: true)
             .appendingPathComponent("SKILL.md", isDirectory: false)
