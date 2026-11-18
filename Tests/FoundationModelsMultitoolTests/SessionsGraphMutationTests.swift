@@ -328,6 +328,15 @@ struct SessionsGraphMutationTests {
                 "mutation { unarchiveSession(input: {id: \"\(scene.archived.ulidString)\"}) { id } }"
             }),
         ParityCase(
+            op: "fork session",
+            payload: { scene in
+                Fixtures.payload("fork session", [("id", scene.target.ulidString), ("message", firstMessage)])
+            },
+            mutation: { scene in
+                "mutation { forkSession(input: {id: \"\(scene.target.ulidString)\", message: \"\(firstMessage)\"}) "
+                    + "{ id } }"
+            }),
+        ParityCase(
             op: "send message",
             payload: { scene in
                 Fixtures.payload("send message", [("to", scene.target.ulidString), ("message", messageText)])
@@ -441,6 +450,10 @@ struct SessionsGraphMutationTests {
             code: "ARCHIVED_SESSION", fault: "an archive of an archived session",
             payload: { scene in Fixtures.payload("archive session", [("id", scene.archived.ulidString)]) },
             mutation: { scene in "mutation { archiveSession(input: {id: \"\(scene.archived.ulidString)\"}) { id } }" }),
+        RefusalCase(
+            code: "ARCHIVED_SESSION", fault: "a fork of an archived session",
+            payload: { scene in Fixtures.payload("fork session", [("id", scene.archived.ulidString)]) },
+            mutation: { scene in "mutation { forkSession(input: {id: \"\(scene.archived.ulidString)\"}) { id } }" }),
         RefusalCase(
             code: "NOT_ARCHIVED", fault: "an unarchive of a session that is not archived",
             payload: { scene in Fixtures.payload("unarchive session", [("id", scene.target.ulidString)]) },
@@ -750,6 +763,9 @@ struct SessionsGraphMutationTests {
         },
         HiddenCase(action: "unarchive a hidden session") { scene in
             "mutation { unarchiveSession(input: {id: \"\(scene.stranger.ulidString)\"}) { id } }"
+        },
+        HiddenCase(action: "fork a hidden session") { scene in
+            "mutation { forkSession(input: {id: \"\(scene.stranger.ulidString)\"}) { id } }"
         },
         HiddenCase(action: "send to a hidden session") { scene in
             "mutation { sendMessage(input: {to: \"\(scene.stranger.ulidString)\", message: \"\(messageText)\"}) "
@@ -1325,6 +1341,9 @@ struct SessionsGraphMutationTests {
         AliasCase(
             verb: "unarchive", mutation: "unarchiveSession",
             input: { scene in "{id: \"\(scene.archived.ulidString)\"}" }, selection: "id"),
+        AliasCase(
+            verb: "fork", mutation: "forkSession", input: { scene in "{id: \"\(scene.target.ulidString)\"}" },
+            selection: "id"),
         AliasCase(
             verb: "send", mutation: "sendMessage",
             input: { scene in "{to: \"\(scene.target.ulidString)\", message: \"\(messageText)\"}" },

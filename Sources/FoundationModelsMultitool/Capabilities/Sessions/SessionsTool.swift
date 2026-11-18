@@ -1,6 +1,6 @@
 // `SessionsTool` — the `sessions` tool: the operations that find, check,
-// read, message, start, tag, rename, archive and export the sessions of the
-// server
+// read, message, start, tag, rename, archive, fork and export the sessions of
+// the server
 // through a `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
 //
 // The tool has the shape of the `agents` tool of FoundationModelsAgents: a
@@ -17,17 +17,18 @@ import Operations
 /// The `sessions` tool: find the sessions of the server, check one of them,
 /// read the messages that other sessions sent to the caller session, send a
 /// message and reply to one, start a new session, tag, untag, rename, pin
-/// and unpin a session, archive and unarchive a session, and export a session
-/// as Markdown.
+/// and unpin a session, archive and unarchive a session, fork a session from
+/// here, and export a session as Markdown.
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
 /// `untag session`, `rename session`, `pin session`, `unpin session`,
-/// `archive session`, `unarchive session` and `export session`. In code mode
-/// each one is a verb of `tools.sessions`: `listSessions`, `checkSession`,
-/// `readInbox`, `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
-/// `untagSession`, `renameSession`, `pinSession`, `unpinSession`,
-/// `archiveSession`, `unarchiveSession` and `exportSession`. Each answer is
+/// `archive session`, `unarchive session`, `fork session` and
+/// `export session`. In code mode each one is a verb of `tools.sessions`:
+/// `listSessions`, `checkSession`, `readInbox`, `sendMessage`,
+/// `replyMessage`, `startSession`, `tagSession`, `untagSession`,
+/// `renameSession`, `pinSession`, `unpinSession`, `archiveSession`,
+/// `unarchiveSession`, `forkSession` and `exportSession`. Each answer is
 /// plain text, and each error is a corrective text the model reads in the
 /// same turn, never a thrown error.
 ///
@@ -99,6 +100,7 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(UnpinSession.self),
                 AnyOperation(ArchiveSession.self),
                 AnyOperation(UnarchiveSession.self),
+                AnyOperation(ForkSession.self),
                 AnyOperation(ExportSession.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))
@@ -107,10 +109,11 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// The verb aliases of the tool over the default aliases of the
     /// resolver: `read` stays `read`. The default table makes `read` the
     /// verb `get`, and then `read inbox` names no operation. `save` is
-    /// `export` (D86).
+    /// `export`, and `branch` is `fork` (D86).
     static let verbAliases: [String: String] = [
         ReadInbox.verb: ReadInbox.verb,
         "save": ExportSession.verb,
+        "branch": ForkSession.verb,
     ]
 
     /// The model-facing name of the tool: `sessions`.

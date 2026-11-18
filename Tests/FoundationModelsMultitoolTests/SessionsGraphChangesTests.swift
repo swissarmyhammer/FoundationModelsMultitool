@@ -554,6 +554,26 @@ struct SessionsGraphChangesTests {
         #expect(try Self.sequence(of: turn.cursor) > Self.sequence(of: added.cursor))
     }
 
+    /// A fork gives the new session as added (D205): the directory sends
+    /// `started` for the fork, with the kind `fork`.
+    @Test("a fork gives the new session as added")
+    func aForkGivesAdded() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let source = Fixtures.summary()
+        directory.register(source)
+        let graph = SessionsGraph.endpoint(of: directory)
+        let before = try await Self.cursor(of: graph)
+        var subscription = try await Self.subscribe(to: graph, after: before)
+
+        let reply = try await Self.run(
+            "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { id } }", on: graph)
+        let forkID = try #require(try reply.object("forkSession")["id"] as? String)
+        let fork = try #require(ULID(ulidString: forkID))
+        let added = try await subscription.nextChange()
+
+        #expect(added == Self.change(cursor: added.cursor, added: fork))
+    }
+
     /// After a change, the root query `cursor` gives the cursor of that
     /// change.
     @Test("the root cursor query gives the cursor of the newest change")

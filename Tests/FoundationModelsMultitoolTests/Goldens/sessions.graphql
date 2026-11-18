@@ -371,6 +371,17 @@ input UnarchiveSessionInput {
   id: ID!
 }
 
+"""The session to fork, and the first prompt of the fork."""
+input ForkSessionInput {
+  """
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """The first prompt of the fork. With none, the fork waits for a message."""
+  message: String
+}
+
 """A message and its address."""
 input SendMessageInput {
   """
@@ -542,6 +553,14 @@ type Mutation {
   unarchiveSession(
     """The archived session."""
     input: UnarchiveSessionInput!
+  ): Session!
+
+  """
+  Forks a session: a new session of the kind FORK, in the folder of the source, with the history of the source up to its last completed turn. Then the fork works alone. An archived source gives ARCHIVED_SESSION, and a server that cannot fork gives FORK_UNSUPPORTED. Gives the fork.
+  """
+  forkSession(
+    """The session and the first prompt of the fork."""
+    input: ForkSessionInput!
   ): Session!
 
   """

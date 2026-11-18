@@ -3,10 +3,17 @@ import ULID
 
 /// A session directory that is a value type: each call goes to a backing
 /// `InMemorySessionDirectory`. A test of the one endpoint of each directory
-/// uses it as a directory with no identity.
+/// uses it as a directory with no identity, and a test of a server that
+/// cannot fork uses it with `canFork` false.
 struct ForwardingSessionDirectory: SessionDirectory {
     /// The directory that each call goes to.
     let backing: InMemorySessionDirectory
+
+    /// True when a fork goes to the backing directory. False makes the
+    /// directory a server that cannot fork: each fork throws
+    /// `SessionDirectoryError.forkUnsupported`, as the default of the
+    /// protocol does.
+    var canFork = true
 
     /// The summaries of the backing directory that match `query`.
     ///
@@ -33,6 +40,19 @@ struct ForwardingSessionDirectory: SessionDirectory {
     /// - Throws: The error of the backing directory.
     func start(_ request: SessionStartRequest) async throws -> SessionSummary {
         try await backing.start(request)
+    }
+
+    /// Forks a session in the backing directory, when ``canFork`` is true.
+    ///
+    /// - Parameter request: The fork request.
+    /// - Returns: The summary of the fork.
+    /// - Throws: `SessionDirectoryError.forkUnsupported` when ``canFork`` is
+    ///   false, else the error of the backing directory.
+    func fork(_ request: SessionForkRequest) async throws -> SessionSummary {
+        guard canFork else {
+            throw SessionDirectoryError.forkUnsupported
+        }
+        return try await backing.fork(request)
     }
 
     /// Adds tags in the backing directory.

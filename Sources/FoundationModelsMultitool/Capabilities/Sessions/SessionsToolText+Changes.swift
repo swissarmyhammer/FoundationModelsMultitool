@@ -1,7 +1,7 @@
 // The text of the change operations of the `sessions` tool: the answers of
-// `start session`, `tag session`, `untag session`, `rename session` and
-// `archive session` and `unarchive session`, and their correctives
-// (session.md section 8.2, D204).
+// `start session`, `tag session`, `untag session`, `rename session`,
+// `archive session`, `unarchive session` and `fork session`, and their
+// correctives (session.md section 8.2, D204, D205).
 
 import FoundationModelsExtras
 import ULID
@@ -26,6 +26,13 @@ extension SessionsToolText {
     static let unarchiveSentence = """
         The session is unarchived: it shows in the lists again. It is a recorded session until a client opens it, \
         and its transcript and its inbox are as they were.
+        """
+
+    /// The sentence of the answer of `fork session` (D205): the fork works
+    /// alone, and a message to it uses `send message`.
+    static let forkSentence = """
+        The fork has the history up to the cut and then works alone: it does not report back to you. To send it \
+        a message, use `\(SendMessage.opString)`.
         """
 
     /// The sentence of the corrective of a session operation whose `id` names
@@ -118,6 +125,15 @@ extension SessionsToolText {
     /// - Returns: The corrective.
     static func notArchived(_ id: ULID) -> String {
         "Session \(id.ulidString) is not archived: it shows in the lists already. \(notChangedSentence)"
+    }
+
+    /// The answer of `fork session`: the id, the short id and the name of the
+    /// fork, then ``forkSentence``.
+    ///
+    /// - Parameter fork: The fork.
+    /// - Returns: The answer.
+    static func forked(_ fork: SessionSummary) -> String {
+        "Forked session \(fork.id.ulidString): short id \(fork.shortID), name @\(fork.slug). \(forkSentence)"
     }
 
     /// The corrective of a text argument that holds only space.

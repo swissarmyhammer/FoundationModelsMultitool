@@ -1,7 +1,7 @@
 // The mutations of the `sessions` GraphQL endpoint (MT-10, EXTRAS-9 rule 7):
 // `startSession`, `tagSession`, `untagSession`, `renameSession`,
 // `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
-// `sendMessage` and `replyMessage`.
+// `forkSession`, `sendMessage` and `replyMessage`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, and calls the work of that op in ``SessionsToolContext``:
@@ -16,8 +16,8 @@
 // call with no viewer acts as the agent of the caller session, as the tool
 // does. An external client archives and unarchives only the sessions that it
 // can see; it
-// tags, untags, renames, pins, unpins, sends and replies only to the sessions
-// that it owns;
+// tags, untags, renames, pins, unpins, forks, sends and replies only to the
+// sessions that it owns;
 // and it cannot start a session.
 
 import Foundation
@@ -66,6 +66,9 @@ struct SessionsGraphMutation: Sendable {
     /// `unarchiveSession` (D204).
     static let unarchive = Self(UnarchiveSession.self, adding: sessionIDAliases)
 
+    /// `forkSession` (D205).
+    static let fork = Self(ForkSession.self, adding: sessionIDAliases)
+
     /// `sendMessage`: its input has the source session, which the op does
     /// not have (D199 (f)).
     static let send = Self(SendMessage.self, adding: ["fromSession": ["fromSessionId", "from_session"]])
@@ -74,7 +77,7 @@ struct SessionsGraphMutation: Sendable {
     static let reply = Self(ReplyMessage.self)
 
     /// Each mutation of the endpoint.
-    static let all = [start, tag, untag, rename, pin, unpin, archive, unarchive, send, reply]
+    static let all = [start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply]
 
     /// The tool op of the mutation. The module name tells it from the
     /// `OperationDefinition` of GraphQL.
@@ -507,6 +510,31 @@ extension SessionsGraphResolver {
         }
     }
 
+    /// Resolves `Mutation.forkSession` (D205): the fork has the history of
+    /// the source up to its last completed turn. A running turn is not
+    /// copied, and it continues in the source. The source is a session that
+    /// the viewer owns, as for the other changes of one session: an external
+    /// client forks only a session that it owns. A fork from a device opens a
+    /// tab only on that client, and a fork by the agent opens no tab.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: The input object.
+    /// - Returns: The fork.
+    /// - Throws: The coded error of a refusal, and each other error of the
+    ///   directory.
+    func forkSession(
+        context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphForkInput>
+    ) async throws -> SessionsGraphSession {
+        try await Self.coding {
+            let forker = try context.actor(of: .fork)
+            let source = try await context.ownedSession(arguments.input.id)
+            return SessionsGraphSession(
+                try await context.actions.fork(
+                    session: source, at: .lastCompletedTurn, firstPrompt: arguments.input.message, by: forker))
+        }
+    }
+
     /// Resolves `Mutation.sendMessage`. The message of a client is input of
     /// its user; the directory applies the same rules as for the tool.
     ///
@@ -866,6 +894,18 @@ extension SessionsGraphAPI {
         .description("The archived session to unarchive.")
     }
 
+    /// The `ForkSessionInput` input object.
+    ///
+    /// - Returns: The input object.
+    static func forkInput() -> SchemaType {
+        Input(SessionsGraphForkInput.self, as: SessionsGraphMutation.fork.inputName) {
+            InputField("id", at: \.id).description(ownedIDDescription)
+            InputField("message", at: \.message)
+                .description("The first prompt of the fork. With none, the fork waits for a message.")
+        }
+        .description("The session to fork, and the first prompt of the fork.")
+    }
+
     /// The `SendMessageInput` input object.
     ///
     /// - Returns: The input object.
@@ -938,6 +978,12 @@ extension SessionsGraphAPI {
                 description: "Unarchives a session: it shows in the lists again. It stays a recorded session until a "
                     + "client opens it, and its transcript and its inbox are as they were. A session that is not "
                     + "archived gives NOT_ARCHIVED."),
+            mutationField(
+                .fork, at: SessionsGraphResolver.forkSession, input: "The session and the first prompt of the fork.",
+                description: "Forks a session: a new session of the kind FORK, in the folder of the source, with the "
+                    + "history of the source up to its last completed turn. Then the fork works alone. An archived "
+                    + "source gives ARCHIVED_SESSION, and a server that cannot fork gives FORK_UNSUPPORTED. Gives "
+                    + "the fork."),
             mutationField(
                 .send, at: SessionsGraphResolver.sendMessage, input: "The address and the text.",
                 description: "Sends a message from you to a session, an agent, a folder or a tag. "

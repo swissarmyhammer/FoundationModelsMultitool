@@ -479,6 +479,15 @@ struct SessionsGraphUnarchiveInput: Codable, Sendable {
     let id: ToolkitID
 }
 
+/// The `ForkSessionInput` input object of `Mutation.forkSession` (D205).
+struct SessionsGraphForkInput: Codable, Sendable {
+    /// The session to fork, in any letter case.
+    let id: ToolkitID
+
+    /// The first prompt of the fork, or `nil` for none.
+    let message: String?
+}
+
 /// The `SendMessageInput` input object of `Mutation.sendMessage`.
 struct SessionsGraphSendInput: Codable, Sendable {
     /// The address of the message, in a form of session.md section 9.

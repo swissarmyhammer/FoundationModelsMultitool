@@ -41,7 +41,8 @@ import Synchronization
 /// Its mutations (EXTRAS-9 rule 7) have the names of the code-mode verbs of
 /// the tool ops, and share their work and their correctives:
 /// `startSession`, `tagSession`, `untagSession`, `renameSession`,
-/// `archiveSession`, `unarchiveSession`, `sendMessage` and `replyMessage`,
+/// `archiveSession`, `unarchiveSession`, `forkSession`, `sendMessage` and
+/// `replyMessage`,
 /// each with one `input`.
 /// A client acts as its user, and a call with no viewer acts as the caller
 /// session. A start from a client opens a tab only on that client (section
@@ -50,7 +51,7 @@ import Synchronization
 /// Its changes follow EXTRAS-9 rule 9: `Query.cursor` gives the cursor of
 /// the newest change, and `Subscription.changes(after:)` gives each change
 /// after a cursor, one `SessionChange` for each event of the directory. A
-/// started session, a new root session among them, is `added`; a change of
+/// started session, a new root session and a fork among them, is `added`; a change of
 /// its facts, its state or its inbox, and its archive, is `changed`. A
 /// subscription gives a viewer only the changes of the sessions that it can
 /// see, and ends with `RESYNC_REQUIRED` when a change after its cursor is

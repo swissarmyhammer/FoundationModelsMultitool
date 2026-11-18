@@ -20,8 +20,29 @@ comments:
   id: 01m7qybkqbj00bjy1xqf4308dk
   text: 'Extras update (2026-11-18): `SessionForkCut` has two more cases on Extras origin/main 87d1da9 (code 96fea25): `.afterTurn(Int)` and `.beforeTurn(Int)` (0-based turn index; a missing index, or `.afterTurn(n)` of a running turn, throws `forkCutOutOfRange`). This task uses only `.callingToolCall` and `.lastCompletedTurn`. If the code switches over `SessionForkCut` (for example to make a corrective), name every case and add no `default:`. Also: Multitool main already maps the fork errors `archivedSession`, `forkCutOutOfRange` and `forkUnsupported` to ARCHIVED_SESSION, FORK_CUT_OUT_OF_RANGE and FORK_UNSUPPORTED (commit 62046875 by another session). Reuse those codes; do not add a second FORK_UNSUPPORTED.'
   timestamp: 2026-11-18T18:22:57.771380+00:00
-position_column: todo
-position_ordinal: '8480'
+- actor: claude-code
+  id: 01m7rf9wnsgtygphhcx6c81ax2
+  text: |-
+    Implementation notes (2026-11-18):
+    - Pins: Extras 87d1da9 (no move). Router moved 18bbe4da -> eba762f2 (origin/main was newer). Package.resolved is gitignored, so the pin move is local only.
+    - New file SessionsToolForkOperation.swift: the `ForkSession` op (`fork session`, `forkSession`; `message` aliases firstPrompt, prompt, text) and `SessionsToolContext.fork(session:at:firstPrompt:by:)`, which the tool op and the mutation share. A user forker sets `requestedByClient` (the tab rule of a start, D90). A blank message is no first prompt.
+    - The tool op does not check the archive itself: the directory throws `archivedSession`, and the existing corrective and ARCHIVED_SESSION map it. FORK_UNSUPPORTED comes from the existing map too. No new code.
+    - Visibility rule of `forkSession`: the source goes through `ownedSession`, as for tag, rename and pin. Thus an external client forks only a session that it owns; a session that it cannot see is NOT_FOUND. Reason: a fork with a first prompt acts on the history of the source, as a send does, and an external client sends only to sessions that it owns.
+    - Verb alias (D86): `branch` -> `fork` on the tool. The mutation gets the bare verb `fork` and the `sessionId` alias of `id` from the shared tables.
+    - `ForwardingSessionDirectory` forwards `fork`; with `canFork: false` it throws `forkUnsupported`, as the protocol default does. The FORK_UNSUPPORTED test uses that.
+    - Golden sessions.graphql re-recorded: 19 lines added, 0 removed.
+    - SKILL.md: only the one example row. The rest of the skill text stays for ^5w6e8jy.
+    - Not done here: the push and the message with the sha to the peers foundationmodelsacpagent-9e and testudoapp-9a. The commit step does that.
+  timestamp: 2026-11-18T23:19:07.193562+00:00
+- actor: claude-code
+  id: 01m7rfa037xaa55vgc2az2j4ab
+  text: |-
+    ### implement — changed
+    - evidence: 15 files. Sources: SessionsToolForkOperation.swift (new), SessionsTool.swift, SessionsToolText.swift, SessionsToolText+Changes.swift, SessionsGraphMutations.swift, SessionsGraphTypes.swift, SessionsGraphSchema.swift, SessionsGraph.swift, skills/sessions/SKILL.md. Tests: SessionsToolForkTests.swift (new, 16 tests), SessionsGraphMutationTests.swift (parity, refusal, hidden and alias cases for fork), SessionsGraphChangesTests.swift (a fork gives added), Fixtures/ForwardingSessionDirectory.swift, Goldens/sessions.graphql (+19 lines). Pins: Extras 87d1da9, Router eba762f2. swift build clean; affected suites `swift test --filter` 157 tests in 7 suites passed; full `swift test` 3128 tests in 277 suites passed, 0 failures, 0 warnings.
+    - next: review
+  timestamp: 2026-11-18T23:19:10.695068+00:00
+position_column: doing
+position_ordinal: '80'
 title: fork session and the forkSession mutation (D205)
 ---
 Decision: D205 in TestudoApp/features/decisions.md (commit 483664d). Brief: /Users/wballard/github/swissarmyhammer/.briefs/fork/mt-brief.md, items 1, 2 and 3.
@@ -44,9 +65,9 @@ Precondition: the Extras sha with `SessionDirectory.fork(_:)`, `SessionForkReque
 
 ## Tests
 
-- [ ] `fork session` with no `id` from inside a tool call: the in-memory directory gets `sourceID` = caller and `.callingToolCall`; the answer names the fork.
-- [ ] `fork session` with `@<slug>` of another session: `.lastCompletedTurn`.
-- [ ] `fork session` with `message`: the request has `firstPrompt`.
-- [ ] No caller and no `id`; an archived source; a directory with no fork: the correctives.
-- [ ] `forkSession`: the new session has `kind: FORK` and `parent` = the source; the `changes` feed has the start.
-- [ ] The tool text names `fork session`. #sessions #fork #graphql
+- [x] `fork session` with no `id` from inside a tool call: the in-memory directory gets `sourceID` = caller and `.callingToolCall`; the answer names the fork.
+- [x] `fork session` with `@<slug>` of another session: `.lastCompletedTurn`.
+- [x] `fork session` with `message`: the request has `firstPrompt`.
+- [x] No caller and no `id`; an archived source; a directory with no fork: the correctives.
+- [x] `forkSession`: the new session has `kind: FORK` and `parent` = the source; the `changes` feed has the start.
+- [x] The tool text names `fork session`. #sessions #fork #graphql

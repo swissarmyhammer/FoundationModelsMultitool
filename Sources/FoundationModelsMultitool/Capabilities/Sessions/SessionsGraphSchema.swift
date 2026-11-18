@@ -317,6 +317,7 @@ struct SessionsGraphAPI: API {
                 unpinInput()
                 archiveInput()
                 unarchiveInput()
+                forkInput()
                 sendInput()
                 replyInput()
                 changeType()
