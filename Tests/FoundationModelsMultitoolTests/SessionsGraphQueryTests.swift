@@ -32,6 +32,12 @@ struct SessionsGraphQueryTests {
     /// The tags of the owned session of the tree, not sorted.
     private static let ownedTags: Set<String> = ["review", "api", "parser"]
 
+    /// The slug of ``ownedTitle``.
+    private static let ownedSlug = "review-the-parser"
+
+    /// The `sessions` query with the short id and the slug of each session.
+    private static let namesQuery = "{ sessions { id shortId slug } }"
+
     /// The last summary of the owned session of the tree.
     private static let lastSummary = "The parser handles empty input now."
 
@@ -608,7 +614,8 @@ struct SessionsGraphQueryTests {
         let viewer = GraphQLViewer.external(
             owning: [tree.owned.id.ulidString], clientOwned: [tree.subagent.id.ulidString])
 
-        let ownership = try await Self.ownership(of: [tree.owned, tree.subagent, tree.started], viewer: viewer, on: tree)
+        let ownership = try await Self.ownership(
+            of: [tree.owned, tree.subagent, tree.started], viewer: viewer, on: tree)
 
         #expect(ownership == [.ownedByViewer, .ownedByOtherClient, .noOwner])
     }
@@ -739,6 +746,47 @@ struct SessionsGraphQueryTests {
         #expect(subagent.codes.isEmpty)
         #expect(try subagent.object("session")["parent"] is NSNull)
         #expect(try started.object("session")["startedBy"] is NSNull)
+    }
+
+    // MARK: - The names of a session
+
+    /// The row of `session` in a ``namesQuery`` response of the tree.
+    ///
+    /// - Parameters:
+    ///   - session: The session.
+    ///   - tree: The tree that holds the session.
+    /// - Returns: The row.
+    /// - Throws: An error when the response has no row of the session.
+    private static func namesRow(of session: SessionSummary, in tree: Tree) async throws -> [String: Any] {
+        let rows = try await run(namesQuery, on: tree.graph).list("sessions")
+        return try #require(rows.first { $0["id"] as? String == session.id.ulidString })
+    }
+
+    @Test("sessions gives the shortId of each session from the directory")
+    func sessionsGivesTheShortID() async throws {
+        let tree = Tree()
+
+        let row = try await Self.namesRow(of: tree.owned, in: tree)
+
+        #expect(row["shortId"] as? String == tree.owned.shortID)
+    }
+
+    @Test("sessions gives the slug of the title of a session")
+    func sessionsGivesTheSlugOfTheTitle() async throws {
+        let tree = Tree()
+
+        let row = try await Self.namesRow(of: tree.owned, in: tree)
+
+        #expect(row["slug"] as? String == Self.ownedSlug)
+    }
+
+    @Test("sessions gives the shortId as the slug of a session with no title")
+    func sessionsGivesTheShortIDAsTheSlugOfAnUntitledSession() async throws {
+        let tree = Tree()
+
+        let row = try await Self.namesRow(of: tree.stranger, in: tree)
+
+        #expect(row["slug"] as? String == tree.stranger.shortID)
     }
 
     // MARK: - The filter
@@ -956,6 +1004,18 @@ struct SessionsGraphQueryTests {
         #expect(reply.rewrote("sessionId", to: "id"))
         #expect(reply.rewrote("agent", to: "agentId"))
         #expect(reply.rewrote("folder", to: "cwd"))
+    }
+
+    /// The alias tables take `short_id` for the `shortId` of a session, and
+    /// the response tells the rewrite in `extensions.rewrites`.
+    @Test("the alias short_id gives the same value as shortId")
+    func theShortIDAliasGivesTheShortID() async throws {
+        let tree = Tree()
+
+        let reply = try await Self.run("{ session(id: \"\(tree.owned.id.ulidString)\") { short_id } }", on: tree.graph)
+
+        #expect(try reply.object("session")["short_id"] as? String == tree.owned.shortID)
+        #expect(reply.rewrote("short_id", to: "shortId"))
     }
 
     /// The alias tables take `id` for the `sessionId` of `inbox`.

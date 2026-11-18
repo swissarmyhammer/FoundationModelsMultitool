@@ -37,6 +37,16 @@ struct SessionsGraphPageTests {
         "query($filter: SessionFilter, $after: String) { sessionPage(filter: $filter, after: $after) "
         + "{ sessions { id } nextCursor } }"
 
+    /// The `sessionPage` query, with the short id and the slug of each
+    /// session.
+    private static let namesPageQuery = "{ sessionPage { sessions { shortId slug } } }"
+
+    /// The title of the session of the names case.
+    private static let apiTitle = "Fix the API tests"
+
+    /// The slug of ``apiTitle``.
+    private static let apiSlug = "fix-the-api-tests"
+
     /// The `sessions` query with a filter.
     private static let sessionsQuery = "query($filter: SessionFilter) { sessions(filter: $filter) { id } }"
 
@@ -298,6 +308,20 @@ struct SessionsGraphPageTests {
 
         let ids = try reply.list("sessions").compactMap { $0["id"] as? String }
         #expect(ids == Array(registered.reversed().prefix(SessionsGraphResolver.defaultListLimit)))
+    }
+
+    /// Each session of a page has its short id and its slug.
+    @Test("sessionPage gives the shortId and the slug of each session")
+    func aPageGivesTheShortIDAndTheSlug() async throws {
+        let directory = InMemorySessionDirectory()
+        let session = Fixtures.summary(title: Self.apiTitle)
+        directory.register(session)
+
+        let reply = try await Self.run(Self.namesPageQuery, on: SessionsGraph.endpoint(of: directory))
+        let sessions = try #require(try reply.object("sessionPage")["sessions"] as? [[String: Any]])
+
+        #expect(sessions.first?["shortId"] as? String == session.shortID)
+        #expect(sessions.first?["slug"] as? String == Self.apiSlug)
     }
 
     // MARK: - The cursor

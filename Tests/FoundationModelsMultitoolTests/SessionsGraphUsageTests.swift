@@ -33,6 +33,20 @@ struct SessionsGraphUsageTests {
     /// The `recentSessions` query, with a limit.
     private static let limitedRecentQuery = "query($limit: Int) { recentSessions(limit: $limit) { id } }"
 
+    /// The `pinnedSessions` query, with the short id and the slug of each
+    /// row.
+    private static let pinnedNamesQuery = "{ pinnedSessions { shortId slug } }"
+
+    /// The `recentSessions` query, with the short id and the slug of each
+    /// row.
+    private static let recentNamesQuery = "{ recentSessions { shortId slug } }"
+
+    /// The slug of the title of ``Usage/firstPin``.
+    private static let firstPinSlug = "first-pin"
+
+    /// The slug of the title of ``Usage/newest``.
+    private static let newestSlug = "newest"
+
     /// The `session` query of the pin facts of one session.
     private static let pinFactsQuery = "query($id: ID!) { session(id: $id) { pinned pinnedAt lastUsedAt } }"
 
@@ -141,6 +155,18 @@ struct SessionsGraphUsageTests {
         #expect(rows.first?["cwd"] as? String == usage.firstPin.workingDirectory.path)
     }
 
+    /// Each row of the Pinned list has the short id and the slug of its
+    /// session.
+    @Test("pinnedSessions gives the shortId and the slug of each row")
+    func pinnedSessionsGivesTheShortIDAndTheSlug() async throws {
+        let usage = Usage()
+
+        let row = try #require(try await Self.run(Self.pinnedNamesQuery, on: usage.graph).list("pinnedSessions").first)
+
+        #expect(row["shortId"] as? String == usage.firstPin.shortID)
+        #expect(row["slug"] as? String == Self.firstPinSlug)
+    }
+
     /// A directory with no pin gives an empty Pinned list.
     @Test("pinnedSessions is empty when no session is pinned")
     func pinnedSessionsIsEmptyWithNoPin() async throws {
@@ -165,6 +191,18 @@ struct SessionsGraphUsageTests {
         #expect(rows.compactMap { $0["id"] as? String } == Self.ids([usage.newest, usage.middle, usage.oldest]))
         #expect(rows.first?["title"] as? String == usage.newest.title)
         #expect(rows.first?["cwd"] as? String == usage.newest.workingDirectory.path)
+    }
+
+    /// Each row of the Recent list has the short id and the slug of its
+    /// session.
+    @Test("recentSessions gives the shortId and the slug of each row")
+    func recentSessionsGivesTheShortIDAndTheSlug() async throws {
+        let usage = Usage()
+
+        let row = try #require(try await Self.run(Self.recentNamesQuery, on: usage.graph).list("recentSessions").first)
+
+        #expect(row["shortId"] as? String == usage.newest.shortID)
+        #expect(row["slug"] as? String == Self.newestSlug)
     }
 
     /// The limit cuts the Recent list after the newest sessions.

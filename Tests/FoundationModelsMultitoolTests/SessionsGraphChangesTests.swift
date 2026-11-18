@@ -54,6 +54,12 @@ struct SessionsGraphChangesTests {
     /// The title that a marker action gives its session.
     private static let markerTitle = "Marker"
 
+    /// The title that the rename case gives its session.
+    private static let renameTitle = "Fix the API tests"
+
+    /// The slug of ``renameTitle``.
+    private static let renameSlug = "fix-the-api-tests"
+
     /// The code of a subscription that cannot resume with no gap.
     private static let resyncRequired = "RESYNC_REQUIRED"
 
@@ -298,6 +304,28 @@ struct SessionsGraphChangesTests {
         #expect(repin.codes.isEmpty, "errors: \(repin.messages)")
         #expect(unpin.codes.isEmpty, "errors: \(unpin.messages)")
         #expect(changes.map(\.changed) == [[pinned.id.ulidString], [used.id.ulidString], [marker.id.ulidString]])
+    }
+
+    /// A rename gives one change of its session, and the session then has
+    /// the slug of the new title, thus a client that reads the changes keeps
+    /// the slug of its list current.
+    @Test("a rename gives a changed entry, and the session then has the new slug")
+    func aRenameGivesAChangeAndTheNewSlug() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary()
+        directory.register(target)
+        let graph = SessionsGraph.endpoint(of: directory)
+        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        let id = target.id.ulidString
+
+        let rename = try await Self.run(
+            "mutation { renameSession(input: {id: \"\(id)\", title: \"\(Self.renameTitle)\"}) { id } }", on: graph)
+        let change = try await subscription.nextChange()
+        let session = try await Self.run("{ session(id: \"\(id)\") { slug } }", on: graph).object("session")
+
+        #expect(rename.codes.isEmpty, "errors: \(rename.messages)")
+        #expect(change == Self.change(cursor: change.cursor, changed: target.id))
+        #expect(session["slug"] as? String == Self.renameSlug)
     }
 
     /// A start gives the new root session as added (section 11.5), then the

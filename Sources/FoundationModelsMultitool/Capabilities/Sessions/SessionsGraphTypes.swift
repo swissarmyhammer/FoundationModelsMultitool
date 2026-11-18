@@ -119,6 +119,13 @@ struct SessionsGraphSession: Sendable {
     /// The session id, canonical: a ULID in upper case.
     let id: ToolkitID
 
+    /// The short id: the last characters of the session id, in lower case.
+    let shortId: String
+
+    /// The slug of the name of the session. The directory gives the short id
+    /// when the name gives no slug.
+    let slug: String?
+
     /// The id of the agent in the agent catalog.
     let agentId: String
 
@@ -183,6 +190,8 @@ struct SessionsGraphSession: Sendable {
         parentID = summary.parentID
         starterID = summary.startedBy
         id = ToolkitID(summary.id.ulidString)
+        shortId = summary.shortID
+        slug = summary.slug
         agentId = summary.agentID
         agentName = summary.agentName
         cwd = summary.workingDirectory.path

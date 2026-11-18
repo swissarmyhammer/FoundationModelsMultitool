@@ -63,4 +63,4 @@ Main rule: an agent IS a session. There is one namespace. `@agent:/path` and a f
 - [ ] Tool: `@travel:~/trips` looks in `~/trips` first and reports the rewrite.
 - [ ] Tool: `@nobody` gives the corrective.
 - [ ] Graph: `sendMessage(input: {to: "@<slug>", ...})` gives the same answer as the tool.
-- [ ] Graph: an external viewer with a slug of a session that it does not own gets a REFUSED receipt. #sessions #at-sessions #graphql #blocked-external
+- [ ] Graph: an external viewer with a slug of a session that it does not own gets a REFUSED receipt. #sessions #at-sessions #graphql

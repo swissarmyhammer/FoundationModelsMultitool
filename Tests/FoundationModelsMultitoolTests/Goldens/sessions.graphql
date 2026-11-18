@@ -78,6 +78,16 @@ type Session {
   """The session id: a ULID."""
   id: ID!
 
+  """
+  The short id: the last 7 characters of the session id, in lower case. It never changes.
+  """
+  shortId: String!
+
+  """
+  The slug of the name of the session. It changes with a rename. With no name: the short id.
+  """
+  slug: String
+
   """The id of the agent in the agent catalog."""
   agentId: String!
 

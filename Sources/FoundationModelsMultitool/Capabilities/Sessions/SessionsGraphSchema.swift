@@ -399,6 +399,11 @@ struct SessionsGraphAPI: API {
     private static func sessionType() -> SchemaType {
         Type(SessionsGraphSession.self, as: "Session") {
             Field("id", at: \.id).description("The session id: a ULID.")
+            Field("shortId", at: \.shortId)
+                .description("The short id: the last 7 characters of the session id, in lower case. It never changes.")
+            Field("slug", at: \.slug)
+                .description(
+                    "The slug of the name of the session. It changes with a rename. With no name: the short id.")
             Field("agentId", at: \.agentId).description("The id of the agent in the agent catalog.")
             Field("agentName", at: \.agentName).description("The display name of the agent, or null.")
             Field("cwd", at: \.cwd).description("The absolute path of the working folder.")

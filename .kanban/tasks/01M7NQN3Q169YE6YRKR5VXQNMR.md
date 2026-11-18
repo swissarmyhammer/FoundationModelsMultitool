@@ -36,4 +36,4 @@ Precondition: FoundationModelsExtras gives `OutgoingSessionMessage.sourceSession
 - [ ] A `fromSession` that the viewer cannot see gives `NOT_FOUND`.
 - [ ] A session caller with a different `fromSession` is refused.
 - [ ] The alias `fromSessionId` works.
-- [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql #blocked-external
+- [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql

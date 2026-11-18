@@ -76,9 +76,9 @@ enum SessionsToolText {
         return summaries.map { line(for: $0, callerID: callerID) }.joined(separator: "\n")
     }
 
-    /// The line of one session: the id, the kind, the state, the agent, the
-    /// folder, then the title, the tags, the parent and the starter when the
-    /// session has them.
+    /// The line of one session: the id, the kind, the state, the short id,
+    /// the slug, the agent, the folder, then the title, the tags, the parent
+    /// and the starter when the session has them.
     ///
     /// - Parameters:
     ///   - summary: The session.
@@ -87,8 +87,8 @@ enum SessionsToolText {
     private static func line(for summary: SessionSummary, callerID: ULID?) -> String {
         let facts =
             [
-                "\(summary.kind.rawValue)", "\(summary.state.rawValue)", "agent \(agent(of: summary))",
-                "folder \(summary.workingDirectory.path)",
+                "\(summary.kind.rawValue)", "\(summary.state.rawValue)", "short id \(summary.shortID)",
+                "slug \(summary.slug)", "agent \(agent(of: summary))", "folder \(summary.workingDirectory.path)",
             ] + optionalFacts(of: summary)
         return "- \(heading(of: summary, callerID: callerID)): \(facts.joined(separator: ", "))"
     }
@@ -180,7 +180,8 @@ enum SessionsToolText {
                 return "session \(id.ulidString)"
             }
             let title = summary.title.map { "\"\($0)\", " } ?? ""
-            return "session \(id.ulidString) (\(title)agent \(agent(of: summary)), folder \(summary.workingDirectory.path))"
+            return
+                "session \(id.ulidString) (\(title)agent \(agent(of: summary)), folder \(summary.workingDirectory.path))"
         }
     }
 
@@ -257,7 +258,8 @@ enum SessionsToolText {
         case .notADirectory(let url):
             return "\(url.path) is not a folder. Give the absolute path of an existing folder."
         case .chainTooDeep(let limit):
-            return "This message is too deep in its chain of messages: the limit is \(limit). Answer in your turn instead."
+            return
+                "This message is too deep in its chain of messages: the limit is \(limit). Answer in your turn instead."
         case .messageTooLong(let limit):
             return "The message is longer than the limit of \(limit). Send a shorter message."
         case .invalidTag(let tag):

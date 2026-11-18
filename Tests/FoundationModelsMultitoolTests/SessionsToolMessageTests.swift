@@ -124,6 +124,25 @@ struct SessionsToolMessageTests {
             arguments: Fixtures.payload("reply message", [("inReplyTo", inReplyTo), ("message", replyText)]))
     }
 
+    /// Calls `send message` to `address` as a caller that the call
+    /// registers, and gives the answer and the sessions that the caller
+    /// started.
+    ///
+    /// - Parameters:
+    ///   - address: The `to` text of the call.
+    ///   - directory: The directory.
+    ///   - tool: The tool.
+    /// - Returns: The answer, and the sessions that the caller started.
+    /// - Throws: What the tool or the directory throws.
+    private static func sendAsCaller(
+        to address: String, in directory: InMemorySessionDirectory, with tool: SessionsTool
+    ) async throws -> (output: String, started: [SessionSummary]) {
+        try await Fixtures.asCaller(in: directory) { callerID in
+            let output = try await sendMessage(to: address, with: tool)
+            return (output, try await directory.sessions(matching: SessionQuery(startedBy: callerID)))
+        }
+    }
+
     /// The unread messages to `id`, which stay unread.
     ///
     /// - Parameters:
@@ -205,37 +224,47 @@ struct SessionsToolMessageTests {
         #expect(output.contains(Self.queuedWord), "output was: \(output)")
     }
 
-    @Test("send message to @agent reaches the live root session of the agent in the folder of the caller")
-    func sendMessageToAnAgentReachesItsSessionInTheFolderOfTheCaller() async throws {
-        let directory = InMemorySessionDirectory()
+    @Test("send message to @agent starts a new root session in the folder of the caller, also next to a live one")
+    func sendMessageToAnAgentStartsANewSessionInTheFolderOfTheCaller() async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
         let elsewhere = Fixtures.summary(agent: Self.reviewerAgent, folder: Self.otherFolder)
-        let target = Fixtures.summary(agent: Self.reviewerAgent)
+        let live = Fixtures.summary(agent: Self.reviewerAgent)
         directory.register(elsewhere)
-        directory.register(target)
+        directory.register(live)
         let tool = try SessionsTool(directory: directory)
 
-        _ = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: "@\(Self.reviewerAgent)", with: tool)
-        }
+        let (output, started) = try await Self.sendAsCaller(to: "@\(Self.reviewerAgent)", in: directory, with: tool)
 
-        #expect(try await Self.unread(to: target.id, in: directory).count == 1)
+        let session = try #require(started.first)
+        #expect(started.count == 1)
+        #expect(![live.id, elsewhere.id].contains(session.id))
+        #expect(session.workingDirectory.path == Fixtures.workingFolder.path)
+        #expect(session.origin == .message)
+        #expect(output.contains(Self.startedWord), "output was: \(output)")
+        #expect(output.contains(session.id.ulidString), "output was: \(output)")
+        #expect(try await Self.unread(to: live.id, in: directory).isEmpty)
         #expect(try await Self.unread(to: elsewhere.id, in: directory).isEmpty)
     }
 
-    @Test("send message to @agent:/path reaches the live root session of the agent in that folder")
-    func sendMessageToAnAgentInAFolderReachesItsSessionThere() async throws {
-        let directory = InMemorySessionDirectory()
-        let target = Fixtures.summary(agent: Self.reviewerAgent, folder: Self.otherFolder)
+    @Test("send message to @agent:/path starts a new root session in that folder, also next to a live one")
+    func sendMessageToAnAgentInAFolderStartsANewSessionThere() async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
+        let live = Fixtures.summary(agent: Self.reviewerAgent, folder: Self.otherFolder)
         let nearby = Fixtures.summary(agent: Self.reviewerAgent)
-        directory.register(target)
+        directory.register(live)
         directory.register(nearby)
         let tool = try SessionsTool(directory: directory)
 
-        _ = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: "@\(Self.reviewerAgent):\(Self.otherFolder.path)", with: tool)
-        }
+        let (output, started) = try await Self.sendAsCaller(
+            to: "@\(Self.reviewerAgent):\(Self.otherFolder.path)", in: directory, with: tool)
 
-        #expect(try await Self.unread(to: target.id, in: directory).count == 1)
+        let session = try #require(started.first)
+        #expect(started.count == 1)
+        #expect(![live.id, nearby.id].contains(session.id))
+        #expect(session.workingDirectory.path == Self.otherFolder.path)
+        #expect(session.origin == .message)
+        #expect(output.contains(Self.startedWord), "output was: \(output)")
+        #expect(try await Self.unread(to: live.id, in: directory).isEmpty)
         #expect(try await Self.unread(to: nearby.id, in: directory).isEmpty)
     }
 
@@ -244,10 +273,7 @@ struct SessionsToolMessageTests {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
         let tool = try SessionsTool(directory: directory)
 
-        let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in
-            let output = try await Self.sendMessage(to: "@\(Self.reviewerAgent)", with: tool)
-            return (output, try await directory.sessions(matching: SessionQuery(startedBy: callerID)))
-        }
+        let (output, started) = try await Self.sendAsCaller(to: "@\(Self.reviewerAgent)", in: directory, with: tool)
 
         let session = try #require(started.first)
         #expect(started.count == 1)
@@ -558,7 +584,9 @@ struct SessionsToolMessageTests {
 
         let report = try RunOutput.decoded(SnippetReport.self, from: output)
         let messages = try await Self.unread(to: other.id, in: directory)
-        #expect(messages.map(\.text) == [Self.messageText, Self.replyText], "sent: \(report.sent), replied: \(report.replied)")
+        #expect(
+            messages.map(\.text) == [Self.messageText, Self.replyText],
+            "sent: \(report.sent), replied: \(report.replied)")
         #expect(messages.last?.inReplyTo == questionID)
     }
 

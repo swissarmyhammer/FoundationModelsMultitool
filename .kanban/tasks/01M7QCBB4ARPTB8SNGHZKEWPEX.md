@@ -32,4 +32,4 @@ The `id` of `check session`, `rename session`, `pin session`, `unpin session`, `
 - [ ] `check session` with a full id, with and without `@`, still works.
 - [ ] An ambiguous slug gives the corrective with each match and changes nothing.
 - [ ] A slug of a session that the caller cannot see is not a match.
-- [ ] The existing session tool tests stay green. #sessions #at-sessions #blocked-external
+- [ ] The existing session tool tests stay green. #sessions #at-sessions

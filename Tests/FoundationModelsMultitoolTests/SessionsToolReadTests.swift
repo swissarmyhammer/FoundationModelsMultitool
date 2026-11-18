@@ -28,6 +28,9 @@ struct SessionsToolReadTests {
     /// The title of the tagged session.
     private static let reviewTitle = "Review the parser"
 
+    /// The slug of ``reviewTitle``.
+    private static let reviewSlug = "review-the-parser"
+
     /// The last summary of the checked session.
     private static let lastSummary = "The parser handles empty input now."
 
@@ -103,6 +106,19 @@ struct SessionsToolReadTests {
         #expect(otherLine.contains(Fixtures.workingFolder.path))
     }
 
+    @Test("list sessions gives the short id and the slug of each session")
+    func listSessionsGivesTheShortIDAndTheSlug() async throws {
+        let directory = InMemorySessionDirectory()
+        let session = Fixtures.summary(title: Self.reviewTitle)
+        directory.register(session)
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await tool.call(arguments: Fixtures.payload("list sessions"))
+
+        #expect(output.contains("short id \(session.shortID)"), "output was: \(output)")
+        #expect(output.contains("slug \(Self.reviewSlug)"), "output was: \(output)")
+    }
+
     @Test("list sessions with a tag no session has gives \"No sessions match.\"")
     func listSessionsWithNoMatchSaysSo() async throws {
         let directory = InMemorySessionDirectory()
@@ -127,7 +143,9 @@ struct SessionsToolReadTests {
         #expect(!output.contains(session.id.ulidString))
     }
 
-    @Test("list sessions with state Archived, in any letter case, also finds the recorded sessions, with no includeRecorded")
+    @Test(
+        "list sessions with state Archived, in any letter case, also finds the recorded sessions, with no includeRecorded"
+    )
     func listSessionsOfArchivedStateIncludesRecordedSessions() async throws {
         let directory = InMemorySessionDirectory()
         let live = Fixtures.summary()

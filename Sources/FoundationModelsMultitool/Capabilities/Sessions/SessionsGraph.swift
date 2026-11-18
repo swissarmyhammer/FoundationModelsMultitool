@@ -83,8 +83,9 @@ public final class SessionsGraph: GraphQLEndpoint {
 
     /// The other names that a call can write for the names of the schema
     /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
-    /// session, `sessionId` for the `id` of `session`, `id` for the
-    /// `sessionId` of `inbox`, `sessionsPage` and `pagedSessions` for
+    /// session, `short_id` and `shortID` for its `shortId`, `sessionId` for
+    /// the `id` of `session`, `id` for the `sessionId` of `inbox`,
+    /// `sessionsPage` and `pagedSessions` for
     /// `sessionPage`, `cursor` for its `after`, `items` and `nodes` for the
     /// `sessions` of a page, `endCursor` for its `nextCursor`,
     /// `sessionChanges` for the `changes` subscription, the bare verb of each
@@ -93,7 +94,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     static let rules = GraphQLNameRules(
         aliases: GraphQLAliasTable(
             byType: SessionsGraphMutation.aliasTables.merging([
-                "Session": ["agentId": ["agent"], "cwd": ["folder"]],
+                "Session": ["agentId": ["agent"], "cwd": ["folder"], "shortId": ["short_id", "shortID"]],
                 "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
                 "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
                 "Subscription": ["changes": ["sessionChanges"]],

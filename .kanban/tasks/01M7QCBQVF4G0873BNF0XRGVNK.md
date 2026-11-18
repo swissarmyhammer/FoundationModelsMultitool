@@ -33,4 +33,4 @@ The pattern to copy: FoundationModelsKanban `Tests/FoundationModelsKanbanTests/K
 - [ ] Each `{"op": "..."}` example of the skill decodes to an operation of `SessionsTool`, and each key of the example is a parameter or an alias of that operation.
 - [ ] Each code-mode verb that the skill names (for example `tools.sessions.sendMessage`, `tools.sessions.listSessions`) is a verb of the tool.
 - [ ] The skill names each of the forms `@<id>`, `@<short id>` and `@<slug>`, and each receipt word of the tool.
-- [ ] The existing session tool tests stay green. #sessions #at-sessions #blocked-external
+- [ ] The existing session tool tests stay green. #sessions #at-sessions
