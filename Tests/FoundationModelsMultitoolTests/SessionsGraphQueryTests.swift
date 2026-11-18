@@ -189,7 +189,7 @@ struct SessionsGraphQueryTests {
         ///   has no cursor.
         init() async throws {
             graph = SessionsGraph.endpoint(of: directory)
-            cursor = try #require(try await run(cursorQuery, on: graph).data?["cursor"] as? String)
+            cursor = try #require(try await GraphQLReply.run(cursorQuery, on: graph).data?["cursor"] as? String)
             directory.register(session)
         }
 
@@ -200,23 +200,6 @@ struct SessionsGraphQueryTests {
         }
     }
 
-    /// Runs one document on `graph`.
-    ///
-    /// - Parameters:
-    ///   - query: The document.
-    ///   - variables: The values of the variables.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ query: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
-    }
-
     /// Runs the `sessions` query with `filter`.
     ///
     /// - Parameters:
@@ -224,11 +207,11 @@ struct SessionsGraphQueryTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws.
     private static func sessions(
         filter: Map = .null, viewer: GraphQLViewer? = nil, on graph: SessionsGraph
     ) async throws -> GraphQLReply {
-        try await run(sessionsQuery, variables: ["filter": filter], viewer: viewer, on: graph)
+        try await GraphQLReply.run(sessionsQuery, variables: ["filter": filter], viewer: viewer, on: graph)
     }
 
     /// The id of each session of a `sessions` response.
@@ -238,21 +221,6 @@ struct SessionsGraphQueryTests {
     /// - Throws: An error when the response has no `sessions` list.
     private static func ids(of reply: GraphQLReply) throws -> [String] {
         try reply.list("sessions").compactMap { $0["id"] as? String }
-    }
-
-    /// Runs `query` with the variable `id`.
-    ///
-    /// - Parameters:
-    ///   - query: The document, with the variable `$id`.
-    ///   - id: The value of `$id`.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
-    private static func run(
-        _ query: String, id: String, viewer: GraphQLViewer? = nil, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try await run(query, variables: ["id": .string(id)], viewer: viewer, on: graph)
     }
 
     /// The `ownedByViewer` and `hasOwner` fields of one session.
@@ -283,7 +251,7 @@ struct SessionsGraphQueryTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - tree: The tree that holds the sessions.
     /// - Returns: The fields of each session, in order.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws, or an error when
     ///   a response has no `session` object.
     private static func ownership(
         of sessions: [SessionSummary], viewer: GraphQLViewer?, on tree: Tree
@@ -291,8 +259,10 @@ struct SessionsGraphQueryTests {
         var fields: [Ownership] = []
         // A loop and not a `map`: each read awaits the endpoint.
         for session in sessions {
-            let object = try await run(ownershipQuery, id: session.id.ulidString, viewer: viewer, on: tree.graph)
-                .object("session")
+            let object = try await GraphQLReply.run(
+                ownershipQuery, variables: ["id": .string(session.id.ulidString)], viewer: viewer, on: tree.graph
+            )
+            .object("session")
             fields.append(
                 Ownership(ownedByViewer: object["ownedByViewer"] as? Bool, hasOwner: object["hasOwner"] as? Bool))
         }
@@ -339,12 +309,13 @@ struct SessionsGraphQueryTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The messages of the response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws, or an error when
     ///   the response has no `inbox` list.
     private static func inbox(
         of id: ULID, viewer: GraphQLViewer? = nil, on graph: SessionsGraph
     ) async throws -> [[String: Any]] {
-        try await run(inboxQuery, id: id.ulidString, viewer: viewer, on: graph).list("inbox")
+        try await GraphQLReply.run(inboxQuery, variables: ["id": .string(id.ulidString)], viewer: viewer, on: graph)
+            .list("inbox")
     }
 
     /// Registers `count` live root sessions in `directory`.
@@ -578,9 +549,11 @@ struct SessionsGraphQueryTests {
         let tree = Tree()
         let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
-        let visible = try await Self.run(
-            Self.sessionQuery, id: tree.deepSubagent.id.ulidString, viewer: viewer, on: tree.graph)
-        let hidden = try await Self.run(Self.sessionQuery, id: tree.fork.id.ulidString, viewer: viewer, on: tree.graph)
+        let visible = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string(tree.deepSubagent.id.ulidString)], viewer: viewer,
+            on: tree.graph)
+        let hidden = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string(tree.fork.id.ulidString)], viewer: viewer, on: tree.graph)
 
         #expect(try visible.object("session")["id"] as? String == tree.deepSubagent.id.ulidString)
         #expect(hidden.codes.isEmpty)
@@ -655,8 +628,10 @@ struct SessionsGraphQueryTests {
         let tree = Tree()
         try tree.directory.finishTurn(of: tree.owned.id, lastSummary: Self.lastSummary)
 
-        let session = try await Self.run(Self.sessionQuery, id: tree.owned.id.ulidString, on: tree.graph)
-            .object("session")
+        let session = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string(tree.owned.id.ulidString)], on: tree.graph
+        )
+        .object("session")
 
         #expect(session["id"] as? String == tree.owned.id.ulidString)
         #expect(session["agentId"] as? String == Fixtures.agentID)
@@ -677,8 +652,8 @@ struct SessionsGraphQueryTests {
     func sessionReadsALowerCaseID() async throws {
         let tree = Tree()
 
-        let session = try await Self.run(
-            Self.sessionQuery, id: tree.subagent.id.ulidString.lowercased(), on: tree.graph
+        let session = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string(tree.subagent.id.ulidString.lowercased())], on: tree.graph
         ).object("session")
 
         #expect(session["id"] as? String == tree.subagent.id.ulidString)
@@ -690,7 +665,8 @@ struct SessionsGraphQueryTests {
     func anUnknownSessionIsNull() async throws {
         let tree = Tree()
 
-        let reply = try await Self.run(Self.sessionQuery, id: ULID().ulidString, on: tree.graph)
+        let reply = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string(ULID().ulidString)], on: tree.graph)
 
         #expect(reply.codes.isEmpty)
         #expect(reply.isNull("session"))
@@ -702,7 +678,8 @@ struct SessionsGraphQueryTests {
     func aMalformedIDGivesInvalidSessionID() async throws {
         let tree = Tree()
 
-        let reply = try await Self.run(Self.sessionQuery, id: "not-a-session", on: tree.graph)
+        let reply = try await GraphQLReply.run(
+            Self.sessionQuery, variables: ["id": .string("not-a-session")], on: tree.graph)
 
         #expect(reply.codes == ["INVALID_SESSION_ID"])
         #expect(reply.isNull("session"))
@@ -717,12 +694,18 @@ struct SessionsGraphQueryTests {
     func theRelativesLinkTheSessions() async throws {
         let tree = Tree()
 
-        let owned = try await Self.run(Self.relativesQuery, id: tree.owned.id.ulidString, on: tree.graph)
-            .object("session")
-        let subagent = try await Self.run(Self.relativesQuery, id: tree.subagent.id.ulidString, on: tree.graph)
-            .object("session")
-        let started = try await Self.run(Self.relativesQuery, id: tree.started.id.ulidString, on: tree.graph)
-            .object("session")
+        let owned = try await GraphQLReply.run(
+            Self.relativesQuery, variables: ["id": .string(tree.owned.id.ulidString)], on: tree.graph
+        )
+        .object("session")
+        let subagent = try await GraphQLReply.run(
+            Self.relativesQuery, variables: ["id": .string(tree.subagent.id.ulidString)], on: tree.graph
+        )
+        .object("session")
+        let started = try await GraphQLReply.run(
+            Self.relativesQuery, variables: ["id": .string(tree.started.id.ulidString)], on: tree.graph
+        )
+        .object("session")
 
         #expect(owned["parent"] is NSNull)
         #expect(owned["startedBy"] is NSNull)
@@ -738,10 +721,11 @@ struct SessionsGraphQueryTests {
         let tree = Tree()
         let viewer = GraphQLViewer.external(owning: [tree.subagent.id.ulidString, tree.started.id.ulidString])
 
-        let subagent = try await Self.run(
-            Self.relativesQuery, id: tree.subagent.id.ulidString, viewer: viewer, on: tree.graph)
-        let started = try await Self.run(
-            Self.relativesQuery, id: tree.started.id.ulidString, viewer: viewer, on: tree.graph)
+        let subagent = try await GraphQLReply.run(
+            Self.relativesQuery, variables: ["id": .string(tree.subagent.id.ulidString)], viewer: viewer, on: tree.graph
+        )
+        let started = try await GraphQLReply.run(
+            Self.relativesQuery, variables: ["id": .string(tree.started.id.ulidString)], viewer: viewer, on: tree.graph)
 
         #expect(subagent.codes.isEmpty)
         #expect(try subagent.object("session")["parent"] is NSNull)
@@ -758,7 +742,7 @@ struct SessionsGraphQueryTests {
     /// - Returns: The row.
     /// - Throws: An error when the response has no row of the session.
     private static func namesRow(of session: SessionSummary, in tree: Tree) async throws -> [String: Any] {
-        let rows = try await run(namesQuery, on: tree.graph).list("sessions")
+        let rows = try await GraphQLReply.run(namesQuery, on: tree.graph).list("sessions")
         return try #require(rows.first { $0["id"] as? String == session.id.ulidString })
     }
 
@@ -930,7 +914,7 @@ struct SessionsGraphQueryTests {
         try await Self.sendFromTheUser(Self.firstText, to: tree.owned.id, in: tree.directory)
         try await Self.sendFromTheUser(Self.secondText, to: tree.owned.id, in: tree.directory)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.limitedInboxQuery, variables: ["id": .string(tree.owned.id.ulidString), "limit": 1], on: tree.graph)
 
         #expect(try reply.list("inbox").map { $0["text"] as? String } == [Self.firstText])
@@ -946,8 +930,8 @@ struct SessionsGraphQueryTests {
         let viewer = GraphQLViewer.external(owning: [tree.owned.id.ulidString])
 
         let owned = try await Self.inbox(of: tree.owned.id, viewer: viewer, on: tree.graph)
-        let hidden = try await Self.run(
-            Self.inboxQuery, id: tree.stranger.id.ulidString, viewer: viewer, on: tree.graph)
+        let hidden = try await GraphQLReply.run(
+            Self.inboxQuery, variables: ["id": .string(tree.stranger.id.ulidString)], viewer: viewer, on: tree.graph)
 
         #expect(owned.map { $0["text"] as? String } == [Self.firstText])
         #expect((owned.first?["from"] as? [String: Any])?["session"] is NSNull)
@@ -961,8 +945,10 @@ struct SessionsGraphQueryTests {
     func inboxOfAnUnknownSession() async throws {
         let tree = Tree()
 
-        let unknown = try await Self.run(Self.inboxQuery, id: ULID().ulidString, on: tree.graph)
-        let malformed = try await Self.run(Self.inboxQuery, id: "not-a-session", on: tree.graph)
+        let unknown = try await GraphQLReply.run(
+            Self.inboxQuery, variables: ["id": .string(ULID().ulidString)], on: tree.graph)
+        let malformed = try await GraphQLReply.run(
+            Self.inboxQuery, variables: ["id": .string("not-a-session")], on: tree.graph)
 
         #expect(unknown.codes.isEmpty)
         #expect(try unknown.list("inbox").isEmpty)
@@ -979,8 +965,10 @@ struct SessionsGraphQueryTests {
             try await Self.sendFromTheUser(text, to: tree.owned.id, in: tree.directory)
         }
 
-        let session = try await Self.run(Self.unreadQuery, id: tree.owned.id.ulidString, on: tree.graph)
-            .object("session")
+        let session = try await GraphQLReply.run(
+            Self.unreadQuery, variables: ["id": .string(tree.owned.id.ulidString)], on: tree.graph
+        )
+        .object("session")
 
         #expect(session["unreadCount"] as? Int == texts.count)
         #expect(try await tree.directory.inbox(of: tree.owned.id, markRead: false).count == texts.count)
@@ -995,7 +983,7 @@ struct SessionsGraphQueryTests {
     func theAliasesOfSessionWork() async throws {
         let tree = Tree()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "{ session(sessionId: \"\(tree.owned.id.ulidString)\") { agent folder } }", on: tree.graph)
 
         let session = try reply.object("session")
@@ -1012,7 +1000,8 @@ struct SessionsGraphQueryTests {
     func theShortIDAliasGivesTheShortID() async throws {
         let tree = Tree()
 
-        let reply = try await Self.run("{ session(id: \"\(tree.owned.id.ulidString)\") { short_id } }", on: tree.graph)
+        let reply = try await GraphQLReply.run(
+            "{ session(id: \"\(tree.owned.id.ulidString)\") { short_id } }", on: tree.graph)
 
         #expect(try reply.object("session")["short_id"] as? String == tree.owned.shortID)
         #expect(reply.rewrote("short_id", to: "shortId"))
@@ -1024,7 +1013,8 @@ struct SessionsGraphQueryTests {
         let tree = Tree()
         try await Self.sendFromTheUser(Self.firstText, to: tree.owned.id, in: tree.directory)
 
-        let reply = try await Self.run("{ inbox(id: \"\(tree.owned.id.ulidString)\") { text } }", on: tree.graph)
+        let reply = try await GraphQLReply.run(
+            "{ inbox(id: \"\(tree.owned.id.ulidString)\") { text } }", on: tree.graph)
 
         #expect(try reply.list("inbox").map { $0["text"] as? String } == [Self.firstText])
         #expect(reply.rewrote("id", to: "sessionId"))

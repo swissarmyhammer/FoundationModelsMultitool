@@ -264,7 +264,8 @@ struct SnapshotsGraphTests {
     /// - Returns: The endpoint.
     private static func graph(over fixture: Fixture, diff: @escaping SnapshotsGraphDiffProvider) -> SnapshotsGraph {
         SnapshotsGraph(
-            store: fixture.store, sessionKey: stubSessionKey, changeLogCapacity: SnapshotsGraph.changeLogCapacity, diff: diff)
+            store: fixture.store, sessionKey: stubSessionKey, changeLogCapacity: SnapshotsGraph.changeLogCapacity,
+            diff: diff)
     }
 
     /// Makes the endpoint over the store of `fixture`, with a resolver that
@@ -284,9 +285,9 @@ struct SnapshotsGraphTests {
     ///   - index: The index of the checkpoint.
     ///   - graph: The endpoint.
     /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws.
     private static func changes(of index: Int, on graph: SnapshotsGraph) async throws -> GraphQLReply {
-        try await run(
+        try await GraphQLReply.run(
             changesQuery, variables: ["sessionId": .string(sessionId), "index": .number(Number(index))], on: graph)
     }
 
@@ -313,28 +314,11 @@ struct SnapshotsGraphTests {
     ///   error when the response has no cursor.
     private static func checkpointAfterCursor() async throws -> (fixture: Fixture, cursor: String) {
         let fixture = try await makeFixture()
-        let cursor = try #require(try await run(cursorQuery, on: fixture.graph).data?["cursor"] as? String)
+        let cursor = try #require(try await GraphQLReply.run(cursorQuery, on: fixture.graph).data?["cursor"] as? String)
         try fixture.repository.write("one\n", to: firstFile)
         _ = try await fixture.store.take(
             sessionKey: sessionKey, owner: sessionId, trigger: .manual(label: firstLabel))
         return (fixture, cursor)
-    }
-
-    /// Runs one document on the endpoint of `fixture`.
-    ///
-    /// - Parameters:
-    ///   - query: The document.
-    ///   - variables: The values of the variables.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ query: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
     }
 
     /// Runs the `checkpoints` query of `id`.
@@ -344,11 +328,11 @@ struct SnapshotsGraphTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws.
     private static func checkpoints(
         of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
     ) async throws -> GraphQLReply {
-        try await run(checkpointsQuery, variables: ["sessionId": .string(id)], viewer: viewer, on: graph)
+        try await GraphQLReply.run(checkpointsQuery, variables: ["sessionId": .string(id)], viewer: viewer, on: graph)
     }
 
     /// Runs the `checkpoint` query of `index` of `id`.
@@ -359,11 +343,11 @@ struct SnapshotsGraphTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws.
     private static func checkpoint(
         _ index: Int, of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
     ) async throws -> GraphQLReply {
-        try await run(
+        try await GraphQLReply.run(
             checkpointQuery, variables: ["sessionId": .string(id), "index": .number(Number(index))], viewer: viewer,
             on: graph)
     }
@@ -376,12 +360,12 @@ struct SnapshotsGraphTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The response.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws.
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws.
     private static func rollback(
         to index: Int, of id: String = sessionId, viewer: GraphQLViewer? = nil, on graph: SnapshotsGraph
     ) async throws -> GraphQLReply {
         let input: Map = ["sessionId": .string(id), "index": .number(Number(index))]
-        return try await run(rollbackMutation, variables: ["input": input], viewer: viewer, on: graph)
+        return try await GraphQLReply.run(rollbackMutation, variables: ["input": input], viewer: viewer, on: graph)
     }
 
     /// The text of `.toolUse` as the `trigger` field gives it.
@@ -478,7 +462,8 @@ struct SnapshotsGraphTests {
     @Test("MultiTool gives the snapshots endpoint of a registered snapshots capability")
     func multiToolGivesTheSnapshotsEndpoint() throws {
         let store = SnapshotStore(directory: TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName))
-        let registry = try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: store)).buildRegistry()
+        let registry = try MultiTool.Builder(mode: .open).withCapability(SnapshotsCapability(store: store))
+            .buildRegistry()
 
         let names = MultiTool(registry: registry).graphQLEndpoints.map(\.name)
 
@@ -650,7 +635,7 @@ struct SnapshotsGraphTests {
         let count = DiffCallCount()
         let graph = Self.graph(over: fixture, diff: count.provider)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.checkpointsChangesQuery, variables: ["sessionId": .string(Self.sessionId)], on: graph)
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -722,7 +707,7 @@ struct SnapshotsGraphTests {
         let fixture = try await Self.makeFixture()
         try await Self.makeTwoCheckpoints(in: fixture)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { rollback(input: {sessionId: \"\(Self.sessionId)\", index: \(Self.firstIndex)}) { index } }",
             on: fixture.graph)
 
@@ -920,7 +905,7 @@ struct SnapshotsGraphTests {
         let viewer = GraphQLViewer.external(started: [Self.sessionId])
 
         let list = try await Self.checkpoints(viewer: viewer, on: fixture.graph).list("checkpoints")
-        let single = try await Self.run(
+        let single = try await GraphQLReply.run(
             Self.changesQuery,
             variables: ["sessionId": .string(Self.sessionId), "index": .number(Number(Self.firstIndex))],
             viewer: viewer, on: fixture.graph)

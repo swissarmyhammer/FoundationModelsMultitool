@@ -1,10 +1,33 @@
 import Foundation
+import FoundationModelsExtras
+import GraphQL
 import Testing
 
 /// The parts of one GraphQL response of an endpoint that a test reads: the
 /// `data` object, the code and the message of each error, and the
 /// `extensions.rewrites` list.
 struct GraphQLReply {
+
+    /// Runs one GraphQL document on an endpoint and reads the response.
+    ///
+    /// Each GraphQL endpoint test runs its documents through this one helper.
+    ///
+    /// - Parameters:
+    ///   - document: The GraphQL document.
+    ///   - variables: The values of the variables of the document.
+    ///   - viewer: The client of the call, or `nil` for the agent of the
+    ///     session itself.
+    ///   - endpoint: The endpoint that runs the document.
+    /// - Returns: The response.
+    /// - Throws: What the endpoint throws, or an error when the response is
+    ///   not a JSON object.
+    static func run(
+        _ document: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil,
+        on endpoint: some GraphQLEndpoint
+    ) async throws -> GraphQLReply {
+        try GraphQLReply(
+            json: await endpoint.execute(query: document, variables: variables, operationName: nil, viewer: viewer))
+    }
 
     /// The `data` object, or `nil` when the response has none.
     let data: [String: Any]?

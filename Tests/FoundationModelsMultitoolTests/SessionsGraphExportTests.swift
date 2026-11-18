@@ -84,31 +84,13 @@ struct SessionsGraphExportTests {
         }
     }
 
-    /// Runs `query` with the variable `id` on `graph`.
-    ///
-    /// - Parameters:
-    ///   - query: The document, with the variable `$id`.
-    ///   - id: The value of `$id`.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ query: String, id: String, viewer: GraphQLViewer? = nil, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(
-                query: query, variables: ["id": .string(id)], operationName: nil, viewer: viewer))
-    }
-
     // MARK: - The text
 
     @Test("session(id:) { export } gives the text of the exporter")
     func exportGivesTheTextOfTheExporter() async throws {
         let setup = Setup(exporter: RecordingTranscriptExporter(text: Self.markdown))
 
-        let reply = try await Self.run(Self.exportQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(Self.exportQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(try reply.object("session")["export"] as? String == Self.markdown, "errors: \(reply.messages)")
     }
@@ -117,7 +99,7 @@ struct SessionsGraphExportTests {
     func exportWritesNoFile() async throws {
         let setup = Setup(exporter: RecordingTranscriptExporter(text: Self.markdown))
 
-        _ = try await Self.run(Self.exportQuery, id: setup.id, on: setup.graph)
+        _ = try await GraphQLReply.run(Self.exportQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(setup.namesInFolder.isEmpty)
     }
@@ -127,7 +109,7 @@ struct SessionsGraphExportTests {
         let exporter = RecordingTranscriptExporter(text: Self.markdown)
         let setup = Setup(exporter: exporter)
 
-        _ = try await Self.run(Self.exportQuery, id: setup.id, on: setup.graph)
+        _ = try await GraphQLReply.run(Self.exportQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(
             await exporter.requests == [TranscriptExportRequest(session: setup.session.id, includeThoughts: false)])
@@ -138,7 +120,7 @@ struct SessionsGraphExportTests {
         let exporter = RecordingTranscriptExporter(text: Self.markdown)
         let setup = Setup(exporter: exporter)
 
-        _ = try await Self.run(Self.thoughtsQuery, id: setup.id, on: setup.graph)
+        _ = try await GraphQLReply.run(Self.thoughtsQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(await exporter.requests.map(\.includeThoughts) == [true])
     }
@@ -147,7 +129,8 @@ struct SessionsGraphExportTests {
     func exportWithTheMarkdownFormatGivesTheText() async throws {
         let setup = Setup(exporter: RecordingTranscriptExporter(text: Self.markdown))
 
-        let reply = try await Self.run(Self.markdownQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(
+            Self.markdownQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(try reply.object("session")["export"] as? String == Self.markdown, "errors: \(reply.messages)")
     }
@@ -158,7 +141,7 @@ struct SessionsGraphExportTests {
     func exportWithNoExporterGivesTheRefusal() async throws {
         let setup = Setup(exporter: nil)
 
-        let reply = try await Self.run(Self.exportQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(Self.exportQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(reply.codes == ["MISSING_EXPORTER"])
         #expect(reply.messages == [SessionsToolText.noExporter])
@@ -169,7 +152,7 @@ struct SessionsGraphExportTests {
         let failure = TranscriptExportFailure(description: Self.failureText)
         let setup = Setup(exporter: FailingTranscriptExporter(failure: failure))
 
-        let reply = try await Self.run(Self.exportQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(Self.exportQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(reply.codes == ["EXPORT_FAILED"])
         #expect(reply.messages == [SessionsToolText.exportFailed(setup.session.id, error: failure)])
@@ -182,8 +165,8 @@ struct SessionsGraphExportTests {
         let exporter = RecordingTranscriptExporter(text: Self.markdown)
         let setup = Setup(exporter: exporter)
 
-        let reply = try await Self.run(
-            Self.exportQuery, id: setup.id, viewer: GraphQLViewer.external(), on: setup.graph)
+        let reply = try await GraphQLReply.run(
+            Self.exportQuery, variables: ["id": .string(setup.id)], viewer: GraphQLViewer.external(), on: setup.graph)
 
         #expect(reply.isNull("session"))
         #expect(await exporter.requests.isEmpty)
@@ -194,7 +177,8 @@ struct SessionsGraphExportTests {
         let setup = Setup(exporter: RecordingTranscriptExporter(text: Self.markdown))
         let viewer = GraphQLViewer.external(owning: [setup.id])
 
-        let reply = try await Self.run(Self.exportQuery, id: setup.id, viewer: viewer, on: setup.graph)
+        let reply = try await GraphQLReply.run(
+            Self.exportQuery, variables: ["id": .string(setup.id)], viewer: viewer, on: setup.graph)
 
         #expect(try reply.object("session")["export"] as? String == Self.markdown, "errors: \(reply.messages)")
     }
@@ -205,7 +189,7 @@ struct SessionsGraphExportTests {
     func theExportSessionAliasReachesExport() async throws {
         let setup = Setup(exporter: RecordingTranscriptExporter(text: Self.markdown))
 
-        let reply = try await Self.run(Self.aliasQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(Self.aliasQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(reply.rewrote("exportSession", to: "export"))
     }
@@ -215,7 +199,7 @@ struct SessionsGraphExportTests {
         let exporter = RecordingTranscriptExporter(text: Self.markdown)
         let setup = Setup(exporter: exporter)
 
-        let reply = try await Self.run(Self.aliasQuery, id: setup.id, on: setup.graph)
+        let reply = try await GraphQLReply.run(Self.aliasQuery, variables: ["id": .string(setup.id)], on: setup.graph)
 
         #expect(await exporter.requests.map(\.includeThoughts) == [true], "errors: \(reply.messages)")
         #expect(reply.rewrote("includeThoughts", to: "thoughts"))

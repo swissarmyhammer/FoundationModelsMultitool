@@ -238,30 +238,15 @@ struct SessionsToolForkTests {
 
     // MARK: - forkSession
 
-    /// Runs one document on the endpoint of `directory`, as a device of the
-    /// user.
-    ///
-    /// - Parameters:
-    ///   - document: The document.
-    ///   - directory: The directory.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(_ document: String, on directory: InMemorySessionDirectory) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await SessionsGraph.endpoint(of: directory).execute(
-                query: document, variables: [:], operationName: nil, viewer: deviceViewer))
-    }
-
     @Test("forkSession gives a new session of the kind FORK whose parent is the source")
     func forkSessionGivesAForkWithTheSourceAsParent() async throws {
         let directory = Fixtures.directoryWithLauncher()
         let source = Fixtures.summary()
         directory.register(source)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { kind parent { id } } }",
-            on: directory)
+            viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
         let fork = try reply.object("forkSession")
         #expect(fork["kind"] as? String == Self.forkKind)
@@ -274,10 +259,9 @@ struct SessionsToolForkTests {
         let source = Fixtures.summary()
         directory.register(source)
 
-        _ = try await Self.run(
+        _ = try await GraphQLReply.run(
             "mutation { forkSession(input: {id: \"\(source.id.ulidString)\", message: \"\(Self.firstPrompt)\"}) "
-                + "{ id } }",
-            on: directory)
+                + "{ id } }", viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
         let fork = try #require(try await Self.forks(of: source.id, in: directory).first)
         let request = try #require(directory.forkRequest(of: fork.id))
@@ -291,8 +275,9 @@ struct SessionsToolForkTests {
         let source = Fixtures.summary()
         directory.register(source)
 
-        _ = try await Self.run(
-            "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { id } }", on: directory)
+        _ = try await GraphQLReply.run(
+            "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         let fork = try #require(try await Self.forks(of: source.id, in: directory).first)
         #expect(directory.forkRequest(of: fork.id)?.requestedByClient == Self.deviceViewer.clientId)

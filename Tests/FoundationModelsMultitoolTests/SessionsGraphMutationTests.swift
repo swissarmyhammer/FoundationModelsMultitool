@@ -164,23 +164,6 @@ struct SessionsGraphMutationTests {
         }
     }
 
-    /// Runs one document on the endpoint of `directory`.
-    ///
-    /// - Parameters:
-    ///   - document: The document.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - directory: The directory.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ document: String, viewer: GraphQLViewer? = nil, on directory: InMemorySessionDirectory
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await SessionsGraph.endpoint(of: directory).execute(
-                query: document, variables: [:], operationName: nil, viewer: viewer))
-    }
-
     /// Runs one op of the `sessions` tool on `directory`.
     ///
     /// - Parameters:
@@ -367,7 +350,7 @@ struct SessionsGraphMutationTests {
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
             let staged = try await Self.facts(of: byTool, known: known)
             _ = try await Self.callTool(parity.payload(scenes[0]), on: byTool)
-            let reply = try await Self.run(parity.mutation(scenes[1]), on: byGraph)
+            let reply = try await GraphQLReply.run(parity.mutation(scenes[1]), on: SessionsGraph.endpoint(of: byGraph))
             return (reply, staged, known)
         }
         let changedByTool = try await Self.facts(of: byTool, known: known)
@@ -488,7 +471,8 @@ struct SessionsGraphMutationTests {
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
             let staged = try await Self.facts(of: directory, known: known)
             let answer = try await Self.callTool(refusal.payload(scenes[0]), on: directory)
-            let reply = try await Self.run(refusal.mutation(scenes[0]), on: directory)
+            let reply = try await GraphQLReply.run(
+                refusal.mutation(scenes[0]), on: SessionsGraph.endpoint(of: directory))
             return (answer, reply, staged, known)
         }
 
@@ -506,7 +490,8 @@ struct SessionsGraphMutationTests {
 
         let answer = try await Self.callTool(
             Fixtures.payload("start session", [("message", Self.firstMessage)]), on: directory)
-        let reply = try await Self.run("mutation { startSession(input: \(Self.startInput)) { id } }", on: directory)
+        let reply = try await GraphQLReply.run(
+            "mutation { startSession(input: \(Self.startInput)) { id } }", on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == ["MISSING_CALLER"])
         #expect(reply.messages == [answer])
@@ -520,9 +505,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.inScenes([directory]) { _ in
-            try await Self.run(
+            try await GraphQLReply.run(
                 "mutation { renameSession(input: {id: \"\(ULID().ulidString)\", title: \"\(Self.title)\"}) { id } }",
-                on: directory)
+                on: SessionsGraph.endpoint(of: directory))
         }
 
         #expect(reply.codes == [Self.notFound])
@@ -548,7 +533,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.inScenes([directory]) { scenes in
-            try await Self.run(Self.unarchiveMutation(of: scenes[0].archived), viewer: Self.deviceViewer, on: directory)
+            try await GraphQLReply.run(
+                Self.unarchiveMutation(of: scenes[0].archived), viewer: Self.deviceViewer,
+                on: SessionsGraph.endpoint(of: directory))
         }
 
         #expect(try reply.object("unarchiveSession")["state"] as? String == Self.idleState)
@@ -562,8 +549,10 @@ struct SessionsGraphMutationTests {
 
         let reply = try await Self.inScenes([directory]) { scenes in
             let mutation = Self.unarchiveMutation(of: scenes[0].archived)
-            _ = try await Self.run(mutation, viewer: Self.deviceViewer, on: directory)
-            return try await Self.run(mutation, viewer: Self.deviceViewer, on: directory)
+            _ = try await GraphQLReply.run(
+                mutation, viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
+            return try await GraphQLReply.run(
+                mutation, viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
         }
 
         #expect(reply.codes == ["NOT_ARCHIVED"])
@@ -580,9 +569,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
         let events = directory.events()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { startSession(input: \(Self.startInput)) { id origin startedBy { id } } }",
-            viewer: Self.deviceViewer, on: directory)
+            viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
         directory.finishEventStreams()
         let session = try reply.object("startSession")
         let started = try #require(await Self.start(of: session["id"] as? String, in: events))
@@ -603,7 +592,7 @@ struct SessionsGraphMutationTests {
 
         let (reply, callerID) = try await Fixtures.asCaller(in: directory) { callerID in
             let document = "mutation { startSession(input: \(Self.startInput)) { id origin } }"
-            return (try await Self.run(document, on: directory), callerID)
+            return (try await GraphQLReply.run(document, on: SessionsGraph.endpoint(of: directory)), callerID)
         }
         directory.finishEventStreams()
         let session = try reply.object("startSession")
@@ -622,10 +611,9 @@ struct SessionsGraphMutationTests {
         let target = Fixtures.summary()
         directory.register(target)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"\(target.id.ulidString)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome target { id } } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "{ outcome target { id } } }", viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
         let inbox = try await directory.inbox(of: target.id, markRead: false)
 
         let receipts = try reply.list("sendMessage")
@@ -651,10 +639,10 @@ struct SessionsGraphMutationTests {
             in: directory)
         try directory.finishTurn(of: sender.id, lastSummary: nil)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { replyMessage(input: {sessionId: \"\(recipient.id.ulidString)\", inReplyTo: \"\(original)\", "
-                + "message: \"\(Self.replyText)\"}) { outcome } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "message: \"\(Self.replyText)\"}) { outcome } }", viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
         let inbox = try await directory.inbox(of: sender.id, markRead: false)
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -791,7 +779,8 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(hidden.mutation(scene), viewer: scene.viewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            hidden.mutation(scene), viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == [Self.notFound])
         #expect(try await Self.facts(of: directory, known: known) == staged)
@@ -803,10 +792,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { tagSession(input: {id: \"\(scene.owned.ulidString)\", tags: [\"\(Self.reviewTag)\"]}) "
-                + "{ tags } }",
-            viewer: scene.viewer, on: directory)
+                + "{ tags } }", viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(try reply.object("tagSession")["tags"] as? [String] == [Self.keptTag, Self.reviewTag])
     }
@@ -819,9 +807,9 @@ struct SessionsGraphMutationTests {
         let target = Fixtures.summary(folder: Self.namedFolder)
         directory.register(target)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { renameSession(input: {id: \"\(target.shortID)\", title: \"\(Self.title)\"}) { title } }",
-            viewer: Self.deviceViewer, on: directory)
+            viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(try reply.object("renameSession")["title"] as? String == Self.title)
     }
@@ -838,8 +826,9 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(
-            "mutation { pinSession(input: {id: \"@\(Self.titleSlug)\"}) { id } }", viewer: scene.viewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            "mutation { pinSession(input: {id: \"@\(Self.titleSlug)\"}) { id } }", viewer: scene.viewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == [SessionsRefusal.Kind.invalidSessionID.rawValue])
         #expect(try await Self.facts(of: directory, known: known) == staged)
@@ -871,9 +860,11 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let seen = try await Self.run(
-            "{ session(id: \"\(scene.subagent.ulidString)\") { id } }", viewer: scene.viewer, on: directory)
-        let reply = try await Self.run(unowned.mutation(scene), viewer: scene.viewer, on: directory)
+        let seen = try await GraphQLReply.run(
+            "{ session(id: \"\(scene.subagent.ulidString)\") { id } }", viewer: scene.viewer,
+            on: SessionsGraph.endpoint(of: directory))
+        let reply = try await GraphQLReply.run(
+            unowned.mutation(scene), viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(try seen.object("session")["id"] as? String == scene.subagent.ulidString)
         #expect(reply.codes == [Self.notFound])
@@ -903,7 +894,8 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(unowned.mutation(scene), viewer: scene.viewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            unowned.mutation(scene), viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         let receipts = try reply.list("sendMessage")
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -919,10 +911,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"\(scene.owned.ulidString)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome } }",
-            viewer: scene.viewer, on: directory)
+                + "{ outcome } }", viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
         let inbox = try await directory.inbox(of: scene.owned, markRead: false)
 
         #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
@@ -956,9 +947,11 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let seen = try await Self.run(
-            "{ session(id: \"\(scene.stranger.ulidString)\") { id } }", viewer: scene.starterViewer, on: directory)
-        let reply = try await Self.run(started.mutation(scene), viewer: scene.starterViewer, on: directory)
+        let seen = try await GraphQLReply.run(
+            "{ session(id: \"\(scene.stranger.ulidString)\") { id } }", viewer: scene.starterViewer,
+            on: SessionsGraph.endpoint(of: directory))
+        let reply = try await GraphQLReply.run(
+            started.mutation(scene), viewer: scene.starterViewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(try seen.object("session")["id"] as? String == scene.stranger.ulidString)
         #expect(reply.codes == [Self.notFound])
@@ -974,10 +967,9 @@ struct SessionsGraphMutationTests {
         let scene = try await Self.stageExternal(in: directory)
         let staged = try await directory.inbox(of: scene.stranger, markRead: false)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"\(scene.stranger.ulidString)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome reason } }",
-            viewer: scene.starterViewer, on: directory)
+                + "{ outcome reason } }", viewer: scene.starterViewer, on: SessionsGraph.endpoint(of: directory))
 
         let receipts = try reply.list("sendMessage")
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -994,8 +986,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
         let viewer = GraphQLViewer.external()
 
-        let reply = try await Self.run(
-            "mutation { startSession(input: \(Self.startInput)) { id } }", viewer: viewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            "mutation { startSession(input: \(Self.startInput)) { id } }", viewer: viewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == ["UNTRUSTED_CLIENT"])
         #expect(try await directory.sessions(matching: SessionQuery(includesRecorded: true)).isEmpty)
@@ -1011,9 +1004,9 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"#\(Self.keptTag)\", message: \"\(Self.messageText)\"}) { outcome } }",
-            viewer: scene.viewer, on: directory)
+            viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == ["INVALID_ADDRESS"])
         #expect(try await Self.facts(of: directory, known: known) == staged)
@@ -1040,10 +1033,9 @@ struct SessionsGraphMutationTests {
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived, local, elsewhere]
             _ = try await Self.callTool(
                 Fixtures.payload("send message", [("to", to), ("message", Self.messageText)]), on: byTool)
-            let reply = try await Self.run(
+            let reply = try await GraphQLReply.run(
                 "mutation { sendMessage(input: {to: \"\(to)\", message: \"\(Self.messageText)\"}) "
-                    + "{ outcome target { id } } }",
-                on: byGraph)
+                    + "{ outcome target { id } } }", on: SessionsGraph.endpoint(of: byGraph))
             return (reply, known)
         }
 
@@ -1064,10 +1056,9 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"@\(Self.titleSlug)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome reason target { id } } }",
-            viewer: scene.viewer, on: directory)
+                + "{ outcome reason target { id } } }", viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         let receipts = try reply.list("sendMessage")
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -1134,10 +1125,10 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
         let target = aliasCase.stage(directory)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"\(aliasCase.alias)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome reason target { id } } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "{ outcome reason target { id } } }", viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         let receipts = try reply.list("sendMessage")
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -1154,10 +1145,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
         directory.register(Fixtures.summary(title: Self.fixTitle))
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {to: \"@\(Self.fixSlug)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "{ outcome } }", viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         #expect(reply.rewrites.isEmpty, "rewrites: \(reply.rewrites)")
@@ -1195,8 +1185,9 @@ struct SessionsGraphMutationTests {
         directory.register(source)
         directory.register(target)
 
-        let reply = try await Self.run(
-            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
         let inbox = try await directory.inbox(of: target.id, markRead: false)
 
         #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
@@ -1215,8 +1206,9 @@ struct SessionsGraphMutationTests {
         directory.register(Fixtures.summary(title: Self.fixTitle))
         directory.register(local)
 
-        let reply = try await Self.run(
-            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         #expect(
@@ -1243,7 +1235,8 @@ struct SessionsGraphMutationTests {
         let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
         let staged = try await Self.facts(of: directory, known: known)
 
-        let reply = try await Self.run(unusable.mutation(scene), viewer: scene.viewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            unusable.mutation(scene), viewer: scene.viewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(reply.codes == [Self.notFound])
         #expect(try await Self.facts(of: directory, known: known) == staged)
@@ -1258,7 +1251,8 @@ struct SessionsGraphMutationTests {
         let (reply, staged, facts) = try await Self.inScenes([directory]) { scenes in
             let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
             let staged = try await Self.facts(of: directory, known: known)
-            let reply = try await Self.run(Self.sourceSendDocument(from: scenes[0].target), on: directory)
+            let reply = try await GraphQLReply.run(
+                Self.sourceSendDocument(from: scenes[0].target), on: SessionsGraph.endpoint(of: directory))
             return (reply, staged, try await Self.facts(of: directory, known: known))
         }
 
@@ -1275,7 +1269,11 @@ struct SessionsGraphMutationTests {
         directory.register(target)
 
         let (reply, caller) = try await Self.inScenes([directory]) { scenes in
-            (try await Self.run(Self.sourceSendDocument(from: scenes[0].caller), on: directory), scenes[0].caller)
+            (
+                try await GraphQLReply.run(
+                    Self.sourceSendDocument(from: scenes[0].caller), on: SessionsGraph.endpoint(of: directory)),
+                scenes[0].caller
+            )
         }
         let inbox = try await directory.inbox(of: target.id, markRead: false)
 
@@ -1295,8 +1293,9 @@ struct SessionsGraphMutationTests {
         directory.register(source)
         directory.register(target)
 
-        let reply = try await Self.run(
-            Self.sourceSendDocument(from: source.id, field: alias), viewer: Self.deviceViewer, on: directory)
+        let reply = try await GraphQLReply.run(
+            Self.sourceSendDocument(from: source.id, field: alias), viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
         let inbox = try await directory.inbox(of: target.id, markRead: false)
 
         #expect(reply.rewrote(alias, to: "fromSession"))
@@ -1364,8 +1363,9 @@ struct SessionsGraphMutationTests {
         let directory = Fixtures.directoryWithLauncher()
 
         let reply = try await Self.inScenes([directory]) { scenes in
-            try await Self.run(
-                "mutation { \(alias.verb)(input: \(alias.input(scenes[0]))) { \(alias.selection) } }", on: directory)
+            try await GraphQLReply.run(
+                "mutation { \(alias.verb)(input: \(alias.input(scenes[0]))) { \(alias.selection) } }",
+                on: SessionsGraph.endpoint(of: directory))
         }
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
@@ -1379,10 +1379,10 @@ struct SessionsGraphMutationTests {
     func theStartInputTakesTheAliasesOfTheOp() async throws {
         let directory = Fixtures.directoryWithLauncher()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { startSession(input: {agent: \"\(Fixtures.agentID)\", folder: \"\(Self.namedFolder.path)\", "
-                + "prompt: \"\(Self.firstMessage)\"}) { agentId cwd } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "prompt: \"\(Self.firstMessage)\"}) { agentId cwd } }", viewer: Self.deviceViewer,
+            on: SessionsGraph.endpoint(of: directory))
 
         let session = try reply.object("startSession")
         #expect(session["agentId"] as? String == Fixtures.agentID)
@@ -1400,10 +1400,9 @@ struct SessionsGraphMutationTests {
         let target = Fixtures.summary()
         directory.register(target)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { sendMessage(input: {address: \"\(target.id.ulidString)\", text: \"\(Self.messageText)\"}) "
-                + "{ outcome } }",
-            viewer: Self.deviceViewer, on: directory)
+                + "{ outcome } }", viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
         #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
         #expect(reply.rewrote("address", to: "to"))

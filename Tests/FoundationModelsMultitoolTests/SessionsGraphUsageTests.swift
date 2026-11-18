@@ -104,23 +104,6 @@ struct SessionsGraphUsageTests {
         }
     }
 
-    /// Runs one document on `graph`.
-    ///
-    /// - Parameters:
-    ///   - query: The document.
-    ///   - variables: The values of the variables.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ query: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
-    }
-
     /// The id of each row of one list of a response.
     ///
     /// - Parameters:
@@ -148,7 +131,7 @@ struct SessionsGraphUsageTests {
     func pinnedSessionsAreInPinOrder() async throws {
         let usage = Usage()
 
-        let rows = try await Self.run(Self.pinnedQuery, on: usage.graph).list("pinnedSessions")
+        let rows = try await GraphQLReply.run(Self.pinnedQuery, on: usage.graph).list("pinnedSessions")
 
         #expect(rows.compactMap { $0["id"] as? String } == Self.ids([usage.firstPin, usage.secondPin]))
         #expect(rows.first?["title"] as? String == usage.firstPin.title)
@@ -161,7 +144,8 @@ struct SessionsGraphUsageTests {
     func pinnedSessionsGivesTheShortIDAndTheSlug() async throws {
         let usage = Usage()
 
-        let row = try #require(try await Self.run(Self.pinnedNamesQuery, on: usage.graph).list("pinnedSessions").first)
+        let row = try #require(
+            try await GraphQLReply.run(Self.pinnedNamesQuery, on: usage.graph).list("pinnedSessions").first)
 
         #expect(row["shortId"] as? String == usage.firstPin.shortID)
         #expect(row["slug"] as? String == Self.firstPinSlug)
@@ -173,7 +157,8 @@ struct SessionsGraphUsageTests {
         let directory = InMemorySessionDirectory()
         directory.register(Fixtures.summary(lastUsedAt: Self.time(100)))
 
-        let ids = try Self.ids("pinnedSessions", of: await Self.run(Self.pinnedQuery, on: .endpoint(of: directory)))
+        let ids = try Self.ids(
+            "pinnedSessions", of: await GraphQLReply.run(Self.pinnedQuery, on: SessionsGraph.endpoint(of: directory)))
 
         #expect(ids.isEmpty)
     }
@@ -186,7 +171,7 @@ struct SessionsGraphUsageTests {
     func recentSessionsAreNewestFirstWithNoPin() async throws {
         let usage = Usage()
 
-        let rows = try await Self.run(Self.recentQuery, on: usage.graph).list("recentSessions")
+        let rows = try await GraphQLReply.run(Self.recentQuery, on: usage.graph).list("recentSessions")
 
         #expect(rows.compactMap { $0["id"] as? String } == Self.ids([usage.newest, usage.middle, usage.oldest]))
         #expect(rows.first?["title"] as? String == usage.newest.title)
@@ -199,7 +184,8 @@ struct SessionsGraphUsageTests {
     func recentSessionsGivesTheShortIDAndTheSlug() async throws {
         let usage = Usage()
 
-        let row = try #require(try await Self.run(Self.recentNamesQuery, on: usage.graph).list("recentSessions").first)
+        let row = try #require(
+            try await GraphQLReply.run(Self.recentNamesQuery, on: usage.graph).list("recentSessions").first)
 
         #expect(row["shortId"] as? String == usage.newest.shortID)
         #expect(row["slug"] as? String == Self.newestSlug)
@@ -210,7 +196,7 @@ struct SessionsGraphUsageTests {
     func recentSessionsHonorsTheLimit() async throws {
         let usage = Usage()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.limitedRecentQuery, variables: ["limit": .int(Self.smallLimit)], on: usage.graph)
 
         #expect(try Self.ids("recentSessions", of: reply) == Self.ids([usage.newest, usage.middle]))
@@ -225,8 +211,8 @@ struct SessionsGraphUsageTests {
         let usage = Usage()
         let viewer = GraphQLViewer.external(owning: [usage.secondPin.id.ulidString, usage.middle.id.ulidString])
 
-        let pinnedReply = try await Self.run(Self.pinnedQuery, viewer: viewer, on: usage.graph)
-        let recentReply = try await Self.run(Self.recentQuery, viewer: viewer, on: usage.graph)
+        let pinnedReply = try await GraphQLReply.run(Self.pinnedQuery, viewer: viewer, on: usage.graph)
+        let recentReply = try await GraphQLReply.run(Self.recentQuery, viewer: viewer, on: usage.graph)
         let pinned = try Self.ids("pinnedSessions", of: pinnedReply)
         let recent = try Self.ids("recentSessions", of: recentReply)
 
@@ -241,7 +227,7 @@ struct SessionsGraphUsageTests {
     func aPinnedSessionReadsItsPinFacts() async throws {
         let usage = Usage()
 
-        let facts = try await Self.run(
+        let facts = try await GraphQLReply.run(
             Self.pinFactsQuery, variables: ["id": .string(usage.firstPin.id.ulidString)], on: usage.graph
         ).object("session")
 
@@ -256,7 +242,7 @@ struct SessionsGraphUsageTests {
     func anUnusedSessionReadsNoPinFacts() async throws {
         let usage = Usage()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.pinFactsQuery, variables: ["id": .string(usage.unused.id.ulidString)], on: usage.graph)
         let facts = try reply.object("session")
 
@@ -284,14 +270,19 @@ struct SessionsGraphUsageTests {
     func pinAndUnpinChangeTheLists() async throws {
         let usage = Usage()
 
-        let pin = try await Self.run(Self.mutation("pinSession", usage.newest.id), on: usage.graph)
-        let pinnedAfterPin = try Self.ids("pinnedSessions", of: await Self.run(Self.pinnedQuery, on: usage.graph))
-        let recentAfterPin = try Self.ids("recentSessions", of: await Self.run(Self.recentQuery, on: usage.graph))
-        _ = try await Self.run(Self.mutation("pinSession", usage.firstPin.id), on: usage.graph)
-        let pinnedAfterRepin = try Self.ids("pinnedSessions", of: await Self.run(Self.pinnedQuery, on: usage.graph))
-        let unpin = try await Self.run(Self.mutation("unpinSession", usage.newest.id), on: usage.graph)
-        let pinnedAfterUnpin = try Self.ids("pinnedSessions", of: await Self.run(Self.pinnedQuery, on: usage.graph))
-        let recentAfterUnpin = try Self.ids("recentSessions", of: await Self.run(Self.recentQuery, on: usage.graph))
+        let pin = try await GraphQLReply.run(Self.mutation("pinSession", usage.newest.id), on: usage.graph)
+        let pinnedAfterPin = try Self.ids(
+            "pinnedSessions", of: await GraphQLReply.run(Self.pinnedQuery, on: usage.graph))
+        let recentAfterPin = try Self.ids(
+            "recentSessions", of: await GraphQLReply.run(Self.recentQuery, on: usage.graph))
+        _ = try await GraphQLReply.run(Self.mutation("pinSession", usage.firstPin.id), on: usage.graph)
+        let pinnedAfterRepin = try Self.ids(
+            "pinnedSessions", of: await GraphQLReply.run(Self.pinnedQuery, on: usage.graph))
+        let unpin = try await GraphQLReply.run(Self.mutation("unpinSession", usage.newest.id), on: usage.graph)
+        let pinnedAfterUnpin = try Self.ids(
+            "pinnedSessions", of: await GraphQLReply.run(Self.pinnedQuery, on: usage.graph))
+        let recentAfterUnpin = try Self.ids(
+            "recentSessions", of: await GraphQLReply.run(Self.recentQuery, on: usage.graph))
 
         #expect(try pin.object("pinSession")["pinned"] as? Bool == true)
         #expect(pinnedAfterPin == Self.ids([usage.firstPin, usage.secondPin, usage.newest]))
@@ -308,7 +299,7 @@ struct SessionsGraphUsageTests {
     func theBareVerbPinIsAnAlias() async throws {
         let usage = Usage()
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { pin(input: {id: \"\(usage.newest.id.ulidString)\"}) { id } }", on: usage.graph)
 
         #expect(reply.rewrote("pin", to: "pinSession"), "messages: \(reply.messages)")
@@ -322,8 +313,9 @@ struct SessionsGraphUsageTests {
         let usage = Usage()
         let viewer = GraphQLViewer.external(started: [usage.newest.id.ulidString])
 
-        let unknown = try await Self.run(Self.mutation("pinSession", ULID()), on: usage.graph)
-        let notOwned = try await Self.run(Self.mutation("pinSession", usage.newest.id), viewer: viewer, on: usage.graph)
+        let unknown = try await GraphQLReply.run(Self.mutation("pinSession", ULID()), on: usage.graph)
+        let notOwned = try await GraphQLReply.run(
+            Self.mutation("pinSession", usage.newest.id), viewer: viewer, on: usage.graph)
 
         #expect(unknown.codes == ["NOT_FOUND"], "messages: \(unknown.messages)")
         #expect(notOwned.codes == ["NOT_FOUND"], "messages: \(notOwned.messages)")

@@ -117,23 +117,6 @@ struct SessionsGraphPageTests {
         ["includeRecorded": true, "limit": .number(Number(limit))]
     }
 
-    /// Runs one document on `graph`.
-    ///
-    /// - Parameters:
-    ///   - query: The document.
-    ///   - variables: The values of the variables.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ query: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(query: query, variables: variables, operationName: nil, viewer: viewer))
-    }
-
     /// Reads one page.
     ///
     /// - Parameters:
@@ -142,13 +125,13 @@ struct SessionsGraphPageTests {
     ///   - viewer: The client of the call, or `nil` for the agent.
     ///   - graph: The endpoint.
     /// - Returns: The page.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws, or an error when
     ///   the response has no page.
     private static func page(
         after cursor: String?, filter: Map, viewer: GraphQLViewer?, on graph: SessionsGraph
     ) async throws -> Page {
         let variables: [String: Map] = ["filter": filter, "after": cursor.map(Map.string) ?? .null]
-        let reply = try await run(pageQuery, variables: variables, viewer: viewer, on: graph)
+        let reply = try await GraphQLReply.run(pageQuery, variables: variables, viewer: viewer, on: graph)
         let object = try reply.object("sessionPage")
         let sessions = try #require(object["sessions"] as? [[String: Any]])
         return Page(ids: sessions.compactMap { $0["id"] as? String }, nextCursor: object["nextCursor"] as? String)
@@ -161,10 +144,10 @@ struct SessionsGraphPageTests {
     ///   - graph: The endpoint.
     /// - Returns: The sessions of the page, each with its `id` and its
     ///   `archivedAt`.
-    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    /// - Throws: What ``GraphQLReply/run(_:variables:viewer:on:)`` throws, or an error when
     ///   the response has no page.
     private static func archiveTimes(filter: Map, on graph: SessionsGraph) async throws -> [[String: Any]] {
-        let reply = try await run(archiveTimeQuery, variables: ["filter": filter], on: graph)
+        let reply = try await GraphQLReply.run(archiveTimeQuery, variables: ["filter": filter], on: graph)
         return try #require(try reply.object("sessionPage")["sessions"] as? [[String: Any]])
     }
 
@@ -358,7 +341,7 @@ struct SessionsGraphPageTests {
         let directory = InMemorySessionDirectory()
         let registered = Self.registerSessions(Self.crowdSize, in: directory)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.sessionsQuery, variables: ["filter": .null], on: SessionsGraph.endpoint(of: directory))
 
         let ids = try reply.list("sessions").compactMap { $0["id"] as? String }
@@ -372,7 +355,7 @@ struct SessionsGraphPageTests {
         let session = Fixtures.summary(title: Self.apiTitle)
         directory.register(session)
 
-        let reply = try await Self.run(Self.namesPageQuery, on: SessionsGraph.endpoint(of: directory))
+        let reply = try await GraphQLReply.run(Self.namesPageQuery, on: SessionsGraph.endpoint(of: directory))
         let sessions = try #require(try reply.object("sessionPage")["sessions"] as? [[String: Any]])
 
         #expect(sessions.first?["shortId"] as? String == session.shortID)
@@ -386,7 +369,7 @@ struct SessionsGraphPageTests {
     func aMalformedCursorGivesInvalidCursor() async throws {
         let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             Self.pageQuery, variables: ["filter": .null, "after": "not-a-cursor"], on: graph)
 
         #expect(reply.codes == ["INVALID_CURSOR"])
@@ -415,7 +398,7 @@ struct SessionsGraphPageTests {
         let registered = Self.registerSessions(Self.smallPageSize, in: directory)
         let cursor = try #require(registered.first)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "{ sessionsPage(cursor: \"\(cursor)\") { items { id } endCursor } }",
             on: SessionsGraph.endpoint(of: directory))
 

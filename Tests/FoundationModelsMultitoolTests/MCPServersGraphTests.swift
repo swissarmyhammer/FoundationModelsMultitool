@@ -64,20 +64,6 @@ struct MCPServersGraphTests {
             graph = MCPServersGraph.endpoint(of: registry)
         }
 
-        /// Runs one document.
-        ///
-        /// - Parameters:
-        ///   - document: The document.
-        ///   - variables: The values of the variables.
-        ///   - viewer: The client of the call, or `nil` for the agent.
-        /// - Returns: The response.
-        /// - Throws: What the endpoint throws.
-        func run(
-            _ document: String, variables: [String: Map] = [:], viewer: GraphQLViewer? = nil
-        ) async throws -> GraphQLReply {
-            try GraphQLReply(
-                json: await graph.execute(query: document, variables: variables, operationName: nil, viewer: viewer))
-        }
     }
 
     // MARK: - The endpoint contract
@@ -95,7 +81,7 @@ struct MCPServersGraphTests {
     @Test("the endpoint conforms, with the listMCPServers and mcpServerChanges alias probes")
     func theEndpointConforms() async throws {
         let setup = Setup()
-        let cursor = try #require(try await setup.run("{ cursor }").data?["cursor"] as? String)
+        let cursor = try #require(try await GraphQLReply.run("{ cursor }", on: setup.graph).data?["cursor"] as? String)
         try await setup.registry.setEnabled(true, named: "linear")
         let probes = [
             GraphQLAliasProbe(query: "{ listMCPServers { name } }", from: "listMCPServers", to: "mcpServers"),
@@ -127,7 +113,7 @@ struct MCPServersGraphTests {
     func mcpServersGivesEachServer() async throws {
         let setup = Setup()
 
-        let servers = try await setup.run("{ mcpServers \(Self.selection) }").list("mcpServers")
+        let servers = try await GraphQLReply.run("{ mcpServers \(Self.selection) }", on: setup.graph).list("mcpServers")
 
         #expect(servers.compactMap { $0["name"] as? String } == ["github", "linear"])
         #expect(servers[0]["transport"] as? String == "STDIO")
@@ -144,8 +130,9 @@ struct MCPServersGraphTests {
     func mcpServerGivesOneServer() async throws {
         let setup = Setup()
 
-        let known = try await setup.run("{ mcpServer(name: \"linear\") { name url } }").object("mcpServer")
-        let unknown = try await setup.run("{ mcpServer(name: \"absent\") { name } }")
+        let known = try await GraphQLReply.run("{ mcpServer(name: \"linear\") { name url } }", on: setup.graph).object(
+            "mcpServer")
+        let unknown = try await GraphQLReply.run("{ mcpServer(name: \"absent\") { name } }", on: setup.graph)
 
         #expect(known["url"] as? String == "https://mcp.linear.app/mcp")
         #expect(unknown.isNull("mcpServer"))
@@ -157,9 +144,10 @@ struct MCPServersGraphTests {
     func addWithASecret() async throws {
         let setup = Setup([])
 
-        let reply = try await setup.run(
+        let reply = try await GraphQLReply.run(
             "mutation { addMCPServer(input: {name: \"remote\", url: \"https://example.com/mcp\", "
-                + "headerSecrets: [{name: \"Authorization\", value: \"\(Self.token)\"}]}) \(Self.selection) }")
+                + "headerSecrets: [{name: \"Authorization\", value: \"\(Self.token)\"}]}) \(Self.selection) }",
+            on: setup.graph)
         let stored = String(decoding: try JSONEncoder().encode(try await setup.storage.loadServers()), as: UTF8.self)
 
         #expect(reply.codes.isEmpty, "messages: \(reply.messages)")
@@ -173,12 +161,13 @@ struct MCPServersGraphTests {
     func updateEnableAndRemove() async throws {
         let setup = Setup()
 
-        let update = try await setup.run(
+        let update = try await GraphQLReply.run(
             "mutation { updateMCPServer(input: {name: \"github\", newName: \"gh\", args: [\"--verbose\"]}) "
-                + "{ name args } }")
-        let enable = try await setup.run(
-            "mutation { setMCPServerEnabled(input: {name: \"linear\", enabled: true}) { enabled } }")
-        let remove = try await setup.run("mutation { removeMCPServer(input: {name: \"gh\"}) { name } }")
+                + "{ name args } }", on: setup.graph)
+        let enable = try await GraphQLReply.run(
+            "mutation { setMCPServerEnabled(input: {name: \"linear\", enabled: true}) { enabled } }", on: setup.graph)
+        let remove = try await GraphQLReply.run(
+            "mutation { removeMCPServer(input: {name: \"gh\"}) { name } }", on: setup.graph)
 
         #expect(try update.object("updateMCPServer")["args"] as? [String] == ["--verbose"])
         #expect(try enable.object("setMCPServerEnabled")["enabled"] as? Bool == true)
@@ -232,7 +221,7 @@ struct MCPServersGraphTests {
     func aRefusalIsACodedError(_ refusal: RefusalCase) async throws {
         let setup = Setup()
 
-        let reply = try await setup.run(refusal.document)
+        let reply = try await GraphQLReply.run(refusal.document, on: setup.graph)
 
         #expect(reply.codes == [refusal.code], "messages: \(reply.messages)")
         #expect(try await setup.storage.loadServers() == [Self.github, Self.linear])
@@ -242,9 +231,10 @@ struct MCPServersGraphTests {
     func anExternalClientIsRefused() async throws {
         let setup = Setup()
 
-        let list = try await setup.run("{ mcpServers { name } }", viewer: Self.externalViewer)
-        let remove = try await setup.run(
-            "mutation { removeMCPServer(input: {name: \"github\"}) { name } }", viewer: Self.externalViewer)
+        let list = try await GraphQLReply.run("{ mcpServers { name } }", viewer: Self.externalViewer, on: setup.graph)
+        let remove = try await GraphQLReply.run(
+            "mutation { removeMCPServer(input: {name: \"github\"}) { name } }", viewer: Self.externalViewer,
+            on: setup.graph)
 
         #expect(list.codes == ["UNTRUSTED_CLIENT"])
         #expect(remove.codes == ["UNTRUSTED_CLIENT"])
@@ -256,16 +246,19 @@ struct MCPServersGraphTests {
     @Test("each change gives one row: the kind, the name, the name before a rename, and the server")
     func eachChangeGivesOneRow() async throws {
         let setup = Setup()
-        let cursor = try #require(try await setup.run("{ cursor }").data?["cursor"] as? String)
+        let cursor = try #require(try await GraphQLReply.run("{ cursor }", on: setup.graph).data?["cursor"] as? String)
         var responses = try await setup.graph.subscribe(
             query: "subscription($after: String) { changes(after: $after) { cursor kind name previousName "
                 + "server { name enabled transport } } }",
             variables: ["after": .string(cursor)], operationName: nil, viewer: nil
         ).makeAsyncIterator()
 
-        _ = try await setup.run("mutation { updateMCPServer(input: {name: \"github\", newName: \"gh\"}) { name } }")
-        _ = try await setup.run("mutation { setMCPServerEnabled(input: {name: \"gh\", enabled: false}) { name } }")
-        _ = try await setup.run("mutation { removeMCPServer(input: {name: \"linear\"}) { name } }")
+        _ = try await GraphQLReply.run(
+            "mutation { updateMCPServer(input: {name: \"github\", newName: \"gh\"}) { name } }", on: setup.graph)
+        _ = try await GraphQLReply.run(
+            "mutation { setMCPServerEnabled(input: {name: \"gh\", enabled: false}) { name } }", on: setup.graph)
+        _ = try await GraphQLReply.run(
+            "mutation { removeMCPServer(input: {name: \"linear\"}) { name } }", on: setup.graph)
         var changes: [[String: Any]] = []
         for _ in 0..<3 {
             changes.append(try GraphQLReply(json: try #require(try await responses.next())).object("changes"))

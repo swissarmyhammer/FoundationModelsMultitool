@@ -41,6 +41,39 @@ comments:
     - evidence: 15 files. Sources: SessionsToolForkOperation.swift (new), SessionsTool.swift, SessionsToolText.swift, SessionsToolText+Changes.swift, SessionsGraphMutations.swift, SessionsGraphTypes.swift, SessionsGraphSchema.swift, SessionsGraph.swift, skills/sessions/SKILL.md. Tests: SessionsToolForkTests.swift (new, 16 tests), SessionsGraphMutationTests.swift (parity, refusal, hidden and alias cases for fork), SessionsGraphChangesTests.swift (a fork gives added), Fixtures/ForwardingSessionDirectory.swift, Goldens/sessions.graphql (+19 lines). Pins: Extras 87d1da9, Router eba762f2. swift build clean; affected suites `swift test --filter` 157 tests in 7 suites passed; full `swift test` 3128 tests in 277 suites passed, 0 failures, 0 warnings.
     - next: review
   timestamp: 2026-11-18T23:19:10.695068+00:00
+- actor: claude-code
+  id: 01m7rfgcr48s55vyv5k053qrky
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (bdbebea3); 1 finding — Tests/FoundationModelsMultitoolTests/SessionsToolForkTests.swift:250 (reuse/reuse)
+    - next: implement the finding in the dated Review Findings section, then review again
+  timestamp: 2026-11-18T23:22:40.260718+00:00
+- actor: claude-code
+  id: 01m7rfgv4xy2sj4rmdae9hka7t
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionsToolForkOperation.swift (new), SessionsTool, SessionsToolText, SessionsToolText+Changes, SessionsGraphMutations, SessionsGraphTypes, SessionsGraphSchema, SessionsGraph; SKILL.md (one row); SessionsToolForkTests (new, 16), SessionsGraphMutationTests, SessionsGraphChangesTests, ForwardingSessionDirectory; golden (+19); local pin Router eba762f2
+    - test: green — swift test, 3128 passed (run in the implement step)
+    - commit: bdbebea3
+    - review: findings — Tests/FoundationModelsMultitoolTests/SessionsToolForkTests.swift:250
+  timestamp: 2026-11-18T23:22:55.005754+00:00
+- actor: claude-code
+  id: 01m7rfr861hs071jg9pkebzkba
+  text: |-
+    Finding fix (2026-11-18): the reuse finding at SessionsToolForkTests.swift:250.
+    - Cause: 10 suites had a private copy of the GraphQL execute-and-decode helper (one `GraphQLReply(json: await <endpoint>.execute(...))`). The copies were in SessionsToolForkTests, SessionsGraphUsageTests, SessionsGraphQueryTests (two: one with `variables`, one with `id`), SessionsGraphChangesTests, SessionsGraphPageTests, SessionsGraphMutationTests, SessionsGraphExportTests, SnapshotsGraphTests, SnapshotsGraphChangesTests, and `Setup.run` of MCPServersGraphTests.
+    - Fix: one shared helper `GraphQLReply.run(_:variables:viewer:on:)` in Fixtures/GraphQLReply.swift. It takes `some GraphQLEndpoint`, so it serves SessionsGraph, SnapshotsGraph and MCPServersGraph. All private copies are deleted, and each call site calls the shared helper.
+    - Behavior stays the same: the suites whose copy used the device viewer as a default (SessionsGraphChangesTests, SnapshotsGraphChangesTests, SessionsToolForkTests) now give `viewer: Self.deviceViewer` at each call. A call with `id:` now gives `variables: ["id": .string(...)]`. A call `on: directory` now gives `on: SessionsGraph.endpoint(of: directory)`.
+    - I did the call-site edit with a string-aware script (paren match over Swift string literals and interpolation), then swift format.
+    - Test: `swift test --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph"` one time, 333 tests in 17 suites passed. I added SnapshotsGraph and MCPServersGraph to the given filter because those suites also changed.
+  timestamp: 2026-11-18T23:26:57.729784+00:00
+- actor: claude-code
+  id: 01m7rfrg353x340qn31fycy83d
+  text: |-
+    ### implement — changed
+    - evidence: 11 files — Fixtures/GraphQLReply.swift (shared `GraphQLReply.run`), SessionsToolForkTests, SessionsGraphUsageTests, SessionsGraphQueryTests, SessionsGraphChangesTests, SessionsGraphPageTests, SessionsGraphMutationTests, SessionsGraphExportTests, SnapshotsGraphTests, SnapshotsGraphChangesTests, MCPServersGraphTests (private copies deleted). `swift build --build-tests` clean; `swift test --skip-build --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph"` one run: 333 tests in 17 suites passed, 0 failures.
+    - next: review
+  timestamp: 2026-11-18T23:27:05.829440+00:00
 position_column: doing
 position_ordinal: '80'
 title: fork session and the forkSession mutation (D205)
@@ -71,3 +104,16 @@ Precondition: the Extras sha with `SessionDirectory.fork(_:)`, `SessionForkReque
 - [x] No caller and no `id`; an archived source; a directory with no fork: the correctives.
 - [x] `forkSession`: the new session has `kind: FORK` and `parent` = the source; the `changes` feed has the start.
 - [x] The tool text names `fork session`. #sessions #fork #graphql
+
+## Review Findings (2026-11-18 17:19)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 12 file(s) reviewed, 4 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsToolForkTests.swift:250` `reuse/reuse` — The new private `run(_:on:)` helper reimplements the same GraphQL execute-and-decode helper that already exists in other suites. It is a fourth copy, so the parse-and-execute logic now exists in several places and will drift. Reuse one shared `run` helper that takes the viewer as a parameter, or move the helper into a shared test support file and call it from SessionsToolForkTests. Do not add a fourth private copy.

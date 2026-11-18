@@ -251,29 +251,14 @@ struct SnapshotsGraphChangesTests {
             storeOwner: { storeOwners[$0] }, changeLogCapacity: capacity)
     }
 
-    /// Runs one document on `graph`.
-    ///
-    /// - Parameters:
-    ///   - document: The document.
-    ///   - variables: The values of the variables.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ document: String, variables: [String: Map] = [:], on graph: SnapshotsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(
-            json: await graph.execute(query: document, variables: variables, operationName: nil, viewer: deviceViewer))
-    }
-
     /// The newest cursor of `graph`, from the root query `cursor`.
     ///
     /// - Parameter graph: The endpoint.
     /// - Returns: The cursor.
     /// - Throws: An error when the response has no cursor.
     private static func cursor(of graph: SnapshotsGraph) async throws -> String {
-        try #require(try await run(cursorQuery, on: graph).data?["cursor"] as? String)
+        try #require(
+            try await GraphQLReply.run(cursorQuery, viewer: Self.deviceViewer, on: graph).data?["cursor"] as? String)
     }
 
     /// The `id` of one checkpoint, from the query `checkpoint`.
@@ -288,7 +273,8 @@ struct SnapshotsGraphChangesTests {
         _ index: Int, of sessionId: String = firstSessionId, on graph: SnapshotsGraph
     ) async throws -> String {
         let variables: [String: Map] = ["sessionId": .string(sessionId), "index": .number(Number(index))]
-        let reply = try await run(checkpointQuery, variables: variables, on: graph)
+        let reply = try await GraphQLReply.run(
+            checkpointQuery, variables: variables, viewer: Self.deviceViewer, on: graph)
         return try #require(try reply.object("checkpoint")["id"] as? String)
     }
 
@@ -358,7 +344,8 @@ struct SnapshotsGraphChangesTests {
         ActionCase(name: "take") { fixture, _ in try await fixture.takeFirst() },
         ActionCase(name: "rollback") { _, graph in
             let input: Map = ["sessionId": .string(firstSessionId), "index": .number(Number(firstIndex))]
-            let reply = try await run(rollbackMutation, variables: ["input": input], on: graph)
+            let reply = try await GraphQLReply.run(
+                rollbackMutation, variables: ["input": input], viewer: Self.deviceViewer, on: graph)
             #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         },
     ]
@@ -634,7 +621,8 @@ struct SnapshotsGraphChangesTests {
 
         for sessionId in [Self.firstSessionId, Self.secondSessionId] {
             let variables: [String: Map] = ["sessionId": .string(sessionId), "index": .number(Number(index))]
-            let reply = try await Self.run(Self.checkpointOwnerQuery, variables: variables, on: graph)
+            let reply = try await GraphQLReply.run(
+                Self.checkpointOwnerQuery, variables: variables, viewer: Self.deviceViewer, on: graph)
             #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
             #expect(try reply.object("checkpoint")["owner"] as? String == Self.secondSessionId)
         }
@@ -674,7 +662,8 @@ struct SnapshotsGraphChangesTests {
         #expect(change == Self.added(cursor: change.cursor, sessionId: Self.hostSessionId, id: id))
         #expect(next == Self.added(cursor: next.cursor, sessionId: Self.hostSessionId, id: markerId))
         let variables: [String: Map] = ["sessionId": .string(Self.hostSessionId), "index": .number(Number(index))]
-        let reply = try await Self.run(Self.checkpointOwnerQuery, variables: variables, on: graph)
+        let reply = try await GraphQLReply.run(
+            Self.checkpointOwnerQuery, variables: variables, viewer: Self.deviceViewer, on: graph)
         #expect(try reply.object("checkpoint")["owner"] as? String == Self.hostSessionId)
     }
 
@@ -691,9 +680,9 @@ struct SnapshotsGraphChangesTests {
             storeOwners: [Self.hostSessionId: Self.secondSessionId])
 
         let input: Map = ["sessionId": .string(Self.hostSessionId), "index": .number(0)]
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation($input: RollbackTimelineInput!) { rollbackTimeline(input: $input) { id owner } }",
-            variables: ["input": input], on: graph)
+            variables: ["input": input], viewer: Self.deviceViewer, on: graph)
 
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         let checkpoint = try reply.object("rollbackTimeline")

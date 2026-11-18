@@ -128,28 +128,14 @@ struct SessionsGraphChangesTests {
         }
     }
 
-    /// Runs one document on `graph`.
-    ///
-    /// - Parameters:
-    ///   - document: The document.
-    ///   - viewer: The client of the call, or `nil` for the agent.
-    ///   - graph: The endpoint.
-    /// - Returns: The response.
-    /// - Throws: What the endpoint throws, or an error when the response is
-    ///   not a JSON object.
-    private static func run(
-        _ document: String, viewer: GraphQLViewer? = deviceViewer, on graph: SessionsGraph
-    ) async throws -> GraphQLReply {
-        try GraphQLReply(json: await graph.execute(query: document, variables: [:], operationName: nil, viewer: viewer))
-    }
-
     /// The newest cursor of `graph`, from the root query `cursor`.
     ///
     /// - Parameter graph: The endpoint.
     /// - Returns: The cursor.
     /// - Throws: An error when the response has no cursor.
     private static func cursor(of graph: SessionsGraph) async throws -> String {
-        try #require(try await run(cursorQuery, on: graph).data?["cursor"] as? String)
+        try #require(
+            try await GraphQLReply.run(cursorQuery, viewer: Self.deviceViewer, on: graph).data?["cursor"] as? String)
     }
 
     /// Starts a subscription on `graph`.
@@ -262,7 +248,7 @@ struct SessionsGraphChangesTests {
         let before = try await Self.cursor(of: graph)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
-        let reply = try await Self.run(action.mutation(target.id), on: graph)
+        let reply = try await GraphQLReply.run(action.mutation(target.id), viewer: Self.deviceViewer, on: graph)
         try await Self.mark(marker, in: directory)
         let first = try await subscription.nextChange()
         let second = try await subscription.nextChange()
@@ -338,8 +324,9 @@ struct SessionsGraphChangesTests {
         let before = try await Self.cursor(of: graph)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
-        let reply = try await Self.run(
-            "mutation { unarchiveSession(input: {id: \"\(target.id.ulidString)\"}) { id } }", on: graph)
+        let reply = try await GraphQLReply.run(
+            "mutation { unarchiveSession(input: {id: \"\(target.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
+            on: graph)
         try await Self.mark(marker, in: directory)
         var changes: [Change] = []
         for _ in 0...Self.changesOfAnUnarchive {
@@ -349,7 +336,8 @@ struct SessionsGraphChangesTests {
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         #expect(
             changes.map(\.changed)
-                == Array(repeating: [target.id.ulidString], count: Self.changesOfAnUnarchive) + [[marker.id.ulidString]])
+                == Array(repeating: [target.id.ulidString], count: Self.changesOfAnUnarchive) + [[marker.id.ulidString]]
+        )
     }
 
     /// An external client gets the changes of an unarchive only for a
@@ -464,7 +452,7 @@ struct SessionsGraphChangesTests {
         let graph = SessionsGraph.endpoint(of: directory)
         var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
 
-        let reply = try await Self.run(Self.sendMutation(to: target.id), on: graph)
+        let reply = try await GraphQLReply.run(Self.sendMutation(to: target.id), viewer: Self.deviceViewer, on: graph)
         try await Self.mark(marker, in: directory)
         let changes = [try await subscription.nextChange(), try await subscription.nextChange()]
         let session = try await graph.execute(
@@ -492,10 +480,12 @@ struct SessionsGraphChangesTests {
         let graph = SessionsGraph.endpoint(of: directory)
         var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
 
-        let repin = try await Self.run(
-            "mutation { pinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", on: graph)
-        let unpin = try await Self.run(
-            "mutation { unpinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", on: graph)
+        let repin = try await GraphQLReply.run(
+            "mutation { pinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
+            on: graph)
+        let unpin = try await GraphQLReply.run(
+            "mutation { unpinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
+            on: graph)
         _ = try await directory.markUsed(used.id)
         try await Self.mark(marker, in: directory)
         let changes = [
@@ -520,10 +510,13 @@ struct SessionsGraphChangesTests {
         var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
         let id = target.id.ulidString
 
-        let rename = try await Self.run(
-            "mutation { renameSession(input: {id: \"\(id)\", title: \"\(Self.renameTitle)\"}) { id } }", on: graph)
+        let rename = try await GraphQLReply.run(
+            "mutation { renameSession(input: {id: \"\(id)\", title: \"\(Self.renameTitle)\"}) { id } }",
+            viewer: Self.deviceViewer, on: graph)
         let change = try await subscription.nextChange()
-        let session = try await Self.run("{ session(id: \"\(id)\") { slug } }", on: graph).object("session")
+        let session = try await GraphQLReply.run(
+            "{ session(id: \"\(id)\") { slug } }", viewer: Self.deviceViewer, on: graph
+        ).object("session")
 
         #expect(rename.codes.isEmpty, "errors: \(rename.messages)")
         #expect(change == Self.change(cursor: change.cursor, changed: target.id))
@@ -539,10 +532,9 @@ struct SessionsGraphChangesTests {
         let before = try await Self.cursor(of: graph)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
-        let reply = try await Self.run(
+        let reply = try await GraphQLReply.run(
             "mutation { startSession(input: {agentId: \"\(Fixtures.agentID)\", message: \"\(Self.messageText)\"}) "
-                + "{ id } }",
-            on: graph)
+                + "{ id } }", viewer: Self.deviceViewer, on: graph)
         let startedID = try #require(try reply.object("startSession")["id"] as? String)
         let started = try #require(ULID(ulidString: startedID))
         let added = try await subscription.nextChange()
@@ -565,8 +557,9 @@ struct SessionsGraphChangesTests {
         let before = try await Self.cursor(of: graph)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
-        let reply = try await Self.run(
-            "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { id } }", on: graph)
+        let reply = try await GraphQLReply.run(
+            "mutation { forkSession(input: {id: \"\(source.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
+            on: graph)
         let forkID = try #require(try reply.object("forkSession")["id"] as? String)
         let fork = try #require(ULID(ulidString: forkID))
         let added = try await subscription.nextChange()
@@ -737,8 +730,9 @@ struct SessionsGraphChangesTests {
             to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
         var device = try await Self.subscribe(to: graph, after: before)
 
-        let toStranger = try await Self.run(Self.sendMutation(to: stranger.id), on: graph)
-        let toOwned = try await Self.run(Self.sendMutation(to: owned.id), on: graph)
+        let toStranger = try await GraphQLReply.run(
+            Self.sendMutation(to: stranger.id), viewer: Self.deviceViewer, on: graph)
+        let toOwned = try await GraphQLReply.run(Self.sendMutation(to: owned.id), viewer: Self.deviceViewer, on: graph)
         let externalChange = try await external.nextChange()
         let deviceChanges = [try await device.nextChange(), try await device.nextChange()]
 
