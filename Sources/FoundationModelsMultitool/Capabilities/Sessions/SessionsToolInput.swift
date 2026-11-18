@@ -222,6 +222,46 @@ enum SessionsToolInput {
         return URL(fileURLWithPath: expanded, isDirectory: true)
     }
 
+    /// The file of an export: `path` in `folder`, or `defaultName` in
+    /// `folder` for no path or a blank path (D202 (g)).
+    ///
+    /// The reader reads the path as text and does not touch the disk. It
+    /// removes each `.` and `..` part, so a path such as `notes/../a.md`
+    /// stays in the folder.
+    ///
+    /// - Parameters:
+    ///   - path: A file name or a relative path, or `nil`.
+    ///   - folder: The session folder.
+    ///   - defaultName: The file name of a call with no path.
+    /// - Returns: The file, in `folder` or in a folder under it.
+    /// - Throws: ``SessionsRefusal`` for an absolute path, a path that starts
+    ///   with `~`, and a path that goes out of `folder` or names `folder`
+    ///   itself.
+    static func exportFile(_ path: String?, in folder: URL, defaultName: String) throws(SessionsRefusal) -> URL {
+        let relative = nonBlank(path) ?? defaultName
+        let base = folder.standardizedFileURL
+        let file = base.appendingPathComponent(relative).standardizedFileURL
+        guard !relative.hasPrefix(rootPrefix), !relative.hasPrefix(homePrefix),
+            file.pathComponents.count > base.pathComponents.count,
+            file.pathComponents.starts(with: base.pathComponents)
+        else {
+            throw SessionsRefusal(.invalidPath, SessionsToolText.pathOutOfFolder(relative, folder: base))
+        }
+        return file
+    }
+
+    /// The format of an export, or ``SessionExportFormat/markdown`` for no
+    /// text.
+    ///
+    /// - Parameter text: A format, in any letter case.
+    /// - Returns: The format.
+    /// - Throws: ``SessionsRefusal`` for a text that names no format. Its
+    ///   corrective names each format.
+    static func exportFormat(_ text: String?) throws(SessionsRefusal) -> SessionExportFormat {
+        try value(of: text, among: SessionExportFormat.allCases, parameter: SessionsToolText.formatParameter)
+            ?? .markdown
+    }
+
     /// The session kind of `text`, or `nil` for no text.
     ///
     /// - Parameter text: A kind, in any letter case.

@@ -105,14 +105,17 @@ enum SessionsToolFixtures {
     ///
     /// - Parameters:
     ///   - directory: The directory that gets the caller session.
+    ///   - title: The title of the caller session, or `nil` for none.
+    ///   - folder: The working folder of the caller session.
     ///   - body: The work that runs as the caller, given the caller id.
     /// - Returns: What `body` returned.
     /// - Throws: What the stub run or `body` throws.
     static func asCaller<Result>(
-        in directory: InMemorySessionDirectory, _ body: (ULID) async throws -> Result
+        in directory: InMemorySessionDirectory, title: String? = nil, folder: URL = workingFolder,
+        _ body: (ULID) async throws -> Result
     ) async throws -> Result {
         try await withOuterRunContext { context in
-            directory.register(summary(id: context.sessionID))
+            directory.register(summary(id: context.sessionID, title: title, folder: folder))
             return try await ToolContext.$current.withValue(context) { try await body(context.sessionID) }
         }
     }

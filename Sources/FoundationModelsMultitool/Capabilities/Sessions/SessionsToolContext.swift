@@ -13,6 +13,22 @@ struct SessionsToolContext: Sendable {
     /// The session directory that each operation reads.
     let directory: any SessionDirectory
 
+    /// The exporter of the transcripts of the sessions, or `nil` when the
+    /// host gave none: `export session` then gives a corrective (D202 (g)).
+    let exporter: (any SessionTranscriptExporter)?
+
+    /// Makes the context.
+    ///
+    /// - Parameters:
+    ///   - directory: The session directory that each operation reads.
+    ///   - exporter: The exporter of the transcripts, or `nil` for none. The
+    ///     mutations of the `sessions` endpoint export nothing, and give
+    ///     none.
+    init(directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil) {
+        self.directory = directory
+        self.exporter = exporter
+    }
+
     /// The sessions of the directory as the tool sees them: through the
     /// visibility rule that the `sessions` endpoint applies too, with no
     /// viewer, because the agent of the session sees each session (EXTRAS-9

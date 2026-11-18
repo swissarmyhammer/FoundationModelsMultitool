@@ -76,6 +76,22 @@ struct SessionsRefusal: CodedError {
         /// A call of the agent names, as the source session of a message, a
         /// session that is not its caller session (D199 (f)).
         case sourceNotCaller = "SOURCE_NOT_CALLER"
+
+        /// The server has no exporter, so it cannot export a session
+        /// (D202 (g)).
+        case missingExporter = "MISSING_EXPORTER"
+
+        /// The exporter could not give the transcript of the session.
+        case exportFailed = "EXPORT_FAILED"
+
+        /// A file path is absolute, or goes out of the session folder.
+        case invalidPath = "INVALID_PATH"
+
+        /// The file of an export exists, and the call does not replace it.
+        case fileExists = "FILE_EXISTS"
+
+        /// The file of an export could not be written.
+        case writeFailed = "WRITE_FAILED"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.
