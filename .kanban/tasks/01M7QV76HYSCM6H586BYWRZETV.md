@@ -106,8 +106,24 @@ comments:
     - evidence: 6 files — Fixtures/GraphQLReply.swift (shared `GraphQLReply.cursor(of:viewer:)`), MCPServersGraphTests, SnapshotsGraphTests, SessionsGraphQueryTests, SessionsGraphChangesTests, SnapshotsGraphChangesTests. `swift build --build-tests` clean; `swift test --skip-build --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph"` one run: 333 tests in 17 suites passed, 0 failures. The 2026-11-18 17:27 finding is checked.
     - next: review
   timestamp: 2026-11-18T23:32:24.307761+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7rg5qt17bnzzkksfhqgm99t
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (12bdda09): 0 findings, 0 confirmed, 0 refuted, 14 attempted, 0 failed; 6 files reviewed. All prior Review Findings items are checked.
+    - next: none. The task is in done.
+  timestamp: 2026-11-18T23:34:19.713919+00:00
+- actor: claude-code
+  id: 01m7rg63baj4j6p93e1n2jqd1f
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — one shared GraphQLReply.cursor(of:viewer:); inline cursor reads, 2 private helpers and 4 cursorQuery constants removed from 5 graph test suites
+    - test: green — swift build --build-tests complete; swift test --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph", 333 passed
+    - commit: 12bdda09
+    - review: clean — 0 findings, both prior findings are checked
+  timestamp: 2026-11-18T23:34:31.530487+00:00
+position_column: done
+position_ordinal: ffffffff9a80
 title: fork session and the forkSession mutation (D205)
 ---
 Decision: D205 in TestudoApp/features/decisions.md (commit 483664d). Brief: /Users/wballard/github/swissarmyhammer/.briefs/fork/mt-brief.md, items 1, 2 and 3.
