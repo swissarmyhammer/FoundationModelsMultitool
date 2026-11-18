@@ -82,9 +82,6 @@ struct SnapshotsGraphChangesTests {
     private static let aliasDocument =
         "subscription($after: String) { snapshotChanges(after: $after) { cursor sessionId added changed removed } }"
 
-    /// The root query of the newest cursor.
-    private static let cursorQuery = "{ cursor }"
-
     /// The `checkpoint` query of one index of a session.
     private static let checkpointQuery =
         "query($sessionId: ID!, $index: Int!) { checkpoint(sessionId: $sessionId, index: $index) { id } }"
@@ -251,16 +248,6 @@ struct SnapshotsGraphChangesTests {
             storeOwner: { storeOwners[$0] }, changeLogCapacity: capacity)
     }
 
-    /// The newest cursor of `graph`, from the root query `cursor`.
-    ///
-    /// - Parameter graph: The endpoint.
-    /// - Returns: The cursor.
-    /// - Throws: An error when the response has no cursor.
-    private static func cursor(of graph: SnapshotsGraph) async throws -> String {
-        try #require(
-            try await GraphQLReply.run(cursorQuery, viewer: Self.deviceViewer, on: graph).data?["cursor"] as? String)
-    }
-
     /// The `id` of one checkpoint, from the query `checkpoint`.
     ///
     /// - Parameters:
@@ -359,7 +346,7 @@ struct SnapshotsGraphChangesTests {
         try await fixture.takeFirst()
         try await fixture.takeFirst()
         let graph = Self.graph(of: fixture)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         try await action.act(fixture, graph)
@@ -382,12 +369,13 @@ struct SnapshotsGraphChangesTests {
     func theCursorQueryGivesTheNewestCursor() async throws {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         try await fixture.takeFirst()
         let change = try await subscription.nextChange()
 
-        #expect(try await Self.cursor(of: graph) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer) == change.cursor)
     }
 
     /// `changes(after:)` with the cursor of a change gives only the later
@@ -396,7 +384,8 @@ struct SnapshotsGraphChangesTests {
     func changesAfterACursorGivesOnlyLaterChanges() async throws {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
-        var live = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var live = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
         try await fixture.takeFirst()
         let earlier = try await live.nextChange()
         let later = try await fixture.takeFirst()
@@ -415,7 +404,8 @@ struct SnapshotsGraphChangesTests {
         let fixture = try await Fixture(
             keys: Self.stubKeys.merging([Self.unknownSessionId: Self.unknownSessionKey]) { known, _ in known })
         let graph = Self.graph(of: fixture)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         try await fixture.take(owner: Self.unknownSessionId, key: Self.unknownSessionKey)
         let marker = try await fixture.takeFirst()
@@ -442,7 +432,7 @@ struct SnapshotsGraphChangesTests {
     /// A too-old cursor, a cursor of another epoch, and a future cursor.
     static let resyncCases: [ResyncCase] = [
         ResyncCase(name: "too old") { fixture, graph in
-            let old = try await cursor(of: graph)
+            let old = try await GraphQLReply.cursor(of: graph, viewer: deviceViewer)
             var subscription = try await subscribe(to: graph, after: old)
             // One change more than the log holds. Each change is read before
             // the next is made.
@@ -453,10 +443,10 @@ struct SnapshotsGraphChangesTests {
             return old
         },
         ResyncCase(name: "another epoch") { _, _ in
-            try await cursor(of: graph(of: try await Fixture()))
+            try await GraphQLReply.cursor(of: graph(of: try await Fixture()), viewer: deviceViewer)
         },
         ResyncCase(name: "in the future") { _, graph in
-            let current = try await cursor(of: graph)
+            let current = try await GraphQLReply.cursor(of: graph, viewer: deviceViewer)
             let epoch = try #require(current.split(separator: cursorSeparator).first)
             return "\(epoch)\(cursorSeparator)\(try sequence(of: current) + 1)"
         },
@@ -485,7 +475,8 @@ struct SnapshotsGraphChangesTests {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
         var subscription = try await Self.subscribe(
-            to: graph, after: try await Self.cursor(of: graph), document: Self.aliasDocument)
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer),
+            document: Self.aliasDocument)
 
         let index = try await fixture.takeFirst()
         let reply = try await subscription.nextReply()
@@ -505,16 +496,16 @@ struct SnapshotsGraphChangesTests {
         let fixture = try await Fixture(keys: [Self.firstSessionId: Self.firstSessionId])
         let graph = try #require(SnapshotsCapability(store: fixture.store).graphQLEndpoints.first as? SnapshotsGraph)
         let other = try #require(SnapshotsCapability(store: fixture.store).graphQLEndpoints.first as? SnapshotsGraph)
-        let before = try await Self.cursor(of: graph)
-        let otherBefore = try await Self.cursor(of: other)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
+        let otherBefore = try await GraphQLReply.cursor(of: other, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         try await fixture.take(owner: Self.firstSessionId, key: Self.firstSessionId)
         let change = try await subscription.nextChange()
 
         #expect(otherBefore == before)
-        #expect(try await Self.cursor(of: other) == change.cursor)
-        #expect(try await Self.cursor(of: graph) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: other, viewer: Self.deviceViewer) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer) == change.cursor)
         #expect(before != change.cursor)
     }
 
@@ -527,7 +518,8 @@ struct SnapshotsGraphChangesTests {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
         var subscription = try await Self.subscribe(
-            to: graph, after: try await Self.cursor(of: graph), sessionId: Self.secondSessionId)
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer),
+            sessionId: Self.secondSessionId)
 
         try await fixture.takeFirst()
         let index = try await fixture.takeSecond()
@@ -543,7 +535,7 @@ struct SnapshotsGraphChangesTests {
     func anExternalClientGetsOnlyItsSessions() async throws {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var external = try await Self.subscribe(
             to: graph, after: before, viewer: GraphQLViewer.external(owning: [Self.secondSessionId]))
         var device = try await Self.subscribe(to: graph, after: before)
@@ -565,7 +557,7 @@ struct SnapshotsGraphChangesTests {
     func anExternalClientGetsTheSessionsItStarted() async throws {
         let fixture = try await Fixture()
         let graph = Self.graph(of: fixture)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var external = try await Self.subscribe(
             to: graph, after: before, viewer: GraphQLViewer.external(started: [Self.secondSessionId]))
 
@@ -585,7 +577,7 @@ struct SnapshotsGraphChangesTests {
     func aTakeOnASharedKeyGivesEachSessionAChange() async throws {
         let fixture = try await Fixture(keys: Self.sharedKeys)
         let graph = Self.graph(of: fixture, keys: Self.sharedKeys)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var all = try await Self.subscribe(to: graph, after: before)
         var second = try await Self.subscribe(to: graph, after: before, sessionId: Self.secondSessionId)
 
@@ -650,7 +642,8 @@ struct SnapshotsGraphChangesTests {
     func twoRouterOwnersOfOneHostSessionGiveOneChange() async throws {
         let fixture = try await Fixture(keys: Self.routerKeys)
         let graph = Self.graph(of: fixture, keys: Self.hostKeys, hostSessions: Self.hostOfRouter)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         let index = try await fixture.take(owner: Self.secondSessionId, key: Self.sharedSessionKey)
         let marker = try await fixture.take(owner: Self.firstSessionId, key: Self.sharedSessionKey)

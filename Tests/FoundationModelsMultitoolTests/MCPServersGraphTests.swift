@@ -81,7 +81,7 @@ struct MCPServersGraphTests {
     @Test("the endpoint conforms, with the listMCPServers and mcpServerChanges alias probes")
     func theEndpointConforms() async throws {
         let setup = Setup()
-        let cursor = try #require(try await GraphQLReply.run("{ cursor }", on: setup.graph).data?["cursor"] as? String)
+        let cursor = try await GraphQLReply.cursor(of: setup.graph)
         try await setup.registry.setEnabled(true, named: "linear")
         let probes = [
             GraphQLAliasProbe(query: "{ listMCPServers { name } }", from: "listMCPServers", to: "mcpServers"),
@@ -246,7 +246,7 @@ struct MCPServersGraphTests {
     @Test("each change gives one row: the kind, the name, the name before a rename, and the server")
     func eachChangeGivesOneRow() async throws {
         let setup = Setup()
-        let cursor = try #require(try await GraphQLReply.run("{ cursor }", on: setup.graph).data?["cursor"] as? String)
+        let cursor = try await GraphQLReply.cursor(of: setup.graph)
         var responses = try await setup.graph.subscribe(
             query: "subscription($after: String) { changes(after: $after) { cursor kind name previousName "
                 + "server { name enabled transport } } }",

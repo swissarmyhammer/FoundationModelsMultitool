@@ -91,9 +91,6 @@ struct SessionsGraphQueryTests {
     /// `Tests/FoundationModelsMultitoolTests/Goldens`.
     private static let goldenFileName = "sessions.graphql"
 
-    /// The root query of the newest cursor.
-    private static let cursorQuery = "{ cursor }"
-
     /// The subscription of the `sessionChanges` alias probe, with every field
     /// of a change.
     private static let sessionChangesSubscription =
@@ -189,7 +186,7 @@ struct SessionsGraphQueryTests {
         ///   has no cursor.
         init() async throws {
             graph = SessionsGraph.endpoint(of: directory)
-            cursor = try #require(try await GraphQLReply.run(cursorQuery, on: graph).data?["cursor"] as? String)
+            cursor = try await GraphQLReply.cursor(of: graph)
             directory.register(session)
         }
 

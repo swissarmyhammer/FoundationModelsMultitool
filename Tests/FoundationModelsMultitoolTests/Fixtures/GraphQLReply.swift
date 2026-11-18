@@ -29,6 +29,21 @@ struct GraphQLReply {
             json: await endpoint.execute(query: document, variables: variables, operationName: nil, viewer: viewer))
     }
 
+    /// Reads the newest cursor of an endpoint from the root query `cursor`.
+    ///
+    /// Each GraphQL endpoint test reads a cursor through this one helper.
+    ///
+    /// - Parameters:
+    ///   - endpoint: The endpoint that gives the cursor.
+    ///   - viewer: The client of the call, or `nil` for the agent of the
+    ///     session itself.
+    /// - Returns: The cursor.
+    /// - Throws: What the endpoint throws, or an error when the response has
+    ///   no cursor.
+    static func cursor(of endpoint: some GraphQLEndpoint, viewer: GraphQLViewer? = nil) async throws -> String {
+        try #require(try await run("{ cursor }", viewer: viewer, on: endpoint).data?["cursor"] as? String)
+    }
+
     /// The `data` object, or `nil` when the response has none.
     let data: [String: Any]?
 

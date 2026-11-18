@@ -98,9 +98,6 @@ struct SnapshotsGraphTests {
     /// The code of the toolkit for a fault that is not a coded error.
     private static let internalCode = GraphQLToolkitError.internalFailure(detail: "").code
 
-    /// The root query of the newest cursor.
-    private static let cursorQuery = "{ cursor }"
-
     /// The subscription of the `snapshotChanges` alias probe, after a cursor.
     private static let snapshotChangesSubscription =
         "subscription($after: String) { snapshotChanges(after: $after) { cursor added changed removed } }"
@@ -314,7 +311,7 @@ struct SnapshotsGraphTests {
     ///   error when the response has no cursor.
     private static func checkpointAfterCursor() async throws -> (fixture: Fixture, cursor: String) {
         let fixture = try await makeFixture()
-        let cursor = try #require(try await GraphQLReply.run(cursorQuery, on: fixture.graph).data?["cursor"] as? String)
+        let cursor = try await GraphQLReply.cursor(of: fixture.graph)
         try fixture.repository.write("one\n", to: firstFile)
         _ = try await fixture.store.take(
             sessionKey: sessionKey, owner: sessionId, trigger: .manual(label: firstLabel))

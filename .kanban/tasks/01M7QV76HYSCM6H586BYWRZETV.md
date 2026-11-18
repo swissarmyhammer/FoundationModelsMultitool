@@ -74,6 +74,38 @@ comments:
     - evidence: 11 files — Fixtures/GraphQLReply.swift (shared `GraphQLReply.run`), SessionsToolForkTests, SessionsGraphUsageTests, SessionsGraphQueryTests, SessionsGraphChangesTests, SessionsGraphPageTests, SessionsGraphMutationTests, SessionsGraphExportTests, SnapshotsGraphTests, SnapshotsGraphChangesTests, MCPServersGraphTests (private copies deleted). `swift build --build-tests` clean; `swift test --skip-build --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph"` one run: 333 tests in 17 suites passed, 0 failures.
     - next: review
   timestamp: 2026-11-18T23:27:05.829440+00:00
+- actor: claude-code
+  id: 01m7rfy7j2q3b14nv8n29qby8j
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (0bb5c364); 1 finding (1 confirmed, 1 refuted) — Tests/FoundationModelsMultitoolTests/MCPServersGraphTests.swift:249 reuse/reuse. The prior finding at SessionsToolForkTests.swift:250 is checked.
+    - next: implement the 2026-11-18 17:27 finding: one shared cursor helper for the MCP tests, then commit and review again.
+  timestamp: 2026-11-18T23:30:13.698863+00:00
+- actor: claude-code
+  id: 01m7rfyj8q0zjjmb3a76mb0gmh
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — one shared GraphQLReply.run in Fixtures/GraphQLReply.swift; private copies removed from 10 test suites
+    - test: green — swift test --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph", 333 passed
+    - commit: 0bb5c364
+    - review: findings — Tests/FoundationModelsMultitoolTests/MCPServersGraphTests.swift:249
+  timestamp: 2026-11-18T23:30:24.663201+00:00
+- actor: claude-code
+  id: 01m7rg22j40qp7vqt84yzkbps3
+  text: |-
+    Finding fix (2026-11-18): the reuse finding at MCPServersGraphTests.swift:249.
+    - Cause: the `{ cursor }` read was in 5 suites. MCPServersGraphTests had it inline two times. SnapshotsGraphTests and SessionsGraphQueryTests had it inline with a private `cursorQuery` constant. SessionsGraphChangesTests and SnapshotsGraphChangesTests each had a private `cursor(of:)` helper and a private `cursorQuery` constant.
+    - Fix: one shared helper `GraphQLReply.cursor(of:viewer:)` in Fixtures/GraphQLReply.swift. It takes `some GraphQLEndpoint`, and `viewer` is `nil` by default. All inline reads, both private helpers and all four `cursorQuery` constants are deleted. Each site calls the shared helper.
+    - Behavior stays the same: the two changes suites give `viewer: Self.deviceViewer` (or `deviceViewer` in a static closure) at each call, as their private helper did. The other sites give no viewer, as before.
+    - I did the call-site edit with a paren-matching perl script, then swift format.
+  timestamp: 2026-11-18T23:32:19.652928+00:00
+- actor: claude-code
+  id: 01m7rg273kmcanr4t247c1m44r
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — Fixtures/GraphQLReply.swift (shared `GraphQLReply.cursor(of:viewer:)`), MCPServersGraphTests, SnapshotsGraphTests, SessionsGraphQueryTests, SessionsGraphChangesTests, SnapshotsGraphChangesTests. `swift build --build-tests` clean; `swift test --skip-build --filter "SessionsGraph|SessionsTool|SnapshotsGraph|MCPServersGraph"` one run: 333 tests in 17 suites passed, 0 failures. The 2026-11-18 17:27 finding is checked.
+    - next: review
+  timestamp: 2026-11-18T23:32:24.307761+00:00
 position_column: doing
 position_ordinal: '80'
 title: fork session and the forkSession mutation (D205)
@@ -117,3 +149,12 @@ Precondition: the Extras sha with `SessionDirectory.fork(_:)`, `SessionForkReque
 > - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
 
 - [x] `Tests/FoundationModelsMultitoolTests/SessionsToolForkTests.swift:250` `reuse/reuse` — The new private `run(_:on:)` helper reimplements the same GraphQL execute-and-decode helper that already exists in other suites. It is a fourth copy, so the parse-and-execute logic now exists in several places and will drift. Reuse one shared `run` helper that takes the viewer as a parameter, or move the helper into a shared test support file and call it from SessionsToolForkTests. Do not add a fourth private copy.
+
+## Review Findings (2026-11-18 17:27)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 11 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/MCPServersGraphTests.swift:249` `reuse/reuse` — This is the same inline cursor read as line 84, written a second time in the same file. The repeated query and the repeated `#require` chain should come from one shared helper. Replace this line with the shared cursor helper proposed for line 84, so that both MCP tests call one function.

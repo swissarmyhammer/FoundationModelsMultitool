@@ -42,9 +42,6 @@ struct SessionsGraphChangesTests {
     private static let aliasDocument =
         "subscription($after: String) { sessionChanges(after: $after) { cursor changed } }"
 
-    /// The root query of the newest cursor.
-    private static let cursorQuery = "{ cursor }"
-
     /// The tag that a tag case adds.
     private static let reviewTag = "review"
 
@@ -126,16 +123,6 @@ struct SessionsGraphChangesTests {
             }
             return replies
         }
-    }
-
-    /// The newest cursor of `graph`, from the root query `cursor`.
-    ///
-    /// - Parameter graph: The endpoint.
-    /// - Returns: The cursor.
-    /// - Throws: An error when the response has no cursor.
-    private static func cursor(of graph: SessionsGraph) async throws -> String {
-        try #require(
-            try await GraphQLReply.run(cursorQuery, viewer: Self.deviceViewer, on: graph).data?["cursor"] as? String)
     }
 
     /// Starts a subscription on `graph`.
@@ -245,7 +232,7 @@ struct SessionsGraphChangesTests {
         directory.register(marker)
         try action.prepare(target.id, directory)
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         let reply = try await GraphQLReply.run(action.mutation(target.id), viewer: Self.deviceViewer, on: graph)
@@ -291,7 +278,7 @@ struct SessionsGraphChangesTests {
         directory.register(marker)
         try await Self.archive([target], in: directory)
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         _ = try await directory.unarchive(target.id, by: .user(clientID: Self.deviceClientId))
@@ -321,7 +308,7 @@ struct SessionsGraphChangesTests {
         directory.register(marker)
         try await Self.archive([target], in: directory)
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         let reply = try await GraphQLReply.run(
@@ -353,7 +340,7 @@ struct SessionsGraphChangesTests {
         }
         try await Self.archive([owned, stranger], in: directory)
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var external = try await Self.subscribe(
             to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
         var device = try await Self.subscribe(to: graph, after: before)
@@ -450,7 +437,8 @@ struct SessionsGraphChangesTests {
         let marker = Fixtures.summary()
         directory.register(marker)
         let graph = SessionsGraph.endpoint(of: directory)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         let reply = try await GraphQLReply.run(Self.sendMutation(to: target.id), viewer: Self.deviceViewer, on: graph)
         try await Self.mark(marker, in: directory)
@@ -478,7 +466,8 @@ struct SessionsGraphChangesTests {
         directory.register(used)
         directory.register(marker)
         let graph = SessionsGraph.endpoint(of: directory)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         let repin = try await GraphQLReply.run(
             "mutation { pinSession(input: {id: \"\(pinned.id.ulidString)\"}) { id } }", viewer: Self.deviceViewer,
@@ -507,7 +496,8 @@ struct SessionsGraphChangesTests {
         let target = Fixtures.summary()
         directory.register(target)
         let graph = SessionsGraph.endpoint(of: directory)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
         let id = target.id.ulidString
 
         let rename = try await GraphQLReply.run(
@@ -529,7 +519,7 @@ struct SessionsGraphChangesTests {
     func aStartGivesAddedThenTheTurn() async throws {
         let directory = Fixtures.directoryWithLauncher()
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         let reply = try await GraphQLReply.run(
@@ -554,7 +544,7 @@ struct SessionsGraphChangesTests {
         let source = Fixtures.summary()
         directory.register(source)
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         let reply = try await GraphQLReply.run(
@@ -575,12 +565,13 @@ struct SessionsGraphChangesTests {
         let marker = Fixtures.summary()
         directory.register(marker)
         let graph = SessionsGraph.endpoint(of: directory)
-        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
 
         try await Self.mark(marker, in: directory)
         let change = try await subscription.nextChange()
 
-        #expect(try await Self.cursor(of: graph) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer) == change.cursor)
     }
 
     // MARK: - Resync
@@ -601,7 +592,7 @@ struct SessionsGraphChangesTests {
     /// A too-old cursor, a cursor of another epoch, and a future cursor.
     static let resyncCases: [ResyncCase] = [
         ResyncCase(name: "too old") { graph, directory, session in
-            let old = try await cursor(of: graph)
+            let old = try await GraphQLReply.cursor(of: graph, viewer: deviceViewer)
             var subscription = try await subscribe(to: graph, after: old)
             // One change more than the log holds. Each change is read before
             // the next is made, so the feed of the directory loses none.
@@ -612,10 +603,11 @@ struct SessionsGraphChangesTests {
             return old
         },
         ResyncCase(name: "another epoch") { _, _, _ in
-            try await cursor(of: SessionsGraph.endpoint(of: InMemorySessionDirectory()))
+            try await GraphQLReply.cursor(
+                of: SessionsGraph.endpoint(of: InMemorySessionDirectory()), viewer: deviceViewer)
         },
         ResyncCase(name: "in the future") { graph, _, _ in
-            let current = try await cursor(of: graph)
+            let current = try await GraphQLReply.cursor(of: graph, viewer: deviceViewer)
             let epoch = try #require(current.split(separator: cursorSeparator).first)
             return "\(epoch)\(cursorSeparator)\(try sequence(of: current) + 1)"
         },
@@ -648,7 +640,8 @@ struct SessionsGraphChangesTests {
         directory.register(marker)
         let graph = SessionsGraph.endpoint(of: directory)
         var subscription = try await Self.subscribe(
-            to: graph, after: try await Self.cursor(of: graph), document: Self.aliasDocument)
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer),
+            document: Self.aliasDocument)
 
         try await Self.mark(marker, in: directory)
         let reply = try await subscription.nextReply()
@@ -671,14 +664,14 @@ struct SessionsGraphChangesTests {
         let copy = tool
         let graph = try #require(tool.graphQLEndpoints.first as? SessionsGraph)
         let copiedGraph = try #require(copy.graphQLEndpoints.first as? SessionsGraph)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var subscription = try await Self.subscribe(to: graph, after: before)
 
         try await Self.mark(marker, in: directory)
         let change = try await subscription.nextChange()
 
-        #expect(try await Self.cursor(of: copiedGraph) == change.cursor)
-        #expect(try await Self.cursor(of: graph) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: copiedGraph, viewer: Self.deviceViewer) == change.cursor)
+        #expect(try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer) == change.cursor)
         #expect(before != change.cursor)
     }
 
@@ -697,7 +690,7 @@ struct SessionsGraphChangesTests {
             directory.register(session)
         }
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var external = try await Self.subscribe(
             to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
         var device = try await Self.subscribe(to: graph, after: before)
@@ -725,7 +718,7 @@ struct SessionsGraphChangesTests {
             try directory.startUserTurn(of: session.id)
         }
         let graph = SessionsGraph.endpoint(of: directory)
-        let before = try await Self.cursor(of: graph)
+        let before = try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer)
         var external = try await Self.subscribe(
             to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
         var device = try await Self.subscribe(to: graph, after: before)
@@ -752,7 +745,8 @@ struct SessionsGraphChangesTests {
         directory.register(owned)
         let graph = SessionsGraph.endpoint(of: directory)
         let viewer = GraphQLViewer.external(owning: [owned.id.ulidString])
-        var external = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph), viewer: viewer)
+        var external = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer), viewer: viewer)
 
         let started = Fixtures.summary(startedBy: owned.id)
         directory.register(started)
