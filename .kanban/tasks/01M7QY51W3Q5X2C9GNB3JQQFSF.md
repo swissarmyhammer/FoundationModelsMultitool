@@ -16,8 +16,24 @@ comments:
     - evidence: Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphMutations.swift, SessionsGraphTypes.swift, SessionsToolChangeOperations.swift, SessionsToolText+Changes.swift, SessionsToolText+Messages.swift; Tests/FoundationModelsMultitoolTests/SessionsToolChangeTests.swift (2 new tests), SessionsToolMessageTests.swift (1 new test), Goldens/sessions.graphql. `GRAPHQL_GOLDEN_RECORD=1 swift test --filter SessionsGraphQueryTests/theSchemaMatchesTheGoldenFile`: 1 test passed. Full `swift test` (one time, in place of the filtered run): 3109 tests in 276 suites passed, 0 issues, 0 Swift warnings, exit 0. Extras 87d1da9, Router 18bbe4d.
     - next: /review
   timestamp: 2026-11-18T18:27:04.146752+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qypfr3ktnhed65xtexb22b
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (e11257fa): 0 findings, 0 confirmed, 0 refuted, 7 files attempted. The golden file sessions.graphql had no matching validator. The .kanban files are ignored.
+    - next: none. The task is in done.
+  timestamp: 2026-11-18T18:28:54.147104+00:00
+- actor: claude-code
+  id: 01m7qypt5dyn5f6psw4dtf2q09
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphMutations, SessionsGraphTypes, SessionsToolChangeOperations, SessionsToolText+Changes, SessionsToolText+Messages; SessionsToolChangeTests, SessionsToolMessageTests; golden schema (3 descriptions)
+    - test: green — swift test, 3109 passed against Extras 87d1da9 and Router 18bbe4da
+    - commit: e11257fa
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T18:29:04.813893+00:00
+position_column: done
+position_ordinal: ffffffff9880
 title: Archive texts of the archiveSession mutation and the SendReceipt reason (D204)
 ---
 Found during ^7bwarc7. Three texts still say that an archived session takes no messages. D204 says an archive is not final, and a message to an archived session waits in its inbox (receipt `sent`, note `archived`).
