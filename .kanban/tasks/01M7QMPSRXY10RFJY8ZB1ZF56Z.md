@@ -19,8 +19,24 @@ comments:
     - RED was checked with the same patterns in a Python script on the old skill (all 5 failed), because the order allows one swift test run.
     - next: /review. Push and the sha message to `foundationmodelsacpagent-9e` and `testudoapp-9a` stay for the commit step.
   timestamp: 2026-11-18T15:41:32.133897+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qn6qnyfwwaxp3f1fqz0htz
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (e76f7d2e): 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. No validator matches SKILL.md; the .kanban files are ignored by .reviewignore.
+    - next: none. The task moved to done.
+  timestamp: 2026-11-18T15:43:00.798142+00:00
+- actor: claude-code
+  id: 01m7qn77vqghjzjedzq9qb4v96
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Resources/skills/sessions/SKILL.md (1.1.1), SessionsSkillTests.swift (5 new tests); Router forms from origin/main 709d82c5: UserMessageHeader.swift, SessionMessage.swift, AgentMessageHeader.swift
+    - test: green — swift test --filter "SessionsSkillTests|BuiltinSkillsTests", 15 passed
+    - commit: e76f7d2e
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T15:43:17.367922+00:00
+position_column: done
+position_ordinal: ffffffff9180
 title: The sessions skill shows the message header of the Router, From the user, in title (folder) (D199)
 ---
 Decision: D199 (f) in TestudoApp/features/decisions.md. Found by the TestudoApp integration test, 2026-11-18. ACPAgent ^zjmdtkg checks the result against the real stack.
