@@ -23,8 +23,25 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphChanges.swift, Tests/FoundationModelsMultitoolTests/SessionsGraphChangesTests.swift. Pin: FoundationModelsExtras 951149ce (no other sibling moved). `swift build` complete; `swift test --filter "SessionsGraph|SessionsTool"`: 236 tests in 12 suites passed; full `swift test`: 3086 tests in 274 suites passed, 0 issues, 0 warnings. All 4 Tests boxes ticked.
     - next: /review
   timestamp: 2026-11-18T16:07:46.301641+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qps839y91qj3ptpv2aekcd
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (39188c8b): 0 findings, 0 confirmed, 0 refuted; 7 validator runs, 0 failed. 2 files reviewed (SessionsGraphChanges.swift, SessionsGraphChangesTests.swift); 2 .kanban files ignored by .reviewignore.
+    - `catch  where` (two spaces) in `anchorChain(of:reading:)`: no finding. swift format 6.4.4 writes two spaces for every `catch where` that has no pattern. A format of GitContext.swift to stdout also gives `catch  where`. Thus the text is stable formatter output, and the code compiles. The other `catch where` lines in Sources have one space only because their files did not go through the formatter again.
+    - next: none. The task moves to done.
+  timestamp: 2026-11-18T16:10:36.009841+00:00
+- actor: claude-code
+  id: 01m7qpssacmtk5k417g4w4731z
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphChanges.swift (messageQueued → changed), SessionsGraphChangesTests.swift (2 new tests); local pin Extras 951149ce
+    - test: green — swift test, 3086 passed (run in the implement step)
+    - commit: 39188c8b (pushed before the review, because main did not compile against Extras 951149ce without it)
+    - review: clean — 0 findings; `catch  where` with two spaces is the output of swift format 6.4.4
+  timestamp: 2026-11-18T16:10:53.644769+00:00
+position_column: done
+position_ordinal: ffffffff9480
 title: The change feed gives a changed entry when a message goes into the queue or the inbox of a target (D199)
 ---
 Decision: D199 (f) in TestudoApp/features/decisions.md. Request from the TestudoApp session, 2026-11-18: choice (a), the fix at the source.
