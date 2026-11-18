@@ -19,8 +19,24 @@ comments:
     - evidence: Package.swift, Sources/FoundationModelsMultitool/BuiltinSkills.swift, Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md, Tests/FoundationModelsMultitoolTests/BuiltinSkillsTests.swift; `swift build` complete; `swift test --filter BuiltinSkillsTests` 4 passed, 0 failed
     - next: /test (full suite), then /review
   timestamp: 2026-11-18T13:27:45.638679+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qdn4exxp692k8pskq0zmtz
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (e8e0e346). 0 findings, 0 confirmed, 2 refuted, 7 attempted, 0 failed. The engine reviewed 3 files. No validator matched Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md, so the engine did not review it. The .reviewignore rule excluded 18 .kanban files.
+    - next: The task is in done. Task ^0xrgvnk edits the SKILL.md text.
+  timestamp: 2026-11-18T13:31:04.029411+00:00
+- actor: claude-code
+  id: 01m7qdnjwnwqg779j4xm3eq7r4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Package.swift, BuiltinSkills.swift, Resources/skills/sessions/SKILL.md, BuiltinSkillsTests.swift
+    - test: green — swift test, 2986 passed, 0 failed, 0 skipped
+    - commit: e8e0e346
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T13:31:18.805989+00:00
+position_column: done
+position_ordinal: ffffffff8880
 title: Ship BuiltinSkills.directory and the draft sessions skill resource now (D200)
 ---
 Decision: D200 in TestudoApp/features/decisions.md. Brief: /Users/wballard/github/swissarmyhammer/.briefs/at-sessions/mt-brief-sessions-skill.md, items 1 and 2. Draft text: /Users/wballard/github/swissarmyhammer/.briefs/at-sessions/sessions-skill-SKILL.md.
