@@ -754,7 +754,7 @@ extension SessionsGraphAPI {
             Value(.delivered).description("The target was idle: the message starts a turn.")
             Value(.queued).description("The target works: the message waits for the end of its turn.")
             Value(.started).description("An agent with no live session started one with the message.")
-            Value(.refused).description("A loop guard, an archived target or no match refused the message.")
+            Value(.refused).description("A loop guard or no match refused the message.")
             Value(.sent).description(
                 "The target is not live: the message is written to its inbox and not yet delivered.")
         }
@@ -770,7 +770,9 @@ extension SessionsGraphAPI {
             Field("target", at: SessionsGraphReceipt.target)
                 .description("The target session, or null for no match or a session that you cannot see.")
             Field("outcome", at: \.outcome).description("What happened to the message.")
-            Field("reason", at: \.reason).description("Why the target refused the message, or null.")
+            Field("reason", at: \.reason).description(
+                "Why the message was refused, or a note of a SENT receipt, for example `archived` for an archived "
+                    + "target. Null when there is no reason and no note.")
         }
         .description("What happened to a message at one target.")
     }
@@ -928,8 +930,9 @@ extension SessionsGraphAPI {
                 description: "Unpins a session: it goes out of the Pinned list of this server. Gives the session."),
             mutationField(
                 .archive, at: SessionsGraphResolver.archiveSession, input: "The session.",
-                description: "Archives a session: stops its turn and ends its work. It takes no more messages, and its "
-                    + "transcript stays."),
+                description: "Archives a session: stops its turn and hides it from the lists. It is not deleted: its "
+                    + "transcript and its inbox stay, a message to it waits in its inbox, and unarchiveSession "
+                    + "brings it back."),
             mutationField(
                 .unarchive, at: SessionsGraphResolver.unarchiveSession, input: "The archived session.",
                 description: "Unarchives a session: it shows in the lists again. It stays a recorded session until a "

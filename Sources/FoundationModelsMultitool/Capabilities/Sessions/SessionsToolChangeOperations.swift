@@ -18,8 +18,8 @@
 //
 // TODO(MT-7): declare the risk facts of session.md section 8.3 on each
 // operation (`tag session` and `untag session` change local facts,
-// `start session` delegates work, `archive session` ends the work of a
-// session), when MT-1 and MT-7 land.
+// `start session` delegates work, `archive session` stops the turn of a
+// session and hides it), when MT-1 and MT-7 land.
 
 import Foundation
 import FoundationModels

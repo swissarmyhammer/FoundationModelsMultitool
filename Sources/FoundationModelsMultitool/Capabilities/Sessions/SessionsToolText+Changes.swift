@@ -16,8 +16,11 @@ extension SessionsToolText {
     /// The sentence of the answer of `start session`.
     static let startSentence = "The session works in the background. Its reply comes to you as a message."
 
-    /// The sentence of the answer of `archive session`.
-    static let archiveSentence = "The session is archived. Its work stopped, and it takes no more messages."
+    /// The sentence of the answer of `archive session` (D204).
+    static let archiveSentence = """
+        The session is archived. Its turn stopped, and it is hidden from the lists. A message to it waits in its \
+        inbox, and `\(UnarchiveSession.opString)` brings it back.
+        """
 
     /// The sentence of the answer of `unarchive session` (D204 (d)).
     static let unarchiveSentence = """
@@ -32,10 +35,10 @@ extension SessionsToolText {
     /// The corrective of a `tag session` or `untag session` call with no tag.
     static let noTags = "Give at least one tag. \(tagRule)"
 
-    /// The code-mode verb of `start session`, which the corrective of an
-    /// archived session names.
-    static var startSessionVerb: String {
-        OperationVerbTool.verbName(for: StartSession.opString)
+    /// The code-mode verb of `unarchive session`, which the corrective of a
+    /// session that is archived already names (D204).
+    static var unarchiveSessionVerb: String {
+        OperationVerbTool.verbName(for: UnarchiveSession.opString)
     }
 
     /// The answer of `start session`: the new session, its agent and its
@@ -91,11 +94,11 @@ extension SessionsToolText {
     /// already.
     ///
     /// - Parameter id: The archived session.
-    /// - Returns: The corrective, which names `startSession`.
+    /// - Returns: The corrective, which names `unarchiveSession`.
     static func archivedAlready(_ id: ULID) -> String {
         """
-        Session \(id.ulidString) is archived already: it does no work and takes no messages. \
-        To go on with its work, call \(startSessionVerb) to start a new session.
+        Session \(id.ulidString) is archived already: it is hidden from the lists, and a message to it waits in its \
+        inbox. To bring it back, call \(unarchiveSessionVerb).
         """
     }
 

@@ -795,6 +795,18 @@ struct SessionsToolMessageTests {
         #expect(output.contains("\(messageID)"), "output was: \(output)")
     }
 
+    /// The directory does not refuse an archived target (D204), so a refusal
+    /// with the reason "archived" gets no advice: its line is the last line.
+    @Test("a refusal with the reason archived gives no advice after its line")
+    func aRefusalWithTheReasonArchivedGivesNoAdvice() {
+        let target = ULID.generate()
+        let receipt = SessionSendReceipt(target: target, outcome: .refused, reason: SessionsToolText.archivedReason)
+
+        let output = SessionsToolText.receipts([receipt])
+
+        #expect(output.split(separator: "\n").last == "- Refused by session \(target.ulidString): archived")
+    }
+
     @Test("the SendOutcome enum maps the outcome sent of the directory to SENT")
     func theSendOutcomeEnumMapsSent() {
         #expect(SessionsGraphOutcome(.sent) == .sent)

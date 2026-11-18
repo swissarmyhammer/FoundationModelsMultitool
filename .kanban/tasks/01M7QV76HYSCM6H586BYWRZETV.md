@@ -16,6 +16,10 @@ comments:
     - No new event: a fork sends `started` with kind `fork` and the parent, so the change feed already gives an `added` entry.
     - A "directory that cannot fork" test can use a directory whose `fork` keeps the default (`forkUnsupported`).
   timestamp: 2026-11-18T17:45:02.106355+00:00
+- actor: claude-code
+  id: 01m7qybkqbj00bjy1xqf4308dk
+  text: 'Extras update (2026-11-18): `SessionForkCut` has two more cases on Extras origin/main 87d1da9 (code 96fea25): `.afterTurn(Int)` and `.beforeTurn(Int)` (0-based turn index; a missing index, or `.afterTurn(n)` of a running turn, throws `forkCutOutOfRange`). This task uses only `.callingToolCall` and `.lastCompletedTurn`. If the code switches over `SessionForkCut` (for example to make a corrective), name every case and add no `default:`. Also: Multitool main already maps the fork errors `archivedSession`, `forkCutOutOfRange` and `forkUnsupported` to ARCHIVED_SESSION, FORK_CUT_OUT_OF_RANGE and FORK_UNSUPPORTED (commit 62046875 by another session). Reuse those codes; do not add a second FORK_UNSUPPORTED.'
+  timestamp: 2026-11-18T18:22:57.771380+00:00
 position_column: todo
 position_ordinal: '8480'
 title: fork session and the forkSession mutation (D205)

@@ -53,6 +53,14 @@ struct SessionsToolChangeTests {
     /// The sentence of the answer of an archive.
     private static let archiveSentence = "The session is archived."
 
+    /// The op that brings an archived session back, which the archive answer
+    /// names (D204).
+    private static let unarchiveSessionOp = "unarchive session"
+
+    /// The code-mode verb name that the corrective of a session that is
+    /// archived already names (D204).
+    private static let unarchiveSessionVerb = "unarchiveSession"
+
     /// The words of the corrective of a start with no launcher.
     private static let noLauncherWords = "cannot start a session"
 
@@ -435,6 +443,35 @@ struct SessionsToolChangeTests {
 
         #expect(output.contains("archived already"), "output was: \(output)")
         #expect(!output.contains(Self.archiveSentence), "output was: \(output)")
+    }
+
+    @Test("archive session says that unarchive session brings the session back")
+    func archiveSessionNamesUnarchiveSession() async throws {
+        let directory = InMemorySessionDirectory()
+        let other = Fixtures.summary()
+        directory.register(other)
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await tool.call(arguments: Fixtures.payload("archive session", [("id", other.id.ulidString)]))
+        }
+
+        #expect(output.contains(Self.unarchiveSessionOp), "output was: \(output)")
+    }
+
+    @Test("archive session of a session that is archived already names unarchiveSession")
+    func archiveSessionOfAnArchivedSessionNamesUnarchiveSession() async throws {
+        let directory = InMemorySessionDirectory()
+        let other = Fixtures.summary()
+        directory.register(other)
+        _ = try await directory.archive(other.id, by: .user(clientID: "test"))
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await tool.call(arguments: Fixtures.payload("archive session", [("id", other.id.ulidString)]))
+        }
+
+        #expect(output.contains(Self.unarchiveSessionVerb), "output was: \(output)")
     }
 
     @Test("archive session of an unknown id gives a corrective that names listSessions")

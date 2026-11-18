@@ -11,8 +11,9 @@ import FoundationModelsExtras
 import ULID
 
 extension SessionsToolText {
-    /// The reason of a refusal of an archived target (session.md section 9),
-    /// and the note of a `sent` receipt to an archived target (D204).
+    /// The note of a `sent` receipt to an archived target (D204). The
+    /// directory does not refuse an archived target: the message waits in its
+    /// inbox.
     static let archivedReason = "archived"
 
     /// The sentence of a `sent` receipt with the note ``archivedReason``: the
@@ -59,8 +60,8 @@ extension SessionsToolText {
 
     /// The answer of `send message` and `reply message`: one line for each
     /// receipt. When no receipt took the message, ``notSentSentence`` comes
-    /// first, and a refusal with the reason ``archivedReason`` adds the advice
-    /// to start a new session.
+    /// first. An archived target does not refuse a message (D204), so a
+    /// refusal gets no advice after its line.
     ///
     /// - Parameter receipts: The receipts of the send.
     /// - Returns: The answer.
@@ -72,8 +73,7 @@ extension SessionsToolText {
         guard receipts.allSatisfy({ $0.outcome == .refused }) else {
             return lines.joined(separator: "\n")
         }
-        let advice = receipts.contains { $0.reason == archivedReason } ? archivedAdvice : nil
-        return ([notSentSentence] + lines + [advice].compactMap { $0 }).joined(separator: "\n")
+        return ([notSentSentence] + lines).joined(separator: "\n")
     }
 
     /// The answer of `send message`: the report of the rewrite of an alias
@@ -212,12 +212,6 @@ extension SessionsToolText {
         Message \(id) is from the user, not from a session. Answer the user in your own reply in this session; \
         reply message answers only a message from another session.
         """
-    }
-
-    /// The advice of a refusal with the reason ``archivedReason``, which names
-    /// `startSession`.
-    private static var archivedAdvice: String {
-        "An archived session takes no messages. To go on with its work, call \(startSessionVerb) to start a new session."
     }
 
     /// The line of one receipt: what happened at the target, and the id of

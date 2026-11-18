@@ -66,7 +66,7 @@ enum SendOutcome {
   """An agent with no live session started one with the message."""
   STARTED
 
-  """A loop guard, an archived target or no match refused the message."""
+  """A loop guard or no match refused the message."""
   REFUSED
 
   """
@@ -235,7 +235,9 @@ type SendReceipt {
   """What happened to the message."""
   outcome: SendOutcome!
 
-  """Why the target refused the message, or null."""
+  """
+  Why the message was refused, or a note of a SENT receipt, for example `archived` for an archived target. Null when there is no reason and no note.
+  """
   reason: String
 }
 
@@ -527,7 +529,7 @@ type Mutation {
   ): Session!
 
   """
-  Archives a session: stops its turn and ends its work. It takes no more messages, and its transcript stays.
+  Archives a session: stops its turn and hides it from the lists. It is not deleted: its transcript and its inbox stay, a message to it waits in its inbox, and unarchiveSession brings it back.
   """
   archiveSession(
     """The session."""

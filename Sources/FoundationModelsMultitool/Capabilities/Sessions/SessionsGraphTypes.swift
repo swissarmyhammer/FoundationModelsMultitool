@@ -374,7 +374,7 @@ enum SessionsGraphOutcome: String, Codable, CaseIterable, Sendable {
     /// An agent address started a new session with the message.
     case started = "STARTED"
 
-    /// A loop guard, an archived target or no match refused the message.
+    /// A loop guard or no match refused the message.
     case refused = "REFUSED"
 
     /// The message is written to the inbox of a session that is not live, and
@@ -403,7 +403,9 @@ struct SessionsGraphReceipt: Sendable {
     /// What happened to the message.
     let outcome: SessionsGraphOutcome
 
-    /// Why the target refused the message, or `nil`.
+    /// Why the message was refused, or a note of a `sent` receipt, for
+    /// example "archived" for an archived target (D204). `nil` when there is
+    /// no reason and no note.
     let reason: String?
 
     /// The target session, or `nil` when no session matched the address.
