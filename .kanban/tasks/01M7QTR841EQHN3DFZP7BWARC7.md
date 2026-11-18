@@ -26,10 +26,26 @@ comments:
   id: 01m7qy5jbj679ccr4r05y2js0n
   text: 'Correction to the step record: the new task for the 3 stale texts is ^3jqqfsf, not ^jqqfsf.'
   timestamp: 2026-11-18T18:19:39.762505+00:00
+- actor: claude-code
+  id: 01m7qy9bfc764swfb9fsv14bz7
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (f34de580): 0 findings (7 files reviewed; 0 confirmed, 0 refuted, 0 failed). The golden schema file and the .kanban files are not reviewed: no validator matches, or an ignore rule excludes them.
+    - next: none. The task moved to done. The follow-up task ^3jqqfsf has the three old archive texts.
+  timestamp: 2026-11-18T18:21:43.788967+00:00
+- actor: claude-code
+  id: 01m7qy9py7psjmzg0vcjpkqdpm
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphTypes, SessionsGraphSchema, SessionsToolChangeOperations, SessionsToolText, SessionsToolText+Messages; golden schema; SessionsGraphPageTests, SessionsToolMessageTests; follow-up ^3jqqfsf for three old archive texts
+    - test: green — swift test, 3102 passed (run in the implement step)
+    - commit: f34de580
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T18:21:55.527380+00:00
 depends_on:
 - 01M7QTQMJ80F89T52BZKA7BYH8
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffff9780
 title: archivedAt on a session, and the archive texts of the tool and the receipt note archived (D204)
 ---
 Decision: D204 in TestudoApp/features/decisions.md (commit 9281f9c). Brief: /Users/wballard/github/swissarmyhammer/.briefs/archive/mt-brief.md, items 4 and 5.
