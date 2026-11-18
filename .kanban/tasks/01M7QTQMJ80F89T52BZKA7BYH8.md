@@ -54,8 +54,24 @@ comments:
     - evidence: 5 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphChanges.swift, Tests/FoundationModelsMultitoolTests/Fixtures/ForwardingSessionDirectory.swift, Tests/FoundationModelsMultitoolTests/Fixtures/StubRouterFixtures.swift (new in this pass: kvCache parameter, flash model as decision candidate), Tests/FoundationModelsMultitoolTests/SessionsGraphChangesTests.swift, Tests/FoundationModelsMultitoolTests/SessionsToolMessageTests.swift. Pins: Router 18bbe4da, Extras 4c521cb. `swift build`: Build complete (only a build-system note about the mlx bundle, no source warning). `swift test --filter "SessionsGraph|SessionsTool"`: 238 tests in 12 suites passed (one earlier run failed to compile on the StubModelLoader kvCache change, and one failed on the decision slot; each fix was followed by one run). Full `swift test`: 3088 tests in 274 suites passed, exit 0. Changed files formatted with swift format. Not committed.
     - next: review; then commit and push at once, because Multitool main does not compile.
   timestamp: 2026-11-18T17:48:37.333279+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qwhtes212j7vf000vqfgr4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (3e941bfe). 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. 5 files reviewed. 16 .kanban files are not reviewed (ignore rule).
+    - next: none. The task moved to done.
+  timestamp: 2026-11-18T17:51:24.121015+00:00
+- actor: claude-code
+  id: 01m7qwj6en6b0gfa2kt7cx1t8w
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — SessionsGraphChanges.swift, Fixtures/ForwardingSessionDirectory.swift, Fixtures/StubRouterFixtures.swift (Router main: kvCache parameter, required decision slot), SessionsGraphChangesTests.swift, SessionsToolMessageTests.swift; local pins Extras 4c521cb, Router 18bbe4da
+    - test: green — swift test, 3088 passed
+    - commit: 3e941bfe (pushed before the review, because main did not compile)
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T17:51:36.405781+00:00
+position_column: done
+position_ordinal: ffffffff9580
 title: The change feed maps the unarchived event to a changed entry (D204)
 ---
 Decision: D204 in TestudoApp/features/decisions.md (commit 9281f9c). Brief: /Users/wballard/github/swissarmyhammer/.briefs/archive/mt-brief.md, item 3.
