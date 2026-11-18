@@ -56,10 +56,26 @@ comments:
     - evidence: SessionsGraphMutations.swift, SessionsToolChangeOperations.swift. `swift build` complete. `swift test --filter "SessionsGraph|SessionsTool"`: 249 tests in 13 suites passed, 0 issues.
     - next: review
   timestamp: 2026-11-18T18:11:08.479896+00:00
+- actor: claude-code
+  id: 01m7qxrxdy43rt3tcckp333nm8
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (c8472aa8): 0 findings (attempted 7, confirmed 0, refuted 0). The 2 prior items are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-11-18T18:12:45.118810+00:00
+- actor: claude-code
+  id: 01m7qxsem88mrx9e5tfgyve654
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — SessionsGraphMutations.swift (visibleSessionChange helper), SessionsToolChangeOperations.swift (answerArchiveChange helper)
+    - test: green — swift test --filter "SessionsGraph|SessionsTool", 249 passed
+    - commit: c8472aa8
+    - review: clean — 0 findings, the 2 prior findings are checked
+  timestamp: 2026-11-18T18:13:02.728648+00:00
 depends_on:
 - 01M7QTQMJ80F89T52BZKA7BYH8
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffff9680
 title: unarchive session and the unarchiveSession mutation, with NOT_ARCHIVED (D204)
 ---
 Decision: D204 in TestudoApp/features/decisions.md (commit 9281f9c). Brief: /Users/wballard/github/swissarmyhammer/.briefs/archive/mt-brief.md, items 1 and 2.
