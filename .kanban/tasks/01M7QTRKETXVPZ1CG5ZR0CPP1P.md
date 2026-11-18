@@ -16,11 +16,27 @@ comments:
     - evidence: Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md, Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift; `swift test --filter "SessionsSkillTests|BuiltinSkillsTests"`: 19 tests in 2 suites passed.
     - next: review. After the push, send the commit sha to the peer session `testudoapp-9a`. That item is open: there is no commit yet.
   timestamp: 2026-11-18T18:30:47.065779+00:00
+- actor: claude-code
+  id: 01m7qywpqntzv25zkn0t34ex7b
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (b6ea48b4): 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. The engine reviewed SessionsSkillTests.swift. No validator matched SKILL.md. The ignore rule removed the 2 .kanban files.
+    - next: none. The task moved to done.
+  timestamp: 2026-11-18T18:32:17.909963+00:00
+- actor: claude-code
+  id: 01m7qyx30anpbzd0k07wg9477r
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Resources/skills/sessions/SKILL.md (1.3.0), SessionsSkillTests.swift (2 new tests)
+    - test: green — swift test --filter "SessionsSkillTests|BuiltinSkillsTests", 19 passed
+    - commit: b6ea48b4
+    - review: clean — 0 findings (no validator reads SKILL.md; SessionsSkillTests checks it)
+  timestamp: 2026-11-18T18:32:30.474385+00:00
 depends_on:
 - 01M7QTR1ZHE0M58T1BPNT5HH30
 - 01M7QTR841EQHN3DFZP7BWARC7
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffff9980
 title: The sessions skill tells that an archive is not final, and names unarchive session (D204)
 ---
 Decision: D204 in TestudoApp/features/decisions.md (commit 9281f9c). Brief: /Users/wballard/github/swissarmyhammer/.briefs/archive/mt-brief.md, item 6.
