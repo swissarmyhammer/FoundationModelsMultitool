@@ -656,24 +656,43 @@ extension SessionsGraphResolver {
     /// - Returns: The `NOT_FOUND` of the toolkit for an unknown session, and
     ///   a ``SessionsRefusal`` for each other error.
     private static func codedError(of error: SessionDirectoryError) -> any CodedError {
-        let kind: SessionsRefusal.Kind
-        switch error {
-        case .unknownSession(let id):
-            return GraphQLToolkitError.notFound(kind: sessionKind, id: id.ulidString)
-        case .unknownAgent:
-            kind = .unknownAgent
-        case .notADirectory:
-            kind = .invalidFolder
-        case .chainTooDeep:
-            kind = .deepChain
-        case .messageTooLong:
-            kind = .longMessage
-        case .invalidTag:
-            kind = .invalidTag
-        case .noLauncher:
-            kind = .missingLauncher
+        guard let kind = refusalKind(of: error) else {
+            if case .unknownSession(let id) = error {
+                return GraphQLToolkitError.notFound(kind: sessionKind, id: id.ulidString)
+            }
+            preconditionFailure("each error but an unknown session has a refusal kind")
         }
         return SessionsRefusal(kind, SessionsToolText.corrective(for: error))
+    }
+
+    /// The kind of the refusal of an error of the directory.
+    ///
+    /// - Parameter error: The error.
+    /// - Returns: The kind, or `nil` for an unknown session, which is the
+    ///   `NOT_FOUND` of the toolkit.
+    static func refusalKind(of error: SessionDirectoryError) -> SessionsRefusal.Kind? {
+        switch error {
+        case .unknownSession:
+            nil
+        case .unknownAgent:
+            .unknownAgent
+        case .notADirectory:
+            .invalidFolder
+        case .chainTooDeep:
+            .deepChain
+        case .messageTooLong:
+            .longMessage
+        case .invalidTag:
+            .invalidTag
+        case .noLauncher:
+            .missingLauncher
+        case .archivedSession:
+            .archivedSession
+        case .forkCutOutOfRange:
+            .forkCutOutOfRange
+        case .forkUnsupported:
+            .forkUnsupported
+        }
     }
 }
 

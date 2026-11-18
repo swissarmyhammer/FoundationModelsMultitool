@@ -95,6 +95,12 @@ struct SessionsRefusal: CodedError {
 
         /// The file of an export could not be written.
         case writeFailed = "WRITE_FAILED"
+
+        /// The cut of a fork is not in the history of the source.
+        case forkCutOutOfRange = "FORK_CUT_OUT_OF_RANGE"
+
+        /// The server cannot fork a session.
+        case forkUnsupported = "FORK_UNSUPPORTED"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.

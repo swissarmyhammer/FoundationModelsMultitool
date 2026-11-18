@@ -287,6 +287,12 @@ enum SessionsToolText {
                 This server cannot start a session: it has no launcher. Give the work to a live session instead. \
                 \(findSessionSentence)
                 """
+        case .archivedSession(let id):
+            return "The session \(id.ulidString) is archived, so this call cannot use it. Unarchive it first."
+        case .forkCutOutOfRange:
+            return "The cut of the fork is not in the history of the session. Fork at the last completed turn instead."
+        case .forkUnsupported:
+            return "This server cannot fork a session. Start a new session instead."
         }
     }
 
