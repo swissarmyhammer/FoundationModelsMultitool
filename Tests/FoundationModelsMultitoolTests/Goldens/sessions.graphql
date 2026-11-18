@@ -73,6 +73,12 @@ enum SendOutcome {
   SENT
 }
 
+"""The format of the text of an export of a session."""
+enum SessionExportFormat {
+  """A Markdown document."""
+  MARKDOWN
+}
+
 """One session on this server."""
 type Session {
   """The session id: a ULID."""
@@ -145,6 +151,17 @@ type Session {
   The last time that a client opened the session on this server, or null.
   """
   lastUsedAt: DateTime
+
+  """
+  The transcript of the session as text. It writes no file: save the text on your own disk. MISSING_EXPORTER when this server cannot export a session.
+  """
+  export(
+    """The format of the text."""
+    format: SessionExportFormat = MARKDOWN
+
+    """True to include the thoughts of the agent."""
+    thoughts: Boolean = false
+  ): String!
 
   """The count of the unread messages to this session."""
   unreadCount: Int!

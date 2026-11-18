@@ -31,7 +31,9 @@ import Synchronization
 ///   `ARCHIVED`.
 /// - `Query.session(id:)` gives one session, or `null`. A `Session` gives its
 ///   `parent`, its `startedBy`, its `children` (the subagent tree of a client)
-///   and its `unreadCount`.
+///   and its `unreadCount`. Its `export(format:thoughts:)` gives the text
+///   of its transcript from the exporter of the endpoint, and writes no file
+///   (D202 (g)); with no exporter it gives `MISSING_EXPORTER`.
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
@@ -88,20 +90,25 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `sessionsPage` and `pagedSessions` for
     /// `sessionPage`, `cursor` for its `after`, `items` and `nodes` for the
     /// `sessions` of a page, `endCursor` for its `nextCursor`,
-    /// `sessionChanges` for the `changes` subscription, the bare verb of each
+    /// `sessionChanges` for the `changes` subscription, `exportSession` for
+    /// the `export` field of a session and `includeThoughts` for its
+    /// `thoughts`, the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
     /// of its input.
     static let rules = GraphQLNameRules(
         aliases: GraphQLAliasTable(
             byType: SessionsGraphMutation.aliasTables.merging([
-                "Session": ["agentId": ["agent"], "cwd": ["folder"], "shortId": ["short_id", "shortID"]],
+                "Session": [
+                    "agentId": ["agent"], "cwd": ["folder"], "shortId": ["short_id", "shortID"],
+                    "export": ["exportSession"],
+                ],
                 "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
                 "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
                 "Subscription": ["changes": ["sessionChanges"]],
             ]) { mutation, _ in mutation },
             byField: [
                 "Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]],
-                "Query.sessionPage": ["after": ["cursor"]],
+                "Query.sessionPage": ["after": ["cursor"]], "Session.export": ["thoughts": ["includeThoughts"]],
             ]))
 
     /// The name of the endpoint.
@@ -185,8 +192,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The exporter that a host gave for the directory, or `nil` when no host
-    /// gave one: the `export session` operation of the `sessions` tool reads
-    /// it (D202 (g)).
+    /// gave one: the `export session` operation of the `sessions` tool and
+    /// the `export` field of a session read it (D202 (g)).
     var exporter: (any SessionTranscriptExporter)? {
         storedExporter.withLock { $0 }
     }
@@ -249,7 +256,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     ///   agent.
     /// - Returns: The context.
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
-        SessionsGraphContext(sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes)
+        SessionsGraphContext(
+            sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

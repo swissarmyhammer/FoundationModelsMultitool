@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7qndsm6enhdq6p1fn6nte42
+  text: 'Extras plan (from foundationmodelsextras-9e, 2026-11-18): the next Extras push adds `SessionDirectoryEvent.messageQueued(SessionMessage)`. Map it to `(message.to, .changed)` in the exhaustive switch at `SessionsGraphChanges.swift:52`; without it, Multitool does not compile. The same push makes the in-memory directory send `messageDelivered` for a queued message when its turn starts. Then `SessionsGraphChangesTests.swift:234` ("send to a working session") passes only with the `messageQueued` mapping. Multitool CI resolves the Extras main head, so Multitool main CI breaks from the Extras push until this task is on main: do this task at once when the sha comes.'
+  timestamp: 2026-11-18T15:46:52.166330+00:00
 position_column: todo
 position_ordinal: 8a80
 title: The change feed gives a changed entry when a message goes into the queue or the inbox of a target (D199)

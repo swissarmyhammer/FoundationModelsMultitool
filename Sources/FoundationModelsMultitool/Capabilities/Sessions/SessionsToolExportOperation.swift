@@ -115,16 +115,15 @@ extension SessionsToolContext {
     ///   `SessionDirectoryError.unknownSession` when the caller cannot see
     ///   the session.
     func export(session target: ULID, with options: SessionExportOptions) async throws -> String {
-        guard let exporter else {
-            throw SessionsRefusal(.missingExporter, SessionsToolText.noExporter)
-        }
+        let exporter = try Self.requiredExporter(self.exporter)
         let summary = try await existingSummary(of: target)
         let file = try SessionsToolInput.exportFile(
             options.path, in: summary.workingDirectory, defaultName: SessionsToolText.defaultExportName(of: summary))
         guard options.replace || !FileManager.default.fileExists(atPath: file.path) else {
             throw SessionsRefusal(.fileExists, SessionsToolText.exportFileExists(file))
         }
-        let text = try await Self.transcript(of: target, from: exporter, with: options)
+        let text = try await Self.transcript(
+            of: target, from: exporter, format: options.format, includeThoughts: options.includeThoughts)
         do {
             try AtomicWriter.write(Data(text.utf8), to: file)
         } catch {
@@ -133,21 +132,46 @@ extension SessionsToolContext {
         return SessionsToolText.exported(summary, to: file, text: text)
     }
 
-    /// The text of the transcript of a session in the format of `options`.
+    /// The exporter of the host, for an export.
+    ///
+    /// The `export session` operation and the `export` field of the
+    /// `sessions` endpoint refuse an export with no exporter with this one
+    /// refusal.
+    ///
+    /// - Parameter exporter: The exporter of the host, or `nil`.
+    /// - Returns: The exporter.
+    /// - Throws: ``SessionsRefusal`` with the code `MISSING_EXPORTER` when
+    ///   `exporter` is `nil`.
+    static func requiredExporter(
+        _ exporter: (any SessionTranscriptExporter)?
+    ) throws(SessionsRefusal) -> any SessionTranscriptExporter {
+        guard let exporter else {
+            throw SessionsRefusal(.missingExporter, SessionsToolText.noExporter)
+        }
+        return exporter
+    }
+
+    /// The text of the transcript of a session in a format.
+    ///
+    /// The `export session` operation and the `export` field of the
+    /// `sessions` endpoint read the text with this one call.
     ///
     /// - Parameters:
     ///   - target: The session.
     ///   - exporter: The exporter of the host.
-    ///   - options: What the export asks for.
+    ///   - format: The format of the text.
+    ///   - includeThoughts: True to include the thoughts of the agent.
     /// - Returns: The text.
-    /// - Throws: ``SessionsRefusal`` when the exporter fails.
-    private static func transcript(
-        of target: ULID, from exporter: any SessionTranscriptExporter, with options: SessionExportOptions
+    /// - Throws: ``SessionsRefusal`` with the code `EXPORT_FAILED` when the
+    ///   exporter fails.
+    static func transcript(
+        of target: ULID, from exporter: any SessionTranscriptExporter, format: SessionExportFormat,
+        includeThoughts: Bool
     ) async throws(SessionsRefusal) -> String {
         do {
-            switch options.format {
+            switch format {
             case .markdown:
-                return try await exporter.markdown(of: target, includeThoughts: options.includeThoughts)
+                return try await exporter.markdown(of: target, includeThoughts: includeThoughts)
             }
         } catch {
             throw SessionsRefusal(.exportFailed, SessionsToolText.exportFailed(target, error: error))

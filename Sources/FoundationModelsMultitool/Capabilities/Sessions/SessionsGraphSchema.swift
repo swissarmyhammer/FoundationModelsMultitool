@@ -24,6 +24,10 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// The change feed of the endpoint, for the `cursor` query and the
     /// `changes` subscription. A subscription holds it through its context.
     let changes: SessionsGraphChangeFeed
+
+    /// The exporter of the transcripts that the host gave the endpoint, or
+    /// `nil` when no host gave one. `Session.export` reads it.
+    let exporter: (any SessionTranscriptExporter)?
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -171,6 +175,27 @@ extension SessionsGraphSession {
         context.sessions.viewer?.clientOwnedSessions.contains(sessionID.ulidString) ?? false
     }
 
+    /// Resolves `Session.export` (D202 (g)): the text of the transcript of
+    /// this session from the exporter of the endpoint. It writes no file: a
+    /// client can be on a different Mac, so the client saves the text.
+    ///
+    /// The viewer can see this session, because a `Session` object shows
+    /// only a session that the viewer can see.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call, which gives the exporter.
+    ///   - arguments: The format and the thoughts option.
+    /// - Returns: The text.
+    /// - Throws: ``SessionsRefusal`` with the code `MISSING_EXPORTER` when
+    ///   the endpoint has no exporter, or `EXPORT_FAILED` when the exporter
+    ///   fails; each with the corrective of the `export session` operation.
+    func export(context: SessionsGraphContext, arguments: SessionsGraphExportArguments) async throws -> String {
+        let exporter = try SessionsToolContext.requiredExporter(context.exporter)
+        return try await SessionsToolContext.transcript(
+            of: sessionID, from: exporter, format: (arguments.format ?? .markdown).format,
+            includeThoughts: arguments.thoughts ?? false)
+    }
+
     /// Resolves `Session.unreadCount`: the count of the unread messages to
     /// this session. It marks none read.
     ///
@@ -277,6 +302,7 @@ struct SessionsGraphAPI: API {
                 stateEnum()
                 originEnum()
                 outcomeEnum()
+                exportFormatEnum()
                 sessionType()
                 senderType()
                 messageType()
@@ -391,6 +417,16 @@ struct SessionsGraphAPI: API {
         .description("How a session started.")
     }
 
+    /// The `SessionExportFormat` enum.
+    ///
+    /// - Returns: The enum.
+    private static func exportFormatEnum() -> SchemaType {
+        Enum(SessionsGraphExportFormat.self, as: "SessionExportFormat") {
+            Value(.markdown).description("A Markdown document.")
+        }
+        .description("The format of the text of an export of a session.")
+    }
+
     // MARK: Object types and input objects
 
     /// The `Session` type.
@@ -427,6 +463,17 @@ struct SessionsGraphAPI: API {
                 .description("The time of the pin, or null when the session is not pinned.")
             Field("lastUsedAt", at: \.lastUsedAt)
                 .description("The last time that a client opened the session on this server, or null.")
+            Field("export", at: SessionsGraphSession.export) {
+                Argument("format", at: \.format)
+                    .defaultValue(.markdown)
+                    .description("The format of the text.")
+                Argument("thoughts", at: \.thoughts)
+                    .defaultValue(false)
+                    .description("True to include the thoughts of the agent.")
+            }
+            .description(
+                "The transcript of the session as text. It writes no file: save the text on your own disk. "
+                    + "MISSING_EXPORTER when this server cannot export a session.")
             Field("unreadCount", at: SessionsGraphSession.unreadCount)
                 .description("The count of the unread messages to this session.")
             Field("ownedByViewer", at: SessionsGraphSession.ownedByViewer)

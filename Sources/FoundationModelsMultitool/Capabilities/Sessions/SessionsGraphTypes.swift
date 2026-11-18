@@ -112,6 +112,20 @@ enum SessionsGraphOrigin: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// The `SessionExportFormat` enum: the format of the text of
+/// `Session.export` (D202 (g)).
+enum SessionsGraphExportFormat: String, Codable, CaseIterable, Sendable {
+    /// A Markdown document.
+    case markdown = "MARKDOWN"
+
+    /// The format of the export.
+    var format: SessionExportFormat {
+        switch self {
+        case .markdown: .markdown
+        }
+    }
+}
+
 // MARK: - Object types
 
 /// The `Session` object: the facts of one session that the viewer can see.
@@ -322,6 +336,15 @@ struct SessionsGraphSessionsArguments: Codable, Sendable {
 struct SessionsGraphSessionArguments: Codable, Sendable {
     /// The session id, in any letter case.
     let id: ToolkitID
+}
+
+/// The arguments of `Session.export`.
+struct SessionsGraphExportArguments: Codable, Sendable {
+    /// The format of the text, or `nil` for Markdown.
+    let format: SessionsGraphExportFormat?
+
+    /// True to include the thoughts of the agent, or `nil` for false.
+    let thoughts: Bool?
 }
 
 /// The arguments of `Query.inbox`.
