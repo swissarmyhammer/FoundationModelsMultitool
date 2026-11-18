@@ -40,6 +40,35 @@ comments:
     - tests: RED run of the 9 new tests failed (no field); `swift test --filter "Sessions(Graph|Tool)|MCPServersToolTests"` 183 tests passed; full `swift test` 3007 tests in 270 suites passed.
     - next: /review
   timestamp: 2026-11-18T14:01:01.915563+00:00
+- actor: claude-code
+  id: 01m7qfj4p8y7jvq8pea86e02zw
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (bb6293ae); 1 finding (1 confirmed, 0 refuted) — Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift:147 completeness/case-sensitivity-coverage
+    - next: implement the finding in the 2026-11-18 08:01 Review Findings section. The task stays in review.
+  timestamp: 2026-11-18T14:04:23.112708+00:00
+- actor: claude-code
+  id: 01m7qfjj41bv6xx5bwsdmjqj2q
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionsGraph, SessionsGraphTypes, SessionsGraphSchema, SessionsToolText; 6 test files; golden schema (adds only); local pins Extras b87233ec, mlx-swift-lm 8e3daa7
+    - test: green — swift test, 3007 passed (run in the implement step)
+    - commit: bb6293ae
+    - review: findings — Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift:147
+  timestamp: 2026-11-18T14:04:36.865557+00:00
+- actor: claude-code
+  id: 01m7qfntarne3hv9kjpftkrh2d
+  text: |-
+    Finding fix (2026-11-18): the state filter folds the letter case by design. `SessionsToolInput.value(of:among:parameter:)` trims the text, makes it lower case, and compares it with the lower-case raw value. The raw value of `SessionState.archived` is `archived`. The test `listSessionsOfArchivedStateIncludesRecordedSessions` now has `arguments: archivedSpellings` (`archived`, `Archived`, `ARCHIVED`), and each spelling goes through the same `list sessions` call. No other title in SessionsToolReadTests claims a letter case without proof: `check session reads a session id in lower case` sends `ulidString.lowercased()`. No RED run: the test proves a contract that the production code already has, and no production code changed.
+    Comment items for `changes(after:)`: the rename item is `aRenameGivesAChangeAndTheNewSlug` in SessionsGraphChangesTests; the archive item is the `archive` row of `actionCases` in `eachActionGivesOneChange` in SessionsGraphChangesTests.
+  timestamp: 2026-11-18T14:06:23.576362+00:00
+- actor: claude-code
+  id: 01m7qfnxfvr3dwat1z234drnc1
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift (archived state test runs with 3 spellings). `swift test --filter SessionsToolReadTests`: 13 tests in 1 suite passed (the parameterized test has 3 cases). Finding at SessionsToolReadTests.swift:147 is checked.
+    - next: /review
+  timestamp: 2026-11-18T14:06:26.811616+00:00
 position_column: doing
 position_ordinal: '80'
 title: Session.shortId and Session.slug in the sessions endpoint and the tool (D199)
@@ -60,3 +89,15 @@ Precondition: FoundationModelsExtras gives `SessionSummary.shortID` and `Session
 - [x] A query with the alias `short_id` gives the same value as `shortId`.
 - [x] `list sessions` of the tool shows the short id and the slug.
 - [x] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql
+
+## Review Findings (2026-11-18 08:01)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 19 not reviewed.
+
+> 18 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 18 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift:147` `completeness/case-sensitivity-coverage` — The test title says the state filter works in any letter case. The body feeds only the spelling "Archived", so the case contract is not proven in either direction. A lower-case or upper-case state is never tried. Add one non-canonical spelling, such as "archived" or "ARCHIVED", through the same list call and assert that the archived session is found. If the filter is case-sensitive by design, remove 'in any letter case' from the title instead.

@@ -62,6 +62,10 @@ struct SessionsToolReadTests {
     /// A text that is not a session id.
     private static let malformedID = "not-a-session"
 
+    /// Each spelling of the archived state: the raw value, and two spellings
+    /// in a different letter case.
+    private static let archivedSpellings = ["archived", "Archived", "ARCHIVED"]
+
     // MARK: - Helpers
 
     /// The shared fixtures of the `sessions` tool tests.
@@ -144,9 +148,10 @@ struct SessionsToolReadTests {
     }
 
     @Test(
-        "list sessions with state Archived, in any letter case, also finds the recorded sessions, with no includeRecorded"
+        "list sessions with state archived, in any letter case, also finds the recorded sessions, with no includeRecorded",
+        arguments: archivedSpellings
     )
-    func listSessionsOfArchivedStateIncludesRecordedSessions() async throws {
+    func listSessionsOfArchivedStateIncludesRecordedSessions(_ spelling: String) async throws {
         let directory = InMemorySessionDirectory()
         let live = Fixtures.summary()
         directory.register(live)
@@ -155,7 +160,7 @@ struct SessionsToolReadTests {
         _ = try await directory.archive(archived.id, by: .user(clientID: "test"))
         let tool = try SessionsTool(directory: directory)
 
-        let output = try await tool.call(arguments: Fixtures.payload("list sessions", [("state", "Archived")]))
+        let output = try await tool.call(arguments: Fixtures.payload("list sessions", [("state", spelling)]))
 
         #expect(output.contains(archived.id.ulidString), "output was: \(output)")
         #expect(!output.contains(live.id.ulidString))
