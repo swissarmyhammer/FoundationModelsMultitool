@@ -286,9 +286,8 @@ extension ArchiveSession {
     ///   archived already, an id that names no session or more than one
     ///   session, or another error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
-        await context.answer(asCallerOf: Self.opString) { callerID in
-            let sessionID = try await context.sessions.sessionID(referencedBy: id, callerID: callerID)
-            return SessionsToolText.archived(try await context.archive(session: sessionID, by: .session(callerID)))
+        await context.answerArchiveChange(of: id, opString: Self.opString, scope: .unarchived) {
+            SessionsToolText.archived(try await context.archive(session: $0, by: $1))
         }
     }
 }
@@ -320,10 +319,8 @@ extension UnarchiveSession {
     ///   not archived, an id that names no archived session or more than one
     ///   archived session, or another error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
-        await context.answer(asCallerOf: Self.opString) { callerID in
-            let sessionID = try await context.sessions.sessionID(
-                referencedBy: id, callerID: callerID, scope: .archived)
-            return SessionsToolText.unarchived(try await context.unarchive(session: sessionID, by: .session(callerID)))
+        await context.answerArchiveChange(of: id, opString: Self.opString, scope: .archived) {
+            SessionsToolText.unarchived(try await context.unarchive(session: $0, by: $1))
         }
     }
 }
@@ -446,6 +443,29 @@ extension SessionsToolContext {
             throw SessionsRefusal(.notArchived, SessionsToolText.notArchived(target))
         }
         return try await directory.unarchive(target, by: unarchiver)
+    }
+
+    /// Archives or unarchives the session `id` for the caller session, for
+    /// `archive session` and `unarchive session`, and answers the text of
+    /// the change.
+    ///
+    /// - Parameters:
+    ///   - id: The session reference.
+    ///   - opString: The op string of the operation.
+    ///   - scope: The sessions that a short id and a slug of `id` look at.
+    ///   - change: The change, given the target session and the caller as
+    ///     the sender. It gives the answer text.
+    /// - Returns: The answer text of `change`. A corrective for a call with
+    ///   no caller, an id that names no session or more than one session, a
+    ///   refusal of `change`, or another error of the directory.
+    func answerArchiveChange(
+        of id: String, opString: String, scope: SessionsReferenceScope,
+        _ change: (ULID, SessionMessageSender) async throws -> String
+    ) async -> String {
+        await answer(asCallerOf: opString) { callerID in
+            let target = try await sessions.sessionID(referencedBy: id, callerID: callerID, scope: scope)
+            return try await change(target, .session(callerID))
+        }
     }
 
     /// Changes the tags of the session `id`, or of the caller session, for

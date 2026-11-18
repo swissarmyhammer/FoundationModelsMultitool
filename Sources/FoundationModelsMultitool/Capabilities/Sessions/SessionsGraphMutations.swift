@@ -482,11 +482,8 @@ extension SessionsGraphResolver {
     func archiveSession(
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphArchiveInput>
     ) async throws -> SessionsGraphSession {
-        try await Self.coding {
-            let archiver = try context.actor(of: .archive)
-            let target = try await context.referencedSession(arguments.input.id)
-            try await context.requireVisible(target)
-            return SessionsGraphSession(try await context.actions.archive(session: target, by: archiver))
+        try await Self.visibleSessionChange(of: .archive, on: arguments.input.id, scope: .unarchived, in: context) {
+            try await context.actions.archive(session: $0, by: $1)
         }
     }
 
@@ -505,11 +502,8 @@ extension SessionsGraphResolver {
     func unarchiveSession(
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphUnarchiveInput>
     ) async throws -> SessionsGraphSession {
-        try await Self.coding {
-            let unarchiver = try context.actor(of: .unarchive)
-            let target = try await context.referencedSession(arguments.input.id, scope: .archived)
-            try await context.requireVisible(target)
-            return SessionsGraphSession(try await context.actions.unarchive(session: target, by: unarchiver))
+        try await Self.visibleSessionChange(of: .unarchive, on: arguments.input.id, scope: .archived, in: context) {
+            try await context.actions.unarchive(session: $0, by: $1)
         }
     }
 
@@ -605,6 +599,33 @@ extension SessionsGraphResolver {
     ) async throws -> SessionsGraphSession {
         try await coding {
             SessionsGraphSession(try await change(try await context.ownedSession(id)))
+        }
+    }
+
+    /// Runs the action of a mutation on the session of an id argument, which
+    /// the viewer must see (D72): the action of `archiveSession` and
+    /// `unarchiveSession`. The actor comes first, then the reference, then
+    /// the check of the viewer.
+    ///
+    /// - Parameters:
+    ///   - mutation: The mutation, for the corrective of a call with no
+    ///     caller session.
+    ///   - id: The id argument.
+    ///   - scope: The sessions that a short id and a slug of `id` look at.
+    ///   - context: The context of the call.
+    ///   - action: The action, given the session id and the actor.
+    /// - Returns: The session after the action.
+    /// - Throws: The coded error of a refusal, and each other error of the
+    ///   directory.
+    private static func visibleSessionChange(
+        of mutation: SessionsGraphMutation, on id: ToolkitID, scope: SessionsReferenceScope,
+        in context: SessionsGraphContext, _ action: (ULID, SessionMessageSender) async throws -> SessionSummary
+    ) async throws -> SessionsGraphSession {
+        try await coding {
+            let actor = try context.actor(of: mutation)
+            let target = try await context.referencedSession(id, scope: scope)
+            try await context.requireVisible(target)
+            return SessionsGraphSession(try await action(target, actor))
         }
     }
 
