@@ -54,10 +54,27 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift; `swift build --build-tests` complete, no source warnings; `swift test --filter "SessionsGraph"` 112 tests in 5 suites passed
     - next: review
   timestamp: 2026-11-18T15:16:22.436027+00:00
+- actor: claude-code
+  id: 01m7qkrandhqemdcw7jk3yfh8x
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (a79f7fa9): 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). The prior item (GraphQLReply.swift rewrote(_:to:at:)) is checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-11-18T15:17:40.141941+00:00
+- actor: claude-code
+  id: 01m7qkrp1j845w6tp560tqce5f
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift (one rewrote function with an optional path)
+    - test: green — swift test --filter SessionsGraph, 112 passed; swift build --build-tests complete
+    - commit: a79f7fa9
+    - review: clean — 0 findings, the 1 prior finding is checked
+    - note: the EXTRAS-11 conventions kit passed in the full run of iteration 1 (3035 tests); the box is not ticked.
+  timestamp: 2026-11-18T15:17:51.794750+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffff8e80
 title: sendMessage reports the alias rewrite of the address in extensions.rewrites (D199, D86)
 ---
 Decision: D199 (e) and D86 in TestudoApp/features/decisions.md. Split from ^6xznegm, which does all the other work of the address reader.
