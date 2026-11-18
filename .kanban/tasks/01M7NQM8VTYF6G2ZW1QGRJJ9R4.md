@@ -69,8 +69,24 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift (archived state test runs with 3 spellings). `swift test --filter SessionsToolReadTests`: 13 tests in 1 suite passed (the parameterized test has 3 cases). Finding at SessionsToolReadTests.swift:147 is checked.
     - next: /review
   timestamp: 2026-11-18T14:06:26.811616+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qfs4jaeg8mytq2ebnt0qhb
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (cd5730b3): 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. All prior review findings are checked.
+    - next: none. The task is in done.
+  timestamp: 2026-11-18T14:08:12.362230+00:00
+- actor: claude-code
+  id: 01m7qfsge5b8rhh2xvyfm6bwq9
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — Tests/FoundationModelsMultitoolTests/SessionsToolReadTests.swift (archived, Archived, ARCHIVED)
+    - test: green — swift test --filter SessionsToolReadTests, 13 passed
+    - commit: cd5730b3
+    - review: clean — 0 findings, the 1 prior finding is checked
+  timestamp: 2026-11-18T14:08:24.517745+00:00
+position_column: done
+position_ordinal: ffffffff8a80
 title: Session.shortId and Session.slug in the sessions endpoint and the tool (D199)
 ---
 Decision: D199 (b) in TestudoApp/features/decisions.md. Brief: /Users/wballard/github/swissarmyhammer/.briefs/at-sessions/mt-brief-at-sessions.md, item 4 and item 6.
