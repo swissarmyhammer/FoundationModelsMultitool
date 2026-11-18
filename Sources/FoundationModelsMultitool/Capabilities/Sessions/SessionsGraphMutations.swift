@@ -352,6 +352,10 @@ extension SessionsGraphResolver {
     /// The kind that `NOT_FOUND` names for a session.
     static let sessionKind = "session"
 
+    /// The path of the `to` field of the input of `Mutation.sendMessage`,
+    /// which a rewrite of an address alias names.
+    static let sendAddressPath = ["sendMessage", "input", "to"]
+
     /// The kind that `NOT_FOUND` names for a message.
     static let messageKind = "message"
 
@@ -485,7 +489,8 @@ extension SessionsGraphResolver {
     /// The `fromSession` of a user sender is the source session of the
     /// message, and its working folder is the lookup folder of the address
     /// (D199 (f)). The check of `fromSession` comes before the address, thus
-    /// a source that the viewer cannot use stops the send first.
+    /// a source that the viewer cannot use stops the send first. An address
+    /// alias adds its rewrite to `extensions.rewrites`.
     ///
     /// - Parameters:
     ///   - context: The context of the call.
@@ -500,12 +505,9 @@ extension SessionsGraphResolver {
             let input = arguments.input
             let sender = try context.actor(of: .send)
             let source = try await context.sourceSession(input.fromSession, of: sender)
-            // TODO(^gxqmxj6): report `rewrite` of the reading in
-            // `extensions.rewrites`. The toolkit of Extras gives a resolver no
-            // way to add a rewrite yet.
-            let address = try await context.address(
-                input.to, from: sender, sourceFolder: source?.workingDirectory
-            ).address
+            let reading = try await context.address(input.to, from: sender, sourceFolder: source?.workingDirectory)
+            Self.report(reading.rewrite)
+            let address = reading.address
             if case .session(let target) = address, !context.viewerOwns(target) {
                 return context.notOwnedReceipts(to: target)
             }
@@ -513,6 +515,19 @@ extension SessionsGraphResolver {
                 text: input.message, to: address, from: sender, sourceSession: source?.id)
             return receipts.map(SessionsGraphReceipt.init)
         }
+    }
+
+    /// Adds the rewrite of an address alias to `extensions.rewrites` of the
+    /// response (D199 (e), D86), with the alias, the canonical form that the
+    /// answer of the tool tells, and the path of the `to` field. An address
+    /// that is not an alias adds no rewrite.
+    ///
+    /// - Parameter rewrite: The rewrite of the alias, or `nil`.
+    private static func report(_ rewrite: SessionsAddressRewrite?) {
+        guard let rewrite else {
+            return
+        }
+        ResolverRewrites.current?.add(NameRewrite(from: rewrite.alias, to: rewrite.canonical, path: sendAddressPath))
     }
 
     /// Resolves `Mutation.replyMessage`: the reply goes to the session that

@@ -67,4 +67,19 @@ struct GraphQLReply {
     func rewrote(_ from: String, to: String) -> Bool {
         rewrites.contains { rewrite in rewrite["from"] as? String == from && rewrite["to"] as? String == to }
     }
+
+    /// Tells if the response reports the rewrite of the value `from` to the
+    /// canonical form `to` at `path` in `extensions.rewrites`.
+    ///
+    /// - Parameters:
+    ///   - from: The value that the call wrote.
+    ///   - to: The canonical form of the value.
+    ///   - path: The path of the value in the document.
+    /// - Returns: `true` when the list holds the rewrite.
+    func rewrote(_ from: String, to: String, at path: [String]) -> Bool {
+        rewrites.contains { rewrite in
+            rewrite["from"] as? String == from && rewrite["to"] as? String == to
+                && rewrite["path"] as? [String] == path
+        }
+    }
 }

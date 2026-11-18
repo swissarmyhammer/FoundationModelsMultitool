@@ -1019,6 +1019,10 @@ struct SessionsGraphMutationTests {
         /// The alias, as the call writes it.
         let alias: String
 
+        /// The canonical form of the alias, as the answer of `send message`
+        /// of the tool tells it.
+        let canonical: String
+
         /// Registers the sessions of the case in a directory, and gives the
         /// id of the session that the alias names.
         let stage: @Sendable (InMemorySessionDirectory) -> ULID
@@ -1030,32 +1034,31 @@ struct SessionsGraphMutationTests {
     /// One case for each alias form that `send message` of the tool reports
     /// as a rewrite.
     static let addressAliasCases: [AddressAliasCase] = [
-        AddressAliasCase(alias: "@\(travelName):\(tripsFolder.path)") { directory in
+        AddressAliasCase(
+            alias: "@\(travelName):\(tripsFolder.path)",
+            canonical: "\"@\(travelName)\", with the lookup in \(tripsFolder.path) first"
+        ) { directory in
             let inTrips = Fixtures.summary(title: travelName, folder: tripsFolder)
             directory.register(Fixtures.summary(title: travelName))
             directory.register(inTrips)
             return inTrips.id
         },
-        AddressAliasCase(alias: namedFolder.path) { directory in
+        AddressAliasCase(alias: namedFolder.path, canonical: "the newest root session in \(namedFolder.path)") {
+            directory in
             let inFolder = Fixtures.summary(folder: namedFolder)
             directory.register(inFolder)
             return inFolder.id
         },
     ]
 
-    /// Records a known gap: `sendMessage` delivers to the session that an
-    /// alias names, but it does not report the rewrite of the alias, which
-    /// `send message` of the tool reports in its answer. The receipt has no
-    /// field for the report, and `extensions.rewrites` has no entry for it.
-    ///
-    /// TODO(^gxqmxj6): when Extras gives a resolver a way to add a rewrite,
-    /// task ^gxqmxj6 adds the report to `extensions.rewrites`. That task must
-    /// change the assertion on `reply.rewrites` in this test to expect the
-    /// rewrite of the alias.
-    @Test(
-        "sendMessage to an alias delivers but gives no rewrite in extensions.rewrites yet (^gxqmxj6)",
-        arguments: addressAliasCases)
-    func aSendToAnAliasGivesNoRewriteReportYet(_ aliasCase: AddressAliasCase) async throws {
+    /// The path of the `to` field of the input of `sendMessage`.
+    private static let sendAddressPath = ["sendMessage", "input", "to"]
+
+    /// `sendMessage` to an alias delivers to the session that the alias
+    /// names, and reports the rewrite of the alias in `extensions.rewrites`
+    /// with the canonical form that `send message` of the tool tells.
+    @Test("sendMessage to an alias delivers and shows the rewrite in extensions.rewrites", arguments: addressAliasCases)
+    func aSendToAnAliasGivesARewriteReport(_ aliasCase: AddressAliasCase) async throws {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
         let target = aliasCase.stage(directory)
 
@@ -1066,11 +1069,25 @@ struct SessionsGraphMutationTests {
 
         let receipts = try reply.list("sendMessage")
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
-        #expect(receipts.map { $0["outcome"] as? String } == ["DELIVERED"])
-        #expect(receipts.map { $0["reason"] is NSNull } == [true])
         #expect(receipts.map { ($0["target"] as? [String: Any])?["id"] as? String } == [target.ulidString])
-        // ^gxqmxj6 changes this assertion: the rewrite of the alias then
-        // shows in `extensions.rewrites`.
+        #expect(
+            reply.rewrote(aliasCase.alias, to: aliasCase.canonical, at: Self.sendAddressPath),
+            "rewrites: \(reply.rewrites)")
+    }
+
+    /// `sendMessage` to `@<slug>` reads no alias, thus the response has no
+    /// rewrite in `extensions.rewrites`.
+    @Test("sendMessage to @<slug> shows no rewrite in extensions.rewrites")
+    func aSendToASlugGivesNoRewriteReport() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        directory.register(Fixtures.summary(title: Self.fixTitle))
+
+        let reply = try await Self.run(
+            "mutation { sendMessage(input: {to: \"@\(Self.fixSlug)\", message: \"\(Self.messageText)\"}) "
+                + "{ outcome } }",
+            viewer: Self.deviceViewer, on: directory)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         #expect(reply.rewrites.isEmpty, "rewrites: \(reply.rewrites)")
     }
 

@@ -10,10 +10,29 @@ comments:
   id: 01m7qhtvagde9zw8q038ss870y
   text: 'Extras landed (2026-11-18): ^ehms1m8 `ResolverRewrites` is on Extras origin/main 92660bf34155cd9e5dc46658428318bb8f56b4cc. Run `swift package update FoundationModelsExtras` first. Use `ResolverRewrites.current?.add(NameRewrite(from:to:path:))` from the resolver, sync or async. The rewrites are also in a response with GraphQL errors; a document that does not parse has no resolver rewrites; a subscription has only the name rewrites. `GraphQLRunContext` did not change. Change the assertion of the test `aSendToAnAliasGivesNoRewriteReportYet` (SessionsGraphMutationTests) to expect the rewrite, and rename it.'
   timestamp: 2026-11-18T14:44:05.584080+00:00
+- actor: claude-code
+  id: 01m7qkeh096w7m1nsjs6rf3307
+  text: |-
+    Implementation notes (2026-11-18):
+    - `swift package update FoundationModelsExtras` moved the pin to 92660bf34155cd9e5dc46658428318bb8f56b4cc (Package.resolved, not tracked). The build needed no other sibling move.
+    - `SessionsAddressReading.rewrite` is now a `SessionsAddressRewrite?` (alias, canonical, report) in place of a `String?`. The tool answer uses `rewrite?.report`. The text of the tool answer did not change.
+    - `SessionsToolText.agentAliasCanonical(name:folder:)` and `folderAliasCanonical(folder:)` give the canonical form. `agentAliasRewrite` and `folderAliasRewrite` now use them, so the `to` text is the same text as the tool answer: `"@travel", with the lookup in /work/trips first` (with the quotes, as the tool sentence has them) and `the newest root session in /work/other`.
+    - `sendMessage` adds `NameRewrite(from: <alias as written>, to: <canonical>, path: ["sendMessage", "input", "to"])` with `ResolverRewrites.current?.add` before the owner check, so a REFUSED receipt to an alias also reports the rewrite. The TODO is removed.
+    - Other paths of the reader: the tag form (`#tag`), a full id, a short id and `@<slug>`/`@<name>` give `rewrite: nil`. They are not aliases, and the tool reports no rewrite for them. Thus they add no resolver rewrite. A test covers `@<slug>`.
+    - Test `aSendToAnAliasGivesNoRewriteReportYet` is renamed to `aSendToAnAliasGivesARewriteReport`. It now expects the rewrite with from, to and path (new helper `GraphQLReply.rewrote(_:to:at:)`). New test `aSendToASlugGivesNoRewriteReport`.
+    - The EXTRAS-11 conformance kit (`GraphQLEndpointConformance` in SessionsGraphQueryTests) is green in both runs. I did not tick that box because I did not write that test.
+  timestamp: 2026-11-18T15:12:18.953216+00:00
+- actor: claude-code
+  id: 01m7qkekztd1zg0c61q8sq66gb
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/{SessionsGraphMutations,SessionsAddressReader,SessionsToolText+Messages,SessionsToolMessageOperations}.swift, Tests/FoundationModelsMultitoolTests/{SessionsGraphMutationTests,Fixtures/GraphQLReply}.swift. Pin moved: FoundationModelsExtras -> 92660bf (no other sibling). RED: alias test failed 2/2 cases (no rewrite). `swift build` clean. `swift test --filter "SessionsGraph|SessionsTool"`: 198 tests in 10 suites passed. Full `swift test`: 3035 tests in 271 suites passed, exit 0.
+    - next: /review
+  timestamp: 2026-11-18T15:12:22.010411+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
-position_column: todo
-position_ordinal: 8a80
+position_column: doing
+position_ordinal: '80'
 title: sendMessage reports the alias rewrite of the address in extensions.rewrites (D199, D86)
 ---
 Decision: D199 (e) and D86 in TestudoApp/features/decisions.md. Split from ^6xznegm, which does all the other work of the address reader.
@@ -28,7 +47,7 @@ Precondition (FoundationModelsExtras): a resolver must be able to add a rewrite 
 
 ## Tests
 
-- [ ] `sendMessage(input: {to: "@agent:/path", ...})` gives a rewrite report in `extensions.rewrites`.
-- [ ] A folder path alone gives a rewrite report in `extensions.rewrites`.
-- [ ] A send with `@<slug>` gives no rewrite report.
+- [x] `sendMessage(input: {to: "@agent:/path", ...})` gives a rewrite report in `extensions.rewrites`.
+- [x] A folder path alone gives a rewrite report in `extensions.rewrites`.
+- [x] A send with `@<slug>` gives no rewrite report.
 - [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql

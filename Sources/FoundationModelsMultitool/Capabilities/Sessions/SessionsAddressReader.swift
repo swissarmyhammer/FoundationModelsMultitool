@@ -32,9 +32,51 @@ struct SessionsAddressReading: Sendable, Equatable {
     /// The target of the message.
     let address: SessionAddress
 
-    /// The report of the rewrite of an alias, or `nil` for an address that
-    /// is not an alias.
-    let rewrite: String?
+    /// The rewrite of an alias, or `nil` for an address that is not an
+    /// alias.
+    let rewrite: SessionsAddressRewrite?
+}
+
+/// The rewrite of a message address that is an alias (D199 (e), in the style
+/// of D86): the alias as written, its canonical form, and the report that the
+/// answer of `send message` of the tool gives. The `sendMessage` mutation
+/// gives the alias and the canonical form in `extensions.rewrites`.
+struct SessionsAddressRewrite: Sendable, Equatable {
+    /// The alias, as the caller wrote it, with no space around it.
+    let alias: String
+
+    /// The canonical form of the alias, as the report tells it.
+    let canonical: String
+
+    /// The report of the rewrite in the answer of the tool.
+    let report: String
+
+    /// The rewrite of the alias `@agent:/path`: `@agent` with the lookup in
+    /// the folder of the alias first.
+    ///
+    /// - Parameters:
+    ///   - alias: The address as written.
+    ///   - name: The name after the `@`.
+    ///   - folder: The folder of the alias.
+    /// - Returns: The rewrite.
+    static func agentAlias(_ alias: String, name: String, folder: URL) -> SessionsAddressRewrite {
+        SessionsAddressRewrite(
+            alias: alias, canonical: SessionsToolText.agentAliasCanonical(name: name, folder: folder),
+            report: SessionsToolText.agentAliasRewrite(alias, name: name, folder: folder))
+    }
+
+    /// The rewrite of the alias of a folder path alone: the newest root
+    /// session in the folder.
+    ///
+    /// - Parameters:
+    ///   - alias: The address as written.
+    ///   - folder: The folder.
+    /// - Returns: The rewrite.
+    static func folderAlias(_ alias: String, folder: URL) -> SessionsAddressRewrite {
+        SessionsAddressRewrite(
+            alias: alias, canonical: SessionsToolText.folderAliasCanonical(folder: folder),
+            report: SessionsToolText.folderAliasRewrite(alias, folder: folder))
+    }
 }
 
 extension SessionsVisibility {
@@ -62,13 +104,13 @@ extension SessionsVisibility {
         switch try SessionsToolInput.addressForm(text) {
         case .folder(let folder):
             return SessionsAddressReading(
-                address: .folder(folder), rewrite: SessionsToolText.folderAliasRewrite(written, folder: folder))
+                address: .folder(folder), rewrite: .folderAlias(written, folder: folder))
         case .tag(let tag):
             return SessionsAddressReading(address: .tag(tag), rewrite: nil)
         case .agentAlias(let name, let folder):
             return SessionsAddressReading(
                 address: try await address(ofName: name, lookupFolder: folder),
-                rewrite: SessionsToolText.agentAliasRewrite(written, name: name, folder: folder))
+                rewrite: .agentAlias(written, name: name, folder: folder))
         case .id(let id):
             return SessionsAddressReading(address: .session(id), rewrite: nil)
         case .name(let name):

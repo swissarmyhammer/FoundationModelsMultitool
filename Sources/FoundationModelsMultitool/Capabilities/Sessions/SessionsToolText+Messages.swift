@@ -136,9 +136,21 @@ extension SessionsToolText {
     /// - Returns: The report.
     static func agentAliasRewrite(_ alias: String, name: String, folder: URL) -> String {
         """
-        Rewrite: "\(alias)" is an alias of "@\(name)", with the lookup in \(folder.path) first, \
+        Rewrite: "\(alias)" is an alias of \(agentAliasCanonical(name: name, folder: folder)), \
         in place of the folder of your session.
         """
+    }
+
+    /// The canonical form of the alias `@agent:/path`, as
+    /// ``agentAliasRewrite(_:name:folder:)`` tells it: `@agent` with the
+    /// lookup in the folder of the alias first.
+    ///
+    /// - Parameters:
+    ///   - name: The name after the `@`.
+    ///   - folder: The folder of the alias.
+    /// - Returns: The canonical form.
+    static func agentAliasCanonical(name: String, folder: URL) -> String {
+        "\"@\(name)\", with the lookup in \(folder.path) first"
     }
 
     /// The report of the rewrite of the alias of a folder path alone (D199
@@ -151,9 +163,19 @@ extension SessionsToolText {
     /// - Returns: The report.
     static func folderAliasRewrite(_ alias: String, folder: URL) -> String {
         """
-        Rewrite: "\(alias)" is an alias of the newest root session in \(folder.path). \
+        Rewrite: "\(alias)" is an alias of \(folderAliasCanonical(folder: folder)). \
         To name one session, give @<id>, @<short id> or @<slug>.
         """
+    }
+
+    /// The canonical form of the alias of a folder path alone, as
+    /// ``folderAliasRewrite(_:folder:)`` tells it: the newest root session
+    /// in the folder.
+    ///
+    /// - Parameter folder: The folder.
+    /// - Returns: The canonical form.
+    static func folderAliasCanonical(folder: URL) -> String {
+        "the newest root session in \(folder.path)"
     }
 
     /// The corrective of a text that is not a message id.

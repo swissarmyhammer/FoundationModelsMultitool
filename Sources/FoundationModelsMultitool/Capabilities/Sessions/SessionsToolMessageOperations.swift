@@ -65,7 +65,7 @@ extension SendMessage {
             let sender = SessionMessageSender.session(callerID)
             let reading = try await context.sessions.messageAddress(to, from: sender)
             let receipts = try await context.send(text: message, to: reading.address, from: sender)
-            return SessionsToolText.receipts(receipts, rewrite: reading.rewrite)
+            return SessionsToolText.receipts(receipts, rewrite: reading.rewrite?.report)
         }
     }
 }
