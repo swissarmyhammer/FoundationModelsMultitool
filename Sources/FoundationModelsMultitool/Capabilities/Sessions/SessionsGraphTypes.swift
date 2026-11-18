@@ -187,6 +187,10 @@ struct SessionsGraphSession: Sendable {
     /// `nil` when no client opened it.
     let lastUsedAt: DateTime?
 
+    /// The time of the archive, or `nil` when the session is not archived.
+    /// The Archived list is in the order of this time, the newest first.
+    let archivedAt: DateTime?
+
     /// The session id, as the directory reads it.
     let sessionID: ULID
 
@@ -221,6 +225,7 @@ struct SessionsGraphSession: Sendable {
         pinned = summary.isPinned
         pinnedAt = summary.pinnedAt.map(DateTime.init)
         lastUsedAt = summary.lastUsedAt.map(DateTime.init)
+        archivedAt = summary.archivedAt.map(DateTime.init)
     }
 }
 

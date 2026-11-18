@@ -264,12 +264,13 @@ extension UnpinSession {
     }
 }
 
-/// Ends the work of a session (`archive session`, D68, D72).
+/// Hides a session from the lists (`archive session`, D68, D72, D204).
 @Generable
 @Operation(
     verb: "archive", noun: "session",
     description: """
-        Archive a session: stop its turn and end its work. It takes no more messages, and its transcript stays.
+        Archive a session: stop its turn and hide it from the lists. It is not deleted: its transcript and its \
+        inbox stay, and `unarchive session` brings it back.
         """)
 struct ArchiveSession {
     /// The session to archive: its id, its short id or its slug.

@@ -53,6 +53,15 @@ struct SessionsGraphPageTests {
     /// The client ID of the archive of a case: a device of the user.
     private static let deviceClientId = "client-device"
 
+    /// The `sessionPage` query with a filter, with the archive time of each
+    /// session.
+    private static let archiveTimeQuery =
+        "query($filter: SessionFilter) { sessionPage(filter: $filter) { sessions { id archivedAt } } }"
+
+    /// The seconds from the fixed time of the fixtures to the archive of the
+    /// archive time cases: one hour.
+    private static let archiveOffset: TimeInterval = 3600
+
     // MARK: - Helpers
 
     /// The shared fixtures of the `sessions` tool tests.
@@ -143,6 +152,20 @@ struct SessionsGraphPageTests {
         let object = try reply.object("sessionPage")
         let sessions = try #require(object["sessions"] as? [[String: Any]])
         return Page(ids: sessions.compactMap { $0["id"] as? String }, nextCursor: object["nextCursor"] as? String)
+    }
+
+    /// Reads the first page with ``archiveTimeQuery``.
+    ///
+    /// - Parameters:
+    ///   - filter: The filter.
+    ///   - graph: The endpoint.
+    /// - Returns: The sessions of the page, each with its `id` and its
+    ///   `archivedAt`.
+    /// - Throws: What ``run(_:variables:viewer:on:)`` throws, or an error when
+    ///   the response has no page.
+    private static func archiveTimes(filter: Map, on graph: SessionsGraph) async throws -> [[String: Any]] {
+        let reply = try await run(archiveTimeQuery, variables: ["filter": filter], on: graph)
+        return try #require(try reply.object("sessionPage")["sessions"] as? [[String: Any]])
     }
 
     /// Reads each page from a cursor to the last page, and gives each page.
@@ -273,6 +296,38 @@ struct SessionsGraphPageTests {
             on: SessionsGraph.endpoint(of: directory))
 
         #expect(Self.ids(of: pages) == [archived])
+    }
+
+    /// An archived session gives the time of its archive, which the clock of
+    /// the directory stamped, as `archivedAt` (D204).
+    @Test("sessionPage with the state ARCHIVED gives the archivedAt of the archived session")
+    func anArchivedSessionGivesItsArchiveTime() async throws {
+        let archiveDate = Fixtures.fixedDate.addingTimeInterval(Self.archiveOffset)
+        let directory = InMemorySessionDirectory(now: { archiveDate })
+        let session = Self.session(at: 0)
+        directory.register(session)
+        _ = try await directory.archive(session.id, by: .user(clientID: Self.deviceClientId))
+
+        let sessions = try await Self.archiveTimes(
+            filter: ["state": "ARCHIVED", "includeRecorded": true], on: SessionsGraph.endpoint(of: directory))
+
+        #expect(sessions.first?["archivedAt"] as? String == DateTime(archiveDate).rfc3339)
+    }
+
+    /// An unarchive clears the archive time: the session gives
+    /// `archivedAt: null` (D204).
+    @Test("an unarchived session gives archivedAt null")
+    func anUnarchivedSessionGivesNoArchiveTime() async throws {
+        let directory = InMemorySessionDirectory(now: { Fixtures.fixedDate.addingTimeInterval(Self.archiveOffset) })
+        let session = Self.session(at: 0)
+        directory.register(session)
+        _ = try await directory.archive(session.id, by: .user(clientID: Self.deviceClientId))
+        _ = try await directory.unarchive(session.id, by: .user(clientID: Self.deviceClientId))
+
+        let sessions = try await Self.archiveTimes(
+            filter: ["includeRecorded": true], on: SessionsGraph.endpoint(of: directory))
+
+        #expect(try #require(sessions.first)["archivedAt"] is NSNull)
     }
 
     /// An external viewer that owns one session gets, on each page, only that

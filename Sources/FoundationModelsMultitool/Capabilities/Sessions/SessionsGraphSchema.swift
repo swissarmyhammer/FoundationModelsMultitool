@@ -399,7 +399,8 @@ struct SessionsGraphAPI: API {
             Value(.working).description("The session runs a turn.")
             Value(.needsInput).description("The session waits for an answer: an elicitation or a permission.")
             Value(.idle).description("The session runs no turn. A message to it starts a turn.")
-            Value(.archived).description("The session ended. It is never live.")
+            Value(.archived).description(
+                "The session is archived: hidden from the lists, not live. `unarchiveSession` brings it back.")
         }
         .description("The work state of a session.")
     }
@@ -464,6 +465,8 @@ struct SessionsGraphAPI: API {
                 .description("The time of the pin, or null when the session is not pinned.")
             Field("lastUsedAt", at: \.lastUsedAt)
                 .description("The last time that a client opened the session on this server, or null.")
+            Field("archivedAt", at: \.archivedAt)
+                .description("The time of the archive, or null when the session is not archived.")
             Field("export", at: SessionsGraphSession.export) {
                 Argument("format", at: \.format)
                     .defaultValue(.markdown)

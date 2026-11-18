@@ -71,6 +71,10 @@ struct SessionsToolMessageTests {
     /// The words that say the message is not delivered yet, in the answer.
     private static let notDeliveredWords = "written to the inbox of the session and not yet delivered"
 
+    /// The note of a message to an archived session, in the answer (D204).
+    private static let archivedNoteWords =
+        "The session is archived. The message waits in its inbox until the user unarchives and opens it."
+
     /// The outcome word of a started session in the answer.
     private static let startedWord = "Started"
 
@@ -538,6 +542,23 @@ struct SessionsToolMessageTests {
         #expect(output.contains(Self.sentWord), "output was: \(output)")
         #expect(output.contains(Self.notDeliveredWords), "output was: \(output)")
         #expect(output.contains(target.id.ulidString), "output was: \(output)")
+    }
+
+    /// A `sent` receipt with the note "archived" tells that the message
+    /// waits in the inbox until the user unarchives the session (D204).
+    @Test("send message by full id to an archived session gives the answer with the archived note")
+    func sendMessageToAnArchivedSessionGivesTheNote() async throws {
+        let directory = InMemorySessionDirectory()
+        let target = Fixtures.summary()
+        directory.register(target)
+        _ = try await directory.archive(target.id, by: .user(clientID: Self.userClientID))
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: target.id.ulidString, with: tool)
+        }
+
+        #expect(output.contains(Self.archivedNoteWords), "output was: \(output)")
     }
 
     @Test("send message that a loop guard refuses gives a corrective that names the reason")

@@ -31,7 +31,9 @@ enum SessionState {
   """The session runs no turn. A message to it starts a turn."""
   IDLE
 
-  """The session ended. It is never live."""
+  """
+  The session is archived: hidden from the lists, not live. `unarchiveSession` brings it back.
+  """
   ARCHIVED
 }
 
@@ -151,6 +153,9 @@ type Session {
   The last time that a client opened the session on this server, or null.
   """
   lastUsedAt: DateTime
+
+  """The time of the archive, or null when the session is not archived."""
+  archivedAt: DateTime
 
   """
   The transcript of the session as text. It writes no file: save the text on your own disk. MISSING_EXPORTER when this server cannot export a session.

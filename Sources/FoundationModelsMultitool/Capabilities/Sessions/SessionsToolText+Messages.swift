@@ -11,8 +11,14 @@ import FoundationModelsExtras
 import ULID
 
 extension SessionsToolText {
-    /// The reason of a refusal of an archived target (session.md section 9).
+    /// The reason of a refusal of an archived target (session.md section 9),
+    /// and the note of a `sent` receipt to an archived target (D204).
     static let archivedReason = "archived"
+
+    /// The sentence of a `sent` receipt with the note ``archivedReason``: the
+    /// message waits in the inbox of the archived session (D204).
+    static let archivedNoteSentence =
+        "The session is archived. The message waits in its inbox until the user unarchives and opens it."
 
     /// The first sentence of an answer in which no target took the message.
     static let notSentSentence = "The message was not sent."
@@ -234,8 +240,18 @@ extension SessionsToolText {
             let refuser = target.map { " by \($0)" } ?? ""
             return "- Refused\(refuser): \(receipt.reason ?? noReason)"
         case .sent:
-            return
-                "- Sent to \(session): the message is written to the inbox of the session and not yet delivered.\(messageID)"
+            let written =
+                "- Sent to \(session): the message is written to the inbox of the session and not yet delivered."
+            return written + note(of: receipt) + messageID
         }
+    }
+
+    /// The note of a `sent` receipt, after the outcome of its line: the
+    /// sentence of the note ``archivedReason``, or nothing.
+    ///
+    /// - Parameter receipt: The `sent` receipt.
+    /// - Returns: The note with a space before it, or an empty text.
+    private static func note(of receipt: SessionSendReceipt) -> String {
+        receipt.reason == archivedReason ? " \(archivedNoteSentence)" : ""
     }
 }
