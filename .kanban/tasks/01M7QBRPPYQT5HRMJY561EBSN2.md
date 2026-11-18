@@ -29,8 +29,24 @@ comments:
     - evidence: 9 files — SessionsGraphPages.swift (new), SessionsGraph.swift, SessionsGraphSchema.swift, SessionsVisibility.swift, SessionsRefusal.swift, SessionsToolInput.swift, Tests/.../SessionsGraphPageTests.swift (new, 12 tests), Tests/.../Goldens/sessions.graphql; `swift build` complete; RED: `swift test --filter SessionsGraphPageTests` 11 of 12 failed; GREEN: `GRAPHQL_GOLDEN_RECORD=1 swift test --filter "SessionsGraphPageTests|SessionsGraphQueryTests"` 53 tests passed, 0 issues.
     - next: /test (full suite), then /review.
   timestamp: 2026-11-18T13:39:58.205275+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7qejkz0cfk7skfpwq5r2tv3
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (da5809b9); 0 findings, 0 confirmed, 0 refuted; 7 files reviewed. The golden file Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql has no validator.
+    - next: the task moves to done.
+  timestamp: 2026-11-18T13:47:10.176164+00:00
+- actor: claude-code
+  id: 01m7qek5k4n933tfkcpqq435sb
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphPages.swift (new), SessionsGraph.swift, SessionsGraphSchema.swift, SessionsVisibility.swift, SessionsRefusal.swift, SessionsToolInput.swift, SessionsGraphPageTests.swift (new), Goldens/sessions.graphql
+    - test: green — swift test, 2998 passed, 0 failed, 0 skipped
+    - commit: da5809b9
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T13:47:28.228400+00:00
+position_column: done
+position_ordinal: ffffffff8980
 title: The sessions query can list all the sessions that are not archived (D199)
 ---
 Decision: D199 (a), (d) in TestudoApp/features/decisions.md. Request from the TestudoApp session, 2026-11-18: the app keeps a list of all the sessions that are not archived, and it resolves each `@` mention in memory from that list. It reads `id shortId slug title cwd` of each session.
