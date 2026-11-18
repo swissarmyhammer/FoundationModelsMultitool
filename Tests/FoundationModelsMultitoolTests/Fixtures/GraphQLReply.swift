@@ -57,29 +57,20 @@ struct GraphQLReply {
         data?[key] is NSNull
     }
 
-    /// Tells if the response reports the rewrite of the name `from` to the
-    /// name `to` in `extensions.rewrites`.
+    /// Tells if the response reports the rewrite of `from` to `to` in
+    /// `extensions.rewrites`. The rewrite can be of a name or of a value.
     ///
     /// - Parameters:
-    ///   - from: The name that the call wrote.
-    ///   - to: The name of the schema that the call reached.
+    ///   - from: The name or the value that the call wrote.
+    ///   - to: The name of the schema that the call reached, or the canonical
+    ///     form of the value.
+    ///   - path: The path of the rewrite in the document. When it is `nil`,
+    ///     the path of the rewrite is not examined.
     /// - Returns: `true` when the list holds the rewrite.
-    func rewrote(_ from: String, to: String) -> Bool {
-        rewrites.contains { rewrite in rewrite["from"] as? String == from && rewrite["to"] as? String == to }
-    }
-
-    /// Tells if the response reports the rewrite of the value `from` to the
-    /// canonical form `to` at `path` in `extensions.rewrites`.
-    ///
-    /// - Parameters:
-    ///   - from: The value that the call wrote.
-    ///   - to: The canonical form of the value.
-    ///   - path: The path of the value in the document.
-    /// - Returns: `true` when the list holds the rewrite.
-    func rewrote(_ from: String, to: String, at path: [String]) -> Bool {
+    func rewrote(_ from: String, to: String, at path: [String]? = nil) -> Bool {
         rewrites.contains { rewrite in
             rewrite["from"] as? String == from && rewrite["to"] as? String == to
-                && rewrite["path"] as? [String] == path
+                && (path == nil || rewrite["path"] as? [String] == path)
         }
     }
 }

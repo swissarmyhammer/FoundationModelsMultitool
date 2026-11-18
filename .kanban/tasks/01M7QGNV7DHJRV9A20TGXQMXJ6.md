@@ -29,6 +29,31 @@ comments:
     - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/{SessionsGraphMutations,SessionsAddressReader,SessionsToolText+Messages,SessionsToolMessageOperations}.swift, Tests/FoundationModelsMultitoolTests/{SessionsGraphMutationTests,Fixtures/GraphQLReply}.swift. Pin moved: FoundationModelsExtras -> 92660bf (no other sibling). RED: alias test failed 2/2 cases (no rewrite). `swift build` clean. `swift test --filter "SessionsGraph|SessionsTool"`: 198 tests in 10 suites passed. Full `swift test`: 3035 tests in 271 suites passed, exit 0.
     - next: /review
   timestamp: 2026-11-18T15:12:22.010411+00:00
+- actor: claude-code
+  id: 01m7qkk2caedhjnffcanefgvsp
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (dc1ab0c8): 1 finding (1 confirmed, 2 refuted) — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift:79
+    - next: implement the open finding in the 2026-11-18 09:13 Review Findings section, then review again.
+  timestamp: 2026-11-18T15:14:47.818362+00:00
+- actor: claude-code
+  id: 01m7qkkd45xwgj1wa7q262fhmw
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionsGraphMutations, SessionsAddressReader, SessionsToolText+Messages, SessionsToolMessageOperations, SessionsGraphMutationTests, Fixtures/GraphQLReply; local pin Extras 92660bf3
+    - test: green — swift test, 3035 passed (run in the implement step)
+    - commit: dc1ab0c8
+    - review: findings — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift:79
+  timestamp: 2026-11-18T15:14:58.821129+00:00
+- actor: claude-code
+  id: 01m7qknys4zz1bydta45rv4jy3
+  text: |-
+    Finding fixed. `GraphQLReply.rewrote(_:to:at:)` is now one function with `at path: [String]? = nil`. The path clause applies only when `path` is not nil. The overload is deleted. The one call site in SessionsGraphMutationTests.swift that passes `at: Self.sendAddressPath` keeps the same text, because the merged signature takes the same labels. The other 20 call sites (in 6 test files) use the default `nil`. GraphQLReply.swift has no other near-copy of the loop: `list`, `object` and `isNull` read `data`, not `rewrites`.
+
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift; `swift build --build-tests` complete, no source warnings; `swift test --filter "SessionsGraph"` 112 tests in 5 suites passed
+    - next: review
+  timestamp: 2026-11-18T15:16:22.436027+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
 position_column: doing
@@ -51,3 +76,12 @@ Precondition (FoundationModelsExtras): a resolver must be able to add a rewrite 
 - [x] A folder path alone gives a rewrite report in `extensions.rewrites`.
 - [x] A send with `@<slug>` gives no rewrite report.
 - [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql
+
+## Review Findings (2026-11-18 09:13)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/GraphQLReply.swift:79` `reuse/reuse` — The new overload `rewrote(_:to:at:)` repeats the body of the existing `rewrote(_:to:)` at line 67 and adds only one clause for the path. The near-match was not generalized, so the same loop over `rewrites` now exists twice and the two can diverge. Extend the existing `rewrote(_:to:)` with an optional parameter, `at path: [String]? = nil`, and add the path clause only when `path` is non-nil. Delete the new overload and update the call sites in SessionsGraphMutationTests.swift that pass `at: Self.sendAddressPath`.
