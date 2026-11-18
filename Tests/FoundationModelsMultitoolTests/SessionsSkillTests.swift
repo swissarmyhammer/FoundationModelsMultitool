@@ -1,8 +1,10 @@
 // `SessionsSkillTests` — the unit suite that checks the text of the built-in
 // `sessions` skill against the `sessions` tool (D200): each `{"op": ...}`
 // example names an operation of the tool and only its parameters, each
-// code-mode verb of the skill is a verb of the tool, and the skill names each
-// form of a session reference and each receipt word of the tool.
+// operation of the tool has an example, the skill names each parameter of
+// `export session`, each code-mode verb of the skill is a verb of the tool,
+// and the skill names each form of a session reference and each receipt word
+// of the tool.
 //
 // The suite reads the skill through `BuiltinSkills.directory`, as ACPAgent
 // does. Thus a change of the tool that makes the skill wrong fails here.
@@ -127,6 +129,28 @@ import Testing
         let problems = try Self.opExamples().compactMap { Self.problem(of: $0, among: descriptors) }
 
         #expect(problems == [])
+    }
+
+    @Test("each operation of the tool has an op example in the skill")
+    func eachOperationHasAnOpExample() throws {
+        let text = try Self.skillText()
+
+        let missing = try Self.descriptors().map(\.opString).filter { !text.contains("{\"\(Self.opKey)\": \"\($0)\"") }
+
+        #expect(missing == [])
+    }
+
+    @Test("the skill names each parameter of export session")
+    func theSkillNamesEachExportParameter() throws {
+        let text = try Self.skillText()
+        let descriptor = try #require(try Self.descriptors().first { $0.opString == ExportSession.opString })
+
+        let names = descriptor.parameters.map(\.name)
+        try #require(!names.isEmpty)
+
+        let missing = names.filter { !text.contains("`\($0)`") }
+
+        #expect(missing == [])
     }
 
     @Test("the skill names a code-mode verb")

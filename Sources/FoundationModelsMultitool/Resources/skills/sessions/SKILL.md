@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Sessions
@@ -123,6 +123,7 @@ Run the API tests again.
 | Pin or unpin a session | `{"op": "pin session", "id": "v2w4abc"}`, `{"op": "unpin session", "id": "v2w4abc"}` |
 | Tag or untag a session | `{"op": "tag session", "id": "v2w4abc", "tags": ["release"]}`, `{"op": "untag session", "id": "v2w4abc", "tags": ["release"]}` |
 | Archive a session | `{"op": "archive session", "id": "v2w4abc"}` |
+| Export a session as a Markdown file | `{"op": "export session", "id": "v2w4abc", "format": "markdown", "thoughts": false, "path": "notes/api-tests.md", "replace": true}` |
 
 - The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
 - The `parent` and `startedBy` filters of `list sessions` take a full id only.
@@ -132,4 +133,12 @@ Run the API tests again.
 - `start session` opens no tab. The reply of the new session comes to you as a message.
 - `check session` never waits. Do not call it in a loop: the reply comes to you as a message.
 - Archive a session only when the user asks, or when you started it and its work is done.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, and so on.
+- To give the user a session as a file, use `export session`. It writes `<slug>.md` in the session folder.
+- `export session` takes these parameters, and each is optional:
+  - `id`: the session. With no `id`, it exports your session.
+  - `format`: `markdown`, the default and the only format.
+  - `thoughts`: `true` to include the thoughts of the agent. The default is `false`.
+  - `path`: a file name or a relative path in the session folder. The default is `<slug>.md`.
+  - `replace`: `true` to replace a file that exists. The default is `false`.
+- `export session` gives the path of the file, the number of lines and the title. It does not give the text. To see the text, read the file.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.exportSession({...})`, and so on.
