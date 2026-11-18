@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Sessions
@@ -143,4 +143,8 @@ Run the API tests again.
   - `path`: a file name or a relative path in the session folder. The default is `<slug>.md`.
   - `replace`: `true` to replace a file that exists. The default is `false`.
 - `export session` gives the path of the file, the number of lines and the title. It does not give the text. To see the text, read the file.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.exportSession({...})`, and so on.
+- A fork is a session with a copy of the history up to the call. Use it to try a second way or to ask a side question. The fork does not report back on its own, so ask it to send a message when it must.
+- `fork session` takes these parameters, and each is optional:
+  - `id`: the session to fork. With no `id`, it forks your session from here. With an `id`, it forks that session at its last completed turn.
+  - `message`: the first prompt of the fork. With no `message`, the fork waits for a message.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, and so on.

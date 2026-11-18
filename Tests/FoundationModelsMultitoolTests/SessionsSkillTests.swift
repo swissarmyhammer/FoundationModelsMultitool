@@ -1,10 +1,11 @@
 // `SessionsSkillTests` — the unit suite that checks the text of the built-in
 // `sessions` skill against the `sessions` tool (D200): each `{"op": ...}`
 // example names an operation of the tool and only its parameters, each
-// operation of the tool has an example, the skill names each parameter of
-// `export session`, each code-mode verb of the skill is a verb of the tool,
-// and the skill names each form of a session reference, each receipt word of
-// the tool and the note `archived` of a `sent` receipt (D204).
+// operation of the tool has an example, the parameter list of `export
+// session` and of `fork session` in the skill names each parameter, each
+// code-mode verb of the skill is a verb of the tool, and the skill names each
+// form of a session reference, each receipt word of the tool and the note
+// `archived` of a `sent` receipt (D204).
 //
 // The suite reads the skill through `BuiltinSkills.directory`, as ACPAgent
 // does. Thus a change of the tool that makes the skill wrong fails here.
@@ -148,17 +149,97 @@ import Testing
         #expect(missing == [])
     }
 
-    @Test("the skill names each parameter of export session")
-    func theSkillNamesEachExportParameter() throws {
-        let text = try Self.skillText()
-        let descriptor = try #require(try Self.descriptors().first { $0.opString == ExportSession.opString })
+    /// The start of a nested bullet: an entry of a parameter list.
+    private static let nestedBullet = "  - "
+
+    /// A small skill text for the unit test of ``unnamedParameters(_:of:in:)``:
+    /// it names `id` and `message` in other parts, but the parameter list of
+    /// `fork session` has only `message`.
+    private static let forkListWithoutID = """
+        - The `id` of these calls takes the same forms as `to`.
+        - `fork session` takes these parameters, and each is optional:
+          - `message`: the first prompt of the fork.
+        - `export session` takes these parameters, and each is optional:
+          - `id`: the session.
+        """
+
+    /// The start of the bullet that opens the parameter list of an
+    /// operation in the skill.
+    ///
+    /// - Parameter op: The operation, as `<verb> <noun>`.
+    /// - Returns: The text `` - `<op>` takes these parameters``.
+    private static func parameterListLead(of op: String) -> String {
+        "- `\(op)` takes these parameters"
+    }
+
+    /// The entries of the parameter list of one operation.
+    ///
+    /// The rule: the list starts after the first line that starts with
+    /// ``parameterListLead(of:)``, and it holds each nested bullet
+    /// (``nestedBullet``) that follows that line. The first line that is not a
+    /// nested bullet ends the list: the next bullet, the next operation or the
+    /// next heading.
+    ///
+    /// - Parameters:
+    ///   - op: The operation, as `<verb> <noun>`.
+    ///   - text: The skill text.
+    /// - Returns: Each entry line, or no line when the text has no parameter
+    ///   list for the operation.
+    private static func parameterList(of op: String, in text: String) -> [Substring] {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let lead = lines.firstIndex(where: { $0.hasPrefix(parameterListLead(of: op)) }) else {
+            return []
+        }
+        return Array(lines[(lead + 1)...].prefix { $0.hasPrefix(nestedBullet) })
+    }
+
+    /// The parameters that the parameter list of one operation does not name.
+    ///
+    /// A parameter is named when an entry of ``parameterList(of:in:)`` starts
+    /// with `` `<name>`:``. A name in another part of the text does not count.
+    ///
+    /// - Parameters:
+    ///   - names: The names of the parameters of the operation.
+    ///   - op: The operation, as `<verb> <noun>`.
+    ///   - text: The skill text.
+    /// - Returns: Each name that the parameter list does not name, in the
+    ///   order of `names`.
+    private static func unnamedParameters(_ names: [String], of op: String, in text: String) -> [String] {
+        let entries = parameterList(of: op, in: text)
+        return names.filter { name in !entries.contains { $0.hasPrefix("\(nestedBullet)`\(name)`:") } }
+    }
+
+    /// The parameters of one operation of the tool that the parameter list
+    /// of that operation in the skill does not name.
+    ///
+    /// - Parameter op: The operation, as `<verb> <noun>`.
+    /// - Returns: The name of each parameter that the list does not name.
+    /// - Throws: When the tool has no such operation, or when the operation
+    ///   has no parameter.
+    private static func unnamedParameters(of op: String) throws -> [String] {
+        let descriptor = try #require(try descriptors().first { $0.opString == op })
 
         let names = descriptor.parameters.map(\.name)
         try #require(!names.isEmpty)
 
-        let missing = names.filter { !text.contains("`\($0)`") }
+        return unnamedParameters(names, of: op, in: try skillText())
+    }
 
-        #expect(missing == [])
+    @Test("a parameter that only other parts of the text name is unnamed")
+    func aNameOutsideTheParameterListDoesNotCount() {
+        let unnamed = Self.unnamedParameters(["id", "message"], of: ForkSession.opString, in: Self.forkListWithoutID)
+
+        #expect(unnamed == ["id"])
+    }
+
+    @Test("the skill names each parameter of export session")
+    func theSkillNamesEachExportParameter() throws {
+        #expect(try Self.unnamedParameters(of: ExportSession.opString) == [])
+    }
+
+    @Test("the skill names each parameter of fork session")
+    func theSkillNamesEachForkParameter() throws {
+        #expect(try Self.unnamedParameters(of: ForkSession.opString) == [])
     }
 
     @Test("the skill names a code-mode verb")
