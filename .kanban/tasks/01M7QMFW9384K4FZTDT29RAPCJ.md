@@ -6,8 +6,25 @@ comments:
   id: 01m7qndsm6enhdq6p1fn6nte42
   text: 'Extras plan (from foundationmodelsextras-9e, 2026-11-18): the next Extras push adds `SessionDirectoryEvent.messageQueued(SessionMessage)`. Map it to `(message.to, .changed)` in the exhaustive switch at `SessionsGraphChanges.swift:52`; without it, Multitool does not compile. The same push makes the in-memory directory send `messageDelivered` for a queued message when its turn starts. Then `SessionsGraphChangesTests.swift:234` ("send to a working session") passes only with the `messageQueued` mapping. Multitool CI resolves the Extras main head, so Multitool main CI breaks from the Extras push until this task is on main: do this task at once when the sha comes.'
   timestamp: 2026-11-18T15:46:52.166330+00:00
-position_column: todo
-position_ordinal: 8a80
+- actor: claude-code
+  id: 01m7qpkzeqtqynezqqgc2epkp9
+  text: |-
+    Implementation notes.
+    - Extras pin: `swift package update FoundationModelsExtras` resolved main 951149ce8b2aa4e13025e3dbd72fb5fcc6cde37d. No other sibling moved.
+    - RED: before the change, `swift build` failed with "switch must be exhaustive" at the `sessionChange` switch, because `messageQueued` had no mapping.
+    - Change: `case .messageQueued(let message): (message.to, .changed)` in `SessionDirectoryEvent.sessionChange`. No `default:`. `messageDelivered` stays `changed`. The file header and the doc comment of `sessionChange` now tell that a waiting message changes its target at the send, and again when the target takes it.
+    - Tests (SessionsGraphChangesTests): `aSendToAWaitingTargetGivesAChangeAtTheSend` (two cases: working target QUEUED, recorded target with isLive false SENT; each gives the target change before the marker change, and unreadCount 1), and `anExternalClientGetsTheWaitingMessageChangeOnlyWhenVisible`. The existing "send to a working session" action case passes with no change: it needs the `messageQueued` mapping now, because the target turn never ends in that case.
+    - swift format sorted the imports (GraphQL before Graphiti), wrapped one long description line, and wrote `catch  where` with two spaces in `anchorChain(of:reading:)`. That is the output of the mandated format command; I did not edit it by hand.
+  timestamp: 2026-11-18T16:07:43.319945+00:00
+- actor: claude-code
+  id: 01m7qpm2bxrwvsxctm10nhctqk
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphChanges.swift, Tests/FoundationModelsMultitoolTests/SessionsGraphChangesTests.swift. Pin: FoundationModelsExtras 951149ce (no other sibling moved). `swift build` complete; `swift test --filter "SessionsGraph|SessionsTool"`: 236 tests in 12 suites passed; full `swift test`: 3086 tests in 274 suites passed, 0 issues, 0 warnings. All 4 Tests boxes ticked.
+    - next: /review
+  timestamp: 2026-11-18T16:07:46.301641+00:00
+position_column: doing
+position_ordinal: '80'
 title: The change feed gives a changed entry when a message goes into the queue or the inbox of a target (D199)
 ---
 Decision: D199 (f) in TestudoApp/features/decisions.md. Request from the TestudoApp session, 2026-11-18: choice (a), the fix at the source.
@@ -28,7 +45,7 @@ Precondition (FoundationModelsExtras and FoundationModelsRouter): a new director
 
 ## Tests
 
-- [ ] A send to a working target gives a `changed` entry for the target at send time, and `unreadCount` is then 1.
-- [ ] A send to a recorded target (receipt `sent`) gives a `changed` entry for the target.
-- [ ] An external viewer gets the entry only for a session that it can see.
-- [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql #blocked-external
+- [x] A send to a working target gives a `changed` entry for the target at send time, and `unreadCount` is then 1.
+- [x] A send to a recorded target (receipt `sent`) gives a `changed` entry for the target.
+- [x] An external viewer gets the entry only for a session that it can see.
+- [x] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql

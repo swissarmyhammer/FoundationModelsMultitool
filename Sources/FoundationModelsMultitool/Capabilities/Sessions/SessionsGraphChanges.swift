@@ -8,11 +8,18 @@
 // rule reads only that chain, so a subscription filters each change for its
 // viewer at once, with no read of the directory, and a change that the viewer
 // cannot see is never sent.
+//
+// A message changes the inbox of its target two times. When the target
+// cannot take the message at the send, the message waits in the queue of a
+// working target or in the inbox of a recorded target, and the feed records a
+// change of the target at the send. Thus `Session.unreadCount` of the target
+// is current at once. When the target takes the message, the feed records a
+// second change of the target.
 
 import Foundation
 import FoundationModelsExtras
-import Graphiti
 import GraphQL
+import Graphiti
 import ULID
 
 // MARK: - The change log
@@ -46,13 +53,17 @@ struct SessionsGraphChangeEvent: Sendable {
 
 extension SessionDirectoryEvent {
     /// The session that the event names, and how the event changed it in the
-    /// change feed of the `sessions` endpoint. A delivered message changes
-    /// its target: its inbox.
+    /// change feed of the `sessions` endpoint.
+    ///
+    /// A message changes its target: its inbox. A message that waits in the
+    /// queue or in the inbox of its target changes the target at the send,
+    /// and the target changes again when it takes the message.
     var sessionChange: (sessionID: ULID, kind: SessionsGraphChangeEvent.Kind) {
         switch self {
         case .started(let summary, _): (summary.id, .added)
         case .factsChanged(let summary): (summary.id, .changed)
         case .stateChanged(let id, _, _): (id, .changed)
+        case .messageQueued(let message): (message.to, .changed)
         case .messageDelivered(let message): (message.to, .changed)
         case .archived(let id): (id, .changed)
         }
@@ -136,7 +147,7 @@ final class SessionsGraphChangeFeed: Sendable {
                 return [id]
             }
             return try await sessions.anchorChain(of: summary)
-        } catch where Task.isCancelled {
+        } catch  where Task.isCancelled {
             // The feed is gone: the loop of `record` ends, and no subscriber
             // reads this change.
             return [id]
@@ -268,7 +279,8 @@ extension SessionsGraphAPI {
             atSub: SessionsGraphResolver.changes
         ) {
             Argument("after", at: \.after)
-                .description("The cursor to resume after, from the cursor query or a change. None: the changes from now.")
+                .description(
+                    "The cursor to resume after, from the cursor query or a change. None: the changes from now.")
         }
         .description(
             "The changes of the sessions that you can see, after a cursor. RESYNC_REQUIRED ends it when a change "

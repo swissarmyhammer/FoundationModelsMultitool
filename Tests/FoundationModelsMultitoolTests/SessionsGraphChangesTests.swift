@@ -274,6 +274,92 @@ struct SessionsGraphChangesTests {
         #expect(try Self.sequence(of: second.cursor) > Self.sequence(of: first.cursor))
     }
 
+    // MARK: - The change of a message that waits
+
+    /// A target that does not take a message at the send, and the outcome of
+    /// the send to it.
+    struct WaitingTargetCase: Sendable, CustomTestStringConvertible {
+        /// The name of the case in the test report.
+        let name: String
+
+        /// True when the target is in memory. A live target works, thus the
+        /// message waits in its queue. A recorded target is not live, thus
+        /// the message waits in its inbox.
+        let isLive: Bool
+
+        /// The outcome of the send, as the response gives it.
+        let outcome: String
+
+        /// The name of the case in the test report.
+        var testDescription: String { name }
+    }
+
+    /// A working target, which queues the message, and a recorded target,
+    /// which writes it to its inbox.
+    static let waitingTargetCases: [WaitingTargetCase] = [
+        WaitingTargetCase(name: "working target", isLive: true, outcome: "QUEUED"),
+        WaitingTargetCase(name: "recorded target", isLive: false, outcome: "SENT"),
+    ]
+
+    /// The query of the count of the unread messages of a session.
+    private static let unreadQuery = "query($id: ID!) { session(id: $id) { unreadCount } }"
+
+    /// Makes a target that does not take a message at the send, and adds it
+    /// to `directory`.
+    ///
+    /// - Parameters:
+    ///   - waiting: The case of the target.
+    ///   - directory: The directory.
+    /// - Returns: The summary of the target.
+    /// - Throws: What the directory throws.
+    private static func waitingTarget(
+        _ waiting: WaitingTargetCase, in directory: InMemorySessionDirectory
+    ) throws -> SessionSummary {
+        var target = Fixtures.summary()
+        target.isLive = waiting.isLive
+        directory.register(target)
+        if waiting.isLive {
+            try directory.startUserTurn(of: target.id)
+        }
+        return target
+    }
+
+    /// The `sendMessage` mutation of one message to `target`.
+    ///
+    /// - Parameter target: The target session.
+    /// - Returns: The mutation document.
+    private static func sendMutation(to target: ULID) -> String {
+        "mutation { sendMessage(input: {to: \"\(target.ulidString)\", message: \"\(messageText)\"}) { outcome } }"
+    }
+
+    /// A send to a target that does not take the message now gives one
+    /// change of the target at the send, before the target takes the
+    /// message: the next change is the change of the marker. The
+    /// `unreadCount` of the target is then 1, so a client that reads the
+    /// changes shows the current count.
+    @Test(
+        "a send to a waiting target gives a changed entry at the send, and unreadCount is then 1",
+        arguments: waitingTargetCases)
+    func aSendToAWaitingTargetGivesAChangeAtTheSend(_ waiting: WaitingTargetCase) async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = try Self.waitingTarget(waiting, in: directory)
+        let marker = Fixtures.summary()
+        directory.register(marker)
+        let graph = SessionsGraph.endpoint(of: directory)
+        var subscription = try await Self.subscribe(to: graph, after: try await Self.cursor(of: graph))
+
+        let reply = try await Self.run(Self.sendMutation(to: target.id), on: graph)
+        try await Self.mark(marker, in: directory)
+        let changes = [try await subscription.nextChange(), try await subscription.nextChange()]
+        let session = try await graph.execute(
+            query: Self.unreadQuery, variables: ["id": .string(target.id.ulidString)], operationName: nil,
+            viewer: Self.deviceViewer)
+
+        #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == [waiting.outcome])
+        #expect(changes.map(\.changed) == [[target.id.ulidString], [marker.id.ulidString]])
+        #expect(try GraphQLReply(json: session).object("session")["unreadCount"] as? Int == 1)
+    }
+
     /// Each change of the Pinned or Recent list gives one change of its
     /// session (D118): an unpin, and a client that opens a session, which
     /// marks it as used. A second pin changes no list, thus it gives no
@@ -494,6 +580,36 @@ struct SessionsGraphChangesTests {
 
         #expect(externalChange.changed == [subagent.id.ulidString])
         #expect(deviceChanges.map(\.changed) == [[stranger.id.ulidString], [subagent.id.ulidString]])
+        #expect(externalChange.cursor == deviceChanges.last?.cursor)
+    }
+
+    /// An external client gets the change of a waiting message only for a
+    /// session that it can see: the send to a stranger is not sent to it,
+    /// while a device of the user gets both sends.
+    @Test("an external client receives the change of a waiting message only for a session that it can see")
+    func anExternalClientGetsTheWaitingMessageChangeOnlyWhenVisible() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let owned = Fixtures.summary()
+        let stranger = Fixtures.summary()
+        for session in [owned, stranger] {
+            directory.register(session)
+            try directory.startUserTurn(of: session.id)
+        }
+        let graph = SessionsGraph.endpoint(of: directory)
+        let before = try await Self.cursor(of: graph)
+        var external = try await Self.subscribe(
+            to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
+        var device = try await Self.subscribe(to: graph, after: before)
+
+        let toStranger = try await Self.run(Self.sendMutation(to: stranger.id), on: graph)
+        let toOwned = try await Self.run(Self.sendMutation(to: owned.id), on: graph)
+        let externalChange = try await external.nextChange()
+        let deviceChanges = [try await device.nextChange(), try await device.nextChange()]
+
+        #expect(toStranger.codes.isEmpty, "errors: \(toStranger.messages)")
+        #expect(toOwned.codes.isEmpty, "errors: \(toOwned.messages)")
+        #expect(externalChange.changed == [owned.id.ulidString])
+        #expect(deviceChanges.map(\.changed) == [[stranger.id.ulidString], [owned.id.ulidString]])
         #expect(externalChange.cursor == deviceChanges.last?.cursor)
     }
 
