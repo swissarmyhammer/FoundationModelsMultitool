@@ -1,6 +1,8 @@
 // `SessionsAddressReader` — the one reader of a message address, which the
 // `send message` operation of the `sessions` tool and the `sendMessage`
-// mutation of the `sessions` endpoint both call (D100, D199 (c) to (e)).
+// mutation of the `sessions` endpoint both call (D100, D199 (c) to (e)). The
+// `id` of `check session` and of each change operation of the tool reads a
+// session reference through the same resolver (D200 (e)).
 //
 // A session has one namespace: `@<id>`, `<id>`, `@<short id>`, `<short id>`
 // and `@<slug>` name one session, through `SessionReference.resolve` of
@@ -81,6 +83,58 @@ extension SessionsVisibility {
         }
     }
 
+    /// The session id that the `id` of a session operation names (D200 (e)):
+    /// `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`.
+    ///
+    /// A full id gives its id at once, thus an archived session, which the
+    /// resolver never matches, is still found by its id. A short id and a
+    /// slug go through the resolver of `send message`, over the sessions
+    /// that the viewer can see. A text with no `@` names a session only by
+    /// its short id. The reader never starts an agent.
+    ///
+    /// - Parameters:
+    ///   - text: The `id` as written.
+    ///   - lookupFolder: The folder in which a short id or a slug looks
+    ///     first, or `nil` to look in all the sessions at once.
+    /// - Returns: The session id.
+    /// - Throws: ``SessionsRefusal`` for a reference that names more than one
+    ///   session, and for a reference that names no session that the viewer
+    ///   can see; each error of the directory.
+    func sessionID(referencedBy text: String, lookupFolder: URL?) async throws -> ULID {
+        if let id = SessionsToolInput.fullSessionID(text) {
+            return id
+        }
+        let resolution =
+            SessionsToolInput.isAtReference(text)
+            ? try await resolution(of: text, lookupFolder: lookupFolder)
+            : try await shortIDResolution(of: text, lookupFolder: lookupFolder)
+        switch resolution {
+        case .session(let summary):
+            return summary.id
+        case .ambiguous(let matches):
+            throw Self.ambiguity(of: text, among: matches, outcome: SessionsToolText.notChangedSentence)
+        case .none:
+            throw SessionsRefusal(.invalidSessionID, SessionsToolText.notASessionID(text))
+        }
+    }
+
+    /// The session id that the `id` of a session operation names, with the
+    /// working folder of the caller as the lookup folder (D200 (e)).
+    ///
+    /// - Parameters:
+    ///   - text: The `id` as written.
+    ///   - callerID: The caller session, or `nil` for a call with no caller
+    ///     session: the lookup is then in all the sessions at once.
+    /// - Returns: The session id.
+    /// - Throws: What ``sessionID(referencedBy:lookupFolder:)`` throws.
+    func sessionID(referencedBy text: String, callerID: ULID?) async throws -> ULID {
+        guard let callerID else {
+            return try await sessionID(referencedBy: text, lookupFolder: nil)
+        }
+        let lookupFolder = try await workingFolder(of: .session(callerID))
+        return try await sessionID(referencedBy: text, lookupFolder: lookupFolder)
+    }
+
     /// The one session that a reference names, among the sessions that the
     /// viewer can see: a full id, a short id or a slug, with or without `@`.
     ///
@@ -97,7 +151,7 @@ extension SessionsVisibility {
         case .session(let summary):
             return summary
         case .ambiguous(let matches):
-            throw Self.ambiguity(of: reference, among: matches)
+            throw Self.ambiguity(of: reference, among: matches, outcome: SessionsToolText.notSentSentence)
         case .none:
             return nil
         }
@@ -176,25 +230,49 @@ extension SessionsVisibility {
     private func address(
         ofShortID shortID: String, written: String, lookupFolder: URL?
     ) async throws -> SessionAddress {
-        let key = shortID.lowercased()
-        switch try await resolution(of: shortID, lookupFolder: lookupFolder) {
-        case .session(let summary) where summary.shortID == key:
+        switch try await shortIDResolution(of: shortID, lookupFolder: lookupFolder) {
+        case .session(let summary):
             return .session(summary.id)
-        case .ambiguous(let matches) where matches.allSatisfy({ $0.shortID == key }):
-            throw Self.ambiguity(of: shortID, among: matches)
-        case .session, .ambiguous, .none:
+        case .ambiguous(let matches):
+            throw Self.ambiguity(of: shortID, among: matches, outcome: SessionsToolText.notSentSentence)
+        case .none:
             throw SessionsRefusal(.invalidAddress, SessionsToolText.notAnAddress(written))
         }
     }
 
-    /// The refusal of a reference that names more than one session: nothing
-    /// is sent, and the corrective lists each match.
+    /// The resolution of a text with no `@`, in which only a short id names a
+    /// session: a match by the slug alone is no match.
+    ///
+    /// - Parameters:
+    ///   - text: The text, with any space around it.
+    ///   - lookupFolder: The folder in which the lookup looks first, or
+    ///     `nil`.
+    /// - Returns: The resolution.
+    /// - Throws: Each error of the directory.
+    private func shortIDResolution(of text: String, lookupFolder: URL?) async throws -> SessionReferenceResolution {
+        let key = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch try await resolution(of: text, lookupFolder: lookupFolder) {
+        case .session(let summary) where summary.shortID == key:
+            return .session(summary)
+        case .ambiguous(let matches) where matches.allSatisfy({ $0.shortID == key }):
+            return .ambiguous(matches)
+        case .session, .ambiguous, .none:
+            return .none
+        }
+    }
+
+    /// The refusal of a reference that names more than one session: the call
+    /// does nothing, and the corrective lists each match.
     ///
     /// - Parameters:
     ///   - reference: The reference, as written.
     ///   - matches: The sessions that match.
+    ///   - outcome: The sentence that tells what the call did not do.
     /// - Returns: The refusal.
-    private static func ambiguity(of reference: String, among matches: [SessionSummary]) -> SessionsRefusal {
-        SessionsRefusal(.ambiguousReference, SessionsToolText.ambiguousReference(reference, matches: matches))
+    private static func ambiguity(
+        of reference: String, among matches: [SessionSummary], outcome: String
+    ) -> SessionsRefusal {
+        SessionsRefusal(
+            .ambiguousReference, SessionsToolText.ambiguousReference(reference, matches: matches, outcome: outcome))
     }
 }

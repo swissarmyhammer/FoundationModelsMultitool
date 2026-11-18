@@ -72,17 +72,6 @@ enum SessionsToolInput {
         return try sessionID(text)
     }
 
-    /// The session id of `text`, or `caller` for no text.
-    ///
-    /// - Parameters:
-    ///   - text: A session id, in any letter case, or `nil`.
-    ///   - caller: The caller session, the session of a call with no id.
-    /// - Returns: The id.
-    /// - Throws: ``SessionsRefusal`` when `text` is not a ULID.
-    static func sessionID(_ text: String?, defaultingTo caller: ULID) throws(SessionsRefusal) -> ULID {
-        try sessionID(text) ?? caller
-    }
-
     /// The session id of `text`.
     ///
     /// - Parameter text: A session id, in any letter case, with any space
@@ -91,7 +80,26 @@ enum SessionsToolInput {
     /// - Throws: ``SessionsRefusal`` when `text` is not a ULID. The text
     ///   names `listSessions`.
     static func sessionID(_ text: String) throws(SessionsRefusal) -> ULID {
-        try requiredULID(text, kind: .invalidSessionID, corrective: SessionsToolText.notASessionID)
+        try requiredULID(text, kind: .invalidSessionID, corrective: SessionsToolText.notAFullSessionID)
+    }
+
+    /// The session id of a reference that is a full session id, with or
+    /// without `@` (D199 (c), D200 (e)).
+    ///
+    /// - Parameter text: The reference, with any space around it.
+    /// - Returns: The id, or `nil` when the reference is not a full id.
+    static func fullSessionID(_ text: String) -> ULID? {
+        ulid(bare(text, prefix: agentPrefix))
+    }
+
+    /// Whether a reference starts with `@`. Only such a reference can name a
+    /// session by its slug: a text with no `@` names a session only by its
+    /// id or its short id.
+    ///
+    /// - Parameter text: The reference, with any space around it.
+    /// - Returns: True when the text starts with `@`.
+    static func isAtReference(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(agentPrefix)
     }
 
     /// The message id of `text`.
@@ -141,10 +149,10 @@ enum SessionsToolInput {
     /// - Returns: The form, or `nil` when the text names nothing.
     /// - Throws: ``SessionsRefusal`` from ``folder(_:)``.
     private static func referenceForm(_ text: String) throws(SessionsRefusal) -> SessionsAddressForm? {
-        let name = bare(text, prefix: agentPrefix)
-        if let id = ulid(name) {
+        if let id = fullSessionID(text) {
             return .id(id)
         }
+        let name = bare(text, prefix: agentPrefix)
         guard text.hasPrefix(agentPrefix) else {
             return nonBlank(text).map { .shortID($0) }
         }

@@ -6,6 +6,10 @@ comments:
   id: 01m7qgr53y73fjeexxbcgybbma
   text: 'Extras shape (from foundationmodelsextras-9e, 2026-11-18, Extras task ^ehms1m8): no change to the `GraphQLRunContext` protocol. Use `ResolverRewrites`, the same pattern as `ResolverWarnings`: `public final class ResolverRewrites: Sendable` with `@TaskLocal public static var current: ResolverRewrites?`. `API.respond` binds a new collector for the run. The resolver calls `ResolverRewrites.current?.add(NameRewrite(from: "@agent:/path", to: "@agent", path: ["sendMessage", "input", "to"]))`. The response gives the name rewrites first, then the resolver rewrites in the order of the adds, with no repeats. A subscription keeps only the name rewrites. Put the lookup folder in the `to` text, the same text as the tool answer. Start when the Extras sha is on origin/main.'
   timestamp: 2026-11-18T14:25:08.734770+00:00
+- actor: claude-code
+  id: 01m7qhtvagde9zw8q038ss870y
+  text: 'Extras landed (2026-11-18): ^ehms1m8 `ResolverRewrites` is on Extras origin/main 92660bf34155cd9e5dc46658428318bb8f56b4cc. Run `swift package update FoundationModelsExtras` first. Use `ResolverRewrites.current?.add(NameRewrite(from:to:path:))` from the resolver, sync or async. The rewrites are also in a response with GraphQL errors; a document that does not parse has no resolver rewrites; a subscription has only the name rewrites. `GraphQLRunContext` did not change. Change the assertion of the test `aSendToAnAliasGivesNoRewriteReportYet` (SessionsGraphMutationTests) to expect the rewrite, and rename it.'
+  timestamp: 2026-11-18T14:44:05.584080+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
 position_column: todo
@@ -27,4 +31,4 @@ Precondition (FoundationModelsExtras): a resolver must be able to add a rewrite 
 - [ ] `sendMessage(input: {to: "@agent:/path", ...})` gives a rewrite report in `extensions.rewrites`.
 - [ ] A folder path alone gives a rewrite report in `extensions.rewrites`.
 - [ ] A send with `@<slug>` gives no rewrite report.
-- [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql #blocked-external
+- [ ] The test kit of the conventions (EXTRAS-11) stays green. #sessions #at-sessions #graphql

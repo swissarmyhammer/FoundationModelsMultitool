@@ -283,7 +283,7 @@ input StartSessionInput {
 """The tags to add to a session."""
 input TagSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
   """
   id: ID!
 
@@ -296,7 +296,7 @@ input TagSessionInput {
 """The tags to remove from a session."""
 input UntagSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
   """
   id: ID!
 
@@ -307,7 +307,7 @@ input UntagSessionInput {
 """The new title of a session."""
 input RenameSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see, or that an external client does not own, is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
   """
   id: ID!
 
@@ -318,7 +318,7 @@ input RenameSessionInput {
 """The session to pin."""
 input PinSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see is NOT_FOUND.
   """
   id: ID!
 }
@@ -326,7 +326,7 @@ input PinSessionInput {
 """The session to unpin."""
 input UnpinSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see is NOT_FOUND.
   """
   id: ID!
 }
@@ -334,7 +334,7 @@ input UnpinSessionInput {
 """The session to archive."""
 input ArchiveSessionInput {
   """
-  The session id, in any letter case. A session that you cannot see is NOT_FOUND.
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only a session that you can see. An id of a session that you cannot see is NOT_FOUND.
   """
   id: ID!
 }

@@ -138,8 +138,12 @@ struct SessionStartArguments: Codable, Sendable {
     verb: "tag", noun: "session",
     description: "Add tags to a session. Gives the tags that the session has after the call.")
 struct TagSession {
-    /// The id of the session to tag.
-    @Guide(description: "Optional. The id of the session. The default is your session.")
+    /// The session to tag: its id, its short id or its slug.
+    @Guide(
+        description: """
+            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
+            session.
+            """)
     var id: String?
 
     /// The tags to add.
@@ -165,8 +169,12 @@ extension TagSession {
     verb: "untag", noun: "session",
     description: "Remove tags from a session. Gives the tags that the session has after the call.")
 struct UntagSession {
-    /// The id of the session to untag.
-    @Guide(description: "Optional. The id of the session. The default is your session.")
+    /// The session to untag: its id, its short id or its slug.
+    @Guide(
+        description: """
+            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
+            session.
+            """)
     var id: String?
 
     /// The tags to remove.
@@ -191,8 +199,12 @@ extension UntagSession {
 @Generable
 @Operation(verb: "rename", noun: "session", description: "Set the title of a session.")
 struct RenameSession {
-    /// The id of the session to rename.
-    @Guide(description: "Optional. The id of the session. The default is your session.")
+    /// The session to rename: its id, its short id or its slug.
+    @Guide(
+        description: """
+            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
+            session.
+            """)
     var id: String?
 
     /// The new title.
@@ -206,11 +218,11 @@ extension RenameSession {
     ///
     /// - Parameter context: The shared context of the tool.
     /// - Returns: The new title of the session. A corrective for a call with
-    ///   no caller, a blank title, an id that is not a session id or that no
-    ///   session has, or another error of the directory.
+    ///   no caller, a blank title, an id that names no session or more than
+    ///   one session, or another error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
-            let target = try SessionsToolInput.sessionID(id, defaultingTo: callerID)
+            let target = try await context.sessionID(referencedBy: id, defaultingTo: callerID)
             return SessionsToolText.renamed(try await context.rename(session: target, to: title))
         }
     }
@@ -225,8 +237,12 @@ extension RenameSession {
         Pin a session: it shows in the Pinned list of the user on this Mac. A second pin keeps its place.
         """)
 struct PinSession {
-    /// The id of the session to pin.
-    @Guide(description: "Optional. The id of the session. The default is your session.")
+    /// The session to pin: its id, its short id or its slug.
+    @Guide(
+        description: """
+            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
+            session.
+            """)
     var id: String?
 }
 
@@ -248,8 +264,12 @@ extension PinSession {
     verb: "unpin", noun: "session",
     description: "Unpin a session: it goes out of the Pinned list of the user on this Mac.")
 struct UnpinSession {
-    /// The id of the session to unpin.
-    @Guide(description: "Optional. The id of the session. The default is your session.")
+    /// The session to unpin: its id, its short id or its slug.
+    @Guide(
+        description: """
+            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
+            session.
+            """)
     var id: String?
 }
 
@@ -272,8 +292,12 @@ extension UnpinSession {
         Archive a session: stop its turn and end its work. It takes no more messages, and its transcript stays.
         """)
 struct ArchiveSession {
-    /// The id of the session to archive.
-    @Guide(description: "The id of the session. You can archive any session that you can see.")
+    /// The session to archive: its id, its short id or its slug.
+    @Guide(
+        description: """
+            The session: its id or short id, with or without @, or @ and its slug. You can archive any session \
+            that you can see.
+            """)
     var id: String
 }
 
@@ -283,11 +307,11 @@ extension ArchiveSession {
     /// - Parameter context: The shared context of the tool.
     /// - Returns: The session, its agent, its folder and the archive
     ///   sentence. A corrective for a call with no caller, a session that is
-    ///   archived already, an id that is not a session id or that no session
-    ///   has, or another error of the directory.
+    ///   archived already, an id that names no session or more than one
+    ///   session, or another error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
-            let sessionID = try SessionsToolInput.sessionID(id)
+            let sessionID = try await context.sessions.sessionID(referencedBy: id, callerID: callerID)
             return SessionsToolText.archived(try await context.archive(session: sessionID, by: .session(callerID)))
         }
     }
@@ -366,15 +390,15 @@ extension SessionsToolContext {
     /// call.
     ///
     /// - Parameters:
-    ///   - id: The text of the session id, or `nil` for the caller session.
+    ///   - id: The session reference, or `nil` for the caller session.
     ///   - pinned: True to pin, false to unpin.
     ///   - opString: The op string of the operation.
     /// - Returns: The pin state of the session after the call. A corrective
-    ///   for a call with no caller, an id that is not a session id or that no
-    ///   session has, or another error of the directory.
+    ///   for a call with no caller, an id that names no session or more than
+    ///   one session, or another error of the directory.
     func answerPinChange(of id: String?, to pinned: Bool, opString: String) async -> String {
         await answer(asCallerOf: opString) { callerID in
-            let target = try SessionsToolInput.sessionID(id, defaultingTo: callerID)
+            let target = try await sessionID(referencedBy: id, defaultingTo: callerID)
             return SessionsToolText.pinState(of: try await setPinned(session: target, to: pinned))
         }
     }
@@ -401,18 +425,18 @@ extension SessionsToolContext {
     /// call.
     ///
     /// - Parameters:
-    ///   - id: The text of the session id, or `nil` for the caller session.
+    ///   - id: The session reference, or `nil` for the caller session.
     ///   - opString: The op string of the operation.
     ///   - change: The change, given the target session.
     /// - Returns: The tags of the session after the call. A corrective for a
-    ///   call with no caller, no tag, an invalid tag, an id that is not a
-    ///   session id or that no session has, or another error of the
+    ///   call with no caller, no tag, an invalid tag, an id that names no
+    ///   session or more than one session, or another error of the
     ///   directory.
     func answerTagChange(
         of id: String?, opString: String, _ change: (ULID) async throws -> SessionSummary
     ) async -> String {
         await answer(asCallerOf: opString) { callerID in
-            SessionsToolText.tags(of: try await change(try SessionsToolInput.sessionID(id, defaultingTo: callerID)))
+            SessionsToolText.tags(of: try await change(try await sessionID(referencedBy: id, defaultingTo: callerID)))
         }
     }
 }

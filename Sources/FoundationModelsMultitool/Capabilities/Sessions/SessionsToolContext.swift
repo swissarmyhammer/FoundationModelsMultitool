@@ -58,6 +58,22 @@ struct SessionsToolContext: Sendable {
         }
     }
 
+    /// The session id that the `id` of an operation names, or the caller
+    /// session for a call with no `id`.
+    ///
+    /// - Parameters:
+    ///   - text: The `id` as written, or `nil`.
+    ///   - callerID: The caller session.
+    /// - Returns: The session id.
+    /// - Throws: What ``SessionsVisibility/sessionID(referencedBy:callerID:)``
+    ///   throws.
+    func sessionID(referencedBy text: String?, defaultingTo callerID: ULID) async throws -> ULID {
+        guard let text else {
+            return callerID
+        }
+        return try await sessions.sessionID(referencedBy: text, callerID: callerID)
+    }
+
     /// The summary of the session `id`, which must exist.
     ///
     /// - Parameter id: The session id.

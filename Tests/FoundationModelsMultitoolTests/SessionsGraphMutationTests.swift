@@ -739,6 +739,40 @@ struct SessionsGraphMutationTests {
         #expect(try reply.object("tagSession")["tags"] as? [String] == [Self.keptTag, Self.reviewTag])
     }
 
+    /// A mutation reads its `id` as its tool op reads it (D200 (e)): a short
+    /// id names the session.
+    @Test("renameSession with a short id renames that session, as rename session does")
+    func renameSessionTakesAShortID() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary(folder: Self.namedFolder)
+        directory.register(target)
+
+        let reply = try await Self.run(
+            "mutation { renameSession(input: {id: \"\(target.shortID)\", title: \"\(Self.title)\"}) { title } }",
+            viewer: Self.deviceViewer, on: directory)
+
+        #expect(try reply.object("renameSession")["title"] as? String == Self.title)
+    }
+
+    /// The slug of a session that an external client cannot see names no
+    /// session: the mutation refuses it as an id that names no session, so
+    /// the response does not tell that the session exists, and nothing
+    /// changes.
+    @Test("an external viewer gets INVALID_SESSION_ID for the slug of a session it cannot see")
+    func anExternalViewerCannotNameAHiddenSessionBySlug() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let scene = try await Self.stageExternal(in: directory)
+        _ = try await directory.setTitle(Self.title, of: scene.stranger)
+        let known: Set<ULID> = [scene.owned, scene.stranger]
+        let staged = try await Self.facts(of: directory, known: known)
+
+        let reply = try await Self.run(
+            "mutation { pinSession(input: {id: \"@\(Self.titleSlug)\"}) { id } }", viewer: scene.viewer, on: directory)
+
+        #expect(reply.codes == [SessionsRefusal.Kind.invalidSessionID.rawValue])
+        #expect(try await Self.facts(of: directory, known: known) == staged)
+    }
+
     /// One case for each change of a session that the external client sees
     /// but does not own: the subagent of its session (section 11.3).
     static let unownedChanges: [HiddenCase] = [

@@ -82,19 +82,22 @@ extension SessionsToolText {
     }
 
     /// The corrective of a reference that names more than one session (D199
-    /// (d)): nothing is sent, and each match shows with its id, its name and
-    /// its folder.
+    /// (d), D200 (e)): the call did nothing, and each match shows with its
+    /// id, its name and its folder.
     ///
     /// - Parameters:
     ///   - reference: The reference, as written.
     ///   - matches: The sessions that match.
+    ///   - outcome: The sentence that tells what the call did not do:
+    ///     ``notSentSentence`` for a message, ``notChangedSentence`` for a
+    ///     session operation.
     /// - Returns: The corrective.
-    static func ambiguousReference(_ reference: String, matches: [SessionSummary]) -> String {
+    static func ambiguousReference(_ reference: String, matches: [SessionSummary], outcome: String) -> String {
         let lines = matches.map { match in
             "- \(match.id.ulidString): name \"\(match.title ?? match.slug)\", folder \(match.workingDirectory.path)"
         }
         let heading = """
-            "\(reference)" names more than one session. \(notSentSentence) \
+            "\(reference)" names more than one session. \(outcome) \
             Give the id or the short id of one of these sessions:
             """
         return ([heading] + lines).joined(separator: "\n")

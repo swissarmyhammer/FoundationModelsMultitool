@@ -18,6 +18,10 @@ extension SessionsToolText {
     /// The sentence of the answer of `archive session`.
     static let archiveSentence = "The session is archived. Its work stopped, and it takes no more messages."
 
+    /// The sentence of the corrective of a session operation whose `id` names
+    /// more than one session.
+    static let notChangedSentence = "Nothing changed."
+
     /// The corrective of a `tag session` or `untag session` call with no tag.
     static let noTags = "Give at least one tag. \(tagRule)"
 

@@ -281,11 +281,27 @@ enum SessionsToolText {
         "\(opString) acts for your own session, and this call runs in no session. Call it from a session."
     }
 
-    /// The corrective of a text that is not a session id.
+    /// The corrective of the `id` of a session operation that names no
+    /// session that the caller can see (D200 (e)). The operation changes
+    /// nothing, and starts no agent.
+    ///
+    /// - Parameter text: The `id` as written.
+    /// - Returns: The corrective, which names each form of a reference and
+    ///   `listSessions`.
+    static func notASessionID(_ text: String) -> String {
+        """
+        "\(text)" names no session that you can see. Give the id or the short id of a session, with or without @, \
+        or @ and its slug. An archived session has only its id. \(findSessionSentence)
+        """
+    }
+
+    /// The corrective of a text that is not a full session id, for an
+    /// argument that takes only a full id: a filter of `list sessions`, and
+    /// each id of the `sessions` endpoint.
     ///
     /// - Parameter text: The text.
     /// - Returns: The corrective, which names `listSessions`.
-    static func notASessionID(_ text: String) -> String {
+    static func notAFullSessionID(_ text: String) -> String {
         "\"\(text)\" is not a session id. A session id is a ULID of 26 characters. \(findSessionSentence)"
     }
 

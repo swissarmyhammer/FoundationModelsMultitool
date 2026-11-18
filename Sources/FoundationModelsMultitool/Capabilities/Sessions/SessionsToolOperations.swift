@@ -108,8 +108,8 @@ extension ListSessions {
     verb: "check", noun: "session",
     description: "Give the state, the agent, the folder, the tags and the last summary of a session. It never waits.")
 struct CheckSession {
-    /// The id of the session to check.
-    @Guide(description: "The id of the session.")
+    /// The session to check: its id, its short id or its slug.
+    @Guide(description: "The session: its id or short id, with or without @, or @ and its slug.")
     var id: String
 }
 
@@ -118,14 +118,15 @@ extension CheckSession {
     /// messages from that session to the caller when the call has a caller.
     ///
     /// - Parameter context: The shared context of the tool.
-    /// - Returns: The facts. A corrective that names `listSessions` for a
-    ///   text that is not a session id or for an id that no session has, or
-    ///   a corrective for another error of the directory.
+    /// - Returns: The facts. A corrective that names `listSessions` for an
+    ///   id that names no session, the corrective with each match for an id
+    ///   that names more than one session, or a corrective for another error
+    ///   of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         do {
-            let sessionID = try SessionsToolInput.sessionID(id)
-            let summary = try await context.existingSummary(of: sessionID)
             let callerID = context.callerID
+            let sessionID = try await context.sessions.sessionID(referencedBy: id, callerID: callerID)
+            let summary = try await context.existingSummary(of: sessionID)
             let unread = try await Self.unreadCount(from: sessionID, to: callerID, in: context.directory)
             return SessionsToolText.facts(of: summary, callerID: callerID, unreadFromIt: unread)
         } catch {

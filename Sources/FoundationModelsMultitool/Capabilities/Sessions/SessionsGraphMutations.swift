@@ -6,7 +6,9 @@
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, and calls the work of that op in ``SessionsToolContext``:
 // the op and the mutation change the directory the same way, and refuse a
-// call with the same corrective (session.md section 11.4). A ``SessionsRefusal``
+// call with the same corrective (session.md section 11.4). The `id` of each
+// change of one session reads `<id>`, `@<id>`, `<short id>`, `@<short id>`
+// and `@<slug>` with the reader of its tool op (D200 (e)). A ``SessionsRefusal``
 // is a coded error with that corrective; an id that the directory does not
 // hold, or that the viewer cannot see, is the `NOT_FOUND` of the toolkit.
 //
@@ -204,17 +206,37 @@ extension SessionsGraphContext {
         return sessionID
     }
 
-    /// The session of an id argument, which the viewer must own: an external
-    /// client changes only the sessions that it owns (section 11.3), and a
-    /// device of the user and the agent change each session.
+    /// The session that the `id` of a session mutation names, which the
+    /// viewer must own: an external client changes only the sessions that it
+    /// owns (section 11.3), and a device of the user and the agent change
+    /// each session.
     ///
-    /// - Parameter id: The id argument.
+    /// - Parameter id: The `id` argument: a reference, as
+    ///   ``referencedSession(_:)`` reads it.
     /// - Returns: The session id.
-    /// - Throws: ``SessionsRefusal`` for an id that is not a session id, the
-    ///   `NOT_FOUND` of the toolkit for a session that the viewer cannot see
-    ///   or does not own, and each error of the directory.
+    /// - Throws: ``SessionsRefusal`` for a reference that names no session
+    ///   that the viewer can see or more than one session, the `NOT_FOUND` of
+    ///   the toolkit for a session that the viewer cannot see or does not
+    ///   own, and each error of the directory.
     func ownedSession(_ id: ToolkitID) async throws -> ULID {
-        try await ownedSummary(try SessionsGraphInput.sessionID(id)).id
+        try await ownedSummary(try await referencedSession(id)).id
+    }
+
+    /// The session that the `id` of a session mutation names: `<id>`,
+    /// `@<id>`, `<short id>`, `@<short id>` or `@<slug>`, read as its tool op
+    /// reads it (D200 (e)), among the sessions that the viewer can see. A
+    /// call of the agent looks first in the folder of its caller session; a
+    /// client looks in all the sessions at once.
+    ///
+    /// - Parameter id: The `id` argument.
+    /// - Returns: The session id. A full id is not checked against the
+    ///   viewer: the caller checks it.
+    /// - Throws: ``SessionsRefusal`` for a reference that names no session
+    ///   that the viewer can see or more than one session, and each error of
+    ///   the directory.
+    func referencedSession(_ id: ToolkitID) async throws -> ULID {
+        let callerID = sessions.viewer == nil ? actions.callerID : nil
+        return try await sessions.sessionID(referencedBy: id.text, callerID: callerID)
     }
 
     /// The summary of a session that the viewer must own: an external client
@@ -451,7 +473,8 @@ extension SessionsGraphResolver {
     ) async throws -> SessionsGraphSession {
         try await Self.coding {
             let archiver = try context.actor(of: .archive)
-            let target = try await context.visibleSession(arguments.input.id)
+            let target = try await context.referencedSession(arguments.input.id)
+            try await context.requireVisible(target)
             return SessionsGraphSession(try await context.actions.archive(session: target, by: archiver))
         }
     }
@@ -605,14 +628,19 @@ extension SessionsGraphReceipt {
 // MARK: - Schema
 
 extension SessionsGraphAPI {
+    /// The text of the forms of the `id` of an input object (D200 (e)).
+    private static let referenceDescription =
+        "The session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id "
+        + "or a slug names only a session that you can see."
+
     /// The text of the description of the `id` of an input object.
-    private static let idDescription = "The session id, in any letter case. A session that you cannot see is NOT_FOUND."
+    private static let idDescription = "\(referenceDescription) An id of a session that you cannot see is NOT_FOUND."
 
     /// The text of the description of the `id` of an input object whose
     /// session the viewer must own (section 11.3).
     private static let ownedIDDescription =
-        "The session id, in any letter case. A session that you cannot see, or that an external client does not "
-        + "own, is NOT_FOUND."
+        "\(referenceDescription) An id of a session that you cannot see, or a session that an external client "
+        + "does not own, is NOT_FOUND."
 
     /// The text of the rule of an external client for a send or a reply.
     private static let ownedTargetRule =
