@@ -58,6 +58,9 @@ struct SessionsGraphMutationTests {
     /// The title of the rename and the start cases.
     private static let title = "Parser review"
 
+    /// The slug of ``title``.
+    private static let titleSlug = "parser-review"
+
     /// A text that is not a valid tag.
     private static let invalidTag = "not a tag!"
 
@@ -753,7 +756,9 @@ struct SessionsGraphMutationTests {
     /// An external client sees the subagent of its session, but tags,
     /// untags and renames only the sessions that it owns: a session that it
     /// does not own is `NOT_FOUND`, and nothing changes.
-    @Test("an external viewer gets NOT_FOUND for a change of a session it sees but does not own", arguments: unownedChanges)
+    @Test(
+        "an external viewer gets NOT_FOUND for a change of a session it sees but does not own",
+        arguments: unownedChanges)
     func anExternalViewerChangesOnlyOwnedSessions(_ unowned: HiddenCase) async throws {
         let directory = Fixtures.directoryWithLauncher()
         let scene = try await Self.stageExternal(in: directory)
@@ -905,6 +910,64 @@ struct SessionsGraphMutationTests {
             viewer: scene.viewer, on: directory)
 
         #expect(reply.codes == ["INVALID_ADDRESS"])
+        #expect(try await Self.facts(of: directory, known: known) == staged)
+    }
+
+    // MARK: - The references of a session (D199)
+
+    /// `sendMessage` to `@<slug>` reaches the session that `send message` of
+    /// the tool reaches: the session with the slug in the folder of the
+    /// caller, and not the session with the same slug in an other folder.
+    @Test("sendMessage to @<slug> gives the same answer as send message of the tool")
+    func aSendToASlugGivesTheAnswerOfTheTool() async throws {
+        let byTool = Fixtures.directoryWithLauncher()
+        let byGraph = Fixtures.directoryWithLauncher()
+        let local = ULID()
+        let elsewhere = ULID()
+        for directory in [byTool, byGraph] {
+            directory.register(Fixtures.summary(id: local, title: Self.title))
+            directory.register(Fixtures.summary(id: elsewhere, title: Self.title, folder: Self.namedFolder))
+        }
+        let to = "@\(Self.titleSlug)"
+
+        let (reply, known) = try await Self.inScenes([byTool, byGraph]) { scenes in
+            let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived, local, elsewhere]
+            _ = try await Self.callTool(
+                Fixtures.payload("send message", [("to", to), ("message", Self.messageText)]), on: byTool)
+            let reply = try await Self.run(
+                "mutation { sendMessage(input: {to: \"\(to)\", message: \"\(Self.messageText)\"}) "
+                    + "{ outcome target { id } } }",
+                on: byGraph)
+            return (reply, known)
+        }
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(
+            try reply.list("sendMessage").map { ($0["target"] as? [String: Any])?["id"] as? String }
+                == [local.ulidString])
+        #expect(try await Self.facts(of: byGraph, known: known) == Self.facts(of: byTool, known: known))
+    }
+
+    /// An external client that names, by its slug, a session that it sees
+    /// but does not own gets a refused receipt, and no message goes.
+    @Test("an external viewer's message to the slug of a session it does not own is refused")
+    func anExternalViewerMessagesNoUnownedSlug() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let scene = try await Self.stageExternal(in: directory)
+        _ = try await directory.setTitle(Self.title, of: scene.subagent)
+        let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
+        let staged = try await Self.facts(of: directory, known: known)
+
+        let reply = try await Self.run(
+            "mutation { sendMessage(input: {to: \"@\(Self.titleSlug)\", message: \"\(Self.messageText)\"}) "
+                + "{ outcome reason target { id } } }",
+            viewer: scene.viewer, on: directory)
+
+        let receipts = try reply.list("sendMessage")
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(receipts.map { $0["outcome"] as? String } == ["REFUSED"])
+        #expect(receipts.map { $0["reason"] as? String } == [SessionsGraphText.notOwnedReason])
+        #expect(receipts.map { ($0["target"] as? [String: Any])?["id"] as? String } == [scene.subagent.ulidString])
         #expect(try await Self.facts(of: directory, known: known) == staged)
     }
 

@@ -14,6 +14,30 @@ import Foundation
 import FoundationModelsExtras
 import ULID
 
+/// The form of a message address, before the directory resolves it.
+enum SessionsAddressForm: Sendable, Equatable {
+    /// A folder path alone: an alias of the newest root session in the
+    /// folder.
+    case folder(URL)
+
+    /// `#tag`: each live session with the tag.
+    case tag(String)
+
+    /// `@name:/path`: an alias of `@name`, with the lookup in the folder
+    /// first.
+    case agentAlias(name: String, folder: URL)
+
+    /// A full session id, with or without `@`.
+    case id(ULID)
+
+    /// A short id or a slug after `@`, or the name of an agent when no
+    /// session has it.
+    case name(String)
+
+    /// A text with no `@`: it can name a session only by its short id.
+    case shortID(String)
+}
+
 /// The readers of the text arguments of the `sessions` tool.
 enum SessionsToolInput {
     /// The most sessions that one `list sessions` call gives.
@@ -81,50 +105,61 @@ enum SessionsToolInput {
         MailID(try requiredULID(text, kind: .invalidMessageID, corrective: SessionsToolText.notAMessageID))
     }
 
-    /// The target of a message that `text` names (session.md section 9).
+    /// The form of a message address, as the text gives it (D199 (c), (e)).
     ///
-    /// The reader reads the form of the text: a ULID, in any letter case, is a
-    /// session; `@agent` and `@agent:/path` are an agent, in its own letter
-    /// case, and in a folder when the text gives one; a path that starts with
-    /// `/` or `~` is a folder; and `#tag` is a tag. In `@agent:/path` the last
-    /// `:` before a `/` or a `~` starts the folder, thus a `folder:` agent id
-    /// with a folder of its own stays whole.
+    /// The reader reads the form only, and does not read the directory: a
+    /// path that starts with `/` or `~` is a folder alias; `#tag` is a tag;
+    /// `@agent:/path` is an agent alias, in which the last `:` before a `/`
+    /// or a `~` starts the folder, thus a `folder:` name with a folder of its
+    /// own stays whole; a ULID in any letter case, with or without `@`, is a
+    /// session id; another text after `@` is a short id or a slug; and a text
+    /// with no `@` is a short id. ``SessionsVisibility/messageAddress(_:from:)``
+    /// then resolves the references.
     ///
     /// - Parameter text: The address, with any space around it.
-    /// - Returns: The address.
+    /// - Returns: The form.
     /// - Throws: ``SessionsRefusal`` for a text in no form, which names each
-    ///   form.
-    static func address(_ text: String) throws(SessionsRefusal) -> SessionAddress {
+    ///   form, and for an alias with a relative folder.
+    static func addressForm(_ text: String) throws(SessionsRefusal) -> SessionsAddressForm {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = ulid(trimmed) {
-            return .session(id)
-        }
         if isPath(trimmed), let folder = try folder(trimmed) {
             return .folder(folder)
         }
         if trimmed.hasPrefix(tagPrefix), let tag = nonBlank(bare(trimmed, prefix: tagPrefix)) {
             return .tag(tag)
         }
-        if trimmed.hasPrefix(agentPrefix), let agent = try agentAddress(bare(trimmed, prefix: agentPrefix)) {
-            return agent
+        if let form = try referenceForm(trimmed) {
+            return form
         }
         throw SessionsRefusal(.invalidAddress, SessionsToolText.notAnAddress(text))
     }
 
-    /// The agent address of the text after the `@` of an address.
+    /// The form of an address that is not a folder and not a tag: a session
+    /// id, a name after `@`, an agent alias, or a short id with no `@`.
     ///
-    /// - Parameter text: `agent` or `agent:/path`.
-    /// - Returns: The address, or `nil` when the text names no agent.
+    /// - Parameter text: The address, with no space around it.
+    /// - Returns: The form, or `nil` when the text names nothing.
     /// - Throws: ``SessionsRefusal`` from ``folder(_:)``.
-    private static func agentAddress(_ text: String) throws(SessionsRefusal) -> SessionAddress? {
-        let separator = text.indices.last { index in
-            text[index] == folderSeparator && isPath(String(text[text.index(after: index)...]))
+    private static func referenceForm(_ text: String) throws(SessionsRefusal) -> SessionsAddressForm? {
+        let name = bare(text, prefix: agentPrefix)
+        if let id = ulid(name) {
+            return .id(id)
+        }
+        guard text.hasPrefix(agentPrefix) else {
+            return nonBlank(text).map { .shortID($0) }
+        }
+        let separator = name.indices.last { index in
+            name[index] == folderSeparator && isPath(String(name[name.index(after: index)...]))
         }
         guard let separator else {
-            return nonBlank(text).map { .agent(id: $0, folder: nil) }
+            return nonBlank(name).map { .name($0) }
         }
-        let folder = try folder(String(text[text.index(after: separator)...]))
-        return nonBlank(String(text[..<separator])).map { .agent(id: $0, folder: folder) }
+        guard let agent = nonBlank(String(name[..<separator])),
+            let folder = try folder(String(name[name.index(after: separator)...]))
+        else {
+            return nil
+        }
+        return .agentAlias(name: agent, folder: folder)
     }
 
     /// Whether `text` is an absolute path or a path under the home folder.

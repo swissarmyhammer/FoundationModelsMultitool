@@ -6,6 +6,7 @@
 // took the message, the answer is a corrective: it says so first, and each
 // line names the reason of its refusal, as session.md section 10.3 says.
 
+import Foundation
 import FoundationModelsExtras
 import ULID
 
@@ -28,7 +29,9 @@ extension SessionsToolText {
     /// The forms of a message address, for the corrective of a text in no
     /// form.
     static let addressForms = """
-        a session id, @agent, @agent:/path, an absolute folder path that starts with / or ~, or #tag
+        one session as @<id>, <id>, @<short id>, <short id> or @<slug> (an agent name that no session has \
+        starts a new session of that agent), #tag for each live session with the tag, or the aliases @agent:/path \
+        and an absolute folder path that starts with / or ~
         """
 
     /// The code-mode verb of `read inbox`, which each corrective about a
@@ -67,12 +70,87 @@ extension SessionsToolText {
         return ([notSentSentence] + lines + [advice].compactMap { $0 }).joined(separator: "\n")
     }
 
+    /// The answer of `send message`: the report of the rewrite of an alias
+    /// when the address is one, then the lines of ``receipts(_:)``.
+    ///
+    /// - Parameters:
+    ///   - receipts: The receipts of the send.
+    ///   - rewrite: The report of the rewrite of an alias, or `nil`.
+    /// - Returns: The answer.
+    static func receipts(_ receipts: [SessionSendReceipt], rewrite: String?) -> String {
+        ([rewrite].compactMap { $0 } + [self.receipts(receipts)]).joined(separator: "\n")
+    }
+
+    /// The corrective of a reference that names more than one session (D199
+    /// (d)): nothing is sent, and each match shows with its id, its name and
+    /// its folder.
+    ///
+    /// - Parameters:
+    ///   - reference: The reference, as written.
+    ///   - matches: The sessions that match.
+    /// - Returns: The corrective.
+    static func ambiguousReference(_ reference: String, matches: [SessionSummary]) -> String {
+        let lines = matches.map { match in
+            "- \(match.id.ulidString): name \"\(match.title ?? match.slug)\", folder \(match.workingDirectory.path)"
+        }
+        let heading = """
+            "\(reference)" names more than one session. \(notSentSentence) \
+            Give the id or the short id of one of these sessions:
+            """
+        return ([heading] + lines).joined(separator: "\n")
+    }
+
+    /// The corrective of `@<name>` when no session and no agent has the name
+    /// (D199 (e), (h)).
+    ///
+    /// - Parameters:
+    ///   - name: The name after the `@`.
+    ///   - nearNames: The agents with a near name.
+    /// - Returns: The corrective, which names `listSessions`.
+    static func noSessionOrAgent(_ name: String, nearNames: [String]) -> String {
+        let near = nearNames.isEmpty ? "" : " Agents with a near name: \(nearNames.joined(separator: ", "))."
+        return """
+            No session and no agent has the name "\(name)". \(notSentSentence)\(near) \(findSessionSentence)
+            """
+    }
+
     /// The corrective of a text that names no message address.
     ///
     /// - Parameter text: The text.
     /// - Returns: The corrective, which names each form.
     static func notAnAddress(_ text: String) -> String {
         "\"\(text)\" is not a message address. Give \(addressForms). \(findSessionSentence)"
+    }
+
+    /// The report of the rewrite of the alias `@agent:/path` (D199 (e), in
+    /// the style of D86): the reader reads it as `@agent`, with the lookup in
+    /// the folder of the alias first.
+    ///
+    /// - Parameters:
+    ///   - alias: The address as written.
+    ///   - name: The name after the `@`.
+    ///   - folder: The folder of the alias.
+    /// - Returns: The report.
+    static func agentAliasRewrite(_ alias: String, name: String, folder: URL) -> String {
+        """
+        Rewrite: "\(alias)" is an alias of "@\(name)", with the lookup in \(folder.path) first, \
+        in place of the folder of your session.
+        """
+    }
+
+    /// The report of the rewrite of the alias of a folder path alone (D199
+    /// (e), in the style of D86): the path names the newest root session in
+    /// the folder.
+    ///
+    /// - Parameters:
+    ///   - alias: The address as written.
+    ///   - folder: The folder.
+    /// - Returns: The report.
+    static func folderAliasRewrite(_ alias: String, folder: URL) -> String {
+        """
+        Rewrite: "\(alias)" is an alias of the newest root session in \(folder.path). \
+        To name one session, give @<id>, @<short id> or @<slug>.
+        """
     }
 
     /// The corrective of a text that is not a message id.
@@ -131,7 +209,8 @@ extension SessionsToolText {
             let refuser = target.map { " by \($0)" } ?? ""
             return "- Refused\(refuser): \(receipt.reason ?? noReason)"
         case .sent:
-            return "- Sent to \(session): the message is written to the inbox of the session and not yet delivered.\(messageID)"
+            return
+                "- Sent to \(session): the message is written to the inbox of the session and not yet delivered.\(messageID)"
         }
     }
 }

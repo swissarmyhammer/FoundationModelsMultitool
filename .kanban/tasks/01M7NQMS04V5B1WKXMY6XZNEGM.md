@@ -27,8 +27,32 @@ comments:
   id: 01m7qeanek4e521v36vjfm4vsn
   text: 'Answer from foundationmodelsextras-9e (2026-11-18): an `.agent` address with no launcher gives no `refused` receipt. `send` throws `SessionDirectoryError.noLauncher` (`InMemorySessionDirectoryState.swift:115`, called from `InMemorySessionDirectoryState+Messages.swift:162`). `InMemorySessionDirectory.Refusal.noLauncher` was only the reason text of a refused receipt for a recorded target, and it is removed, because a recorded target now gets `sent`. To keep the tests at `SessionsToolMessageTests.swift:208` and `:225` as delivery tests, give the directory a launcher. Then each send gives `.started` with a new session id.'
   timestamp: 2026-11-18T13:42:49.555482+00:00
-position_column: todo
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m7qfyssgmwxrxbdkecqcxa6h
+  text: |-
+    Research (implement, 2026-11-18):
+    - Extras pin is b87233e locally (Package.resolved). `SessionReference.resolve` filters archived and gives `.none` for a full ULID with no visible match. The reader keeps a full ULID with no match as `.session(id)`, so the current NOT_FOUND (graph, hidden session) and the directory refusals (archived) stay.
+    - The agent catalog: Multitool has no catalog of its own. The directory launcher is the catalog: `.agent(id:folder:)` throws `SessionDirectoryError.unknownAgent(name, nearNames:)` for a name that no agent folder has. Thus the reader gives `.agent` for `@<name>` with no session, and the send turns `unknownAgent` into the corrective "no session and no agent has the name". No second catalog.
+    - BLOCKER for one item: `extensions.rewrites` belongs to the toolkit of Extras. `GraphQLResponse` takes `rewrites` only from `RewrittenDocument.rewrites` (the name rewrite of the document), and it removes a `rewrites` key from `responseExtensions()`. `API.result(of:...)` is private. A resolver thus cannot add a rewrite report to `extensions.rewrites`. An Extras change is necessary, for example a `ResponseRewrites` collector on `GraphQLRunContext` (as `ResponseWarnings`) whose items `respond` appends to `rewritten.rewrites`.
+  timestamp: 2026-11-18T14:11:17.936704+00:00
+- actor: claude-code
+  id: 01m7qgmv1temjzp2hcmjcdd7gc
+  text: |-
+    Implementation landed (not committed).
+    - New `SessionsAddressReader.swift`: `SessionsVisibility.messageAddress(_:from:)` is the one reader (D100). The tool calls it through `context.sessions`; the graph calls it through `context.address(_:from:)`, which keeps the external viewer rule. The candidates are the sessions that the viewer of the call can see (`sessions(matching:)` with no limit, recorded too). The lookup folder is the working folder of a session sender; a user sender has none.
+    - `SessionsToolInput.addressForm(_:)` replaces `address(_:)`: it reads only the form (folder, tag, agent alias, id, name after @, short id with no @). A text with no @ names a session only by its short id; another bare word is still INVALID_ADDRESS.
+    - A full id goes to `.session(id)` with no lookup, so the current NOT_FOUND (hidden session) and the archived refusal stay.
+    - New refusal code `AMBIGUOUS_REFERENCE`. `unknownAgent` from a send becomes the corrective "No session and no agent has the name" (code UNKNOWN_AGENT stays).
+    - Reusable for ^zkewpex: `SessionsVisibility.session(named:lookupFolder:)` (one session, or nil; it throws the ambiguity) and `resolution(of:lookupFolder:)`.
+    - Brief item 6 (aliases of `short_id`, `fromSessionId`): those names are not in the schema of this task (no `shortId` field, no `fromSession` input), so there is no alias to add here.
+    - Gap: the rewrite report in `extensions.rewrites` of the graph. Extras blocks it (see the research comment). Follow-up ^gxqmxj6, with a TODO in `SessionsGraphResolver.sendMessage`. The Extras session must get the precondition text of ^gxqmxj6.
+
+    ### implement — stuck
+    - evidence: 8 files — Sources/.../Sessions/SessionsAddressReader.swift (new), SessionsToolInput.swift, SessionsToolMessageOperations.swift, SessionsGraphMutations.swift, SessionsRefusal.swift, SessionsToolText+Messages.swift, Tests/.../SessionsToolMessageTests.swift, SessionsGraphMutationTests.swift. `swift build` clean. New tests: 10 tests (13 cases) red, then green. `swift test --filter "SessionsTool|SessionsGraph"`: 180 tests in 9 suites passed. Full `swift test`: 3017 tests in 270 suites passed, 0 warnings. The golden schema did not change.
+    - next: the user decides on the extensions.rewrites gap (Extras change, ^gxqmxj6). All the other work is ready for /review.
+  timestamp: 2026-11-18T14:23:20.122395+00:00
+position_column: doing
+position_ordinal: '80'
 title: One async address reader for send in the tool and in the endpoint (D199)
 ---
 Decision: D199 (c), (d), (e) in TestudoApp/features/decisions.md. Brief: /Users/wballard/github/swissarmyhammer/.briefs/at-sessions/mt-brief-at-sessions.md, item 1, item 2 and item 6.
@@ -53,14 +77,26 @@ Main rule: an agent IS a session. There is one namespace. `@agent:/path` and a f
 - The external viewer rule of `context.address` stays: a resolved session that the viewer does not own gives a REFUSED receipt.
 - Tool text: the `@Guide` of the address (`SessionsToolMessageOperations.swift:38-42`), the description of `send message` and `SessionsToolText.notAnAddress` name the new forms.
 
+## Checklist of the work
+
+- [x] One async reader: `SessionsVisibility.messageAddress(_:from:)` (`SessionsAddressReader.swift`). The `send message` operation and `Mutation.sendMessage` both call it.
+- [x] Resolve `@<id>`, `<id>`, `@<short id>`, `<short id>` and `@<slug>` with `SessionReference.resolve` over the sessions that the caller can see.
+- [x] Ambiguous reference: corrective `AMBIGUOUS_REFERENCE` with id, name and folder of each match; nothing is sent.
+- [x] `@<name>` with no session: `.agent(id: name, folder: lookupFolder)`. The launcher is the agent catalog; `unknownAgent` becomes the corrective "No session and no agent has the name".
+- [x] Alias `@agent:/path` and a folder path: the rewrite report in the tool answer.
+- [x] MOVED to ^gxqmxj6: alias rewrite report in `extensions.rewrites` of `sendMessage`. Extras gives a resolver no way to add a rewrite. Follow-up ^gxqmxj6.
+- [x] The tag form stays. The external viewer rule stays (REFUSED receipt for an unowned session).
+- [x] Reusable resolve-to-one part for ^zkewpex: `SessionsVisibility.session(named:lookupFolder:)` and `resolution(of:lookupFolder:)`.
+- [x] Text: `@Guide` of `to`, the description of `send message`, `SessionsToolText.addressForms` / `notAnAddress`, `SessionsGraphText.externalAddress`.
+
 ## Tests
 
-- [ ] Tool: send to `@<slug>` in the folder of the caller.
-- [ ] Tool: send to `@<short id>`, and to a full id with and without `@`.
-- [ ] Tool: an ambiguous slug gives a corrective with each match and sends nothing.
-- [ ] Tool: `@travel` with a session whose slug is `travel` goes to that session.
-- [ ] Tool: `@travel` with no such session and an agent folder `travel` starts one (receipt `started`).
-- [ ] Tool: `@travel:~/trips` looks in `~/trips` first and reports the rewrite.
-- [ ] Tool: `@nobody` gives the corrective.
-- [ ] Graph: `sendMessage(input: {to: "@<slug>", ...})` gives the same answer as the tool.
-- [ ] Graph: an external viewer with a slug of a session that it does not own gets a REFUSED receipt. #sessions #at-sessions #graphql
+- [x] Tool: send to `@<slug>` in the folder of the caller.
+- [x] Tool: send to `@<short id>`, and to a full id with and without `@`.
+- [x] Tool: an ambiguous slug gives a corrective with each match and sends nothing.
+- [x] Tool: `@travel` with a session whose slug is `travel` goes to that session.
+- [x] Tool: `@travel` with no such session and an agent folder `travel` starts one (receipt `started`).
+- [x] Tool: `@travel:~/trips` looks in `~/trips` first and reports the rewrite.
+- [x] Tool: `@nobody` gives the corrective.
+- [x] Graph: `sendMessage(input: {to: "@<slug>", ...})` gives the same answer as the tool.
+- [x] Graph: an external viewer with a slug of a session that it does not own gets a REFUSED receipt. #sessions #at-sessions #graphql

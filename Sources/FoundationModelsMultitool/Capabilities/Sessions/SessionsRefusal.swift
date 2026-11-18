@@ -29,6 +29,9 @@ struct SessionsRefusal: CodedError {
         /// cannot use.
         case invalidAddress = "INVALID_ADDRESS"
 
+        /// A reference names more than one session (D199 (d)).
+        case ambiguousReference = "AMBIGUOUS_REFERENCE"
+
         /// A working folder is not an absolute path of a folder.
         case invalidFolder = "INVALID_FOLDER"
 

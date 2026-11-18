@@ -96,6 +96,30 @@ struct SessionsToolMessageTests {
     /// A session id no session has.
     private static let absentID = ULID()
 
+    /// The title of each session of the slug cases.
+    private static let apiTitle = "Fix the API tests"
+
+    /// The slug of ``apiTitle``.
+    private static let apiSlug = "fix-the-api-tests"
+
+    /// The name of an agent folder, and the title of a session in the agent
+    /// cases: one namespace (D199 (e)).
+    private static let travelName = "travel"
+
+    /// The path under the home folder of the `@travel:~/trips` case, with no
+    /// `~`.
+    private static let tripsRelativePath = "trips"
+
+    /// A name that no session and no agent has.
+    private static let nobodyName = "nobody"
+
+    /// The words of the corrective of a name that no session and no agent
+    /// has.
+    private static let noSessionOrAgentWords = "No session and no agent has the name"
+
+    /// The words of the corrective of an ambiguous reference.
+    private static let ambiguousWords = "names more than one session"
+
     // MARK: - Helpers
 
     /// Calls `send message` as the caller of the current context.
@@ -346,6 +370,157 @@ struct SessionsToolMessageTests {
         #expect(try await Self.unread(to: second.id, in: directory).count == 1)
         #expect(try await Self.unread(to: untagged.id, in: directory).isEmpty)
         #expect(try await Self.unread(to: callerID, in: directory).isEmpty)
+    }
+
+    // MARK: - send message: the references of a session (D199)
+
+    /// The form of a reference to one session, written from its summary.
+    struct ReferenceForm: Sendable, CustomTestStringConvertible {
+        /// The name of the form in the test report.
+        let name: String
+
+        /// The `to` text of the form for a session.
+        let text: @Sendable (SessionSummary) -> String
+
+        /// The name of the case in the test report.
+        var testDescription: String { name }
+    }
+
+    /// Each form that names one session by its id or by its short id.
+    static let referenceForms: [ReferenceForm] = [
+        ReferenceForm(name: "@<short id>") { "@\($0.shortID)" },
+        ReferenceForm(name: "<short id>") { $0.shortID },
+        ReferenceForm(name: "@<id>") { "@\($0.id.ulidString)" },
+        ReferenceForm(name: "<id>") { $0.id.ulidString },
+    ]
+
+    @Test("send message to each id form and short id form reaches that session", arguments: referenceForms)
+    func sendMessageToAnIDFormReachesTheSession(_ form: ReferenceForm) async throws {
+        let directory = InMemorySessionDirectory()
+        let target = Fixtures.summary(folder: Self.otherFolder)
+        directory.register(target)
+        let tool = try SessionsTool(directory: directory)
+
+        _ = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: form.text(target), with: tool)
+        }
+
+        #expect(try await Self.unread(to: target.id, in: directory).map(\.text) == [Self.messageText])
+    }
+
+    @Test("send message to @<slug> reaches the session with the slug in the folder of the caller")
+    func sendMessageToASlugPrefersTheFolderOfTheCaller() async throws {
+        let directory = InMemorySessionDirectory()
+        let elsewhere = Fixtures.summary(title: Self.apiTitle, folder: Self.otherFolder)
+        let local = Fixtures.summary(title: Self.apiTitle)
+        directory.register(elsewhere)
+        directory.register(local)
+        let tool = try SessionsTool(directory: directory)
+
+        _ = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: "@\(Self.apiSlug)", with: tool)
+        }
+
+        #expect(try await Self.unread(to: local.id, in: directory).count == 1)
+        #expect(try await Self.unread(to: elsewhere.id, in: directory).isEmpty)
+    }
+
+    @Test("send message to an ambiguous slug gives a corrective with the id, the name and the folder of each match")
+    func sendMessageToAnAmbiguousSlugListsEachMatch() async throws {
+        let directory = InMemorySessionDirectory()
+        let first = Fixtures.summary(title: Self.apiTitle, folder: Self.otherFolder)
+        let second = Fixtures.summary(
+            title: Self.apiTitle, folder: FileManager.default.homeDirectoryForCurrentUser)
+        directory.register(first)
+        directory.register(second)
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: "@\(Self.apiSlug)", with: tool)
+        }
+
+        #expect(output.contains(Self.ambiguousWords), "output was: \(output)")
+        for match in [first, second] {
+            #expect(output.contains(match.id.ulidString), "output was: \(output)")
+            #expect(output.contains(match.workingDirectory.path), "output was: \(output)")
+            #expect(try await Self.unread(to: match.id, in: directory).isEmpty)
+        }
+        #expect(output.contains(Self.apiTitle), "output was: \(output)")
+    }
+
+    @Test("send message to @travel reaches the session whose slug is travel, and starts no agent")
+    func sendMessageToANameReachesTheSessionWithThatSlug() async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
+        let session = Fixtures.summary(title: Self.travelName, folder: Self.otherFolder)
+        directory.register(session)
+        let tool = try SessionsTool(directory: directory)
+
+        let (_, started) = try await Self.sendAsCaller(to: "@\(Self.travelName)", in: directory, with: tool)
+
+        #expect(try await Self.unread(to: session.id, in: directory).count == 1)
+        #expect(started.isEmpty)
+    }
+
+    @Test("send message to @travel with no such session and an agent folder travel starts that agent")
+    func sendMessageToAnAgentNameWithNoSessionStartsTheAgent() async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
+        let tool = try SessionsTool(directory: directory)
+
+        let (output, started) = try await Self.sendAsCaller(to: "@\(Self.travelName)", in: directory, with: tool)
+
+        let session = try #require(started.first)
+        #expect(session.agentID == Self.travelName)
+        #expect(output.contains(Self.startedWord), "output was: \(output)")
+    }
+
+    @Test("send message to @travel:~/trips looks in ~/trips first and reports the rewrite of the alias")
+    func sendMessageToAnAgentAliasLooksInItsFolderFirst() async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
+        let trips = FileManager.default.homeDirectoryForCurrentUser.appending(path: Self.tripsRelativePath)
+        let local = Fixtures.summary(title: Self.travelName)
+        let inTrips = Fixtures.summary(title: Self.travelName, folder: trips)
+        directory.register(local)
+        directory.register(inTrips)
+        let tool = try SessionsTool(directory: directory)
+        let alias = "@\(Self.travelName):~/\(Self.tripsRelativePath)"
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: alias, with: tool)
+        }
+
+        #expect(try await Self.unread(to: inTrips.id, in: directory).count == 1)
+        #expect(try await Self.unread(to: local.id, in: directory).isEmpty)
+        #expect(
+            output.contains(SessionsToolText.agentAliasRewrite(alias, name: Self.travelName, folder: trips)),
+            "output was: \(output)")
+    }
+
+    @Test("send message to a folder path reports the rewrite of the alias")
+    func sendMessageToAFolderReportsTheRewrite() async throws {
+        let directory = InMemorySessionDirectory()
+        let target = Fixtures.summary(folder: Self.otherFolder)
+        directory.register(target)
+        let tool = try SessionsTool(directory: directory)
+
+        let output = try await Fixtures.asCaller(in: directory) { _ in
+            try await Self.sendMessage(to: Self.otherFolder.path, with: tool)
+        }
+
+        #expect(
+            output.contains(SessionsToolText.folderAliasRewrite(Self.otherFolder.path, folder: Self.otherFolder)),
+            "output was: \(output)")
+    }
+
+    @Test("send message to @nobody gives the corrective that no session and no agent has the name")
+    func sendMessageToAnUnknownNameIsACorrective() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let tool = try SessionsTool(directory: directory)
+
+        let (output, started) = try await Self.sendAsCaller(to: "@\(Self.nobodyName)", in: directory, with: tool)
+
+        #expect(output.contains(Self.noSessionOrAgentWords), "output was: \(output)")
+        #expect(output.contains(Self.nobodyName), "output was: \(output)")
+        #expect(started.isEmpty)
     }
 
     // MARK: - send message: refusals and correctives

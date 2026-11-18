@@ -19,8 +19,8 @@
 
 import Foundation
 import FoundationModelsExtras
-import Graphiti
 import GraphQL
+import Graphiti
 import Operations
 import ULID
 
@@ -135,15 +135,15 @@ enum SessionsGraphText {
         Send to your own session, or resume this session to own it.
         """
 
-    /// The corrective of a send by an external client to an address that is
-    /// not a session id.
+    /// The corrective of a send by an external client to an address that
+    /// names no session that it can see: an agent, a tag or a folder.
     ///
     /// - Parameter text: The address.
     /// - Returns: The corrective.
     static func externalAddress(_ text: String) -> String {
         """
-        "\(text)" is not a session id. An external client sends only to the id of a session that it can see. \
-        Query sessions to find one.
+        "\(text)" names no session that you can see. An external client sends only to one session that it \
+        can see, by its id, its short id or its slug. Query sessions to find one.
         """
     }
 }
@@ -240,23 +240,27 @@ extension SessionsGraphContext {
         }
     }
 
-    /// The target of a message address, as the tool reads it, which the
-    /// viewer may send to: a session that it sees, or, for a device of the
-    /// user and the agent, each other form of address.
+    /// The target of a message address, read by the one reader of the tool
+    /// over the sessions that the viewer sees (D100, D199), which the viewer
+    /// may send to: a session that it sees, or, for a device of the user and
+    /// the agent, each other form of address.
     ///
-    /// - Parameter text: The address.
-    /// - Returns: The address.
-    /// - Throws: ``SessionsRefusal`` for a text in no form, or for an external
-    ///   client that does not give a session id; the `NOT_FOUND` of the
-    ///   toolkit for a session that the viewer cannot see.
-    func address(_ text: String) async throws -> SessionAddress {
-        let address = try SessionsToolInput.address(text)
-        if case .session(let id) = address {
+    /// - Parameters:
+    ///   - text: The address.
+    ///   - sender: The session or the user that sends the message.
+    /// - Returns: The target, and the report of the rewrite of an alias.
+    /// - Throws: ``SessionsRefusal`` for a text in no form, for a reference
+    ///   that names more than one session, or for an external client that
+    ///   does not name a session; the `NOT_FOUND` of the toolkit for a
+    ///   session that the viewer cannot see.
+    func address(_ text: String, from sender: SessionMessageSender) async throws -> SessionsAddressReading {
+        let reading = try await sessions.messageAddress(text, from: sender)
+        if case .session(let id) = reading.address {
             try await requireVisible(id)
         } else if viewerIsExternal {
             throw SessionsRefusal(.invalidAddress, SessionsGraphText.externalAddress(text))
         }
-        return address
+        return reading
     }
 }
 
@@ -406,7 +410,10 @@ extension SessionsGraphResolver {
     ) async throws -> [SessionsGraphReceipt] {
         try await Self.coding {
             let sender = try context.actor(of: .send)
-            let address = try await context.address(arguments.input.to)
+            // TODO(^gxqmxj6): report `rewrite` of the reading in
+            // `extensions.rewrites`. The toolkit of Extras gives a resolver no
+            // way to add a rewrite yet.
+            let address = try await context.address(arguments.input.to, from: sender).address
             if case .session(let target) = address, !context.viewerOwns(target) {
                 return context.notOwnedReceipts(to: target)
             }
@@ -740,9 +747,10 @@ extension SessionsGraphAPI {
     /// - Returns: The field.
     private static func mutationField<Input: Codable & Sendable, Output: Sendable>(
         _ mutation: SessionsGraphMutation,
-        at resolve: @escaping AsyncResolve<
-            SessionsGraphResolver, SessionsGraphContext, SessionsGraphMutationArguments<Input>, Output
-        >,
+        at resolve:
+            @escaping AsyncResolve<
+                SessionsGraphResolver, SessionsGraphContext, SessionsGraphMutationArguments<Input>, Output
+            >,
         input: String,
         description: String
     ) -> SchemaField {

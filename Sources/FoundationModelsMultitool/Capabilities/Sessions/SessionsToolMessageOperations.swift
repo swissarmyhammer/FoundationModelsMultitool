@@ -24,21 +24,25 @@ import FoundationModelsExtras
 import Operations
 import ULID
 
-/// Sends a message to a session, an agent, a folder or a tag
-/// (`send message`).
+/// Sends a message to one session, to an agent, or to a tag
+/// (`send message`, D199).
 @Generable
 @Operation(
     verb: "send", noun: "message",
     description: """
-        Send a message to another session. Address it to a session id, @agent, @agent:/path, a folder path, \
-        or #tag. An agent with no live session starts one. Gives what happened at each target.
+        Send a message to another session. Name one session with @<id>, @<short id> or @<slug>; the slug is \
+        made from the name of the session. An agent is a session: @<agent name> reaches the session with that \
+        slug, and starts a new session of the agent when no session has it. #tag reaches each live session with \
+        the tag. @agent:/path and a folder path are aliases. Gives what happened at each target.
         """)
 struct SendMessage {
     /// The address of the message.
     @Guide(
         description: """
-            The address: a session id, @agent (in the folder of your session), @agent:/path, \
-            an absolute folder path (/path or ~/path), or #tag (each live session with the tag, but not yours).
+            The address. One session: @<id>, <id>, @<short id>, <short id> or @<slug> (a short id or a slug \
+            looks in the folder of your session first). @<agent name> with no session of that slug starts that \
+            agent. #tag: each live session with the tag, but not yours. Aliases: @agent:/path (the lookup is in \
+            that folder first) and an absolute folder path (/path or ~/path).
             """)
     @OperationParam(aliases: ["address", "target", "recipient"])
     var to: String
@@ -58,9 +62,10 @@ extension SendMessage {
     ///   target took, or an error of the directory.
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
-            let address = try SessionsToolInput.address(to)
-            let receipts = try await context.send(text: message, to: address, from: .session(callerID))
-            return SessionsToolText.receipts(receipts)
+            let sender = SessionMessageSender.session(callerID)
+            let reading = try await context.sessions.messageAddress(to, from: sender)
+            let receipts = try await context.send(text: message, to: reading.address, from: sender)
+            return SessionsToolText.receipts(receipts, rewrite: reading.rewrite)
         }
     }
 }
@@ -108,20 +113,30 @@ extension SessionsToolContext {
     /// Sends `text` from `sender` to `address`, for `send message`,
     /// `reply message` and the `sendMessage` and `replyMessage` mutations.
     ///
+    /// The address of an agent comes from `@<name>` that names no session
+    /// (D199 (e)). The launcher of the directory is the agent catalog: when
+    /// no agent folder has the name, the send refuses with the corrective
+    /// that no session and no agent has the name.
+    ///
     /// - Parameters:
     ///   - text: The text of the message.
     ///   - address: The target of the message.
     ///   - inReplyTo: The id of the message that this one answers, or `nil`.
     ///   - sender: The session or the user that sends the message.
     /// - Returns: One receipt for each target.
-    /// - Throws: ``SessionsRefusal`` for a blank text, and each error of
+    /// - Throws: ``SessionsRefusal`` for a blank text and for an agent name
+    ///   that no agent has, and each other error of
     ///   `SessionDirectory.send(_:)`.
     func send(
         text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender
     ) async throws -> [SessionSendReceipt] {
         let body = try SessionsToolInput.requiredText(text, parameter: SessionsToolText.messageParameter)
         let outgoing = OutgoingSessionMessage(from: sender, to: address, text: body, inReplyTo: inReplyTo)
-        return try await directory.send(outgoing)
+        do {
+            return try await directory.send(outgoing)
+        } catch SessionDirectoryError.unknownAgent(let name, let nearNames) {
+            throw SessionsRefusal(.unknownAgent, SessionsToolText.noSessionOrAgent(name, nearNames: nearNames))
+        }
     }
 
     /// The message that a reply answers, and the session that sent it, for
