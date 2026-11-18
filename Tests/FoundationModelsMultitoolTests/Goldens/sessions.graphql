@@ -348,6 +348,11 @@ input SendMessageInput {
 
   """The full text. The target sees only this text."""
   message: String!
+
+  """
+  The session in which you wrote the message, in any letter case. Its folder is where a short id or a slug of the address looks first. A session that you cannot see, or that an external client does not own, is NOT_FOUND. A call of the agent gives only its own session.
+  """
+  fromSession: ID
 }
 
 """

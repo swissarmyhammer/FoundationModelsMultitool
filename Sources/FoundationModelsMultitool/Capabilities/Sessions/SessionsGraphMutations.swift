@@ -60,8 +60,9 @@ struct SessionsGraphMutation: Sendable {
     /// `archiveSession`.
     static let archive = Self(ArchiveSession.self, adding: sessionIDAliases)
 
-    /// `sendMessage`.
-    static let send = Self(SendMessage.self)
+    /// `sendMessage`: its input has the source session, which the op does
+    /// not have (D199 (f)).
+    static let send = Self(SendMessage.self, adding: ["fromSession": ["fromSessionId", "from_session"]])
 
     /// `replyMessage`.
     static let reply = Self(ReplyMessage.self)
@@ -146,6 +147,20 @@ enum SessionsGraphText {
         can see, by its id, its short id or its slug. Query sessions to find one.
         """
     }
+
+    /// The corrective of a call of the agent whose `fromSession` is not its
+    /// caller session (D199 (f)).
+    ///
+    /// - Parameters:
+    ///   - source: The session that `fromSession` names.
+    ///   - caller: The caller session.
+    /// - Returns: The corrective.
+    static func sourceNotCaller(_ source: ULID, caller: ULID) -> String {
+        """
+        fromSession is \(source.ulidString), but a message of the agent comes from its own session \
+        \(caller.ulidString). Remove fromSession, or give the id of your own session.
+        """
+    }
 }
 
 // MARK: - Who acts
@@ -199,11 +214,51 @@ extension SessionsGraphContext {
     ///   `NOT_FOUND` of the toolkit for a session that the viewer cannot see
     ///   or does not own, and each error of the directory.
     func ownedSession(_ id: ToolkitID) async throws -> ULID {
-        let sessionID = try await visibleSession(id)
-        guard viewerOwns(sessionID) else {
-            throw GraphQLToolkitError.notFound(kind: SessionsGraphResolver.sessionKind, id: sessionID.ulidString)
+        try await ownedSummary(try SessionsGraphInput.sessionID(id)).id
+    }
+
+    /// The summary of a session that the viewer must own: an external client
+    /// owns it, or the viewer is a device of the user or the agent.
+    ///
+    /// - Parameter id: The session id.
+    /// - Returns: The summary.
+    /// - Throws: The `NOT_FOUND` of the toolkit for a session that the
+    ///   viewer cannot see or does not own, and each error of the directory.
+    func ownedSummary(_ id: ULID) async throws -> SessionSummary {
+        guard let summary = try await sessions.summary(of: id), viewerOwns(id) else {
+            throw GraphQLToolkitError.notFound(kind: SessionsGraphResolver.sessionKind, id: id.ulidString)
         }
-        return sessionID
+        return summary
+    }
+
+    /// The session in which the user wrote a message (D199 (f)), from the
+    /// `fromSession` of a send. A device of the user and an external client
+    /// name a session that they own; a call of the agent sends from its
+    /// caller session, thus only that session is a correct `fromSession`.
+    ///
+    /// - Parameters:
+    ///   - id: The `fromSession` argument, or `nil`.
+    ///   - sender: The sender of the message.
+    /// - Returns: The source session of a user sender, or `nil` when the
+    ///   call names none or the sender is a session.
+    /// - Throws: ``SessionsRefusal`` for an id that is not a session id and
+    ///   for a call of the agent that names an other session; the
+    ///   `NOT_FOUND` of the toolkit for a session that the viewer cannot see
+    ///   or does not own; each error of the directory.
+    func sourceSession(_ id: ToolkitID?, of sender: SessionMessageSender) async throws -> SessionSummary? {
+        guard let id else {
+            return nil
+        }
+        let sourceID = try SessionsGraphInput.sessionID(id)
+        switch sender {
+        case .session(let caller):
+            guard sourceID == caller else {
+                throw SessionsRefusal(.sourceNotCaller, SessionsGraphText.sourceNotCaller(sourceID, caller: caller))
+            }
+            return nil
+        case .user:
+            return try await ownedSummary(sourceID)
+        }
     }
 
     /// Tells if the viewer may change a session or send to it: an external
@@ -248,13 +303,18 @@ extension SessionsGraphContext {
     /// - Parameters:
     ///   - text: The address.
     ///   - sender: The session or the user that sends the message.
+    ///   - sourceFolder: The working folder of the session in which the user
+    ///     wrote the message, in which a short id and a slug look first, or
+    ///     `nil`.
     /// - Returns: The target, and the report of the rewrite of an alias.
     /// - Throws: ``SessionsRefusal`` for a text in no form, for a reference
     ///   that names more than one session, or for an external client that
     ///   does not name a session; the `NOT_FOUND` of the toolkit for a
     ///   session that the viewer cannot see.
-    func address(_ text: String, from sender: SessionMessageSender) async throws -> SessionsAddressReading {
-        let reading = try await sessions.messageAddress(text, from: sender)
+    func address(
+        _ text: String, from sender: SessionMessageSender, sourceFolder: URL?
+    ) async throws -> SessionsAddressReading {
+        let reading = try await sessions.messageAddress(text, from: sender, sourceFolder: sourceFolder)
         if case .session(let id) = reading.address {
             try await requireVisible(id)
         } else if viewerIsExternal {
@@ -399,6 +459,11 @@ extension SessionsGraphResolver {
     /// Resolves `Mutation.sendMessage`. The message of a client is input of
     /// its user; the directory applies the same rules as for the tool.
     ///
+    /// The `fromSession` of a user sender is the source session of the
+    /// message, and its working folder is the lookup folder of the address
+    /// (D199 (f)). The check of `fromSession` comes before the address, thus
+    /// a source that the viewer cannot use stops the send first.
+    ///
     /// - Parameters:
     ///   - context: The context of the call.
     ///   - arguments: The input object.
@@ -409,15 +474,20 @@ extension SessionsGraphResolver {
         context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphSendInput>
     ) async throws -> [SessionsGraphReceipt] {
         try await Self.coding {
+            let input = arguments.input
             let sender = try context.actor(of: .send)
+            let source = try await context.sourceSession(input.fromSession, of: sender)
             // TODO(^gxqmxj6): report `rewrite` of the reading in
             // `extensions.rewrites`. The toolkit of Extras gives a resolver no
             // way to add a rewrite yet.
-            let address = try await context.address(arguments.input.to, from: sender).address
+            let address = try await context.address(
+                input.to, from: sender, sourceFolder: source?.workingDirectory
+            ).address
             if case .session(let target) = address, !context.viewerOwns(target) {
                 return context.notOwnedReceipts(to: target)
             }
-            let receipts = try await context.actions.send(text: arguments.input.message, to: address, from: sender)
+            let receipts = try await context.actions.send(
+                text: input.message, to: address, from: sender, sourceSession: source?.id)
             return receipts.map(SessionsGraphReceipt.init)
         }
     }
@@ -673,6 +743,11 @@ extension SessionsGraphAPI {
                     "The address: a session id, @agent, @agent:/path, an absolute folder path, or #tag. An external "
                         + "client gives a session id. A session that you cannot see is NOT_FOUND. \(ownedTargetRule)")
             InputField("message", at: \.message).description(messageDescription)
+            InputField("fromSession", at: \.fromSession)
+                .description(
+                    "The session in which you wrote the message, in any letter case. Its folder is where a short id "
+                        + "or a slug of the address looks first. A session that you cannot see, or that an external "
+                        + "client does not own, is NOT_FOUND. A call of the agent gives only its own session.")
         }
         .description("A message and its address.")
     }

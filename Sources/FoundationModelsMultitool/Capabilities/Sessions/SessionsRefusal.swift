@@ -72,6 +72,10 @@ struct SessionsRefusal: CodedError {
         /// A client that is not a device of the user asks for a change that
         /// only a device of the user can make.
         case untrustedClient = "UNTRUSTED_CLIENT"
+
+        /// A call of the agent names, as the source session of a message, a
+        /// session that is not its caller session (D199 (f)).
+        case sourceNotCaller = "SOURCE_NOT_CALLER"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.

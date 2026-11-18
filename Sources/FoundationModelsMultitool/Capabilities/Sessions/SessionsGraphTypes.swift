@@ -450,6 +450,10 @@ struct SessionsGraphSendInput: Codable, Sendable {
 
     /// The text of the message.
     let message: String
+
+    /// The session in which the user wrote the message, in any letter case,
+    /// or `nil` when the user wrote it in no session (D199 (f)).
+    let fromSession: ToolkitID?
 }
 
 /// The `ReplyMessageInput` input object of `Mutation.replyMessage`.

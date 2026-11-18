@@ -123,15 +123,20 @@ extension SessionsToolContext {
     ///   - address: The target of the message.
     ///   - inReplyTo: The id of the message that this one answers, or `nil`.
     ///   - sender: The session or the user that sends the message.
+    ///   - sourceSession: The session in which the user wrote the message
+    ///     (D199 (f)), or `nil`. Only a user sender uses it. The default is
+    ///     `nil`.
     /// - Returns: One receipt for each target.
     /// - Throws: ``SessionsRefusal`` for a blank text and for an agent name
     ///   that no agent has, and each other error of
     ///   `SessionDirectory.send(_:)`.
     func send(
-        text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender
+        text: String, to address: SessionAddress, inReplyTo: MailID? = nil, from sender: SessionMessageSender,
+        sourceSession: ULID? = nil
     ) async throws -> [SessionSendReceipt] {
         let body = try SessionsToolInput.requiredText(text, parameter: SessionsToolText.messageParameter)
-        let outgoing = OutgoingSessionMessage(from: sender, to: address, text: body, inReplyTo: inReplyTo)
+        let outgoing = OutgoingSessionMessage(
+            from: sender, to: address, text: body, inReplyTo: inReplyTo, sourceSession: sourceSession)
         do {
             return try await directory.send(outgoing)
         } catch SessionDirectoryError.unknownAgent(let name, let nearNames) {

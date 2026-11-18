@@ -1040,6 +1040,146 @@ struct SessionsGraphMutationTests {
         #expect(reply.rewrites.isEmpty, "rewrites: \(reply.rewrites)")
     }
 
+    // MARK: - The source session of a send (D199 (f))
+
+    /// The title of the target of the source session cases.
+    private static let fixTitle = "Fix the API tests"
+
+    /// The slug of ``fixTitle``.
+    private static let fixSlug = "fix-the-api-tests"
+
+    /// The code of a session caller whose `fromSession` is an other session.
+    private static let sourceNotCaller = "SOURCE_NOT_CALLER"
+
+    /// The document of a send to `@<fixSlug>` from a source session.
+    ///
+    /// - Parameters:
+    ///   - source: The source session.
+    ///   - field: The name of the field of the source session.
+    /// - Returns: The document.
+    private static func sourceSendDocument(from source: ULID, field: String = "fromSession") -> String {
+        "mutation { sendMessage(input: {to: \"@\(fixSlug)\", message: \"\(messageText)\", "
+            + "\(field): \"\(source.ulidString)\"}) { outcome target { id } } }"
+    }
+
+    /// A send from a device with `fromSession` gives a receipt, and the
+    /// message in the directory has that session as its source session.
+    @Test("sendMessage with fromSession records the source session of the message")
+    func aSendWithASourceSessionRecordsIt() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let source = Fixtures.summary()
+        let target = Fixtures.summary(title: Self.fixTitle)
+        directory.register(source)
+        directory.register(target)
+
+        let reply = try await Self.run(
+            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer, on: directory)
+        let inbox = try await directory.inbox(of: target.id, markRead: false)
+
+        #expect(try reply.list("sendMessage").map { $0["outcome"] as? String } == ["DELIVERED"])
+        #expect(inbox.map(\.sourceSession) == [source.id])
+    }
+
+    /// The slug of the address resolves in the working folder of the source
+    /// session first: of two sessions with the same slug, the session in
+    /// that folder gets the message.
+    @Test("the slug of a send with fromSession resolves in the folder of the source session first")
+    func aSlugResolvesInTheFolderOfTheSourceSession() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let source = Fixtures.summary(folder: Self.namedFolder)
+        let local = Fixtures.summary(title: Self.fixTitle, folder: Self.namedFolder)
+        directory.register(source)
+        directory.register(Fixtures.summary(title: Self.fixTitle))
+        directory.register(local)
+
+        let reply = try await Self.run(
+            Self.sourceSendDocument(from: source.id), viewer: Self.deviceViewer, on: directory)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(
+            try reply.list("sendMessage").map { ($0["target"] as? [String: Any])?["id"] as? String }
+                == [local.id.ulidString])
+    }
+
+    /// One source session that an external client cannot use: a session
+    /// that it cannot see, and a session that it sees but does not own.
+    static let unusableSources: [HiddenCase] = [
+        HiddenCase(action: "a hidden source session") { scene in sourceSendDocument(from: scene.stranger) },
+        HiddenCase(action: "a source session that it does not own") { scene in
+            sourceSendDocument(from: scene.subagent)
+        },
+    ]
+
+    /// An external client gets `NOT_FOUND` for a source session that it
+    /// cannot see or does not own, and no message goes.
+    @Test("an external viewer gets NOT_FOUND for a fromSession that it cannot use", arguments: unusableSources)
+    func anExternalViewerGetsNotFoundForAnUnusableSource(_ unusable: HiddenCase) async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let scene = try await Self.stageExternal(in: directory)
+        directory.register(Fixtures.summary(title: Self.fixTitle))
+        let known: Set<ULID> = [scene.owned, scene.stranger, scene.subagent]
+        let staged = try await Self.facts(of: directory, known: known)
+
+        let reply = try await Self.run(unusable.mutation(scene), viewer: scene.viewer, on: directory)
+
+        #expect(reply.codes == [Self.notFound])
+        #expect(try await Self.facts(of: directory, known: known) == staged)
+    }
+
+    /// A call of the agent sends from its caller session: a `fromSession`
+    /// that names an other session is refused, and no message goes.
+    @Test("a session caller with a fromSession of an other session is refused")
+    func aSessionCallerWithAnOtherSourceIsRefused() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+
+        let (reply, staged, facts) = try await Self.inScenes([directory]) { scenes in
+            let known: Set<ULID> = [scenes[0].caller, scenes[0].target, scenes[0].archived]
+            let staged = try await Self.facts(of: directory, known: known)
+            let reply = try await Self.run(Self.sourceSendDocument(from: scenes[0].target), on: directory)
+            return (reply, staged, try await Self.facts(of: directory, known: known))
+        }
+
+        #expect(reply.codes == [Self.sourceNotCaller])
+        #expect(facts == staged)
+    }
+
+    /// A call of the agent whose `fromSession` is its caller session sends
+    /// the message as the caller session.
+    @Test("a session caller with its own session as fromSession sends")
+    func aSessionCallerWithItsOwnSourceSends() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary(title: Self.fixTitle)
+        directory.register(target)
+
+        let (reply, caller) = try await Self.inScenes([directory]) { scenes in
+            (try await Self.run(Self.sourceSendDocument(from: scenes[0].caller), on: directory), scenes[0].caller)
+        }
+        let inbox = try await directory.inbox(of: target.id, markRead: false)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(inbox.map(\.from) == [.session(caller)])
+    }
+
+    /// Each alias of `fromSession` names the field, and the response tells
+    /// the rewrite in `extensions.rewrites`.
+    @Test(
+        "each alias of fromSession works and shows in extensions.rewrites",
+        arguments: ["fromSessionId", "from_session"])
+    func eachAliasOfTheSourceSessionWorks(_ alias: String) async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let source = Fixtures.summary()
+        let target = Fixtures.summary(title: Self.fixTitle)
+        directory.register(source)
+        directory.register(target)
+
+        let reply = try await Self.run(
+            Self.sourceSendDocument(from: source.id, field: alias), viewer: Self.deviceViewer, on: directory)
+        let inbox = try await directory.inbox(of: target.id, markRead: false)
+
+        #expect(reply.rewrote(alias, to: "fromSession"))
+        #expect(inbox.map(\.sourceSession) == [source.id])
+    }
+
     // MARK: - Aliases
 
     /// One bare verb of session.md section 14 and the mutation it names.

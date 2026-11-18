@@ -6,7 +6,9 @@
 // and `@<slug>` name one session, through `SessionReference.resolve` of
 // Extras, over the sessions that the caller can see. The order is a full id,
 // then a short id, then a slug; a short id and a slug look first in the
-// lookup folder, then in all the sessions. An agent is a session: when
+// lookup folder, then in all the sessions. The lookup folder is the folder of
+// the sending session, or, for the user, the folder of the session in which
+// the user wrote the message (D199 (f)). An agent is a session: when
 // `@<name>` names no session, the address is the agent with that name, and
 // the directory starts a new root session of it. The launcher of the
 // directory is the agent catalog: it refuses a name that no agent folder has
@@ -36,19 +38,24 @@ struct SessionsAddressReading: Sendable, Equatable {
 extension SessionsVisibility {
     /// Reads a message address from `sender` (D199 (c) to (e)).
     ///
-    /// The lookup folder of a short id and of a slug is the working folder
-    /// of the sending session, or the folder of an `@agent:/path` alias. A
-    /// sender that is the user has no lookup folder: the lookup is in all the
-    /// sessions that the viewer can see.
+    /// The lookup folder of a short id and of a slug is `sourceFolder`, else
+    /// the working folder of the sending session, or the folder of an
+    /// `@agent:/path` alias. A sender that is the user, with no source
+    /// folder, has no lookup folder: the lookup is in all the sessions that
+    /// the viewer can see.
     ///
     /// - Parameters:
     ///   - text: The address, with any space around it.
     ///   - sender: The session or the user that sends the message.
+    ///   - sourceFolder: The working folder of the session in which the user
+    ///     wrote the message (D199 (f)), or `nil`. The default is `nil`.
     /// - Returns: The target, and the report of the rewrite of an alias.
     /// - Throws: ``SessionsRefusal`` for a text in no form, for a reference
     ///   that names more than one session, and for an alias with a relative
     ///   folder; each error of the directory.
-    func messageAddress(_ text: String, from sender: SessionMessageSender) async throws -> SessionsAddressReading {
+    func messageAddress(
+        _ text: String, from sender: SessionMessageSender, sourceFolder: URL? = nil
+    ) async throws -> SessionsAddressReading {
         let written = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch try SessionsToolInput.addressForm(text) {
         case .folder(let folder):
@@ -63,11 +70,11 @@ extension SessionsVisibility {
         case .id(let id):
             return SessionsAddressReading(address: .session(id), rewrite: nil)
         case .name(let name):
-            let lookupFolder = try await workingFolder(of: sender)
+            let lookupFolder = try await lookupFolder(of: sender, sourceFolder: sourceFolder)
             return SessionsAddressReading(
                 address: try await address(ofName: name, lookupFolder: lookupFolder), rewrite: nil)
         case .shortID(let shortID):
-            let lookupFolder = try await workingFolder(of: sender)
+            let lookupFolder = try await lookupFolder(of: sender, sourceFolder: sourceFolder)
             return SessionsAddressReading(
                 address: try await address(ofShortID: shortID, written: text, lookupFolder: lookupFolder),
                 rewrite: nil)
@@ -108,6 +115,21 @@ extension SessionsVisibility {
     func resolution(of reference: String, lookupFolder: URL?) async throws -> SessionReferenceResolution {
         let candidates = try await sessions(matching: SessionQuery(includesRecorded: true, limit: Self.unboundedLimit))
         return SessionReference.resolve(reference, sourceFolder: lookupFolder, among: candidates)
+    }
+
+    /// The lookup folder of a short id and of a slug: `sourceFolder`, else
+    /// the working folder of the sender.
+    ///
+    /// - Parameters:
+    ///   - sender: The sender.
+    ///   - sourceFolder: The working folder of the source session, or `nil`.
+    /// - Returns: The folder, or `nil` for a lookup in all the sessions.
+    /// - Throws: Each error of the directory.
+    private func lookupFolder(of sender: SessionMessageSender, sourceFolder: URL?) async throws -> URL? {
+        guard let sourceFolder else {
+            return try await workingFolder(of: sender)
+        }
+        return sourceFolder
     }
 
     /// The working folder of a sending session, or `nil` for the user.
