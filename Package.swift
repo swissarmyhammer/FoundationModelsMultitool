@@ -628,6 +628,10 @@ let package = Package(
         // library takes each one from there. No shipped target links Router.
         // `PackageManifestTests` reads this declaration and fails when Router
         // comes back.
+        //
+        // The library copies the folder `Resources/skills` into its bundle.
+        // The folder is one layer root of skills: each child folder is one
+        // skill. `BuiltinSkills.directory` gives its URL.
         .target(
             name: packageName,
             dependencies: [
@@ -637,7 +641,10 @@ let package = Package(
                 .product(name: hooksDependencyName, package: hooksDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts
                 + codeContextProducts + dataFormatProducts + graphQLProducts,
-            path: "\(sourcesPath)\(packageName)"
+            path: "\(sourcesPath)\(packageName)",
+            resources: [
+                .copy("Resources/skills")
+            ]
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
         // `mcpProducts` for the sdk's `Server`, which is what it wraps.
