@@ -1,11 +1,11 @@
 ---
 name: sessions
-description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag or archive sessions.
+description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive or unarchive sessions.
 license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Sessions
@@ -24,7 +24,7 @@ These forms name one session:
 - `@<short id>` or `<short id>`, for example `@v2w4abc`.
 - `@<slug>`, for example `@claude-code-2`. A slug always needs the `@`.
 
-The lookup tries the id, then the short id, then the slug. For a short id and a slug, it looks first in the folder of your session, then in all sessions. An archived session matches only its id. When two sessions match, the call does nothing (code `AMBIGUOUS_REFERENCE`), and the answer lists each match with its id, name and folder. Then use the id or the short id.
+The lookup tries the id, then the short id, then the slug. For a short id and a slug, it looks first in the folder of your session, then in all sessions. An archived session matches only its id, except in `unarchive session`, where the short id and the slug match archived sessions. When two sessions match, the call does nothing (code `AMBIGUOUS_REFERENCE`), and the answer lists each match with its id, name and folder. Then use the id or the short id.
 
 ## A mention in a user prompt: the app already sent it
 
@@ -62,7 +62,7 @@ Use `send message` when you write `@<session>` yourself, or when the user asks f
 - The target sees only `message`. Put all the facts in it: the goal, the files, and what to send back.
 - When you do not know the target, find it first (below). Do not guess a slug.
 - Read the answer. It gives one line for each target, with the same words as the receipt: delivered, queued, sent, started or refused. On refused, tell the user the reason.
-- An archived session takes no messages. Start a new session for its work.
+- A message to an archived session waits in its inbox (receipt `sent`, note `archived`). The session does not start a turn. Tell the user, or start a new session for the work.
 
 ## Messages that come to you
 
@@ -133,7 +133,7 @@ Run the API tests again.
 - A session is stored in its working folder. The sessions of one folder work together and share the board of the folder.
 - `start session` opens no tab. The reply of the new session comes to you as a message.
 - `check session` never waits. Do not call it in a loop: the reply comes to you as a message.
-- Archive a session only when the user asks, or when you started it and its work is done.
+- Archive a session only when the user asks, or when you started it and its work is done. An archive is not final: `unarchive session` brings the session back.
 - To give the user a session as a file, use `export session`. It writes `<slug>.md` in the session folder.
 - `export session` takes these parameters, and each is optional:
   - `id`: the session. With no `id`, it exports your session.

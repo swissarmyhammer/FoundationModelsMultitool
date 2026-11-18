@@ -3,8 +3,8 @@
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the skill names each parameter of
 // `export session`, each code-mode verb of the skill is a verb of the tool,
-// and the skill names each form of a session reference and each receipt word
-// of the tool.
+// and the skill names each form of a session reference, each receipt word of
+// the tool and the note `archived` of a `sent` receipt (D204).
 //
 // The suite reads the skill through `BuiltinSkills.directory`, as ACPAgent
 // does. Thus a change of the tool that makes the skill wrong fails here.
@@ -62,6 +62,14 @@ import Testing
     /// `AgentMessageHeader.factLines` of
     /// `Sources/FoundationModelsRouter/Session/AgentMessageHeader.swift`.
     private static let inReplyToLabel = "`in reply to: <id>`"
+
+    /// The note of a `sent` receipt to an archived session, as the skill must
+    /// name it (D204): the receipt word `sent` and the note of the tool.
+    private static let archivedNote = "receipt `sent`, note `\(SessionsToolText.archivedReason)`"
+
+    /// The text that the skill showed before D204. An archived session now
+    /// takes a message into its inbox, so the skill must not say this.
+    private static let oldArchivedRefusal = "takes no messages"
 
     /// The text of the skill.
     ///
@@ -195,6 +203,16 @@ import Testing
     @Test("the skill names the in reply to fact of a message from a session")
     func theSkillNamesTheInReplyToFact() throws {
         #expect(try Self.skillText().contains(Self.inReplyToLabel))
+    }
+
+    @Test("the skill names the archived note of a sent receipt")
+    func theSkillNamesTheArchivedNote() throws {
+        #expect(try Self.skillText().contains(Self.archivedNote))
+    }
+
+    @Test("the skill does not say that an archived session takes no messages")
+    func theSkillDoesNotRefuseMessagesToAnArchivedSession() throws {
+        #expect(try !Self.skillText().contains(Self.oldArchivedRefusal))
     }
 
     @Test("the skill names each receipt word of the tool", arguments: SessionsGraphOutcome.allCases)
