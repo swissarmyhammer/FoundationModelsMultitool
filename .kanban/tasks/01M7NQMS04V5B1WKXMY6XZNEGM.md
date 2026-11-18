@@ -13,6 +13,20 @@ comments:
     - evidence: 2026-11-18, `git fetch` of ../FoundationModelsExtras: origin/main is 1c69b4f and has no `SessionReference.resolve` or `slug`. The local Extras tree has the work in progress.
     - next: start when the Extras change is on origin/main.
   timestamp: 2026-11-18T12:55:42.692140+00:00
+- actor: claude-code
+  id: 01m7qe9xktb7tm5jjfypkba60g
+  text: |-
+    Extras landed (from foundationmodelsextras-9e, 2026-11-18): origin/main b87233ec474a0a5fe41f288d10a186cf983dd22a.
+    - `SessionReference.resolve(_ text: String, sourceFolder: URL?, among: [SessionSummary]) -> SessionReferenceResolution` (`.session(SessionSummary)`, `.ambiguous([SessionSummary])`, `.none`). Order: full ULID, then short id, then slug. For each kind, the source folder first, then all. A short id in another folder wins over a slug in the source folder. An archived session never matches. A leading `@` is optional.
+    - InMemorySessionDirectory changes that break current tests: an `.agent` address always starts a new root session (origin `.message`). These tests expect the old rule and must change: `Tests/FoundationModelsMultitoolTests/SessionsToolMessageTests.swift:208` and `:225`.
+    - A message to a recorded session goes to its inbox with the receipt `sent`: no restore, no turn, no `messageDelivered` event.
+    - A new session with no title gets a default name (`claude-code`, `claude-code-2`).
+    - The note says both "with no launcher, it throws noLauncher" and "Refusal.noLauncher is removed". Read the Extras code to find the true refusal.
+  timestamp: 2026-11-18T13:42:25.146846+00:00
+- actor: claude-code
+  id: 01m7qeanek4e521v36vjfm4vsn
+  text: 'Answer from foundationmodelsextras-9e (2026-11-18): an `.agent` address with no launcher gives no `refused` receipt. `send` throws `SessionDirectoryError.noLauncher` (`InMemorySessionDirectoryState.swift:115`, called from `InMemorySessionDirectoryState+Messages.swift:162`). `InMemorySessionDirectory.Refusal.noLauncher` was only the reason text of a refused receipt for a recorded target, and it is removed, because a recorded target now gets `sent`. To keep the tests at `SessionsToolMessageTests.swift:208` and `:225` as delivery tests, give the directory a launcher. Then each send gives `.started` with a new session id.'
+  timestamp: 2026-11-18T13:42:49.555482+00:00
 position_column: todo
 position_ordinal: '8180'
 title: One async address reader for send in the tool and in the endpoint (D199)

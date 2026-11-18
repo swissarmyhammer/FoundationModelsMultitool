@@ -3,7 +3,8 @@
 // `SessionDirectory` that the `sessions` tool reads (session.md section 11).
 //
 // The schema is in `SessionsGraphSchema.swift`, its mutations are in
-// `SessionsGraphMutations.swift`, its object types are in
+// `SessionsGraphMutations.swift`, its page query is in
+// `SessionsGraphPages.swift`, its object types are in
 // `SessionsGraphTypes.swift`, and its change feed and `changes` subscription
 // are in `SessionsGraphChanges.swift`. This file holds the endpoint, its name
 // rules, and the one endpoint of each directory.
@@ -23,6 +24,11 @@ import Synchronization
 /// - `Query.sessions(filter:)` gives the sessions that match a filter, the
 ///   newest first, at most 50 when the filter names no limit. The filter has
 ///   the rules of the `list sessions` op of the tool.
+/// - `Query.sessionPage(filter:after:)` gives the sessions that match a filter
+///   in pages, in the order of their ids, with no limit on the count of the
+///   pages (D199). Each page gives `nextCursor`, which is `null` on the last
+///   page. A page has no archived session unless the filter has the state
+///   `ARCHIVED`.
 /// - `Query.session(id:)` gives one session, or `null`. A `Session` gives its
 ///   `parent`, its `startedBy`, its `children` (the subagent tree of a client)
 ///   and its `unreadCount`.
@@ -78,16 +84,24 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// The other names that a call can write for the names of the schema
     /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
     /// session, `sessionId` for the `id` of `session`, `id` for the
-    /// `sessionId` of `inbox`, `sessionChanges` for the `changes`
-    /// subscription, the bare verb of each mutation, and the names of the
-    /// tool op of each mutation for the fields of its input.
+    /// `sessionId` of `inbox`, `sessionsPage` and `pagedSessions` for
+    /// `sessionPage`, `cursor` for its `after`, `items` and `nodes` for the
+    /// `sessions` of a page, `endCursor` for its `nextCursor`,
+    /// `sessionChanges` for the `changes` subscription, the bare verb of each
+    /// mutation, and the names of the tool op of each mutation for the fields
+    /// of its input.
     static let rules = GraphQLNameRules(
         aliases: GraphQLAliasTable(
             byType: SessionsGraphMutation.aliasTables.merging([
                 "Session": ["agentId": ["agent"], "cwd": ["folder"]],
+                "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
+                "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
                 "Subscription": ["changes": ["sessionChanges"]],
             ]) { mutation, _ in mutation },
-            byField: ["Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]]]))
+            byField: [
+                "Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]],
+                "Query.sessionPage": ["after": ["cursor"]],
+            ]))
 
     /// The name of the endpoint.
     public let name = endpointName

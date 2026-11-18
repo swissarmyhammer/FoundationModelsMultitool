@@ -239,6 +239,15 @@ input SessionFilter {
   limit: Int = 50
 }
 
+"""One page of sessions, and the cursor of the next page."""
+type SessionPage {
+  """The sessions of the page, in the order of their ids."""
+  sessions: [Session!]!
+
+  """The cursor of the next page, or null when this page is the last."""
+  nextCursor: String
+}
+
 """A new root session of an agent, with its first message."""
 input StartSessionInput {
   """
@@ -377,6 +386,19 @@ type Query {
     """The filter. With no filter, each live session."""
     filter: SessionFilter
   ): [Session!]!
+
+  """
+  One page of the sessions on this server that match the filter, in the order of their ids. A session that starts during the read comes on a later page, thus each session shows one time. A page has no archived session unless the filter has the state ARCHIVED. An external client sees only the sessions that it can see, as in sessions.
+  """
+  sessionPage(
+    """
+    The filter. Its limit is the page size. Set includeRecorded to get each session that is not archived.
+    """
+    filter: SessionFilter
+
+    """The nextCursor of the page before, or no cursor for the first page."""
+    after: String
+  ): SessionPage!
 
   """One session, or null when no session that you can see has the id."""
   session(

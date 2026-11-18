@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7qea4nxgh6ybzpzx2y2tc75
+  text: 'Extras (2026-11-18): a message to a recorded session now gives the receipt `sent` (it goes to the inbox, with no turn). Thus the receipt words are `delivered`, `queued`, `sent`, `refused` and `started`. The skill text and its test must name `sent` too, and TestudoApp must know the word.'
+  timestamp: 2026-11-18T13:42:32.381959+00:00
 depends_on:
 - 01M7QCD0WVWRMD9QCBVE46CB97
 - 01M7NQM8VTYF6G2ZW1QGRJJ9R4

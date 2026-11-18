@@ -7,8 +7,8 @@
 
 import Foundation
 import FoundationModelsExtras
-import Graphiti
 import GraphQL
+import Graphiti
 import ULID
 
 // MARK: - Context and resolver
@@ -262,7 +262,8 @@ struct SessionsGraphAPI: API {
     typealias SchemaField = FieldComponent<SessionsGraphResolver, SessionsGraphContext>
 
     /// Builds the schema of the endpoint. The mutations and their types are
-    /// in `SessionsGraphMutations.swift`, and the `cursor` query, the
+    /// in `SessionsGraphMutations.swift`, the `sessionPage` query and its
+    /// type are in `SessionsGraphPages.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
@@ -281,6 +282,7 @@ struct SessionsGraphAPI: API {
                 messageType()
                 receiptType()
                 filterInput()
+                sessionPageType()
                 startInput()
                 tagInput()
                 untagInput()
@@ -294,6 +296,7 @@ struct SessionsGraphAPI: API {
             }
             .addQuery {
                 sessionsField()
+                sessionPageField()
                 sessionField()
                 inboxField()
                 pinnedSessionsField()

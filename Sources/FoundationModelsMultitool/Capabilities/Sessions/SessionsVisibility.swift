@@ -50,12 +50,61 @@ struct SessionsVisibility: Sendable, GraphQLViewerScoping {
         guard externalViewer != nil else {
             return try await directory.sessions(matching: query)
         }
+        return try await visible(among: directory.sessions(matching: Self.unbounded(query)), limit: query.limit)
+    }
+
+    /// The summaries of the sessions that match `query`, that `accepts`
+    /// keeps, and that the viewer can see, in the order of their ids, each
+    /// with an id after `cursor`. At most ``SessionQuery/limit`` of them.
+    ///
+    /// The id order is stable: a session that starts later has a newer id,
+    /// thus it comes after each session that a reader already got. The
+    /// directory gives each match, and the limit cuts the visible ones.
+    ///
+    /// - Parameters:
+    ///   - query: The filter. Its order is not read.
+    ///   - cursor: The id that each summary must come after, or `nil` for
+    ///     the first summaries.
+    ///   - accepts: Tells if a summary that matches `query` can be in the
+    ///     result.
+    /// - Returns: The summaries.
+    /// - Throws: The error of the directory.
+    func sessionsInIDOrder(
+        matching query: SessionQuery, after cursor: ULID?, where accepts: (SessionSummary) -> Bool
+    ) async throws -> [SessionSummary] {
+        let candidates = try await directory.sessions(matching: Self.unbounded(query))
+            .filter { summary in accepts(summary) && cursor.map { summary.id > $0 } ?? true }
+            .sorted { $0.id < $1.id }
+        return try await visible(among: candidates, limit: query.limit)
+    }
+
+    /// The query with the limit ``unboundedLimit``, so the directory gives
+    /// each match.
+    ///
+    /// - Parameter query: The filter.
+    /// - Returns: The query with no limit.
+    private static func unbounded(_ query: SessionQuery) -> SessionQuery {
         var unbounded = query
-        unbounded.limit = Self.unboundedLimit
+        unbounded.limit = unboundedLimit
+        return unbounded
+    }
+
+    /// The first `limit` summaries of `candidates` that the viewer can see,
+    /// in the order of `candidates`.
+    ///
+    /// - Parameters:
+    ///   - candidates: The summaries, in the order of the result.
+    ///   - limit: The most summaries to give.
+    /// - Returns: The summaries.
+    /// - Throws: The error of the directory.
+    private func visible(among candidates: [SessionSummary], limit: Int) async throws -> [SessionSummary] {
+        guard externalViewer != nil else {
+            return Array(candidates.prefix(limit))
+        }
         var visible: [SessionSummary] = []
         // A loop and not a `filter`: each check awaits the directory, and the
         // loop stops at the limit.
-        for summary in try await directory.sessions(matching: unbounded) where visible.count < query.limit {
+        for summary in candidates where visible.count < limit {
             if try await isVisible(summary) {
                 visible.append(summary)
             }

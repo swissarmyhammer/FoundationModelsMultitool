@@ -22,6 +22,9 @@ struct SessionsRefusal: CodedError {
         /// An id argument is not a message id.
         case invalidMessageID = "INVALID_MESSAGE_ID"
 
+        /// A page cursor is not a cursor that the endpoint gave.
+        case invalidCursor = "INVALID_CURSOR"
+
         /// A message address is in no form, or in a form that the client
         /// cannot use.
         case invalidAddress = "INVALID_ADDRESS"

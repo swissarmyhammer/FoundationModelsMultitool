@@ -153,7 +153,7 @@ enum SessionsToolInput {
     /// - Returns: The ULID.
     /// - Throws: ``SessionsRefusal`` of `kind`, with the text of `corrective`,
     ///   when `text` is not a ULID.
-    private static func requiredULID(
+    static func requiredULID(
         _ text: String, kind: SessionsRefusal.Kind, corrective: (String) -> String
     ) throws(SessionsRefusal) -> ULID {
         guard let id = ulid(text) else {

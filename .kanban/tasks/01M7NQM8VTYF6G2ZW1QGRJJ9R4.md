@@ -17,6 +17,10 @@ comments:
     - [ ] An archive of a session gives a `changed` entry on `changes(after:)`.
     Today the code already does this (`factsChanged` for a rename, `.archived` maps to `changed` at `SessionsGraphChanges.swift:57`). The tests make sure that it stays true.
   timestamp: 2026-11-18T12:57:55.134546+00:00
+- actor: claude-code
+  id: 01m7qea160nztv6hpnsc3c3tnd
+  text: 'Extras landed (from foundationmodelsextras-9e, 2026-11-18): origin/main b87233ec474a0a5fe41f288d10a186cf983dd22a. `SessionSummary.shortID` (last 7 characters of the ULID, lower case) and `SessionSummary.slug` (the slug of the title; an empty slug gives the short id). `SessionSlug.make(from:)` and `SessionName.default(agentName:usedNames:)` also exist. Move the Extras pin to that commit first, and fix each test that the Extras behavior change breaks (see the comment on ^6xznegm).'
+  timestamp: 2026-11-18T13:42:28.800470+00:00
 position_column: todo
 position_ordinal: '80'
 title: Session.shortId and Session.slug in the sessions endpoint and the tool (D199)
