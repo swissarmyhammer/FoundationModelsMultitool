@@ -1,6 +1,14 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7qnzw7zgb7mhbhvb7xms0j6
+  text: |-
+    ### duplicate — archived
+    - evidence: ^gxqmxj6 (01M7QGNV7DHJRV9A20TGXQMXJ6) did this work and is done: commits dc1ab0c8 and a79f7fa9 on origin/main. `sendMessage` reports the alias rewrite in `extensions.rewrites` through Extras `ResolverRewrites` (92660bf3).
+    - cause: the orchestrator did not find this task file at 14:20 and made ^gxqmxj6 for the same work.
+  timestamp: 2026-11-18T15:56:44.671691+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
 position_column: todo
