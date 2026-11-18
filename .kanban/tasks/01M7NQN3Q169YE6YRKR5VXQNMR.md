@@ -27,10 +27,26 @@ comments:
     - Discovery: `from_session` matches through step 2 of `NameMatcher` (word style) without the table; the table lists it too, as the card asks. The check of `fromSession` comes before the address reader, so a source that the viewer cannot use stops the send before the address.
     - next: review.
   timestamp: 2026-11-18T14:40:30.061443+00:00
+- actor: claude-code
+  id: 01m7qhrwffnd8mgt11sjj3asq3
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (087c3789): 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. Files not reviewed: 2 .kanban files (ignore rule), Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql (no validator matches).
+    - next: none. The task is in done.
+  timestamp: 2026-11-18T14:43:01.231428+00:00
+- actor: claude-code
+  id: 01m7qhs7z0gv3wf83ayjt9drt1
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphMutations, SessionsGraphTypes, SessionsRefusal (SOURCE_NOT_CALLER), SessionsAddressReader, SessionsToolMessageOperations, SessionsGraphMutationTests, golden schema (adds only)
+    - test: green — swift test, 3024 passed (run in the implement step)
+    - commit: 087c3789
+    - review: clean — 0 findings
+  timestamp: 2026-11-18T14:43:12.992100+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffff8c80
 title: 'SendMessageInput.fromSession: the source session of a send from the app (D199)'
 ---
 Decision: D199 (f) in TestudoApp/features/decisions.md. Brief: /Users/wballard/github/swissarmyhammer/.briefs/at-sessions/mt-brief-at-sessions.md, item 3 and item 6.
