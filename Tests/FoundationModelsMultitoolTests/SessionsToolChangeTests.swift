@@ -80,17 +80,6 @@ struct SessionsToolChangeTests {
         try await directory.sessions(matching: SessionQuery(startedBy: starter))
     }
 
-    /// The summary of `id`, which the case expects to exist.
-    ///
-    /// - Parameters:
-    ///   - id: The session id.
-    ///   - directory: The directory.
-    /// - Returns: The summary.
-    /// - Throws: When no session has the id.
-    private static func summary(of id: ULID, in directory: InMemorySessionDirectory) async throws -> SessionSummary {
-        try #require(try await directory.summary(of: id))
-    }
-
     // MARK: - start session
 
     @Test("start session starts a root session of the agent in the folder of the caller, started by the caller")
@@ -158,7 +147,8 @@ struct SessionsToolChangeTests {
         let tool = try SessionsTool(directory: directory)
 
         let (output, started) = try await Fixtures.asCaller(in: directory) { callerID in
-            let output = try await tool.call(arguments: Fixtures.payload("start session", [("message", Self.firstMessage)]))
+            let output = try await tool.call(
+                arguments: Fixtures.payload("start session", [("message", Self.firstMessage)]))
             return (output, try await Self.sessions(startedBy: callerID, in: directory))
         }
 
@@ -197,7 +187,9 @@ struct SessionsToolChangeTests {
         #expect(started.map(\.agentID) == [Self.capitalizedAgent])
     }
 
-    @Test("start session of a registered agent id in another letter case gives the unknown-agent corrective with the near name")
+    @Test(
+        "start session of a registered agent id in another letter case gives the unknown-agent corrective with the near name"
+    )
     func startSessionOfAnAgentIDInAnotherCaseNamesTheNearMatch() async throws {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.capitalizedAgent])
         let tool = try SessionsTool(directory: directory)
@@ -254,7 +246,10 @@ struct SessionsToolChangeTests {
                 arguments: Fixtures.payload("tag session", [("id", other.id.ulidString), ("tags", [Self.reviewTag])]))
         }
 
-        #expect(try await Self.summary(of: other.id, in: directory).tags == [Self.reviewTag, Self.urgentTag])
+        #expect(
+            try await SessionsToolFixtures.summary(of: other.id, in: directory).tags == [
+                Self.reviewTag, Self.urgentTag,
+            ])
         #expect(output.contains(Self.reviewTag), "output was: \(output)")
         #expect(output.contains(Self.urgentTag), "output was: \(output)")
     }
@@ -269,7 +264,7 @@ struct SessionsToolChangeTests {
             return callerID
         }
 
-        #expect(try await Self.summary(of: callerID, in: directory).tags == [Self.reviewTag])
+        #expect(try await SessionsToolFixtures.summary(of: callerID, in: directory).tags == [Self.reviewTag])
     }
 
     @Test("tag session reads a tag written as #tag with space around it")
@@ -282,7 +277,7 @@ struct SessionsToolChangeTests {
             return callerID
         }
 
-        #expect(try await Self.summary(of: callerID, in: directory).tags == [Self.reviewTag])
+        #expect(try await SessionsToolFixtures.summary(of: callerID, in: directory).tags == [Self.reviewTag])
     }
 
     @Test("tag session with an invalid tag gives a corrective and changes no tag")
@@ -295,7 +290,7 @@ struct SessionsToolChangeTests {
         }
 
         #expect(output.contains(Self.invalidTag), "output was: \(output)")
-        #expect(try await Self.summary(of: callerID, in: directory).tags.isEmpty)
+        #expect(try await SessionsToolFixtures.summary(of: callerID, in: directory).tags.isEmpty)
     }
 
     @Test("tag session with no tag gives a corrective")
@@ -321,7 +316,7 @@ struct SessionsToolChangeTests {
             arguments: Fixtures.payload("tag session", [("id", other.id.ulidString), ("tags", [Self.reviewTag])]))
 
         #expect(output.contains("session"), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).tags.isEmpty)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).tags.isEmpty)
     }
 
     @Test("untag session removes the tags from the session and gives the tags that stay")
@@ -336,7 +331,7 @@ struct SessionsToolChangeTests {
                 arguments: Fixtures.payload("untag session", [("id", other.id.ulidString), ("tags", [Self.urgentTag])]))
         }
 
-        #expect(try await Self.summary(of: other.id, in: directory).tags == [Self.reviewTag])
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).tags == [Self.reviewTag])
         #expect(output.contains(Self.reviewTag), "output was: \(output)")
         #expect(!output.contains(Self.urgentTag), "output was: \(output)")
     }
@@ -353,7 +348,7 @@ struct SessionsToolChangeTests {
                 arguments: Fixtures.payload("untag session", [("id", other.id.ulidString), ("tags", [Self.reviewTag])]))
         }
 
-        #expect(try await Self.summary(of: other.id, in: directory).tags.isEmpty)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).tags.isEmpty)
         #expect(output.contains("no tags"), "output was: \(output)")
     }
 
@@ -371,7 +366,7 @@ struct SessionsToolChangeTests {
                 arguments: Fixtures.payload("rename session", [("id", other.id.ulidString), ("title", Self.title)]))
         }
 
-        #expect(try await Self.summary(of: other.id, in: directory).title == Self.title)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).title == Self.title)
         #expect(output.contains(Self.title), "output was: \(output)")
     }
 
@@ -385,7 +380,7 @@ struct SessionsToolChangeTests {
             return callerID
         }
 
-        #expect(try await Self.summary(of: callerID, in: directory).title == Self.title)
+        #expect(try await SessionsToolFixtures.summary(of: callerID, in: directory).title == Self.title)
     }
 
     @Test("rename session with a blank title gives a corrective and keeps the title")
@@ -396,11 +391,12 @@ struct SessionsToolChangeTests {
         let tool = try SessionsTool(directory: directory)
 
         let output = try await Fixtures.asCaller(in: directory) { _ in
-            try await tool.call(arguments: Fixtures.payload("rename session", [("id", other.id.ulidString), ("title", " ")]))
+            try await tool.call(
+                arguments: Fixtures.payload("rename session", [("id", other.id.ulidString), ("title", " ")]))
         }
 
         #expect(output.contains("title"), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).title == Self.title)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).title == Self.title)
     }
 
     // MARK: - archive session
@@ -416,7 +412,7 @@ struct SessionsToolChangeTests {
             try await tool.call(arguments: Fixtures.payload("archive session", [("id", other.id.ulidString)]))
         }
 
-        let archived = try await Self.summary(of: other.id, in: directory)
+        let archived = try await SessionsToolFixtures.summary(of: other.id, in: directory)
         #expect(archived.state == .archived)
         #expect(!archived.isLive)
         #expect(output.contains(other.id.ulidString), "output was: \(output)")
@@ -464,7 +460,7 @@ struct SessionsToolChangeTests {
         let output = try await tool.call(arguments: Fixtures.payload("archive session", [("id", other.id.ulidString)]))
 
         #expect(output.contains("session"), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).state == .idle)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).state == .idle)
     }
 
     // MARK: - The snippet through withSessions
@@ -513,7 +509,7 @@ struct SessionsToolChangeTests {
         }
 
         let report = try RunOutput.decoded(SnippetReport.self, from: output)
-        let changed = try await Self.summary(of: other.id, in: directory)
+        let changed = try await SessionsToolFixtures.summary(of: other.id, in: directory)
         #expect(started.count == 1, "started was: \(report.started)")
         #expect(changed.tags == [Self.reviewTag], "tagged was: \(report.tagged), untagged was: \(report.untagged)")
         #expect(changed.title == Self.title, "renamed was: \(report.renamed)")

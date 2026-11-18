@@ -41,17 +41,6 @@ struct SessionsToolPinTests {
 
     // MARK: - Helpers
 
-    /// The summary of the session `id`.
-    ///
-    /// - Parameters:
-    ///   - id: The session id.
-    ///   - directory: The directory.
-    /// - Returns: The summary.
-    /// - Throws: An error when the directory does not hold the session.
-    private static func summary(of id: ULID, in directory: InMemorySessionDirectory) async throws -> SessionSummary {
-        try #require(try await directory.summary(of: id))
-    }
-
     /// The ids of the Pinned list of the endpoint of `tool`.
     ///
     /// - Parameter tool: The tool.
@@ -77,7 +66,7 @@ struct SessionsToolPinTests {
         }
 
         #expect(output.contains(Self.pinnedWords), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).isPinned)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).isPinned)
         #expect(try await Self.pinnedIDs(of: tool) == [other.id.ulidString])
     }
 
@@ -91,7 +80,7 @@ struct SessionsToolPinTests {
             return callerID
         }
 
-        #expect(try await Self.summary(of: callerID, in: directory).isPinned)
+        #expect(try await SessionsToolFixtures.summary(of: callerID, in: directory).isPinned)
     }
 
     @Test("pin session of an unknown id gives a corrective with the id and listSessions")
@@ -117,7 +106,7 @@ struct SessionsToolPinTests {
         let output = try await tool.call(arguments: Fixtures.payload("pin session", [("id", other.id.ulidString)]))
 
         #expect(output.contains("session"), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).isPinned == false)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).isPinned == false)
     }
 
     // MARK: - unpin session
@@ -134,7 +123,7 @@ struct SessionsToolPinTests {
         }
 
         #expect(output.contains(Self.unpinnedWords), "output was: \(output)")
-        #expect(try await Self.summary(of: other.id, in: directory).isPinned == false)
+        #expect(try await SessionsToolFixtures.summary(of: other.id, in: directory).isPinned == false)
         #expect(try await Self.pinnedIDs(of: tool).isEmpty)
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import FoundationModelsExtras
+import Testing
 import ULID
 
 @testable import FoundationModelsMultitool
@@ -73,6 +74,18 @@ enum SessionsToolFixtures {
             id: id, agentID: agent, agentName: agentName, workingDirectory: folder, title: title, tags: tags,
             kind: kind, state: .idle, parentID: parentID, startedBy: startedBy, origin: .client, createdAt: fixedDate,
             updatedAt: fixedDate, isLive: true, pinnedAt: pinnedAt, lastUsedAt: lastUsedAt)
+    }
+
+    /// The summary of the session `id` in `directory`, which the case expects
+    /// to exist.
+    ///
+    /// - Parameters:
+    ///   - id: The session id.
+    ///   - directory: The directory.
+    /// - Returns: The summary.
+    /// - Throws: An error when the directory does not hold the session.
+    static func summary(of id: ULID, in directory: InMemorySessionDirectory) async throws -> SessionSummary {
+        try #require(try await directory.summary(of: id))
     }
 
     /// The `op` payload of one operation with its fields.

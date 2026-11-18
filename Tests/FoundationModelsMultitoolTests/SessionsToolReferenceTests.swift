@@ -62,17 +62,6 @@ struct SessionsToolReferenceTests {
 
     // MARK: - Helpers
 
-    /// The summary of the session `id`.
-    ///
-    /// - Parameters:
-    ///   - id: The session id.
-    ///   - directory: The directory.
-    /// - Returns: The summary.
-    /// - Throws: An error when the directory does not hold the session.
-    private static func summary(of id: ULID, in directory: InMemorySessionDirectory) async throws -> SessionSummary {
-        try #require(try await directory.summary(of: id))
-    }
-
     /// Calls one operation as the caller of a stub run.
     ///
     /// - Parameters:
@@ -101,7 +90,7 @@ struct SessionsToolReferenceTests {
         _ = try await Self.callAsCaller(
             "rename session", [("id", target.shortID), ("title", Self.newTitle)], in: directory)
 
-        #expect(try await Self.summary(of: target.id, in: directory).title == Self.newTitle)
+        #expect(try await SessionsToolFixtures.summary(of: target.id, in: directory).title == Self.newTitle)
     }
 
     @Test("pin session with @<slug> pins that session")
@@ -112,7 +101,7 @@ struct SessionsToolReferenceTests {
 
         _ = try await Self.callAsCaller("pin session", [("id", "@\(Self.apiSlug)")], in: directory)
 
-        #expect(try await Self.summary(of: target.id, in: directory).isPinned)
+        #expect(try await SessionsToolFixtures.summary(of: target.id, in: directory).isPinned)
     }
 
     @Test("archive session with @<short id> archives that session")
@@ -123,7 +112,7 @@ struct SessionsToolReferenceTests {
 
         _ = try await Self.callAsCaller("archive session", [("id", "@\(target.shortID)")], in: directory)
 
-        #expect(try await Self.summary(of: target.id, in: directory).state == .archived)
+        #expect(try await SessionsToolFixtures.summary(of: target.id, in: directory).state == .archived)
     }
 
     /// The form of a full session id, written from the id.
@@ -166,8 +155,8 @@ struct SessionsToolReferenceTests {
         _ = try await Self.callAsCaller(
             "tag session", [("id", "@\(Self.apiSlug)"), ("tags", [Self.reviewTag])], in: directory)
 
-        #expect(try await Self.summary(of: local.id, in: directory).tags == [Self.reviewTag])
-        #expect(try await Self.summary(of: elsewhere.id, in: directory).tags.isEmpty)
+        #expect(try await SessionsToolFixtures.summary(of: local.id, in: directory).tags == [Self.reviewTag])
+        #expect(try await SessionsToolFixtures.summary(of: elsewhere.id, in: directory).tags.isEmpty)
     }
 
     // MARK: - Refusals
@@ -189,7 +178,7 @@ struct SessionsToolReferenceTests {
         for match in [first, second] {
             #expect(output.contains(match.id.ulidString), "output was: \(output)")
             #expect(output.contains(match.workingDirectory.path), "output was: \(output)")
-            #expect(try await Self.summary(of: match.id, in: directory).title == Self.apiTitle)
+            #expect(try await SessionsToolFixtures.summary(of: match.id, in: directory).title == Self.apiTitle)
         }
     }
 

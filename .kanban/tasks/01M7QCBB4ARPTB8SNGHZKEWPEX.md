@@ -28,6 +28,37 @@ comments:
     - evidence: 10 source/test files plus 1 golden file. Sources/FoundationModelsMultitool/Capabilities/Sessions/{SessionsAddressReader, SessionsToolInput, SessionsToolContext, SessionsToolChangeOperations, SessionsToolOperations, SessionsToolText, SessionsToolText+Messages, SessionsToolText+Changes, SessionsGraphMutations}.swift; Tests/.../SessionsToolReferenceTests.swift (new, 8 tests); Tests/.../SessionsGraphMutationTests.swift (+2 tests); Tests/.../Goldens/sessions.graphql. `swift build` clean. `swift test --filter "SessionsTool|SessionsGraph"`: 197 tests, 1 test bug found and fixed (tags given as a string), then `--filter SessionsToolReferenceTests` 8/8 passed. Full `swift test`: 3034 tests in 271 suites passed, 0 failures.
     - next: review
   timestamp: 2026-11-18T14:56:17.831486+00:00
+- actor: claude-code
+  id: 01m7qjs98vgjaxrg7qqf0bqkhc
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (7e27b7b0): 6 findings (6 confirmed, 3 refuted). SessionsToolChangeOperations.swift:173, :203, :241, :268, :296; SessionsToolReferenceTests.swift:72. All are reuse/reuse.
+    - next: implement the 6 items in the "Review Findings (2026-11-18 08:57)" section. Put the `id` @Guide reference text in one shared constant and use it in each change operation (archive adds only its own sentence). Move `summary(of:in:)` into `SessionsToolFixtures` and delete the three private copies.
+  timestamp: 2026-11-18T15:00:42.907378+00:00
+- actor: claude-code
+  id: 01m7qjst8crfeqp1fe8cq3g3z1
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 9 source files in Capabilities/Sessions, SessionsToolReferenceTests.swift (new), SessionsGraphMutationTests.swift, golden schema; the GraphQL change mutations use the same reader (MT-10 parity)
+    - test: green — swift test, 3034 passed (run in the implement step)
+    - commit: 7e27b7b0
+    - review: findings — SessionsToolChangeOperations.swift:173, :203, :241, :268, :296; SessionsToolReferenceTests.swift:72
+  timestamp: 2026-11-18T15:01:00.300882+00:00
+- actor: claude-code
+  id: 01m7qjzvpje6bkb887eynp7hsw
+  text: |-
+    Review findings fixed.
+    - The `@Guide(description:)` macro of FoundationModels accepts a static constant. Proof: `swift build` is clean, and a temporary probe test encoded `TagSession`, `ArchiveSession` and `CheckSession.generationSchema` to JSON. Each `id` description was the same text as before. I deleted the probe test after the run. Thus there is no conflict.
+    - `SessionsToolText` has 3 new constants: `sessionReference` (the form list, one time), `optionalSessionReference` ("Optional. " + form list + " The default is your session.") and `archivedSessionReference` (form list + the archive sentence). TagSession, UntagSession, RenameSession, PinSession, UnpinSession and ArchiveSession (SessionsToolChangeOperations.swift) and CheckSession (SessionsToolOperations.swift) use them. The tool files have no copy of the form list now. The text that the model sees did not change, so the golden `sessions.graphql` did not change. The GraphQL `id` descriptions have a different text and are not in the scope of the findings.
+    - `SessionsToolFixtures.summary(of:in:)` is the one shared helper (the fixtures file now imports Testing for `#require`). The private copies in SessionsToolChangeTests, SessionsToolPinTests and SessionsToolReferenceTests are deleted, and the calls use the fixture.
+  timestamp: 2026-11-18T15:04:18.386437+00:00
+- actor: claude-code
+  id: 01m7qjzyferc9wfyfv5t8q356k
+  text: |-
+    ### implement — changed
+    - evidence: 7 files. Sources/FoundationModelsMultitool/Capabilities/Sessions/{SessionsToolText, SessionsToolChangeOperations, SessionsToolOperations}.swift; Tests/FoundationModelsMultitoolTests/{Fixtures/SessionsToolFixtures, SessionsToolChangeTests, SessionsToolPinTests, SessionsToolReferenceTests}.swift. `swift build` clean. `swift test --filter "SessionsTool|SessionsGraph"` one run: 198 tests in 11 suites passed, 0 failures, 0 warnings (197 tests plus the temporary probe test, which is deleted now). No golden changed. All 6 findings are checked.
+    - next: review
+  timestamp: 2026-11-18T15:04:21.230625+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
 position_column: doing
@@ -60,3 +91,20 @@ The `id` of `check session`, `rename session`, `pin session`, `unpin session`, `
 - [ ] An ambiguous slug gives the corrective with each match and changes nothing.
 - [ ] A slug of a session that the caller cannot see is not a match.
 - [ ] The existing session tool tests stay green. #sessions #at-sessions
+
+## Review Findings (2026-11-18 08:57)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 11 file(s) reviewed, 5 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:173` `reuse/reuse` — The `id` @Guide text of UntagSession repeats the same block as TagSession, so the copy is repeated instead of shared. Use the shared constant proposed for line 142. Do not keep a separate literal here.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:203` `reuse/reuse` — The `id` @Guide text of RenameSession repeats the same block as TagSession. Use the shared constant proposed for line 142.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:241` `reuse/reuse` — The `id` @Guide text of PinSession repeats the same block as TagSession. Use the shared constant proposed for line 142.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:268` `reuse/reuse` — The `id` @Guide text of UnpinSession repeats the same block as TagSession. Use the shared constant proposed for line 142.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsToolChangeOperations.swift:296` `reuse/reuse` — The @Guide text of the `id` of ArchiveSession is a near-copy of the shared reference wording. It repeats the form list (id, short id, slug, with or without @) by hand, instead of reusing the shared text and adding only its own sentence. Build this description from the shared reference-text constant, then append the sentence that only archive uses ("You can archive any session that you can see.").
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsToolReferenceTests.swift:72` `reuse/reuse` — The new private helper `summary(of:in:)` copies the same helper that already exists in two other test suites. The shared place for it, `SessionsToolFixtures`, does not hold it, so each suite keeps its own copy and the copies can drift. Move `summary(of:in:)` into `SessionsToolFixtures` as one static helper. Call it from this suite, and from the change and pin suites, and delete the three private copies.

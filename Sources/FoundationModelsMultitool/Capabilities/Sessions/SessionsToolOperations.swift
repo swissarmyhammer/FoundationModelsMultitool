@@ -109,7 +109,7 @@ extension ListSessions {
     description: "Give the state, the agent, the folder, the tags and the last summary of a session. It never waits.")
 struct CheckSession {
     /// The session to check: its id, its short id or its slug.
-    @Guide(description: "The session: its id or short id, with or without @, or @ and its slug.")
+    @Guide(description: SessionsToolText.sessionReference)
     var id: String
 }
 

@@ -139,11 +139,7 @@ struct SessionStartArguments: Codable, Sendable {
     description: "Add tags to a session. Gives the tags that the session has after the call.")
 struct TagSession {
     /// The session to tag: its id, its short id or its slug.
-    @Guide(
-        description: """
-            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
-            session.
-            """)
+    @Guide(description: SessionsToolText.optionalSessionReference)
     var id: String?
 
     /// The tags to add.
@@ -170,11 +166,7 @@ extension TagSession {
     description: "Remove tags from a session. Gives the tags that the session has after the call.")
 struct UntagSession {
     /// The session to untag: its id, its short id or its slug.
-    @Guide(
-        description: """
-            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
-            session.
-            """)
+    @Guide(description: SessionsToolText.optionalSessionReference)
     var id: String?
 
     /// The tags to remove.
@@ -200,11 +192,7 @@ extension UntagSession {
 @Operation(verb: "rename", noun: "session", description: "Set the title of a session.")
 struct RenameSession {
     /// The session to rename: its id, its short id or its slug.
-    @Guide(
-        description: """
-            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
-            session.
-            """)
+    @Guide(description: SessionsToolText.optionalSessionReference)
     var id: String?
 
     /// The new title.
@@ -238,11 +226,7 @@ extension RenameSession {
         """)
 struct PinSession {
     /// The session to pin: its id, its short id or its slug.
-    @Guide(
-        description: """
-            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
-            session.
-            """)
+    @Guide(description: SessionsToolText.optionalSessionReference)
     var id: String?
 }
 
@@ -265,11 +249,7 @@ extension PinSession {
     description: "Unpin a session: it goes out of the Pinned list of the user on this Mac.")
 struct UnpinSession {
     /// The session to unpin: its id, its short id or its slug.
-    @Guide(
-        description: """
-            Optional. The session: its id or short id, with or without @, or @ and its slug. The default is your \
-            session.
-            """)
+    @Guide(description: SessionsToolText.optionalSessionReference)
     var id: String?
 }
 
@@ -293,11 +273,7 @@ extension UnpinSession {
         """)
 struct ArchiveSession {
     /// The session to archive: its id, its short id or its slug.
-    @Guide(
-        description: """
-            The session: its id or short id, with or without @, or @ and its slug. You can archive any session \
-            that you can see.
-            """)
+    @Guide(description: SessionsToolText.archivedSessionReference)
     var id: String
 }
 
