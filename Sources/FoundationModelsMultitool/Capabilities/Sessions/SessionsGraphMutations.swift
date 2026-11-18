@@ -1,7 +1,7 @@
 // The mutations of the `sessions` GraphQL endpoint (MT-10, EXTRAS-9 rule 7):
 // `startSession`, `tagSession`, `untagSession`, `renameSession`,
-// `pinSession`, `unpinSession`, `archiveSession`, `sendMessage` and
-// `replyMessage`.
+// `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
+// `sendMessage` and `replyMessage`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, and calls the work of that op in ``SessionsToolContext``:
@@ -14,7 +14,8 @@
 //
 // Who acts (section 11.3): a client acts as its user, `user(clientID)`, and a
 // call with no viewer acts as the agent of the caller session, as the tool
-// does. An external client archives only the sessions that it can see; it
+// does. An external client archives and unarchives only the sessions that it
+// can see; it
 // tags, untags, renames, pins, unpins, sends and replies only to the sessions
 // that it owns;
 // and it cannot start a session.
@@ -62,6 +63,9 @@ struct SessionsGraphMutation: Sendable {
     /// `archiveSession`.
     static let archive = Self(ArchiveSession.self, adding: sessionIDAliases)
 
+    /// `unarchiveSession` (D204).
+    static let unarchive = Self(UnarchiveSession.self, adding: sessionIDAliases)
+
     /// `sendMessage`: its input has the source session, which the op does
     /// not have (D199 (f)).
     static let send = Self(SendMessage.self, adding: ["fromSession": ["fromSessionId", "from_session"]])
@@ -70,7 +74,7 @@ struct SessionsGraphMutation: Sendable {
     static let reply = Self(ReplyMessage.self)
 
     /// Each mutation of the endpoint.
-    static let all = [start, tag, untag, rename, pin, unpin, archive, send, reply]
+    static let all = [start, tag, untag, rename, pin, unpin, archive, unarchive, send, reply]
 
     /// The tool op of the mutation. The module name tells it from the
     /// `OperationDefinition` of GraphQL.
@@ -228,15 +232,18 @@ extension SessionsGraphContext {
     /// call of the agent looks first in the folder of its caller session; a
     /// client looks in all the sessions at once.
     ///
-    /// - Parameter id: The `id` argument.
+    /// - Parameters:
+    ///   - id: The `id` argument.
+    ///   - scope: The sessions that a short id and a slug look at. The
+    ///     default is the sessions that are not archived.
     /// - Returns: The session id. A full id is not checked against the
     ///   viewer: the caller checks it.
     /// - Throws: ``SessionsRefusal`` for a reference that names no session
     ///   that the viewer can see or more than one session, and each error of
     ///   the directory.
-    func referencedSession(_ id: ToolkitID) async throws -> ULID {
+    func referencedSession(_ id: ToolkitID, scope: SessionsReferenceScope = .unarchived) async throws -> ULID {
         let callerID = sessions.viewer == nil ? actions.callerID : nil
-        return try await sessions.sessionID(referencedBy: id.text, callerID: callerID)
+        return try await sessions.sessionID(referencedBy: id.text, callerID: callerID, scope: scope)
     }
 
     /// The summary of a session that the viewer must own: an external client
@@ -483,6 +490,29 @@ extension SessionsGraphResolver {
         }
     }
 
+    /// Resolves `Mutation.unarchiveSession` (D204): any archived session that
+    /// the viewer can see, as `archiveSession`. A short id and a slug of the
+    /// `id` match only the archived sessions, as `unarchive session` reads
+    /// them. A session that is not archived gives the coded error
+    /// `NOT_ARCHIVED`.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call.
+    ///   - arguments: The input object.
+    /// - Returns: The unarchived session.
+    /// - Throws: The coded error of a refusal, and each other error of the
+    ///   directory.
+    func unarchiveSession(
+        context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphUnarchiveInput>
+    ) async throws -> SessionsGraphSession {
+        try await Self.coding {
+            let unarchiver = try context.actor(of: .unarchive)
+            let target = try await context.referencedSession(arguments.input.id, scope: .archived)
+            try await context.requireVisible(target)
+            return SessionsGraphSession(try await context.actions.unarchive(session: target, by: unarchiver))
+        }
+    }
+
     /// Resolves `Mutation.sendMessage`. The message of a client is input of
     /// its user; the directory applies the same rules as for the tool.
     ///
@@ -651,6 +681,14 @@ extension SessionsGraphAPI {
     /// The text of the description of the `id` of an input object.
     private static let idDescription = "\(referenceDescription) An id of a session that you cannot see is NOT_FOUND."
 
+    /// The text of the description of the `id` of the input of
+    /// `unarchiveSession`: a short id and a slug name only an archived
+    /// session (D204 (c)).
+    private static let archivedIDDescription =
+        "The archived session: its id in any letter case or its short id, with or without @, or @ and its slug. A "
+        + "short id or a slug names only an archived session that you can see. An id of a session that you cannot "
+        + "see is NOT_FOUND."
+
     /// The text of the description of the `id` of an input object whose
     /// session the viewer must own (section 11.3).
     private static let ownedIDDescription =
@@ -776,6 +814,16 @@ extension SessionsGraphAPI {
         .description("The session to archive.")
     }
 
+    /// The `UnarchiveSessionInput` input object.
+    ///
+    /// - Returns: The input object.
+    static func unarchiveInput() -> SchemaType {
+        Input(SessionsGraphUnarchiveInput.self, as: SessionsGraphMutation.unarchive.inputName) {
+            InputField("id", at: \.id).description(archivedIDDescription)
+        }
+        .description("The archived session to unarchive.")
+    }
+
     /// The `SendMessageInput` input object.
     ///
     /// - Returns: The input object.
@@ -842,6 +890,11 @@ extension SessionsGraphAPI {
                 .archive, at: SessionsGraphResolver.archiveSession, input: "The session.",
                 description: "Archives a session: stops its turn and ends its work. It takes no more messages, and its "
                     + "transcript stays."),
+            mutationField(
+                .unarchive, at: SessionsGraphResolver.unarchiveSession, input: "The archived session.",
+                description: "Unarchives a session: it shows in the lists again. It stays a recorded session until a "
+                    + "client opens it, and its transcript and its inbox are as they were. A session that is not "
+                    + "archived gives NOT_ARCHIVED."),
             mutationField(
                 .send, at: SessionsGraphResolver.sendMessage, input: "The address and the text.",
                 description: "Sends a message from you to a session, an agent, a folder or a tag. "

@@ -1,15 +1,15 @@
 // The change operations of the `sessions` tool: `start session`,
 // `tag session`, `untag session`, `rename session`, `pin session`,
-// `unpin session` and `archive session` (session.md section 8, D68, D72,
-// D90, D100, D118).
+// `unpin session`, `archive session` and `unarchive session` (session.md
+// section 8, D68, D72, D90, D100, D118, D204).
 //
 // Each operation acts for the caller session: a call with no caller gives a
 // corrective, as section 8.2 says. Each answer is plain text, and each error
 // is a corrective text, never a thrown model error:
 // ``SessionsToolContext/answer(asCallerOf:_:)`` catches each error and gives
 // ``SessionsToolText/corrective(for:)``. A `noLauncher` error of the directory
-// is such a corrective, and so is the archive of a session that is archived
-// already.
+// is such a corrective, and so are the archive of a session that is archived
+// already and the unarchive of a session that is not archived.
 //
 // The work of each change is in the extension of ``SessionsToolContext`` at
 // the end of this file, which the mutations of the `sessions` endpoint call
@@ -293,6 +293,41 @@ extension ArchiveSession {
     }
 }
 
+/// Shows an archived session in the lists again (`unarchive session`,
+/// D204 (c)).
+@Generable
+@Operation(
+    verb: "unarchive", noun: "session",
+    description: """
+        Unarchive a session: show it again in the lists. It stays a recorded session until a client opens it. \
+        Its transcript and its inbox are as they were.
+        """)
+struct UnarchiveSession {
+    /// The archived session: its id, or its short id or its slug, which
+    /// name only an archived session.
+    @Guide(description: SessionsToolText.unarchivedSessionReference)
+    var id: String
+}
+
+extension UnarchiveSession {
+    /// Unarchives the session `id`, for the caller session. A short id and
+    /// a slug of the `id` match only the archived sessions, first in the
+    /// folder of the caller, then in all the sessions.
+    ///
+    /// - Parameter context: The shared context of the tool.
+    /// - Returns: The session, its agent, its folder and the unarchive
+    ///   sentence. A corrective for a call with no caller, a session that is
+    ///   not archived, an id that names no archived session or more than one
+    ///   archived session, or another error of the directory.
+    func execute(in context: SessionsToolContext) async throws -> String {
+        await context.answer(asCallerOf: Self.opString) { callerID in
+            let sessionID = try await context.sessions.sessionID(
+                referencedBy: id, callerID: callerID, scope: .archived)
+            return SessionsToolText.unarchived(try await context.unarchive(session: sessionID, by: .session(callerID)))
+        }
+    }
+}
+
 extension SessionsToolContext {
     /// Starts a new root session, for `start session` and the `startSession`
     /// mutation.
@@ -394,6 +429,23 @@ extension SessionsToolContext {
             throw SessionsRefusal(.archivedSession, SessionsToolText.archivedAlready(target))
         }
         return try await directory.archive(target, by: archiver)
+    }
+
+    /// Unarchives a session, for `unarchive session` and the
+    /// `unarchiveSession` mutation (D204).
+    ///
+    /// - Parameters:
+    ///   - target: The session.
+    ///   - unarchiver: The session or the user that unarchives it.
+    /// - Returns: The unarchived session.
+    /// - Throws: ``SessionsRefusal`` for a session that is not archived,
+    ///   `SessionDirectoryError.unknownSession` when no session has the id,
+    ///   and each error of `SessionDirectory.unarchive(_:by:)`.
+    func unarchive(session target: ULID, by unarchiver: SessionMessageSender) async throws -> SessionSummary {
+        guard try await existingSummary(of: target).state == .archived else {
+            throw SessionsRefusal(.notArchived, SessionsToolText.notArchived(target))
+        }
+        return try await directory.unarchive(target, by: unarchiver)
     }
 
     /// Changes the tags of the session `id`, or of the caller session, for

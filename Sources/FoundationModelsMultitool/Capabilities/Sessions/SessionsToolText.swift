@@ -31,6 +31,13 @@ enum SessionsToolText {
     /// The `id` guide of `archive session`.
     static let archivedSessionReference = sessionReference + " You can archive any session that you can see."
 
+    /// The `id` guide of `unarchive session`: a short id and a slug name
+    /// only an archived session (D204 (c)).
+    static let unarchivedSessionReference = """
+        The archived session: its id or short id, with or without @, or @ and its slug. A short id and a slug \
+        name only an archived session that you can see.
+        """
+
     /// The name of the `kind` argument of `list sessions`.
     static let kindParameter = "kind"
 
@@ -303,6 +310,21 @@ enum SessionsToolText {
         """
         "\(text)" names no session that you can see. Give the id or the short id of a session, with or without @, \
         or @ and its slug. An archived session has only its id. \(findSessionSentence)
+        """
+    }
+
+    /// The corrective of the `id` of `unarchive session` that names no
+    /// archived session that the caller can see (D204 (c)). The operation
+    /// changes nothing.
+    ///
+    /// - Parameter text: The `id` as written.
+    /// - Returns: The corrective, which names each form of a reference and
+    ///   `listSessions`.
+    static func notAnArchivedSession(_ text: String) -> String {
+        """
+        "\(text)" names no archived session that you can see. Give the id or the short id of an archived session, \
+        with or without @, or @ and its slug. Call \(listSessionsVerb) (op `\(ListSessions.opString)`) with the \
+        state archived to find one.
         """
     }
 

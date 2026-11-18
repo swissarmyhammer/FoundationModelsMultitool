@@ -356,6 +356,14 @@ input ArchiveSessionInput {
   id: ID!
 }
 
+"""The archived session to unarchive."""
+input UnarchiveSessionInput {
+  """
+  The archived session: its id in any letter case or its short id, with or without @, or @ and its slug. A short id or a slug names only an archived session that you can see. An id of a session that you cannot see is NOT_FOUND.
+  """
+  id: ID!
+}
+
 """A message and its address."""
 input SendMessageInput {
   """
@@ -519,6 +527,14 @@ type Mutation {
   archiveSession(
     """The session."""
     input: ArchiveSessionInput!
+  ): Session!
+
+  """
+  Unarchives a session: it shows in the lists again. It stays a recorded session until a client opens it, and its transcript and its inbox are as they were. A session that is not archived gives NOT_ARCHIVED.
+  """
+  unarchiveSession(
+    """The archived session."""
+    input: UnarchiveSessionInput!
   ): Session!
 
   """

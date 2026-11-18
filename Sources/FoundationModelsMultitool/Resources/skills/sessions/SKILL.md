@@ -123,6 +123,7 @@ Run the API tests again.
 | Pin or unpin a session | `{"op": "pin session", "id": "v2w4abc"}`, `{"op": "unpin session", "id": "v2w4abc"}` |
 | Tag or untag a session | `{"op": "tag session", "id": "v2w4abc", "tags": ["release"]}`, `{"op": "untag session", "id": "v2w4abc", "tags": ["release"]}` |
 | Archive a session | `{"op": "archive session", "id": "v2w4abc"}` |
+| Unarchive a session | `{"op": "unarchive session", "id": "@build-fix"}` |
 | Export a session as a Markdown file | `{"op": "export session", "id": "v2w4abc", "format": "markdown", "thoughts": false, "path": "notes/api-tests.md", "replace": true}` |
 
 - The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.

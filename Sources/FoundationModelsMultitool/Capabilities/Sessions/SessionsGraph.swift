@@ -41,7 +41,8 @@ import Synchronization
 /// Its mutations (EXTRAS-9 rule 7) have the names of the code-mode verbs of
 /// the tool ops, and share their work and their correctives:
 /// `startSession`, `tagSession`, `untagSession`, `renameSession`,
-/// `archiveSession`, `sendMessage` and `replyMessage`, each with one `input`.
+/// `archiveSession`, `unarchiveSession`, `sendMessage` and `replyMessage`,
+/// each with one `input`.
 /// A client acts as its user, and a call with no viewer acts as the caller
 /// session. A start from a client opens a tab only on that client (section
 /// 11.5, D90).

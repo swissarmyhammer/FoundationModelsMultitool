@@ -62,6 +62,9 @@ struct SessionsRefusal: CodedError {
         /// The session is archived already.
         case archivedSession = "ARCHIVED_SESSION"
 
+        /// The session of an unarchive is not archived (D204 (c)).
+        case notArchived = "NOT_ARCHIVED"
+
         /// A reply answers a message from the user, not from a session.
         case userMessage = "USER_MESSAGE"
 

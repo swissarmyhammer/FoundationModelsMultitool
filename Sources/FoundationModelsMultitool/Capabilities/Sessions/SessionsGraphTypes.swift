@@ -466,6 +466,12 @@ struct SessionsGraphArchiveInput: Codable, Sendable {
     let id: ToolkitID
 }
 
+/// The `UnarchiveSessionInput` input object of `Mutation.unarchiveSession`.
+struct SessionsGraphUnarchiveInput: Codable, Sendable {
+    /// The archived session to unarchive, in any letter case.
+    let id: ToolkitID
+}
+
 /// The `SendMessageInput` input object of `Mutation.sendMessage`.
 struct SessionsGraphSendInput: Codable, Sendable {
     /// The address of the message, in a form of session.md section 9.

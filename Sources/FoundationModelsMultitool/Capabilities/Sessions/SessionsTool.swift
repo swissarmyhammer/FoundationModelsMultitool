@@ -17,18 +17,19 @@ import Operations
 /// The `sessions` tool: find the sessions of the server, check one of them,
 /// read the messages that other sessions sent to the caller session, send a
 /// message and reply to one, start a new session, tag, untag, rename, pin
-/// and unpin a session, archive a session, and export a session as Markdown.
+/// and unpin a session, archive and unarchive a session, and export a session
+/// as Markdown.
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
 /// `untag session`, `rename session`, `pin session`, `unpin session`,
-/// `archive session` and `export session`. In code mode each
-/// one is a verb of `tools.sessions`: `listSessions`, `checkSession`,
+/// `archive session`, `unarchive session` and `export session`. In code mode
+/// each one is a verb of `tools.sessions`: `listSessions`, `checkSession`,
 /// `readInbox`, `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
 /// `untagSession`, `renameSession`, `pinSession`, `unpinSession`,
-/// `archiveSession` and `exportSession`. Each answer is plain
-/// text, and each error is a corrective text the model reads in the same
-/// turn, never a thrown error.
+/// `archiveSession`, `unarchiveSession` and `exportSession`. Each answer is
+/// plain text, and each error is a corrective text the model reads in the
+/// same turn, never a thrown error.
 ///
 /// The caller session is `ToolContext.current?.sessionID`. A call with no
 /// `ToolContext` reads the directory, but each operation that acts for the
@@ -97,6 +98,7 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(PinSession.self),
                 AnyOperation(UnpinSession.self),
                 AnyOperation(ArchiveSession.self),
+                AnyOperation(UnarchiveSession.self),
                 AnyOperation(ExportSession.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))

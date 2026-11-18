@@ -322,6 +322,12 @@ struct SessionsGraphMutationTests {
             payload: { scene in Fixtures.payload("archive session", [("id", scene.target.ulidString)]) },
             mutation: { scene in "mutation { archiveSession(input: {id: \"\(scene.target.ulidString)\"}) { id } }" }),
         ParityCase(
+            op: "unarchive session",
+            payload: { scene in Fixtures.payload("unarchive session", [("id", scene.archived.ulidString)]) },
+            mutation: { scene in
+                "mutation { unarchiveSession(input: {id: \"\(scene.archived.ulidString)\"}) { id } }"
+            }),
+        ParityCase(
             op: "send message",
             payload: { scene in
                 Fixtures.payload("send message", [("to", scene.target.ulidString), ("message", messageText)])
@@ -436,6 +442,12 @@ struct SessionsGraphMutationTests {
             payload: { scene in Fixtures.payload("archive session", [("id", scene.archived.ulidString)]) },
             mutation: { scene in "mutation { archiveSession(input: {id: \"\(scene.archived.ulidString)\"}) { id } }" }),
         RefusalCase(
+            code: "NOT_ARCHIVED", fault: "an unarchive of a session that is not archived",
+            payload: { scene in Fixtures.payload("unarchive session", [("id", scene.target.ulidString)]) },
+            mutation: { scene in
+                "mutation { unarchiveSession(input: {id: \"\(scene.target.ulidString)\"}) { id } }"
+            }),
+        RefusalCase(
             code: "USER_MESSAGE", fault: "a reply to a message from the user",
             payload: { scene in
                 Fixtures.payload("reply message", [("inReplyTo", "\(scene.fromUser)"), ("message", replyText)])
@@ -501,6 +513,47 @@ struct SessionsGraphMutationTests {
         }
 
         #expect(reply.codes == [Self.notFound])
+    }
+
+    // MARK: - Unarchive
+
+    /// The state that the endpoint gives for a session that is idle.
+    private static let idleState = "IDLE"
+
+    /// The `unarchiveSession` mutation of one session, with the state of the
+    /// session after the call.
+    ///
+    /// - Parameter id: The session.
+    /// - Returns: The mutation document.
+    private static func unarchiveMutation(of id: ULID) -> String {
+        "mutation { unarchiveSession(input: {id: \"\(id.ulidString)\"}) { id state } }"
+    }
+
+    /// `unarchiveSession` gives the session, which is idle after the call.
+    @Test("unarchiveSession gives the session with the state IDLE")
+    func unarchiveSessionGivesTheIdleSession() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+
+        let reply = try await Self.inScenes([directory]) { scenes in
+            try await Self.run(Self.unarchiveMutation(of: scenes[0].archived), viewer: Self.deviceViewer, on: directory)
+        }
+
+        #expect(try reply.object("unarchiveSession")["state"] as? String == Self.idleState)
+    }
+
+    /// A second `unarchiveSession` of the same session gives the coded error
+    /// `NOT_ARCHIVED`: it is not silent, so a client knows the state.
+    @Test("a second unarchiveSession of a session gives NOT_ARCHIVED")
+    func aSecondUnarchiveSessionGivesNotArchived() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+
+        let reply = try await Self.inScenes([directory]) { scenes in
+            let mutation = Self.unarchiveMutation(of: scenes[0].archived)
+            _ = try await Self.run(mutation, viewer: Self.deviceViewer, on: directory)
+            return try await Self.run(mutation, viewer: Self.deviceViewer, on: directory)
+        }
+
+        #expect(reply.codes == ["NOT_ARCHIVED"])
     }
 
     // MARK: - Who acts
@@ -694,6 +747,9 @@ struct SessionsGraphMutationTests {
         },
         HiddenCase(action: "archive a hidden session") { scene in
             "mutation { archiveSession(input: {id: \"\(scene.stranger.ulidString)\"}) { id } }"
+        },
+        HiddenCase(action: "unarchive a hidden session") { scene in
+            "mutation { unarchiveSession(input: {id: \"\(scene.stranger.ulidString)\"}) { id } }"
         },
         HiddenCase(action: "send to a hidden session") { scene in
             "mutation { sendMessage(input: {to: \"\(scene.stranger.ulidString)\", message: \"\(messageText)\"}) "
@@ -1266,6 +1322,9 @@ struct SessionsGraphMutationTests {
         AliasCase(
             verb: "archive", mutation: "archiveSession", input: { scene in "{id: \"\(scene.target.ulidString)\"}" },
             selection: "id"),
+        AliasCase(
+            verb: "unarchive", mutation: "unarchiveSession",
+            input: { scene in "{id: \"\(scene.archived.ulidString)\"}" }, selection: "id"),
         AliasCase(
             verb: "send", mutation: "sendMessage",
             input: { scene in "{to: \"\(scene.target.ulidString)\", message: \"\(messageText)\"}" },

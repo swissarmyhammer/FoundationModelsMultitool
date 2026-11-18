@@ -323,6 +323,35 @@ struct SessionsGraphChangesTests {
             ])
     }
 
+    /// The `unarchiveSession` mutation gives the changes of the unarchive of
+    /// the directory: each change has one `changed` entry, the target, and
+    /// the next change is the change of the marker.
+    @Test("the unarchiveSession mutation gives one changed entry of its session in each change")
+    func theUnarchiveMutationGivesOneChangedEntry() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary()
+        let marker = Fixtures.summary()
+        directory.register(target)
+        directory.register(marker)
+        try await Self.archive([target], in: directory)
+        let graph = SessionsGraph.endpoint(of: directory)
+        let before = try await Self.cursor(of: graph)
+        var subscription = try await Self.subscribe(to: graph, after: before)
+
+        let reply = try await Self.run(
+            "mutation { unarchiveSession(input: {id: \"\(target.id.ulidString)\"}) { id } }", on: graph)
+        try await Self.mark(marker, in: directory)
+        var changes: [Change] = []
+        for _ in 0...Self.changesOfAnUnarchive {
+            changes.append(try await subscription.nextChange())
+        }
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(
+            changes.map(\.changed)
+                == Array(repeating: [target.id.ulidString], count: Self.changesOfAnUnarchive) + [[marker.id.ulidString]])
+    }
+
     /// An external client gets the changes of an unarchive only for a
     /// session that it can see: the unarchive of a stranger is not sent to
     /// it, while a device of the user gets both unarchives.

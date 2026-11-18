@@ -21,6 +21,11 @@
 // the reader reads `@agent:/path` as `@agent` with the lookup in `/path`
 // first, reads a folder path as the newest root session in the folder, and
 // reports each rewrite. `#tag` names a group of sessions, not one target.
+//
+// An archived session matches only its full id, with one exception: the `id`
+// of `unarchive session` reads a short id and a slug only among the archived
+// sessions (D204 (c)). ``SessionsReferenceScope`` tells the reader which
+// sessions a short id and a slug look at.
 
 import Foundation
 import FoundationModelsExtras
@@ -79,6 +84,93 @@ struct SessionsAddressRewrite: Sendable, Equatable {
     }
 }
 
+/// The sessions among which a short id and a slug of a session reference
+/// look (D199 (d), D204 (c)). A full id names its session in each scope.
+enum SessionsReferenceScope: Sendable {
+    /// The sessions that are not archived: the rule of `send message` and of
+    /// each session operation but `unarchive session`.
+    case unarchived
+
+    /// Only the archived sessions: the rule of `unarchive session`.
+    case archived
+
+    /// The directory query of the candidates of the scope: each session that
+    /// the directory holds, the recorded sessions too.
+    var query: SessionQuery {
+        switch self {
+        case .unarchived:
+            SessionQuery(includesRecorded: true, limit: SessionsVisibility.unboundedLimit)
+        case .archived:
+            SessionQuery(state: .archived, includesRecorded: true, limit: SessionsVisibility.unboundedLimit)
+        }
+    }
+
+    /// Resolves a reference among the candidates of the scope, with
+    /// `SessionReference.resolve` of Extras.
+    ///
+    /// `SessionReference.resolve` never matches an archived session. For the
+    /// archived scope, the reader thus gives it each candidate with the state
+    /// `idle`, and then gives each match as the directory gave it. Thus the
+    /// order of the lookup (the id, the short id, then the slug; the lookup
+    /// folder, then all the sessions) is the same in each scope.
+    ///
+    /// - Parameters:
+    ///   - reference: The reference, as written.
+    ///   - lookupFolder: The folder in which a short id or a slug looks
+    ///     first, or `nil`.
+    ///   - candidates: The sessions of the scope that the viewer can see.
+    /// - Returns: The resolution.
+    func resolve(
+        _ reference: String, lookupFolder: URL?, among candidates: [SessionSummary]
+    ) -> SessionReferenceResolution {
+        switch self {
+        case .unarchived:
+            return SessionReference.resolve(reference, sourceFolder: lookupFolder, among: candidates)
+        case .archived:
+            let matchable = candidates.map { candidate in
+                var matchable = candidate
+                matchable.state = .idle
+                return matchable
+            }
+            let resolution = SessionReference.resolve(reference, sourceFolder: lookupFolder, among: matchable)
+            return Self.resolution(resolution, restoring: candidates)
+        }
+    }
+
+    /// The corrective of a reference that names no session of the scope.
+    ///
+    /// - Parameter text: The reference, as written.
+    /// - Returns: The corrective.
+    func noMatch(_ text: String) -> String {
+        switch self {
+        case .unarchived: SessionsToolText.notASessionID(text)
+        case .archived: SessionsToolText.notAnArchivedSession(text)
+        }
+    }
+
+    /// A resolution with each match replaced by the candidate that has its
+    /// id.
+    ///
+    /// - Parameters:
+    ///   - resolution: The resolution over the changed candidates.
+    ///   - candidates: The candidates as the directory gave them.
+    /// - Returns: The resolution over `candidates`.
+    private static func resolution(
+        _ resolution: SessionReferenceResolution, restoring candidates: [SessionSummary]
+    ) -> SessionReferenceResolution {
+        let byID = Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let restore = { (match: SessionSummary) in byID[match.id, default: match] }
+        switch resolution {
+        case .session(let match):
+            return .session(restore(match))
+        case .ambiguous(let matches):
+            return .ambiguous(matches.map(restore))
+        case .none:
+            return .none
+        }
+    }
+}
+
 extension SessionsVisibility {
     /// Reads a message address from `sender` (D199 (c) to (e)).
     ///
@@ -130,33 +222,37 @@ extension SessionsVisibility {
     ///
     /// A full id gives its id at once, thus an archived session, which the
     /// resolver never matches, is still found by its id. A short id and a
-    /// slug go through the resolver of `send message`, over the sessions
-    /// that the viewer can see. A text with no `@` names a session only by
-    /// its short id. The reader never starts an agent.
+    /// slug go through the resolver of `send message`, over the sessions of
+    /// `scope` that the viewer can see. A text with no `@` names a session
+    /// only by its short id. The reader never starts an agent.
     ///
     /// - Parameters:
     ///   - text: The `id` as written.
     ///   - lookupFolder: The folder in which a short id or a slug looks
     ///     first, or `nil` to look in all the sessions at once.
+    ///   - scope: The sessions that a short id and a slug look at. The
+    ///     default is the sessions that are not archived.
     /// - Returns: The session id.
     /// - Throws: ``SessionsRefusal`` for a reference that names more than one
-    ///   session, and for a reference that names no session that the viewer
-    ///   can see; each error of the directory.
-    func sessionID(referencedBy text: String, lookupFolder: URL?) async throws -> ULID {
+    ///   session, and for a reference that names no session of `scope` that
+    ///   the viewer can see; each error of the directory.
+    func sessionID(
+        referencedBy text: String, lookupFolder: URL?, scope: SessionsReferenceScope = .unarchived
+    ) async throws -> ULID {
         if let id = SessionsToolInput.fullSessionID(text) {
             return id
         }
         let resolution =
             SessionsToolInput.isAtReference(text)
-            ? try await resolution(of: text, lookupFolder: lookupFolder)
-            : try await shortIDResolution(of: text, lookupFolder: lookupFolder)
+            ? try await resolution(of: text, lookupFolder: lookupFolder, scope: scope)
+            : try await shortIDResolution(of: text, lookupFolder: lookupFolder, scope: scope)
         switch resolution {
         case .session(let summary):
             return summary.id
         case .ambiguous(let matches):
             throw Self.ambiguity(of: text, among: matches, outcome: SessionsToolText.notChangedSentence)
         case .none:
-            throw SessionsRefusal(.invalidSessionID, SessionsToolText.notASessionID(text))
+            throw SessionsRefusal(.invalidSessionID, scope.noMatch(text))
         }
     }
 
@@ -167,14 +263,18 @@ extension SessionsVisibility {
     ///   - text: The `id` as written.
     ///   - callerID: The caller session, or `nil` for a call with no caller
     ///     session: the lookup is then in all the sessions at once.
+    ///   - scope: The sessions that a short id and a slug look at. The
+    ///     default is the sessions that are not archived.
     /// - Returns: The session id.
-    /// - Throws: What ``sessionID(referencedBy:lookupFolder:)`` throws.
-    func sessionID(referencedBy text: String, callerID: ULID?) async throws -> ULID {
+    /// - Throws: What ``sessionID(referencedBy:lookupFolder:scope:)`` throws.
+    func sessionID(
+        referencedBy text: String, callerID: ULID?, scope: SessionsReferenceScope = .unarchived
+    ) async throws -> ULID {
         guard let callerID else {
-            return try await sessionID(referencedBy: text, lookupFolder: nil)
+            return try await sessionID(referencedBy: text, lookupFolder: nil, scope: scope)
         }
         let lookupFolder = try await workingFolder(of: .session(callerID))
-        return try await sessionID(referencedBy: text, lookupFolder: lookupFolder)
+        return try await sessionID(referencedBy: text, lookupFolder: lookupFolder, scope: scope)
     }
 
     /// The one session that a reference names, among the sessions that the
@@ -200,17 +300,21 @@ extension SessionsVisibility {
     }
 
     /// The resolution of a reference by `SessionReference.resolve`, over each
-    /// session that the viewer can see, the recorded sessions too.
+    /// session of `scope` that the viewer can see, the recorded sessions too.
     ///
     /// - Parameters:
     ///   - reference: The reference, as written.
     ///   - lookupFolder: The folder in which a short id or a slug looks
     ///     first, or `nil`.
+    ///   - scope: The sessions that a short id and a slug look at. The
+    ///     default is the sessions that are not archived.
     /// - Returns: The resolution.
     /// - Throws: Each error of the directory.
-    func resolution(of reference: String, lookupFolder: URL?) async throws -> SessionReferenceResolution {
-        let candidates = try await sessions(matching: SessionQuery(includesRecorded: true, limit: Self.unboundedLimit))
-        return SessionReference.resolve(reference, sourceFolder: lookupFolder, among: candidates)
+    func resolution(
+        of reference: String, lookupFolder: URL?, scope: SessionsReferenceScope = .unarchived
+    ) async throws -> SessionReferenceResolution {
+        let candidates = try await sessions(matching: scope.query)
+        return scope.resolve(reference, lookupFolder: lookupFolder, among: candidates)
     }
 
     /// The lookup folder of a short id and of a slug: `sourceFolder`, else
@@ -289,11 +393,15 @@ extension SessionsVisibility {
     ///   - text: The text, with any space around it.
     ///   - lookupFolder: The folder in which the lookup looks first, or
     ///     `nil`.
+    ///   - scope: The sessions that the short id looks at. The default is
+    ///     the sessions that are not archived.
     /// - Returns: The resolution.
     /// - Throws: Each error of the directory.
-    private func shortIDResolution(of text: String, lookupFolder: URL?) async throws -> SessionReferenceResolution {
+    private func shortIDResolution(
+        of text: String, lookupFolder: URL?, scope: SessionsReferenceScope = .unarchived
+    ) async throws -> SessionReferenceResolution {
         let key = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch try await resolution(of: text, lookupFolder: lookupFolder) {
+        switch try await resolution(of: text, lookupFolder: lookupFolder, scope: scope) {
         case .session(let summary) where summary.shortID == key:
             return .session(summary)
         case .ambiguous(let matches) where matches.allSatisfy({ $0.shortID == key }):

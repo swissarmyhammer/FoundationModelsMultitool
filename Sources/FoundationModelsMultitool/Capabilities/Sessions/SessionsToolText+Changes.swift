@@ -1,6 +1,7 @@
 // The text of the change operations of the `sessions` tool: the answers of
 // `start session`, `tag session`, `untag session`, `rename session` and
-// `archive session`, and their correctives (session.md section 8.2).
+// `archive session` and `unarchive session`, and their correctives
+// (session.md section 8.2, D204).
 
 import FoundationModelsExtras
 import ULID
@@ -17,6 +18,12 @@ extension SessionsToolText {
 
     /// The sentence of the answer of `archive session`.
     static let archiveSentence = "The session is archived. Its work stopped, and it takes no more messages."
+
+    /// The sentence of the answer of `unarchive session` (D204 (d)).
+    static let unarchiveSentence = """
+        The session is unarchived: it shows in the lists again. It is a recorded session until a client opens it, \
+        and its transcript and its inbox are as they were.
+        """
 
     /// The sentence of the corrective of a session operation whose `id` names
     /// more than one session.
@@ -90,6 +97,24 @@ extension SessionsToolText {
         Session \(id.ulidString) is archived already: it does no work and takes no messages. \
         To go on with its work, call \(startSessionVerb) to start a new session.
         """
+    }
+
+    /// The answer of `unarchive session`: the session, its agent and its
+    /// folder, then ``unarchiveSentence``.
+    ///
+    /// - Parameter summary: The unarchived session.
+    /// - Returns: The answer.
+    static func unarchived(_ summary: SessionSummary) -> String {
+        "Unarchived session \(identity(of: summary)). \(unarchiveSentence)"
+    }
+
+    /// The corrective of `unarchive session` for a session that is not
+    /// archived (D204 (c)): the call changes nothing.
+    ///
+    /// - Parameter id: The session.
+    /// - Returns: The corrective.
+    static func notArchived(_ id: ULID) -> String {
+        "Session \(id.ulidString) is not archived: it shows in the lists already. \(notChangedSentence)"
     }
 
     /// The corrective of a text argument that holds only space.
