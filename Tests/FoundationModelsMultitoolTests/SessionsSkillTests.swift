@@ -112,18 +112,19 @@ import Testing
     ///   - descriptors: The operations of the tool.
     /// - Returns: A text that names the example and its problem, or `nil`.
     private static func problem(of example: String, among descriptors: [OperationDescriptor]) -> String? {
-        let object = try? JSONSerialization.jsonObject(with: Data(example.utf8))
-        guard let fields = object as? [String: Any] else {
+        let fields = (try? JSONSerialization.jsonObject(with: Data(example.utf8))) as? [String: Any]
+        let op = fields?[opKey] as? String
+        let descriptor = descriptors.first { $0.opString == op }
+        switch (fields, descriptor) {
+        case (nil, _):
             return "\(example): not a JSON object"
-        }
-        guard let op = fields[opKey] as? String,
-            let descriptor = descriptors.first(where: { $0.opString == op })
-        else {
+        case (_?, nil):
             return "\(example): names no operation of the tool"
+        case (let fields?, let descriptor?):
+            let known = Set(descriptor.parameters.flatMap { [$0.name] + $0.aliases })
+            let unknown = fields.keys.filter { $0 != opKey && !known.contains($0) }.sorted()
+            return unknown.isEmpty ? nil : "\(example): \(unknown) is not a parameter of \(descriptor.opString)"
         }
-        let known = Set(descriptor.parameters.flatMap { [$0.name] + $0.aliases })
-        let unknown = fields.keys.filter { $0 != opKey && !known.contains($0) }.sorted()
-        return unknown.isEmpty ? nil : "\(example): \(unknown) is not a parameter of \(op)"
     }
 
     @Test("the skill has op examples")
@@ -183,13 +184,11 @@ import Testing
     /// - Parameters:
     ///   - op: The operation, as `<verb> <noun>`.
     ///   - text: The skill text.
-    /// - Returns: Each entry line, or no line when the text has no parameter
-    ///   list for the operation.
-    private static func parameterList(of op: String, in text: String) -> [Substring] {
+    /// - Returns: Each entry line. The list can be empty.
+    /// - Throws: When the text has no parameter list for the operation.
+    private static func parameterList(of op: String, in text: String) throws -> [Substring] {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        guard let lead = lines.firstIndex(where: { $0.hasPrefix(parameterListLead(of: op)) }) else {
-            return []
-        }
+        let lead = try #require(lines.firstIndex(where: { $0.hasPrefix(parameterListLead(of: op)) }))
         return Array(lines[(lead + 1)...].prefix { $0.hasPrefix(nestedBullet) })
     }
 
@@ -204,8 +203,9 @@ import Testing
     ///   - text: The skill text.
     /// - Returns: Each name that the parameter list does not name, in the
     ///   order of `names`.
-    private static func unnamedParameters(_ names: [String], of op: String, in text: String) -> [String] {
-        let entries = parameterList(of: op, in: text)
+    /// - Throws: When the text has no parameter list for the operation.
+    private static func unnamedParameters(_ names: [String], of op: String, in text: String) throws -> [String] {
+        let entries = try parameterList(of: op, in: text)
         return names.filter { name in !entries.contains { $0.hasPrefix("\(nestedBullet)`\(name)`:") } }
     }
 
@@ -214,20 +214,22 @@ import Testing
     ///
     /// - Parameter op: The operation, as `<verb> <noun>`.
     /// - Returns: The name of each parameter that the list does not name.
-    /// - Throws: When the tool has no such operation, or when the operation
-    ///   has no parameter.
+    /// - Throws: When the tool has no such operation, when the operation has
+    ///   no parameter, or when the skill has no parameter list for the
+    ///   operation.
     private static func unnamedParameters(of op: String) throws -> [String] {
         let descriptor = try #require(try descriptors().first { $0.opString == op })
 
         let names = descriptor.parameters.map(\.name)
         try #require(!names.isEmpty)
 
-        return unnamedParameters(names, of: op, in: try skillText())
+        return try unnamedParameters(names, of: op, in: try skillText())
     }
 
     @Test("a parameter that only other parts of the text name is unnamed")
-    func aNameOutsideTheParameterListDoesNotCount() {
-        let unnamed = Self.unnamedParameters(["id", "message"], of: ForkSession.opString, in: Self.forkListWithoutID)
+    func aNameOutsideTheParameterListDoesNotCount() throws {
+        let unnamed = try Self.unnamedParameters(
+            ["id", "message"], of: ForkSession.opString, in: Self.forkListWithoutID)
 
         #expect(unnamed == ["id"])
     }

@@ -31,6 +31,36 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md, Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift; `swift test --filter "SessionsSkillTests|BuiltinSkillsTests"`: 21 tests in 2 suites passed, 0 failures; 0 compiler warnings from the changed files (one SwiftPM build-graph warning about mlx-swift_Cmlx.bundle, not from this change)
     - next: review; after the push, send the sha to the peer sessions
   timestamp: 2026-11-18T23:38:12.098889+00:00
+- actor: claude-code
+  id: 01m7rggs71ynxtqewbxnwqgtcs
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (dfffb0c6); 1 finding (1 confirmed, 0 refuted) — Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift:190 (swift/optionals)
+    - next: implement the finding. Remove each `guard` from the test file and use `try #require`. Then run the review again.
+  timestamp: 2026-11-18T23:40:21.601321+00:00
+- actor: claude-code
+  id: 01m7rgh73zd9ckezgadz9wh729
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — Resources/skills/sessions/SKILL.md (1.4.0), SessionsSkillTests.swift (parameterList(of:in:) scopes the check; a proof test)
+    - test: green — swift test --filter "SessionsSkillTests|BuiltinSkillsTests", 21 passed
+    - commit: dfffb0c6
+    - review: findings — Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift:190
+  timestamp: 2026-11-18T23:40:35.839430+00:00
+- actor: claude-code
+  id: 01m7rgmk6703j7avqa2vfvd8y2
+  text: |-
+    Fix for the swift/optionals finding: `parameterList(of:in:)` and `unnamedParameters(_:of:in:)` are now `throws`. `lead` comes from `try #require(...)`. The callers use `try`, and the proof test "a parameter that only other parts of the text name is unnamed" is now `throws`. Its small text still has a fork parameter list with only `message`, so the helper still gives ["id"].
+
+    The same cause was also in `problem(of:among:)`: two `guard` statements. That helper gives a problem text for each bad example, and the test collects all of them, so `#require` is not correct there (it stops at the first bad example). I replaced the two guards with one `switch` over `(fields, descriptor)`. The three cases are the same as before: not a JSON object, names no operation, or unknown keys. The file now has no `guard`.
+  timestamp: 2026-11-18T23:42:26.503424+00:00
+- actor: claude-code
+  id: 01m7rgmsaj4yk0ap95wdac6fa0
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift (no `guard` left in the file); `swift test --filter "SessionsSkillTests|BuiltinSkillsTests"`: 21 tests in 2 suites passed, 0 failures
+    - next: test, commit, review; after the push, send the sha to the peer sessions
+  timestamp: 2026-11-18T23:42:32.786807+00:00
 depends_on:
 - 01M7QV76HYSCM6H586BYWRZETV
 position_column: doing
@@ -53,3 +83,15 @@ In `Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md`, in AS
 
 - [x] SessionsSkillTests finds `fork session`, its example and each of its parameters.
 - [x] SessionsSkillTests and BuiltinSkillsTests stay green. #sessions #fork
+
+## Review Findings (2026-11-18 17:38)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 1 file(s) reviewed, 3 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/SessionsSkillTests.swift:190` `swift/optionals` — The helper `parameterList(of:in:)` uses `guard let lead = ... else { return [] }` inside a test target. The rule says to never use `guard` in a test. The guard does not hide a failure here, because the empty list makes `unnamedParameters` report every name as unnamed, so the test still fails. The rule still forbids the form, and an assertion states the requirement where the reader looks for it. Make `parameterList(of:in:)` and `unnamedParameters(_:of:in:)` `throws`, and write `let lead = try #require(lines.firstIndex(where: { $0.hasPrefix(parameterListLead(of: op)) }))`. Then return `Array(lines[(lead + 1)...].prefix { $0.hasPrefix(nestedBullet) })`. Update the callers to use `try`, and mark the test `throws` where it is not already.
