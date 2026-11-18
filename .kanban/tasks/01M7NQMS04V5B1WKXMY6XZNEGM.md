@@ -51,6 +51,35 @@ comments:
     - evidence: 8 files — Sources/.../Sessions/SessionsAddressReader.swift (new), SessionsToolInput.swift, SessionsToolMessageOperations.swift, SessionsGraphMutations.swift, SessionsRefusal.swift, SessionsToolText+Messages.swift, Tests/.../SessionsToolMessageTests.swift, SessionsGraphMutationTests.swift. `swift build` clean. New tests: 10 tests (13 cases) red, then green. `swift test --filter "SessionsTool|SessionsGraph"`: 180 tests in 9 suites passed. Full `swift test`: 3017 tests in 270 suites passed, 0 warnings. The golden schema did not change.
     - next: the user decides on the extensions.rewrites gap (Extras change, ^gxqmxj6). All the other work is ready for /review.
   timestamp: 2026-11-18T14:23:20.122395+00:00
+- actor: claude-code
+  id: 01m7qgy2yfn3dxhq627sxvrhc6
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (d3cadc2a); 1 finding (1 confirmed, 2 refuted) — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphMutations.swift:416 (completeness/public-output-contract)
+    - next: implement the finding. The fix can keep the TODO(^gxqmxj6) and add a test that asserts the current output of the sendMessage endpoint for an alias. Or carry the rewrite to the endpoint receipt.
+  timestamp: 2026-11-18T14:28:23.119516+00:00
+- actor: claude-code
+  id: 01m7qgyhfdvjhagsnp56gm00y8
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionsAddressReader.swift (new), SessionsToolInput, SessionsToolMessageOperations, SessionsGraphMutations, SessionsRefusal, SessionsToolText+Messages, 2 test files; the extensions.rewrites item moved to ^gxqmxj6
+    - test: green — swift test, 3017 passed (run in the implement step)
+    - commit: d3cadc2a
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphMutations.swift:416
+  timestamp: 2026-11-18T14:28:37.997205+00:00
+- actor: claude-code
+  id: 01m7qh3406khtmkzj9pryzcad8
+  text: |-
+    Review finding (SessionsGraphMutations.swift `sendMessage`, completeness/public-output-contract): fixed with the second fix, by decision of the coordinator. The TODO(^gxqmxj6) stays. The receipt type does not change.
+    - New test in SessionsGraphMutationTests: "sendMessage to an alias delivers but gives no rewrite in extensions.rewrites yet (^gxqmxj6)" (`aSendToAnAliasGivesNoRewriteReportYet`), with 2 cases: `@travel:/work/trips` (a session with slug `travel` in the working folder and one in /work/trips; the receipt goes to the one in /work/trips) and the folder path `/work/other`. A device viewer sends. The test asserts no error, outcome DELIVERED, reason null, the target id, and `reply.rewrites.isEmpty`. A doc comment and a comment at the last assertion tell ^gxqmxj6 to change that assertion to expect the rewrite of the alias.
+    - The test records the current behavior, so it passed on its first run. That is the purpose: it records the gap, and it fails when the endpoint output for an alias changes.
+    - Same cause in the rest of SessionsGraphMutations.swift: none. `sendMessage` is the only mutation that reads a message address through `messageAddress`. The other mutations (start, tag, untag, rename, pin, unpin, archive, reply) take a session id, not an address alias. Their input-name aliases already show in `extensions.rewrites` (the bare verb and input alias tests). In the tool, `SessionsToolText.receipts(_:rewrite:)` of `send message` is the only output that carries a rewrite report.
+    - `swift test --filter SessionsGraphMutationTests`: 23 tests in 1 suite passed. One build-system line, "warning: missing creator for mutated node" for the mlx-swift_Cmlx.bundle in .build, is from SwiftPM and not from the code.
+
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/SessionsGraphMutationTests.swift; `swift test --filter SessionsGraphMutationTests`: 23 tests in 1 suite passed (the new test with 2 cases)
+    - next: /review
+  timestamp: 2026-11-18T14:31:08.038071+00:00
 position_column: doing
 position_ordinal: '80'
 title: One async address reader for send in the tool and in the endpoint (D199)
@@ -100,3 +129,12 @@ Main rule: an agent IS a session. There is one namespace. `@agent:/path` and a f
 - [x] Tool: `@nobody` gives the corrective.
 - [x] Graph: `sendMessage(input: {to: "@<slug>", ...})` gives the same answer as the tool.
 - [x] Graph: an external viewer with a slug of a session that it does not own gets a REFUSED receipt. #sessions #at-sessions #graphql
+
+## Review Findings (2026-11-18 08:24)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 8 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraphMutations.swift:416` `completeness/public-output-contract` — The `sendMessage` endpoint reads the address with `.address` and drops the rewrite report from `SessionsAddressReading`. The `send message` tool reports the rewrite of an `@agent:/path` or folder alias, so the same send gives different output on the two surfaces. The endpoint's result is silently missing the rewrite line that the tool gives. Carry `rewrite` through to the endpoint receipt, or keep the TODO but add a test that asserts the current endpoint output for an alias, so the gap is recorded and cannot widen unnoticed.

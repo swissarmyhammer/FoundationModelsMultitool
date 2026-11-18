@@ -971,6 +971,75 @@ struct SessionsGraphMutationTests {
         #expect(try await Self.facts(of: directory, known: known) == staged)
     }
 
+    // MARK: - The aliases of an address (D199, D86)
+
+    /// The name of the agent and of the slug of the `@agent:/path` case.
+    private static let travelName = "travel"
+
+    /// The folder of the `@agent:/path` case.
+    private static let tripsFolder = URL(fileURLWithPath: "/work/trips")
+
+    /// One alias of a message address: `@agent:/path`, or a folder path
+    /// alone.
+    struct AddressAliasCase: Sendable, CustomTestStringConvertible {
+        /// The alias, as the call writes it.
+        let alias: String
+
+        /// Registers the sessions of the case in a directory, and gives the
+        /// id of the session that the alias names.
+        let stage: @Sendable (InMemorySessionDirectory) -> ULID
+
+        /// The name of the case in the test report.
+        var testDescription: String { alias }
+    }
+
+    /// One case for each alias form that `send message` of the tool reports
+    /// as a rewrite.
+    static let addressAliasCases: [AddressAliasCase] = [
+        AddressAliasCase(alias: "@\(travelName):\(tripsFolder.path)") { directory in
+            let inTrips = Fixtures.summary(title: travelName, folder: tripsFolder)
+            directory.register(Fixtures.summary(title: travelName))
+            directory.register(inTrips)
+            return inTrips.id
+        },
+        AddressAliasCase(alias: namedFolder.path) { directory in
+            let inFolder = Fixtures.summary(folder: namedFolder)
+            directory.register(inFolder)
+            return inFolder.id
+        },
+    ]
+
+    /// Records a known gap: `sendMessage` delivers to the session that an
+    /// alias names, but it does not report the rewrite of the alias, which
+    /// `send message` of the tool reports in its answer. The receipt has no
+    /// field for the report, and `extensions.rewrites` has no entry for it.
+    ///
+    /// TODO(^gxqmxj6): when Extras gives a resolver a way to add a rewrite,
+    /// task ^gxqmxj6 adds the report to `extensions.rewrites`. That task must
+    /// change the assertion on `reply.rewrites` in this test to expect the
+    /// rewrite of the alias.
+    @Test(
+        "sendMessage to an alias delivers but gives no rewrite in extensions.rewrites yet (^gxqmxj6)",
+        arguments: addressAliasCases)
+    func aSendToAnAliasGivesNoRewriteReportYet(_ aliasCase: AddressAliasCase) async throws {
+        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
+        let target = aliasCase.stage(directory)
+
+        let reply = try await Self.run(
+            "mutation { sendMessage(input: {to: \"\(aliasCase.alias)\", message: \"\(Self.messageText)\"}) "
+                + "{ outcome reason target { id } } }",
+            viewer: Self.deviceViewer, on: directory)
+
+        let receipts = try reply.list("sendMessage")
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(receipts.map { $0["outcome"] as? String } == ["DELIVERED"])
+        #expect(receipts.map { $0["reason"] is NSNull } == [true])
+        #expect(receipts.map { ($0["target"] as? [String: Any])?["id"] as? String } == [target.ulidString])
+        // ^gxqmxj6 changes this assertion: the rewrite of the alias then
+        // shows in `extensions.rewrites`.
+        #expect(reply.rewrites.isEmpty, "rewrites: \(reply.rewrites)")
+    }
+
     // MARK: - Aliases
 
     /// One bare verb of session.md section 14 and the mutation it names.

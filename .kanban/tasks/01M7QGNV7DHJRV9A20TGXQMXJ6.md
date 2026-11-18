@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7qgr53y73fjeexxbcgybbma
+  text: 'Extras shape (from foundationmodelsextras-9e, 2026-11-18, Extras task ^ehms1m8): no change to the `GraphQLRunContext` protocol. Use `ResolverRewrites`, the same pattern as `ResolverWarnings`: `public final class ResolverRewrites: Sendable` with `@TaskLocal public static var current: ResolverRewrites?`. `API.respond` binds a new collector for the run. The resolver calls `ResolverRewrites.current?.add(NameRewrite(from: "@agent:/path", to: "@agent", path: ["sendMessage", "input", "to"]))`. The response gives the name rewrites first, then the resolver rewrites in the order of the adds, with no repeats. A subscription keeps only the name rewrites. Put the lookup folder in the `to` text, the same text as the tool answer. Start when the Extras sha is on origin/main.'
+  timestamp: 2026-11-18T14:25:08.734770+00:00
 depends_on:
 - 01M7NQMS04V5B1WKXMY6XZNEGM
 position_column: todo
