@@ -1,0 +1,1 @@
+{"id":"01M7QV7MTJ6XFYDV6BNEXADZ0X","timestamp":"2026-11-18T17:28:22.098300Z","op":"create","item_id":"01M7QV7MTJBP9ASRSCX444GAE3","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: e36209\n+tag_name: fork\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: e36209\n-tag_name: fork\n","transaction_id":null}

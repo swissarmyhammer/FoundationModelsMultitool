@@ -274,6 +274,93 @@ struct SessionsGraphChangesTests {
         #expect(try Self.sequence(of: second.cursor) > Self.sequence(of: first.cursor))
     }
 
+    // MARK: - The change of an unarchive
+
+    /// The changes of one unarchive of the directory: one for its
+    /// `stateChanged` event and one for its `unarchived` event.
+    private static let changesOfAnUnarchive = 2
+
+    /// Archives each session in `sessions`, before the endpoint exists.
+    ///
+    /// - Parameters:
+    ///   - sessions: The sessions.
+    ///   - directory: The directory.
+    /// - Throws: What the directory throws.
+    private static func archive(_ sessions: [SessionSummary], in directory: InMemorySessionDirectory) async throws {
+        for session in sessions {
+            _ = try await directory.archive(session.id, by: .user(clientID: deviceClientId))
+        }
+    }
+
+    /// The `unarchived` event gives one `changed` entry of its session. An
+    /// unarchive of the directory sends `stateChanged` and then `unarchived`,
+    /// thus the target has two changes, and the next change is the change of
+    /// the marker.
+    @Test("an unarchive gives one changed entry for its unarchived event")
+    func anUnarchiveGivesOneChangeForItsEvent() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary()
+        let marker = Fixtures.summary()
+        directory.register(target)
+        directory.register(marker)
+        try await Self.archive([target], in: directory)
+        let graph = SessionsGraph.endpoint(of: directory)
+        let before = try await Self.cursor(of: graph)
+        var subscription = try await Self.subscribe(to: graph, after: before)
+
+        _ = try await directory.unarchive(target.id, by: .user(clientID: Self.deviceClientId))
+        try await Self.mark(marker, in: directory)
+        let changes = [
+            try await subscription.nextChange(), try await subscription.nextChange(),
+            try await subscription.nextChange(),
+        ]
+
+        #expect(
+            changes == [
+                Self.change(cursor: changes[0].cursor, changed: target.id),
+                Self.change(cursor: changes[1].cursor, changed: target.id),
+                Self.change(cursor: changes[2].cursor, changed: marker.id),
+            ])
+    }
+
+    /// An external client gets the changes of an unarchive only for a
+    /// session that it can see: the unarchive of a stranger is not sent to
+    /// it, while a device of the user gets both unarchives.
+    @Test("an external client receives the change of an unarchive only for a session that it can see")
+    func anExternalClientGetsTheUnarchiveChangeOnlyWhenVisible() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let owned = Fixtures.summary()
+        let stranger = Fixtures.summary()
+        for session in [owned, stranger] {
+            directory.register(session)
+        }
+        try await Self.archive([owned, stranger], in: directory)
+        let graph = SessionsGraph.endpoint(of: directory)
+        let before = try await Self.cursor(of: graph)
+        var external = try await Self.subscribe(
+            to: graph, after: before, viewer: GraphQLViewer.external(owning: [owned.id.ulidString]))
+        var device = try await Self.subscribe(to: graph, after: before)
+
+        for session in [stranger, owned] {
+            _ = try await directory.unarchive(session.id, by: .user(clientID: Self.deviceClientId))
+        }
+        var externalChanges: [Change] = []
+        for _ in 0..<Self.changesOfAnUnarchive {
+            externalChanges.append(try await external.nextChange())
+        }
+        var deviceChanges: [Change] = []
+        for _ in 0..<(Self.changesOfAnUnarchive * [stranger, owned].count) {
+            deviceChanges.append(try await device.nextChange())
+        }
+
+        #expect(externalChanges.map(\.changed) == [[owned.id.ulidString], [owned.id.ulidString]])
+        #expect(
+            deviceChanges.map(\.changed) == [
+                [stranger.id.ulidString], [stranger.id.ulidString], [owned.id.ulidString], [owned.id.ulidString],
+            ])
+        #expect(externalChanges.map(\.cursor) == deviceChanges.suffix(Self.changesOfAnUnarchive).map(\.cursor))
+    }
+
     // MARK: - The change of a message that waits
 
     /// A target that does not take a message at the send, and the outcome of

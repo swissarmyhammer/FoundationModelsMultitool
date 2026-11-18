@@ -1,0 +1,1 @@
+{"id":"01M7QTRRC1Y9YJSK2S0QM66G5S","timestamp":"2026-11-18T17:20:14.209158Z","op":"create","item_id":"01M7QTRRC0ZQ9XZX6GCQ1GYV8G","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 1d76db\n+tag_name: archive\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 1d76db\n-tag_name: archive\n","transaction_id":null}

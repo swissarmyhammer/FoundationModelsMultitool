@@ -130,6 +130,17 @@ struct ForwardingSessionDirectory: SessionDirectory {
         try await backing.archive(id, by: archiver)
     }
 
+    /// Unarchives a session in the backing directory.
+    ///
+    /// - Parameters:
+    ///   - id: The session id.
+    ///   - unarchiver: The session or the user that unarchives it.
+    /// - Returns: The summary of the session after the call.
+    /// - Throws: The error of the backing directory.
+    func unarchive(_ id: ULID, by unarchiver: SessionMessageSender) async throws -> SessionSummary {
+        try await backing.unarchive(id, by: unarchiver)
+    }
+
     /// The events of the backing directory.
     ///
     /// - Returns: A new stream of the events.

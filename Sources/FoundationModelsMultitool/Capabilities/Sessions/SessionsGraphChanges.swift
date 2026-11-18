@@ -4,10 +4,10 @@
 //
 // Each event of the directory names one session. The feed records it as one
 // change of that session, `added` for a start and `changed` for each other
-// event, together with the chain of anchors of the session. The visibility
-// rule reads only that chain, so a subscription filters each change for its
-// viewer at once, with no read of the directory, and a change that the viewer
-// cannot see is never sent.
+// event, an archive and an unarchive included, together with the chain of
+// anchors of the session. The visibility rule reads only that chain, so a
+// subscription filters each change for its viewer at once, with no read of
+// the directory, and a change that the viewer cannot see is never sent.
 //
 // A message changes the inbox of its target two times. When the target
 // cannot take the message at the send, the message waits in the queue of a
@@ -35,8 +35,9 @@ struct SessionsGraphChangeEvent: Sendable {
         case added
 
         /// The facts, the work state or the inbox of the session changed, or
-        /// the session was archived. An archived session stays in the
-        /// directory, so an archive is a change and not a removal.
+        /// the session was archived or unarchived. An archived session stays
+        /// in the directory, so an archive is a change and not a removal, and
+        /// an unarchive is a change and not an addition.
         case changed
     }
 
@@ -57,7 +58,8 @@ extension SessionDirectoryEvent {
     ///
     /// A message changes its target: its inbox. A message that waits in the
     /// queue or in the inbox of its target changes the target at the send,
-    /// and the target changes again when it takes the message.
+    /// and the target changes again when it takes the message. An archive
+    /// and an unarchive each change their session.
     var sessionChange: (sessionID: ULID, kind: SessionsGraphChangeEvent.Kind) {
         switch self {
         case .started(let summary, _): (summary.id, .added)
@@ -66,6 +68,7 @@ extension SessionDirectoryEvent {
         case .messageQueued(let message): (message.to, .changed)
         case .messageDelivered(let message): (message.to, .changed)
         case .archived(let id): (id, .changed)
+        case .unarchived(let id): (id, .changed)
         }
     }
 }

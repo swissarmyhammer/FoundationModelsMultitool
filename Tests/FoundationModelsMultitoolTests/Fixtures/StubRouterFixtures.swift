@@ -226,6 +226,11 @@ let stubStandardModel: ModelRef = "stub/standard"
 /// The model reference of the `embedding` slot of the stub profile.
 let stubEmbeddingModel: ModelRef = "stub/embedding"
 
+/// The model reference of the `flash` slot of the stub profile. It is also
+/// the one decision candidate: the Router requires a decision model, and the
+/// flash model in that slot costs no more memory.
+let stubFlashModel: ModelRef = "stub/flash"
+
 /// The name prefix of the folder in which a stub router caches and records,
 /// when a test gives no folder of its own.
 ///
@@ -241,10 +246,13 @@ struct StubModelLoader: ModelLoader {
     /// its own container.
     var container: any LoadedLLMContainer = StubLLMContainer()
 
+    /// Gives ``container`` for each model. The stub ignores `context` and
+    /// `kvCache`: one container serves each context and each KV cache setting.
     func loadLLM(
         ref: ModelRef,
         slot: ModelSlot,
         context: Int,
+        kvCache: KVCacheQuantization?,
         reporting: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> any LoadedLLMContainer {
         reporting(DownloadProgress(bytesDownloaded: 1, bytesTotal: 1))
@@ -477,8 +485,9 @@ func makeStubProfile(
             name: "stub",
             description: "the stub profile these fixtures run on",
             standard: [standardModel],
-            flash: ["stub/flash"],
-            embedding: [stubEmbeddingModel]
+            flash: [stubFlashModel],
+            embedding: [stubEmbeddingModel],
+            decision: [stubFlashModel]
         ),
         reporting: ResolutionProgress()
     )

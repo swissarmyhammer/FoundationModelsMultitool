@@ -77,13 +77,6 @@ struct SessionsToolMessageTests {
     /// The sentence of an answer in which no target took the message.
     private static let notSentSentence = "The message was not sent."
 
-    /// The reason that the directory gives for an archived target.
-    private static let archivedReason = "archived"
-
-    /// The code-mode verb name that the corrective of an archived target
-    /// names.
-    private static let startSessionVerb = "startSession"
-
     /// The code-mode verb name that each unknown-session corrective names.
     private static let listSessionsVerb = "listSessions"
 
@@ -525,8 +518,11 @@ struct SessionsToolMessageTests {
 
     // MARK: - send message: refusals and correctives
 
-    @Test("send message to an archived session gives a corrective with the reason archived, which names startSession")
-    func sendMessageToAnArchivedSessionIsACorrective() async throws {
+    /// The directory does not refuse a message to an archived session: it
+    /// writes the message to the inbox of the session, and the receipt is
+    /// `sent` with the reason "archived". The session stays archived.
+    @Test("send message to an archived session writes it to the inbox, and the answer says sent")
+    func sendMessageToAnArchivedSessionWritesItToTheInbox() async throws {
         let directory = InMemorySessionDirectory()
         let target = Fixtures.summary()
         directory.register(target)
@@ -537,11 +533,11 @@ struct SessionsToolMessageTests {
             try await Self.sendMessage(to: target.id.ulidString, with: tool)
         }
 
-        #expect(try await Self.unread(to: target.id, in: directory).isEmpty)
-        #expect(output.contains(Self.notSentSentence), "output was: \(output)")
-        #expect(output.contains(Self.archivedReason), "output was: \(output)")
+        #expect(try await Self.unread(to: target.id, in: directory).map(\.text) == [Self.messageText])
+        #expect(!output.contains(Self.notSentSentence), "output was: \(output)")
+        #expect(output.contains(Self.sentWord), "output was: \(output)")
+        #expect(output.contains(Self.notDeliveredWords), "output was: \(output)")
         #expect(output.contains(target.id.ulidString), "output was: \(output)")
-        #expect(output.contains(Self.startSessionVerb), "output was: \(output)")
     }
 
     @Test("send message that a loop guard refuses gives a corrective that names the reason")
