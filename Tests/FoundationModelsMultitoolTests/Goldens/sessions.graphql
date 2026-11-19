@@ -290,6 +290,102 @@ type SessionPage {
   nextCursor: String
 }
 
+"""The kind of the matched chunk of a hit."""
+enum SessionSearchHitKind {
+  """A prompt of the user."""
+  USER
+
+  """The messages of the agent in a turn."""
+  AGENT
+
+  """A message from another session."""
+  MESSAGE
+
+  """A tool call: its title, its content and its output."""
+  TOOL
+
+  """A plan: the text of its items."""
+  PLAN
+
+  """The thoughts of the agent in a turn."""
+  THOUGHT
+
+  """
+  The session item: the name, the slug, the tags, the folder, the agent, the recap and the last summary.
+  """
+  SESSION
+}
+
+"""The character offsets of matched words in a snippet."""
+type TextRange {
+  """The character offset of the first matched character."""
+  start: Int!
+
+  """The character offset after the last matched character."""
+  end: Int!
+}
+
+"""One hit in the transcript of a session."""
+type SessionSearchHit {
+  """The wire id of the entry of the transcript that holds it."""
+  entryId: String!
+
+  """The kind of the matched chunk."""
+  kind: SessionSearchHitKind!
+
+  """The author of the chunk, or null."""
+  author: String
+
+  """The time of the chunk, or null."""
+  at: DateTime
+
+  """The text around the matched words."""
+  snippet: String!
+
+  """The matched words in the snippet. Empty for a match by meaning only."""
+  ranges: [TextRange!]!
+
+  """
+  The matched words, for the marks of the transcript. Empty for a match by meaning only.
+  """
+  terms: [String!]!
+}
+
+"""One session that matches a search, with its hits."""
+type SessionSearchResult {
+  """
+  The session, with its facts from this server now: the name, the folder, the state and the recap.
+  """
+  session: Session!
+
+  """
+  The score from 0 to 1 of the first match of the session. A client fuses lists with it.
+  """
+  score: Float!
+
+  """The number of hits. It can be more than the hits given."""
+  hitCount: Int!
+
+  """The hits of the session, the best hit first."""
+  hits: [SessionSearchHit!]!
+}
+
+"""One page of the sessions that match a search."""
+type SessionSearchConnection {
+  """
+  The sessions that match: first the sessions of the folder argument, then the others.
+  """
+  results: [SessionSearchResult!]!
+
+  """The cursor of the next page, or null when this page is the last."""
+  nextCursor: String
+
+  """
+  The paths of the folders of the results that this server cannot read now.
+  """
+  unavailableFolders: [String!]!
+}
+
 """A new root session of an agent, with its first message."""
 input StartSessionInput {
   """
@@ -465,6 +561,35 @@ type Query {
     """The nextCursor of the page before, or no cursor for the first page."""
     after: String
   ): SessionPage!
+
+  """
+  The sessions on this server whose transcripts match the query by their words or by their meaning, each with its score and its hits. The sessions of the folder argument come first. The search covers only the sessions that this server records. An external client sees only the sessions that it can see, as in sessions. MISSING_SEARCHER when this server cannot search.
+  """
+  searchSessions(
+    """
+    The search text: words, "a phrase" and -word, and the tokens @<session>, #<tag>, agent:<id>, folder:<path> (folder:. is the folder argument), from:<kind>, after:YYYY-MM-DD, before:YYYY-MM-DD and is:archived.
+    """
+    query: String!
+
+    """
+    The absolute path of the folder of your tab. Its sessions come first, and folder:. names it. ~ expands.
+    """
+    folder: String
+
+    """
+    One session id. The field then gives each hit of that session, up to first.
+    """
+    session: ID
+
+    """True to also search the archived sessions."""
+    archived: Boolean = false
+
+    """The most sessions to give, or with session the most hits: 1 to 50."""
+    first: Int = 20
+
+    """The nextCursor of the page before, or no cursor for the first page."""
+    after: String
+  ): SessionSearchConnection!
 
   """One session, or null when no session that you can see has the id."""
   session(

@@ -1,10 +1,29 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7t0jyyd0v7a0eppqrcj7yc5
+  text: |-
+    Research done.
+    - The tool path is in SessionsToolSearchOperation.swift: requiredSearcher (MISSING_SEARCHER), page(of:from:) (SEARCH_FAILED), and a private matches(in:) that drops a result whose session the caller cannot see. The endpoint reuses these. I move the sequence (searcher check, request build, page, visible matches) to one SessionsVisibility method, so the tool and the field share it.
+    - The request builder is SessionsVisibility.searchRequest(for:) in SessionSearchRequestReader.swift. It clamps the limit to 1...50.
+    - The endpoint has no caller session. Thus the `folder` argument of the field is the folder of the tab (D207 (d), (f)): it is the preferred folder of the request, and it is the folder of the `folder:.` token. It is not a filter. Search in This Folder adds `folder:.` to the query (D207 (f)), so the filter goes in the query. This is my reading of D207: the card does not say it in words.
+    - unavailableFolders keeps only the folders of the results that the viewer can see, so an external viewer does not learn the folder of a hidden session (EXTRAS-9 rule 4).
+    - The new code goes in a new file SessionsGraphSearch.swift, in the style of SessionsGraphPages.swift.
+  timestamp: 2026-11-19T13:40:24.653465+00:00
+- actor: claude-code
+  id: 01m7t11q9f4kcj5b3q8nkdw674
+  text: |-
+    ### implement — changed
+    - evidence: new Sources/.../Sessions/SessionsGraphSearch.swift (arguments, types, SessionSearchHitKind, resolver, schema parts); SessionsGraph.swift (context gets the searcher through the read(_:) helper property, aliases, docs); SessionsGraphSchema.swift (context field, schema wiring); SessionsToolSearchOperation.swift (the search sequence moved to SessionsVisibility.search(_:with:), which the tool and the field share; it reuses requiredSearcher, page(of:from:) and searchRequest(for:)); Goldens/sessions.graphql re-recorded (125 lines added, 0 removed); new Tests/.../SessionsGraphSearchTests.swift (30 cases). swift build: clean. swift test --filter "SessionsGraphSearchTests|SessionsToolSearchTests|SessionsGraphQueryTests|SessionsGraphExportTests": 101 tests passed. Full swift test: 3231 tests in 281 suites passed, 0 warnings.
+    - note: the `folder` argument is the folder of the tab (preferred folder, and the folder of `folder:.`), not a filter; unavailableFolders keeps only the folders of the visible results.
+    - next: /review
+  timestamp: 2026-11-19T13:48:28.335473+00:00
 depends_on:
 - 01M7SY6A33T5FEKCS8245E2JWW
-position_column: todo
-position_ordinal: '8280'
+position_column: doing
+position_ordinal: '80'
 title: The searchSessions field of the sessions endpoint (D207)
 ---
 Decision: D207 (d), (h) in TestudoApp/features/decisions.md (commit ba585e0). Brief: /Users/wballard/github/swissarmyhammer/.briefs/search/mt-brief.md, item 4.
@@ -23,9 +42,9 @@ Precondition: ^45e2jww (the host API `SessionsGraph.endpoint(of:exporter:searche
 
 ## Tests
 
-- [ ] A query of `searchSessions` with a fake searcher gives the results, `score`, `hits`, `terms`, `ranges` and a `SESSION` hit.
-- [ ] `session` gives the fields of the directory, for example the name after a rename.
-- [ ] `session:` gives all hits of one session.
-- [ ] An external viewer gets only the sessions that it can see.
-- [ ] No searcher: the refusal.
-- [ ] The SDL has the new types. #sessions #search #graphql
+- [x] A query of `searchSessions` with a fake searcher gives the results, `score`, `hits`, `terms`, `ranges` and a `SESSION` hit.
+- [x] `session` gives the fields of the directory, for example the name after a rename.
+- [x] `session:` gives all hits of one session.
+- [x] An external viewer gets only the sessions that it can see.
+- [x] No searcher: the refusal.
+- [x] The SDL has the new types. #sessions #search #graphql

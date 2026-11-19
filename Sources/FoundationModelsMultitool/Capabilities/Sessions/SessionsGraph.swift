@@ -4,7 +4,8 @@
 //
 // The schema is in `SessionsGraphSchema.swift`, its mutations are in
 // `SessionsGraphMutations.swift`, its page query is in
-// `SessionsGraphPages.swift`, its object types are in
+// `SessionsGraphPages.swift`, its search query is in
+// `SessionsGraphSearch.swift`, its object types are in
 // `SessionsGraphTypes.swift`, and its change feed and `changes` subscription
 // are in `SessionsGraphChanges.swift`. This file holds the endpoint, its name
 // rules, and the one endpoint of each directory.
@@ -34,6 +35,12 @@ import Synchronization
 ///   and its `unreadCount`. Its `export(format:thoughts:)` gives the text
 ///   of its transcript from the exporter of the endpoint, and writes no file
 ///   (D202 (g)); with no exporter it gives `MISSING_EXPORTER`.
+/// - `Query.searchSessions(query:folder:session:archived:first:after:)` gives
+///   the sessions whose transcripts match a query, each with its `Session`
+///   from the directory, its score and its hits (D207 (h)). The `folder` is
+///   the folder of the tab of the client: its sessions come first, and the
+///   `folder:.` token names it. With `session`, it gives each hit of that
+///   session, up to `first`. With no searcher it gives `MISSING_SEARCHER`.
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
@@ -95,7 +102,12 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `sessions` of a page, `endCursor` for its `nextCursor`,
     /// `sessionChanges` for the `changes` subscription, `exportSession` for
     /// the `export` field of a session and `includeThoughts` for its
-    /// `thoughts`, the bare verb of each
+    /// `thoughts`; for the arguments of `searchSessions` the names of the
+    /// arguments of the `search sessions` op (`text` and `q` for `query`,
+    /// `cwd` for `folder`, `includeArchived` for `archived`, `limit` for
+    /// `first`), `sessionId` for `session` and `cursor` for `after`; `items`,
+    /// `nodes` and `sessions` for the `results` of a search page, `endCursor`
+    /// for its `nextCursor`, and `date` for the `at` of a hit; the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
     /// of its input.
     static let rules = GraphQLNameRules(
@@ -106,12 +118,20 @@ public final class SessionsGraph: GraphQLEndpoint {
                     "export": ["exportSession"], "recap": ["sessionRecap"], "recapAt": ["recapTime"],
                 ],
                 "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
+                "SessionSearchConnection": [
+                    "results": ["items", "nodes", "sessions"], "nextCursor": ["endCursor"],
+                ],
+                "SessionSearchHit": ["at": ["date"]],
                 "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
                 "Subscription": ["changes": ["sessionChanges"]],
             ]) { mutation, _ in mutation },
             byField: [
                 "Query.session": ["id": ["sessionId"]], "Query.inbox": ["sessionId": ["id"]],
                 "Query.sessionPage": ["after": ["cursor"]], "Session.export": ["thoughts": ["includeThoughts"]],
+                "Query.searchSessions": [
+                    "query": ["text", "q"], "folder": ["cwd"], "session": ["sessionId"],
+                    "archived": ["includeArchived"], "first": ["limit"], "after": ["cursor"],
+                ],
             ]))
 
     /// The name of the endpoint.
@@ -229,8 +249,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The searcher that a host gave for the directory, or `nil` when no host
-    /// gave one: the `search sessions` operation of the `sessions` tool reads
-    /// it (D207 (g)).
+    /// gave one: the `search sessions` operation of the `sessions` tool and
+    /// the `searchSessions` query read it (D207 (g), (h)).
     var searcher: (any SessionTranscriptSearcher)? {
         Self.read(storedSearcher)
     }
@@ -294,7 +314,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// - Returns: The context.
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
         SessionsGraphContext(
-            sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter)
+            sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter,
+            searcher: searcher)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

@@ -27,6 +27,18 @@ struct SessionSearchMatch: Sendable {
     let summary: SessionSummary
 }
 
+/// One page of a session search, as the viewer of the search sees it: the
+/// `search sessions` operation and the `searchSessions` field of the
+/// `sessions` endpoint both read it.
+struct SessionSearchOutcome: Sendable {
+    /// The page of the searcher.
+    let page: SessionSearchPage
+
+    /// The results of ``page`` whose sessions the viewer can see, each with
+    /// its facts from the directory, in the order of the page.
+    let matches: [SessionSearchMatch]
+}
+
 /// Searches the transcripts of the sessions of this server
 /// (`search sessions`).
 @Generable
@@ -103,20 +115,12 @@ extension SessionsToolContext {
 
     /// Searches the sessions for `search sessions`.
     ///
-    /// The search asks the searcher only after the directory read the query,
-    /// so a call with a wrong query does no search.
-    ///
     /// - Parameter arguments: What the search asks for.
     /// - Returns: The answer of the operation.
-    /// - Throws: ``SessionsRefusal`` for a server with no searcher, and each
-    ///   error of ``SessionsVisibility/searchRequest(for:)`` and of
-    ///   ``page(of:from:)``.
+    /// - Throws: Each error of ``SessionsVisibility/search(_:with:)``.
     func search(_ arguments: SessionSearchArguments) async throws -> String {
-        let searcher = try Self.requiredSearcher(self.searcher)
-        let request = try await sessions.searchRequest(for: arguments)
-        let page = try await Self.page(of: request, from: searcher)
-        return SessionsToolText.searchAnswer(
-            try await matches(in: page), query: arguments.text, timeZone: arguments.timeZone)
+        let outcome = try await sessions.search(arguments, with: searcher)
+        return SessionsToolText.searchAnswer(outcome.matches, query: arguments.text, timeZone: arguments.timeZone)
     }
 
     /// The searcher of the host, for a search.
@@ -151,9 +155,35 @@ extension SessionsToolContext {
             throw SessionsRefusal(.searchFailed, SessionsToolText.searchFailed(error))
         }
     }
+}
+
+extension SessionsVisibility {
+    /// Searches the sessions that the viewer can see: the one search of the
+    /// `search sessions` operation and of the `searchSessions` field.
+    ///
+    /// The search asks the searcher only after the directory read the query,
+    /// so a call with a wrong query does no search.
+    ///
+    /// - Parameters:
+    ///   - arguments: What the search asks for.
+    ///   - searcher: The searcher of the host, or `nil` when the host gave
+    ///     none.
+    /// - Returns: The page of the searcher and its visible results.
+    /// - Throws: ``SessionsRefusal`` for a server with no searcher, each error
+    ///   of ``searchRequest(for:)`` and of
+    ///   ``SessionsToolContext/page(of:from:)``, and each error of the
+    ///   directory.
+    func search(
+        _ arguments: SessionSearchArguments, with searcher: (any SessionTranscriptSearcher)?
+    ) async throws -> SessionSearchOutcome {
+        let searcher = try SessionsToolContext.requiredSearcher(searcher)
+        let request = try await searchRequest(for: arguments)
+        let page = try await SessionsToolContext.page(of: request, from: searcher)
+        return SessionSearchOutcome(page: page, matches: try await matches(in: page))
+    }
 
     /// Each result of a page with the facts of its session. A result whose
-    /// session the caller cannot see now, for example a session that was
+    /// session the viewer cannot see now, for example a session that was
     /// deleted after the searcher indexed it, is not in the answer.
     ///
     /// - Parameter page: The page of the searcher.
@@ -163,7 +193,7 @@ extension SessionsToolContext {
         var matches: [SessionSearchMatch] = []
         // A loop and not a `compactMap`: each lookup awaits the directory.
         for result in page.sessions {
-            if let summary = try await sessions.summary(of: result.session) {
+            if let summary = try await summary(of: result.session) {
                 matches.append(SessionSearchMatch(result: result, summary: summary))
             }
         }

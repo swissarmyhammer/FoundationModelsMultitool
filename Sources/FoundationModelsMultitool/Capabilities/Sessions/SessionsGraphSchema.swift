@@ -28,6 +28,10 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// The exporter of the transcripts that the host gave the endpoint, or
     /// `nil` when no host gave one. `Session.export` reads it.
     let exporter: (any SessionTranscriptExporter)?
+
+    /// The searcher of the transcripts that the host gave the endpoint, or
+    /// `nil` when no host gave one. `Query.searchSessions` reads it.
+    let searcher: (any SessionTranscriptSearcher)?
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -288,7 +292,8 @@ struct SessionsGraphAPI: API {
 
     /// Builds the schema of the endpoint. The mutations and their types are
     /// in `SessionsGraphMutations.swift`, the `sessionPage` query and its
-    /// type are in `SessionsGraphPages.swift`, and the `cursor` query, the
+    /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
+    /// its types are in `SessionsGraphSearch.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
@@ -309,6 +314,11 @@ struct SessionsGraphAPI: API {
                 receiptType()
                 filterInput()
                 sessionPageType()
+                searchHitKindEnum()
+                textRangeType()
+                searchHitType()
+                searchResultType()
+                searchConnectionType()
                 startInput()
                 tagInput()
                 untagInput()
@@ -325,6 +335,7 @@ struct SessionsGraphAPI: API {
             .addQuery {
                 sessionsField()
                 sessionPageField()
+                searchSessionsField()
                 sessionField()
                 inboxField()
                 pinnedSessionsField()
