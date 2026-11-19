@@ -101,6 +101,9 @@ struct SessionsRefusal: CodedError {
 
         /// The server cannot fork a session.
         case forkUnsupported = "FORK_UNSUPPORTED"
+
+        /// A token of a session search query has a wrong value (D207 (e)).
+        case invalidQuery = "INVALID_QUERY"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.
