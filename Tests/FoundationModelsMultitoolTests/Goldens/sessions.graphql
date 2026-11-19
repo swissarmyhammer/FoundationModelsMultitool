@@ -140,6 +140,14 @@ type Session {
   """The last final message, cut short, or null."""
   lastSummary: String
 
+  """
+  One sentence about what the session did and where it stands now, or null.
+  """
+  recap: String
+
+  """The time of the recap, or null when the session has no recap."""
+  recapAt: DateTime
+
   """True when the session is in memory now."""
   isLive: Boolean!
 

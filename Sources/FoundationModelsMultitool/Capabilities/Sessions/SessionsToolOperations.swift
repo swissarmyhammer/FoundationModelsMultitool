@@ -106,7 +106,8 @@ extension ListSessions {
 @Generable
 @Operation(
     verb: "check", noun: "session",
-    description: "Give the state, the agent, the folder, the tags and the last summary of a session. It never waits.")
+    description:
+        "Give the state, the agent, the folder, the tags, the recap and the last summary of a session. It never waits.")
 struct CheckSession {
     /// The session to check: its id, its short id or its slug.
     @Guide(description: SessionsToolText.sessionReference)

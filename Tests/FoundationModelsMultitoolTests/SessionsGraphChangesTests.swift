@@ -57,6 +57,9 @@ struct SessionsGraphChangesTests {
     /// The slug of ``renameTitle``.
     private static let renameSlug = "fix-the-api-tests"
 
+    /// The recap that the recap case gives its session.
+    private static let recap = "Fixed the two failing API tests; the CI run is green."
+
     /// The code of a subscription that cannot resume with no gap.
     private static let resyncRequired = "RESYNC_REQUIRED"
 
@@ -485,6 +488,27 @@ struct SessionsGraphChangesTests {
         #expect(repin.codes.isEmpty, "errors: \(repin.messages)")
         #expect(unpin.codes.isEmpty, "errors: \(unpin.messages)")
         #expect(changes.map(\.changed) == [[pinned.id.ulidString], [used.id.ulidString], [marker.id.ulidString]])
+    }
+
+    /// A new recap comes as `factsChanged` (D206 (f)), thus it gives one
+    /// `changed` entry of its session, and the next change is the change of
+    /// the marker.
+    @Test("a new recap gives one changed entry of its session")
+    func aNewRecapGivesOneChange() async throws {
+        let directory = Fixtures.directoryWithLauncher()
+        let target = Fixtures.summary()
+        let marker = Fixtures.summary()
+        directory.register(target)
+        directory.register(marker)
+        let graph = SessionsGraph.endpoint(of: directory)
+        var subscription = try await Self.subscribe(
+            to: graph, after: try await GraphQLReply.cursor(of: graph, viewer: Self.deviceViewer))
+
+        try directory.setRecap(of: target.id, Self.recap, at: Fixtures.fixedDate)
+        try await Self.mark(marker, in: directory)
+        let changes = [try await subscription.nextChange(), try await subscription.nextChange()]
+
+        #expect(changes.map(\.changed) == [[target.id.ulidString], [marker.id.ulidString]])
     }
 
     /// A rename gives one change of its session, and the session then has

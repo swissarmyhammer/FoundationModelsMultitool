@@ -103,8 +103,8 @@ enum SessionsToolText {
     }
 
     /// The line of one session: the id, the kind, the state, the short id,
-    /// the slug, the agent, the folder, then the title, the tags, the parent
-    /// and the starter when the session has them.
+    /// the slug, the agent, the folder, then the title, the tags, the parent,
+    /// the starter and the recap when the session has them.
     ///
     /// - Parameters:
     ///   - summary: The session.
@@ -119,8 +119,9 @@ enum SessionsToolText {
         return "- \(heading(of: summary, callerID: callerID)): \(facts.joined(separator: ", "))"
     }
 
-    /// The title, the tags, the parent and the starter of a session, each
-    /// one only when the session has it.
+    /// The title, the tags, the parent, the starter and the recap of a
+    /// session, each one only when the session has it. The recap is the last
+    /// fact (D206 (h)).
     ///
     /// - Parameter summary: The session.
     /// - Returns: The facts.
@@ -131,14 +132,15 @@ enum SessionsToolText {
             summary.isPinned ? "pinned" : nil,
             summary.parentID.map { "parent \($0.ulidString)" },
             summary.startedBy.map { "started by \($0.ulidString)" },
+            summary.recap.map { "recap \"\($0)\"" },
         ].compactMap { $0 }
     }
 
     // MARK: - check session
 
-    /// The facts of one session: its state, agent, folder, title, tags and
-    /// last summary, and the count of the unread messages from it to the
-    /// caller.
+    /// The facts of one session: its state, agent, folder, title, tags,
+    /// recap (D206 (h)) and last summary, and the count of the unread
+    /// messages from it to the caller.
     ///
     /// - Parameters:
     ///   - summary: The session.
@@ -153,6 +155,7 @@ enum SessionsToolText {
             "Folder: \(summary.workingDirectory.path)",
             "Title: \(summary.title ?? noneText)",
             "Tags: \(summary.tags.isEmpty ? noneText : tagList(of: summary))",
+            "Recap: \(summary.recap ?? noneText)",
             "Last summary: \(summary.lastSummary ?? noneText)",
             unreadFromIt.map { "Unread messages from it to you: \($0)" },
         ].compactMap { $0 }.joined(separator: "\n")

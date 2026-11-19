@@ -173,6 +173,14 @@ struct SessionsGraphSession: Sendable {
     /// The last final message, cut to a fixed length, or `nil`.
     let lastSummary: String?
 
+    /// One sentence about what the session did and where it stands now, or
+    /// `nil` when the directory made no recap of the session (D206).
+    let recap: String?
+
+    /// The time that the directory made ``recap``, or `nil` when the session
+    /// has no recap.
+    let recapAt: DateTime?
+
     /// True when the session is in memory now.
     let isLive: Bool
 
@@ -221,6 +229,8 @@ struct SessionsGraphSession: Sendable {
         createdAt = DateTime(summary.createdAt)
         updatedAt = DateTime(summary.updatedAt)
         lastSummary = summary.lastSummary
+        recap = summary.recap
+        recapAt = summary.recapAt.map(DateTime.init)
         isLive = summary.isLive
         pinned = summary.isPinned
         pinnedAt = summary.pinnedAt.map(DateTime.init)

@@ -87,7 +87,8 @@ public final class SessionsGraph: GraphQLEndpoint {
 
     /// The other names that a call can write for the names of the schema
     /// (D86): `agent` and `folder` for the `agentId` and the `cwd` of a
-    /// session, `short_id` and `shortID` for its `shortId`, `sessionId` for
+    /// session, `short_id` and `shortID` for its `shortId`, `sessionRecap`
+    /// for its `recap` and `recapTime` for its `recapAt`, `sessionId` for
     /// the `id` of `session`, `id` for the `sessionId` of `inbox`,
     /// `sessionsPage` and `pagedSessions` for
     /// `sessionPage`, `cursor` for its `after`, `items` and `nodes` for the
@@ -102,7 +103,7 @@ public final class SessionsGraph: GraphQLEndpoint {
             byType: SessionsGraphMutation.aliasTables.merging([
                 "Session": [
                     "agentId": ["agent"], "cwd": ["folder"], "shortId": ["short_id", "shortID"],
-                    "export": ["exportSession"],
+                    "export": ["exportSession"], "recap": ["sessionRecap"], "recapAt": ["recapTime"],
                 ],
                 "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
                 "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],

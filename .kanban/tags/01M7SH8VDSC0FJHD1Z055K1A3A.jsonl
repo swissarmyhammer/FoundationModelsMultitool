@@ -1,0 +1,1 @@
+{"id":"01M7SH8VDSJBTVS2EWJYRPYBJJ","timestamp":"2026-11-19T09:12:44.729689Z","op":"create","item_id":"01M7SH8VDSC0FJHD1Z055K1A3A","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: d876e3\n+tag_name: recap\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: d876e3\n-tag_name: recap\n","transaction_id":null}
