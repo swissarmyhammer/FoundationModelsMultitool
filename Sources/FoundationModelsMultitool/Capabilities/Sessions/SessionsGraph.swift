@@ -75,7 +75,7 @@ import Synchronization
 /// and the sessions that they started, to any depth. A mutation on a session
 /// that the viewer cannot see gives the `NOT_FOUND` of the toolkit.
 ///
-/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:searcher:)`` gives
+/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:searcher:sharer:)`` gives
 /// the same instance for each call over the same directory, thus each copy of
 /// ``SessionsTool``, of each session and each fork, gives the same endpoint,
 /// with one change log and one cursor.
@@ -150,14 +150,17 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// feed from the moment the endpoint is made.
     private let changes: SessionsGraphChangeFeed
 
-    /// The exporter that ``endpoint(of:exporter:searcher:)`` keeps, or `nil`.
+    /// The exporter that ``endpoint(of:exporter:searcher:sharer:)`` keeps, or `nil`.
     private let storedExporter = Mutex<(any SessionTranscriptExporter)?>(nil)
 
-    /// The searcher that ``endpoint(of:exporter:searcher:)`` keeps, or `nil`.
+    /// The searcher that ``endpoint(of:exporter:searcher:sharer:)`` keeps, or `nil`.
     private let storedSearcher = Mutex<(any SessionTranscriptSearcher)?>(nil)
 
+    /// The sharer that ``endpoint(of:exporter:searcher:sharer:)`` keeps, or `nil`.
+    private let storedSharer = Mutex<(any SessionSharer)?>(nil)
+
     /// Makes the endpoint over a directory, and starts its change feed. A
-    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:searcher:)``,
+    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:searcher:sharer:)``,
     /// which makes one for each directory.
     ///
     /// - Parameter directory: The directory that the `sessions` tool also
@@ -168,7 +171,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// Gives the one endpoint of `directory` (EXTRAS-9 rule 1), and keeps
-    /// `exporter` and `searcher` with it.
+    /// `exporter`, `searcher` and `sharer` with it.
     ///
     /// The first call for a directory makes the endpoint, and each later call
     /// gives the same instance while a caller holds it. A directory with no
@@ -179,7 +182,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// exporter that an earlier call gave. A call with no exporter keeps the
     /// exporter of the endpoint. Thus a tool that a host makes with no
     /// exporter does not remove the exporter of the directory. The searcher
-    /// follows the same rule.
+    /// and the sharer follow the same rule.
     ///
     /// - Parameters:
     ///   - directory: The session directory, for example the one of the
@@ -188,14 +191,17 @@ public final class SessionsGraph: GraphQLEndpoint {
     ///     `nil` to keep the exporter of the endpoint.
     ///   - searcher: The searcher of the transcripts of the sessions, or
     ///     `nil` to keep the searcher of the endpoint.
+    ///   - sharer: The sharer of the sessions, or `nil` to keep the sharer
+    ///     of the endpoint.
     /// - Returns: The endpoint.
     public static func endpoint(
         of directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
-        searcher: (any SessionTranscriptSearcher)? = nil
+        searcher: (any SessionTranscriptSearcher)? = nil, sharer: (any SessionSharer)? = nil
     ) -> SessionsGraph {
         let endpoint = sharedEndpoint(of: directory)
         storeIfPresent(exporter, in: endpoint.storedExporter)
         storeIfPresent(searcher, in: endpoint.storedSearcher)
+        storeIfPresent(sharer, in: endpoint.storedSharer)
         return endpoint
     }
 
@@ -253,6 +259,13 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// the `searchSessions` query read it (D207 (g), (h)).
     var searcher: (any SessionTranscriptSearcher)? {
         Self.read(storedSearcher)
+    }
+
+    /// The sharer that a host gave for the directory, or `nil` when no host
+    /// gave one: the share operations of the `sessions` tool read it
+    /// (D208 (k)).
+    var sharer: (any SessionSharer)? {
+        Self.read(storedSharer)
     }
 
     /// The schema of the endpoint in SDL. The schema is built once for each

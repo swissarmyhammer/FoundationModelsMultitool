@@ -21,6 +21,10 @@ struct SessionsToolContext: Sendable {
     /// host gave none: `search sessions` then gives a corrective (D207 (g)).
     let searcher: (any SessionTranscriptSearcher)?
 
+    /// The sharer of the sessions, or `nil` when the host gave none: the
+    /// share operations then give a corrective (D208 (k)).
+    let sharer: (any SessionSharer)?
+
     /// Makes the context.
     ///
     /// - Parameters:
@@ -31,13 +35,17 @@ struct SessionsToolContext: Sendable {
     ///   - searcher: The searcher of the transcripts, or `nil` for none. The
     ///     mutations of the `sessions` endpoint search nothing, and give
     ///     none.
+    ///   - sharer: The sharer of the sessions, or `nil` for none. The
+    ///     mutations of the `sessions` endpoint that change no share give
+    ///     none.
     init(
         directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
-        searcher: (any SessionTranscriptSearcher)? = nil
+        searcher: (any SessionTranscriptSearcher)? = nil, sharer: (any SessionSharer)? = nil
     ) {
         self.directory = directory
         self.exporter = exporter
         self.searcher = searcher
+        self.sharer = sharer
     }
 
     /// The sessions of the directory as the tool sees them: through the

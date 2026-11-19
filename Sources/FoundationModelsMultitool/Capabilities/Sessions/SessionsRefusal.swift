@@ -114,6 +114,16 @@ struct SessionsRefusal: CodedError {
 
         /// The searcher could not search the transcripts of the sessions.
         case searchFailed = "SEARCH_FAILED"
+
+        /// The server has no sharer, so it cannot share a session
+        /// (D208 (k)).
+        case sharingUnavailable = "SHARING_UNAVAILABLE"
+
+        /// The session of an update or a stop of a share has no share.
+        case notShared = "NOT_SHARED"
+
+        /// The sharer could not read, make, update or stop a share.
+        case shareFailed = "SHARE_FAILED"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.

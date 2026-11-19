@@ -181,33 +181,8 @@ struct SessionsToolExportTests {
 
     // MARK: - The id
 
-    /// A form of the `id` of the reference cases.
-    enum ReferenceForm: String, CaseIterable, Sendable {
-        /// The full id.
-        case id
-        /// `@` and the short id.
-        case atShortID
-        /// `@` and the slug.
-        case atSlug
-
-        /// The `id` text of this form for `summary`.
-        ///
-        /// - Parameter summary: The session.
-        /// - Returns: The text.
-        func text(for summary: SessionSummary) -> String {
-            switch self {
-            case .id:
-                summary.id.ulidString
-            case .atShortID:
-                "@\(summary.shortID)"
-            case .atSlug:
-                "@\(summary.slug)"
-            }
-        }
-    }
-
-    @Test("export session with the id, @<short id> or @<slug> exports that session", arguments: ReferenceForm.allCases)
-    func exportWithAReferenceExportsThatSession(_ form: ReferenceForm) async throws {
+    @Test("export session with the id, @<short id> or @<slug> exports that session", arguments: SessionReferenceForm.allCases)
+    func exportWithAReferenceExportsThatSession(_ form: SessionReferenceForm) async throws {
         let directory = InMemorySessionDirectory()
         let folder = Self.makeFolder()
         let other = Fixtures.summary(title: Self.otherTitle, folder: folder)

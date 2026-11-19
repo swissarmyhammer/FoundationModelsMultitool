@@ -128,6 +128,9 @@ Run the API tests again.
 | Fork your session from here | `{"op": "fork session", "message": "try the other approach"}` |
 | Export a session as a Markdown file | `{"op": "export session", "id": "v2w4abc", "format": "markdown", "thoughts": false, "path": "notes/api-tests.md", "replace": true}` |
 | Search the transcripts of the sessions | `{"op": "search sessions", "query": "\"retry budget\" folder:.", "limit": 10}` |
+| Share a session as a read-only link | `{"op": "share session", "id": "v2w4abc", "thoughts": true, "toolOutput": true, "anyoneWithLink": true, "keepUpdated": false}` |
+| Update the share of a session | `{"op": "update share", "id": "v2w4abc", "keepUpdated": true}` |
+| Stop the share of a session | `{"op": "stop sharing", "id": "v2w4abc"}` |
 
 - The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
 - The `parent` and `startedBy` filters of `list sessions` take a full id only.
@@ -167,4 +170,15 @@ Run the API tests again.
   - `from:<kind>`: only the hits of one kind: `user`, `agent`, `message`, `tool`, `plan` or `thought`. With no `from:`, the search does not include the thoughts.
   - `is:archived`: also the archived sessions.
 - `search sessions` gives one line for each session, with its `@<short id>`, name, folder, date and number of hits, and at most three snippets.
+- `share session` takes these parameters, and each is optional:
+  - `id`: the session. With no `id`, it shares your session.
+  - `thoughts`: `true` to put the thoughts of the agent in the share. The default is `true`.
+  - `toolOutput`: `true` to put the output of the tool calls in the share. The default is `true`.
+  - `anyoneWithLink`: `true` when anyone with the link can open the share. The default is `true`.
+  - `keepUpdated`: `true` to update the share at the end of each turn. The default is `false`.
+- `update share` takes these parameters, and each is optional:
+  - `id`: the shared session. With no `id`, it updates the share of your session.
+  - `keepUpdated`: `true` or `false` to change the switch Keep Updated. With no `keepUpdated`, the switch does not change.
+- `stop sharing` takes these parameters, and each is optional:
+  - `id`: the shared session. With no `id`, it stops the share of your session.
 - In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, and so on.

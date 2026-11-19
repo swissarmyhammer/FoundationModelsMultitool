@@ -120,3 +120,29 @@ enum SessionsToolFixtures {
         }
     }
 }
+
+/// A form of the `id` of an operation that takes a session reference: the
+/// cases that name a session other than the caller run once for each form.
+enum SessionReferenceForm: String, CaseIterable, Sendable {
+    /// The full id.
+    case id
+    /// `@` and the short id.
+    case atShortID
+    /// `@` and the slug.
+    case atSlug
+
+    /// The `id` text of this form for `summary`.
+    ///
+    /// - Parameter summary: The session.
+    /// - Returns: The text.
+    func text(for summary: SessionSummary) -> String {
+        switch self {
+        case .id:
+            summary.id.ulidString
+        case .atShortID:
+            "@\(summary.shortID)"
+        case .atSlug:
+            "@\(summary.slug)"
+        }
+    }
+}

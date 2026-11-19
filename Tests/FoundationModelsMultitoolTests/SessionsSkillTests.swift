@@ -2,8 +2,8 @@
 // `sessions` skill against the `sessions` tool (D200): each `{"op": ...}`
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the parameter list of `export
-// session`, of `fork session` and of `search sessions` in the skill names each
-// parameter, the skill tells the limit of `search sessions` (D207 (d)), each
+// session`, of `fork session`, of `search sessions`, of `share session`, of
+// `update share` and of `stop sharing` in the skill names each parameter, the skill tells the limit of `search sessions` (D207 (d)), each
 // code-mode verb of the skill is a verb of the tool, and the skill names each
 // form of a session reference, each receipt word of the tool and the note
 // `archived` of a `sent` receipt (D204), and the recap of a session with its
@@ -237,7 +237,10 @@ import Testing
     }
 
     /// The operations whose parameter list the skill must give in full.
-    static let listedOperations = [ExportSession.opString, ForkSession.opString, SearchSessions.opString]
+    static let listedOperations = [
+        ExportSession.opString, ForkSession.opString, SearchSessions.opString, ShareSession.opString,
+        UpdateShare.opString, StopSharing.opString,
+    ]
 
     @Test("the skill names each parameter of the operation", arguments: listedOperations)
     func theSkillNamesEachParameter(of op: String) throws {

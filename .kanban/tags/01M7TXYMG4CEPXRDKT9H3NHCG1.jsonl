@@ -1,0 +1,1 @@
+{"id":"01M7TXYMG4166A1RZJY0WQWP3K","timestamp":"2026-11-19T22:13:35.876872Z","op":"create","item_id":"01M7TXYMG4CEPXRDKT9H3NHCG1","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: d876e3\n+tag_name: share\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: d876e3\n-tag_name: share\n","transaction_id":null}
