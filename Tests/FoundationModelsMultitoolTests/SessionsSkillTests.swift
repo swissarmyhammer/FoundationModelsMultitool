@@ -5,7 +5,8 @@
 // session` and of `fork session` in the skill names each parameter, each
 // code-mode verb of the skill is a verb of the tool, and the skill names each
 // form of a session reference, each receipt word of the tool and the note
-// `archived` of a `sent` receipt (D204).
+// `archived` of a `sent` receipt (D204), and the recap of a session with its
+// line forms in `check session` and `list sessions` (D206 (h)).
 //
 // The suite reads the skill through `BuiltinSkills.directory`, as ACPAgent
 // does. Thus a change of the tool that makes the skill wrong fails here.
@@ -296,6 +297,40 @@ import Testing
     @Test("the skill does not say that an archived session takes no messages")
     func theSkillDoesNotRefuseMessagesToAnArchivedSession() throws {
         #expect(try !Self.skillText().contains(Self.oldArchivedRefusal))
+    }
+
+    /// The terms of the recap of a session that the skill must name (D206
+    /// (h)): the word `recap`, the line form of `check session` and the fact
+    /// form of `list sessions`. The tool writes the two forms in
+    /// `SessionsToolText.facts(of:callerID:unreadFromIt:)` and
+    /// `SessionsToolText.optionalFacts(of:)`, which keep them in string
+    /// interpolation, so this list copies the literal forms.
+    private static let recapTerms = ["recap", "`Recap:`", "`recap \"<text>\"`"]
+
+    /// A small skill text for the unit test of ``unnamedRecapTerms(in:)``: it
+    /// names the recap, but not the line form of `check session` and not the
+    /// fact form of `list sessions`.
+    private static let recapWithoutLineForm = """
+        - The recap tells what a session did. Read it with `check session`.
+        """
+
+    /// The recap terms that a text does not name.
+    ///
+    /// - Parameter text: The skill text.
+    /// - Returns: Each term of ``recapTerms`` that `text` does not contain, in
+    ///   the order of ``recapTerms``.
+    private static func unnamedRecapTerms(in text: String) -> [String] {
+        recapTerms.filter { !text.contains($0) }
+    }
+
+    @Test("a text that names the recap without its line forms leaves those forms unnamed")
+    func aRecapWithoutItsLineFormsIsIncomplete() {
+        #expect(Self.unnamedRecapTerms(in: Self.recapWithoutLineForm) == ["`Recap:`", "`recap \"<text>\"`"])
+    }
+
+    @Test("the skill names the recap and its line forms in check session and list sessions")
+    func theSkillNamesTheRecap() throws {
+        #expect(Self.unnamedRecapTerms(in: try Self.skillText()) == [])
     }
 
     @Test("the skill names each receipt word of the tool", arguments: SessionsGraphOutcome.allCases)

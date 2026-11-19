@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Sessions
@@ -61,6 +61,7 @@ Use `send message` when you write `@<session>` yourself, or when the user asks f
 - Two aliases: `@<agent>:/path` looks for `@<agent>` in that folder first, and a folder path alone (`/path` or `~/path`) names the newest root session in that folder. The answer then starts with a `Rewrite:` line that tells the form that the tool used.
 - The target sees only `message`. Put all the facts in it: the goal, the files, and what to send back.
 - When you do not know the target, find it first (below). Do not guess a slug.
+- The recap of a session tells what the session did and where it stands now. Before you send a message to a session that you do not know, read its recap: `check session` shows it on the `Recap:` line, and `list sessions` shows it as `recap "<text>"` at the end of the line of the session.
 - Read the answer. It gives one line for each target, with the same words as the receipt: delivered, queued, sent, started or refused. On refused, tell the user the reason.
 - A message to an archived session waits in its inbox (receipt `sent`, note `archived`). The session does not start a turn. Tell the user, or start a new session for the work.
 
@@ -116,7 +117,7 @@ Run the API tests again.
 | Find the sessions of an agent | `{"op": "list sessions", "agent": "claude-code"}` |
 | Find the working sessions | `{"op": "list sessions", "state": "working"}` |
 | Also find the sessions that are not live | `{"op": "list sessions", "includeRecorded": true}` |
-| Get the state and the last summary | `{"op": "check session", "id": "v2w4abc"}` |
+| Get the state, the recap and the last summary | `{"op": "check session", "id": "v2w4abc"}` |
 | Read the messages to you | `{"op": "read inbox"}` |
 | Start a session | `{"op": "start session", "agent": "claude-code", "cwd": "~/code/api", "message": "...", "title": "api-tests"}` |
 | Rename a session | `{"op": "rename session", "id": "@claude-code-2", "title": "api-tests"}` |
