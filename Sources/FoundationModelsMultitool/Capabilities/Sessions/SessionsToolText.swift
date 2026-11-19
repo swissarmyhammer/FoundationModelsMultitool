@@ -313,6 +313,8 @@ enum SessionsToolText {
             return "The cut of the fork is not in the history of the session. Fork at the last completed turn instead."
         case .forkUnsupported:
             return "This server cannot fork a session. Start a new session instead."
+        case .importUnsupported:
+            return "This server cannot import a session. Start a new session instead."
         }
     }
 

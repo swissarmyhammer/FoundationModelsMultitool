@@ -53,6 +53,9 @@ enum SessionOrigin {
 
   """A user forked another session."""
   FORK
+
+  """An import of a session of another agent made it."""
+  IMPORT
 }
 
 """What happened to a message at one target."""

@@ -1,6 +1,6 @@
 // `SessionDirectoryErrorCorrectiveTests` — the corrective text and the code
 // that the `sessions` tool and graph give for each error of the session
-// directory that the fork of a session brought (^xpaa2h9).
+// directory that the fork (^xpaa2h9) and the import of a session brought.
 
 import Foundation
 import FoundationModelsExtras
@@ -9,8 +9,8 @@ import ULID
 
 @testable import FoundationModelsMultitool
 
-/// The corrective and the code of the archived-session and fork errors of the
-/// session directory.
+/// The corrective and the code of the archived-session, fork and import errors
+/// of the session directory.
 @Suite("SessionDirectoryErrorCorrectiveTests")
 struct SessionDirectoryErrorCorrectiveTests {
 
@@ -39,10 +39,24 @@ struct SessionDirectoryErrorCorrectiveTests {
         #expect(text.contains("cannot fork"), "text was: \(text)")
     }
 
+    /// A directory that cannot import says so.
+    @Test func anImportUnsupportedSaysTheServerCannotImport() {
+        let text = SessionsToolText.corrective(for: .importUnsupported)
+
+        #expect(text.contains("cannot import"), "text was: \(text)")
+    }
+
+    /// A directory that cannot import has the code of its refusal.
+    @Test func anImportUnsupportedHasItsCode() {
+        #expect(SessionsGraphResolver.refusalKind(of: .importUnsupported)?.rawValue == "IMPORT_UNSUPPORTED")
+    }
+
     /// Each new error has the code of its refusal.
     @Test func eachForkErrorHasItsCode() {
         #expect(SessionsGraphResolver.refusalKind(of: .archivedSession(Self.sessionID))?.rawValue == "ARCHIVED_SESSION")
-        #expect(SessionsGraphResolver.refusalKind(of: .forkCutOutOfRange(.lastCompletedTurn))?.rawValue == "FORK_CUT_OUT_OF_RANGE")
+        #expect(
+            SessionsGraphResolver.refusalKind(of: .forkCutOutOfRange(.lastCompletedTurn))?.rawValue
+                == "FORK_CUT_OUT_OF_RANGE")
         #expect(SessionsGraphResolver.refusalKind(of: .forkUnsupported)?.rawValue == "FORK_UNSUPPORTED")
     }
 }

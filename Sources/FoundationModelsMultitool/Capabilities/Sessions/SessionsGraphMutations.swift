@@ -720,6 +720,8 @@ extension SessionsGraphResolver {
             .forkCutOutOfRange
         case .forkUnsupported:
             .forkUnsupported
+        case .importUnsupported:
+            .importUnsupported
         }
     }
 }

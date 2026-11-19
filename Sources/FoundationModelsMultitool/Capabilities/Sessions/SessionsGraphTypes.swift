@@ -98,6 +98,9 @@ enum SessionsGraphOrigin: String, Codable, CaseIterable, Sendable {
     /// A user forked another session.
     case fork = "FORK"
 
+    /// An import of a session of another agent made it.
+    case `import` = "IMPORT"
+
     /// Makes the enum value of an origin of the directory.
     ///
     /// - Parameter origin: The origin of the directory.
@@ -108,6 +111,7 @@ enum SessionsGraphOrigin: String, Codable, CaseIterable, Sendable {
         case .message: self = .message
         case .trigger: self = .trigger
         case .fork: self = .fork
+        case .import: self = .import
         }
     }
 }

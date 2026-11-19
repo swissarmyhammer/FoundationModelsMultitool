@@ -102,6 +102,9 @@ struct SessionsRefusal: CodedError {
         /// The server cannot fork a session.
         case forkUnsupported = "FORK_UNSUPPORTED"
 
+        /// The server cannot import a session.
+        case importUnsupported = "IMPORT_UNSUPPORTED"
+
         /// A token of a session search query has a wrong value (D207 (e)).
         case invalidQuery = "INVALID_QUERY"
 

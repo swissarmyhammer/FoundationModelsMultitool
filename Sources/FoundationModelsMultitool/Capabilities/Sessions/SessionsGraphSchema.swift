@@ -427,6 +427,7 @@ struct SessionsGraphAPI: API {
             Value(.message).description("A message to an agent with no session started it.")
             Value(.trigger).description("A trigger, for example of a kanban task, started it.")
             Value(.fork).description("A user forked another session.")
+            Value(.import).description("An import of a session of another agent made it.")
         }
         .description("How a session started.")
     }
