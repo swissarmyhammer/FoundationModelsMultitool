@@ -20,11 +20,27 @@ comments:
     - Decisions (documented in the file header and the SDL): an earlier import whose session the viewer cannot see is dropped; `.` is the caller session folder for the agent and INVALID_FOLDER for a client; an external client cannot import (UNTRUSTED_CLIENT) but can list.
     - next: /review
   timestamp: 2026-11-19T23:36:14.615267+00:00
+- actor: claude-code
+  id: 01m7v2z7m0hftsm8s562ntbrf4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit a869576b): 0 findings, 0 confirmed, 2 refuted, 14 attempted, 0 failed. The golden schema file sessions.graphql has no validator that matches it.
+    - next: none. The task is in done.
+  timestamp: 2026-11-19T23:41:18.336689+00:00
+- actor: claude-code
+  id: 01m7v2zt6e62ty4fxkdqm1r226
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphImport.swift (new), SessionsGraph, SessionsGraphSchema, SessionsGraphMutations, SessionsToolImportOperations, SessionsToolText+Import; golden (+108/-0); SessionsGraphImportTests (new, 25), MT-10 row
+    - test: green — swift test, 3331 passed (run in the implement step)
+    - commit: a869576b
+    - review: clean — 0 findings
+  timestamp: 2026-11-19T23:41:37.358128+00:00
 depends_on:
 - 01M7TY6PWAXJH82MDJ5ET3QN9R
 - 01M7TXY9WWWR9TADTG8YSYBPDP
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffffa580
 title: importableSessions and importSession on the sessions endpoint (D209)
 ---
 Decision: D209 (l) in TestudoApp/features/decisions.md (commit 56a8a59). Brief: /Users/wballard/github/swissarmyhammer/.briefs/import/mt-brief.md, item 4.
