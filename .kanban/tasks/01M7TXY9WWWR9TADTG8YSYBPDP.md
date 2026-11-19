@@ -32,10 +32,26 @@ comments:
     - Decisions: the mutations give `Session`; the `share` field with no sharer gives SHARING_UNAVAILABLE (as `export` gives MISSING_EXPORTER); `shareSession` on a session that has a share records no change; a later endpoint(of:) with a different sharer does not follow the stream of that sharer (one read per endpoint).
     - next: review
   timestamp: 2026-11-19T23:17:05.652582+00:00
+- actor: claude-code
+  id: 01m7v1x61fggt0dw7614nwn61a
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 7a448714). 0 findings (0 confirmed, 1 refuted, 14 attempted, 0 failed). 9 files reviewed. Not reviewed: 2 .kanban files (ignore rule) and Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql (no validator matches).
+    - next: none. The task is in done.
+  timestamp: 2026-11-19T23:22:42.607813+00:00
+- actor: claude-code
+  id: 01m7v1xjgr57nmvhv10b7gy513
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphShare.swift (new), SessionsGraph, SessionsGraphChanges (one change recorder), SessionsGraphMutations, SessionsGraphSchema; golden (+118/-0); SessionsGraphShareTests (new, 19), MT-10 rows, SessionSharerFixtures
+    - test: green — swift test, 3306 passed (run in the implement step)
+    - commit: 7a448714
+    - review: clean — 0 findings
+  timestamp: 2026-11-19T23:22:55.384512+00:00
 depends_on:
 - 01M7TXXYXSTM71VFGJAY8M7YVR
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffffa480
 title: The share field and the share mutations of the sessions endpoint (D208)
 ---
 Decision: D208 (d), (f), (k) in TestudoApp/features/decisions.md (commit d803f1a). Brief: /Users/wballard/github/swissarmyhammer/.briefs/share/mt-brief.md, item 5.
