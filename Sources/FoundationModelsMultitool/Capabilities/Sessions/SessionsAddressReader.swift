@@ -232,12 +232,16 @@ extension SessionsVisibility {
     ///     first, or `nil` to look in all the sessions at once.
     ///   - scope: The sessions that a short id and a slug look at. The
     ///     default is the sessions that are not archived.
+    ///   - outcome: The sentence of the ambiguous corrective that tells what
+    ///     the call did not do. The default is
+    ///     ``SessionsToolText/notChangedSentence``.
     /// - Returns: The session id.
     /// - Throws: ``SessionsRefusal`` for a reference that names more than one
     ///   session, and for a reference that names no session of `scope` that
     ///   the viewer can see; each error of the directory.
     func sessionID(
-        referencedBy text: String, lookupFolder: URL?, scope: SessionsReferenceScope = .unarchived
+        referencedBy text: String, lookupFolder: URL?, scope: SessionsReferenceScope = .unarchived,
+        outcome: String = SessionsToolText.notChangedSentence
     ) async throws -> ULID {
         if let id = SessionsToolInput.fullSessionID(text) {
             return id
@@ -250,7 +254,7 @@ extension SessionsVisibility {
         case .session(let summary):
             return summary.id
         case .ambiguous(let matches):
-            throw Self.ambiguity(of: text, among: matches, outcome: SessionsToolText.notChangedSentence)
+            throw Self.ambiguity(of: text, among: matches, outcome: outcome)
         case .none:
             throw SessionsRefusal(.invalidSessionID, scope.noMatch(text))
         }

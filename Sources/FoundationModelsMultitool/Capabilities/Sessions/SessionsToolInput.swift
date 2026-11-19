@@ -214,6 +214,15 @@ enum SessionsToolInput {
         guard let path else {
             return nil
         }
+        return try absoluteFolder(path)
+    }
+
+    /// The working folder of `path`.
+    ///
+    /// - Parameter path: An absolute path, or a path that starts with `~`.
+    /// - Returns: The folder.
+    /// - Throws: ``SessionsRefusal`` for a relative path.
+    static func absoluteFolder(_ path: String) throws(SessionsRefusal) -> URL {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let expanded = trimmed.hasPrefix(homePrefix) ? NSString(string: trimmed).expandingTildeInPath : trimmed
         guard expanded.hasPrefix(rootPrefix) else {

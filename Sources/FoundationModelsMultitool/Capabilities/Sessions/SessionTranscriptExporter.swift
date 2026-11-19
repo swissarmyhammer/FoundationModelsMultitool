@@ -11,8 +11,8 @@ import ULID
 
 /// Gives the Markdown of the transcript of a session.
 ///
-/// A host gives one to ``SessionsTool/init(directory:exporter:)`` and to
-/// ``SessionsGraph/endpoint(of:exporter:)``. With no exporter, the
+/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:)`` and
+/// to ``SessionsGraph/endpoint(of:exporter:searcher:)``. With no exporter, the
 /// `export session` operation gives a corrective that names the UI command
 /// Export as Markdown….
 public protocol SessionTranscriptExporter: Sendable {

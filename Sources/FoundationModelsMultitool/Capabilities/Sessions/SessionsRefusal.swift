@@ -104,6 +104,13 @@ struct SessionsRefusal: CodedError {
 
         /// A token of a session search query has a wrong value (D207 (e)).
         case invalidQuery = "INVALID_QUERY"
+
+        /// The server has no searcher, so it cannot search the transcripts
+        /// of the sessions (D207 (g)).
+        case missingSearcher = "MISSING_SEARCHER"
+
+        /// The searcher could not search the transcripts of the sessions.
+        case searchFailed = "SEARCH_FAILED"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.

@@ -6,10 +6,29 @@ comments:
   id: 01m7sy72j8x4zeprzv58n7ftyk
   text: 'Correction: in the Work list, "the rest of the skill text is ^skill task" means task ^jqxnt67 (01M7SY6VG7D05XAHNZJJQXNT67). The endpoint field is task ^c5dkdc6.'
   timestamp: 2026-11-19T12:58:57.992045+00:00
+- actor: claude-code
+  id: 01m7szc8kfqj1zmhvx4fbndb15
+  text: |-
+    Research done.
+    - The protocol, the value types and the parse are on main (SessionTranscriptSearcher.swift, SessionSearchQuery.swift, SessionSearchQueryParser.swift). SessionsRefusal has INVALID_QUERY and no MISSING_SEARCHER yet.
+    - The exporter pattern: SessionsGraph keeps the exporter in a Mutex (`storedExporter`); a call with nil keeps the stored value. SessionsToolContext gets the exporter from the endpoint. The searcher follows the same pattern.
+    - The one resolver: `SessionsVisibility.sessionID(referencedBy:lookupFolder:scope:)` in SessionsAddressReader.swift. Its ambiguity corrective names "Nothing changed."; the search needs its own outcome sentence, so the plan adds an `outcome` parameter with that default.
+    - The session name in the tool texts is `title ?? slug` (SessionsToolText+Messages.swift).
+    - The plan for the shared builder: `SessionsVisibility.searchRequest(...)` that parses the text, resolves `@<session>`, filters the visible sessions by tag, agent and folder into `sessions: Set<ULID>?`, and clamps the limit (20 default, 1...50). The endpoint task ^c5dkdc6 calls the same function with its own visibility.
+    - ACPAgent origin/main calls `SessionsTool(directory:exporter:)` and `SessionsGraph.endpoint(of:)` only, so a defaulted `searcher` parameter keeps it compiling.
+  timestamp: 2026-11-19T13:19:16.591304+00:00
+- actor: claude-code
+  id: 01m7szxm2mz9serkpkxvedb53b
+  text: |-
+    ### implement — changed
+    - evidence: new files SessionSearchRequestReader.swift (the one builder `SessionsVisibility.searchRequest(for: SessionSearchArguments)`, which the endpoint task ^c5dkdc6 can call with its own visibility, session and cursor), SessionsToolSearchOperation.swift (`search sessions`, `requiredSearcher`, `page(of:from:)`), Tests SessionsToolSearchTests.swift (20 tests) and Fixtures/SessionTranscriptSearcherFixtures.swift. Changed: SessionsTool, SessionsGraph, SessionsToolContext, SessionsRefusal (MISSING_SEARCHER, SEARCH_FAILED), SessionsAddressReader (`outcome` parameter, default "Nothing changed."), SessionsToolInput (`absoluteFolder(_:)`), SessionsToolText (+Search, +Messages, `name(of:)`), SessionTranscriptExporter and SessionTranscriptSearcher docs, SKILL.md (one row). `swift build --build-tests` clean. `swift test --filter SessionsToolSearchTests`: 20 passed. Full `swift test`: 3206 tests in 280 suites passed.
+    - notes: a suite that calls `SessionsToolFixtures.asCaller` needs the `.ownsTemporaryDirectories` trait; the first full run failed 20 tests for that cause only. Verb aliases `find` and `grep` go to `search`; parameter aliases `text`/`q`, `cwd`, `includeArchived`, `first`. A result whose session the caller cannot see now is not in the answer. The date of a line is the day of the best hit (or the last change of the session) in the server time zone. ACPAgent origin/main calls only `SessionsTool(directory:exporter:)` and `SessionsGraph.endpoint(of:)`, so it still compiles.
+    - next: /review
+  timestamp: 2026-11-19T13:28:45.396979+00:00
 depends_on:
 - 01M7SY5YTKRE2TS1R6KR2MC120
-position_column: todo
-position_ordinal: '8180'
+position_column: doing
+position_ordinal: '80'
 title: The search sessions operation of the sessions tool (D207)
 ---
 Decision: D207 (d), (e), (g) in TestudoApp/features/decisions.md (commit ba585e0). Brief: /Users/wballard/github/swissarmyhammer/.briefs/search/mt-brief.md, items 3 and 5.
@@ -28,9 +47,9 @@ Precondition: ^r2mc120 (the protocol and the parse).
 
 ## Tests
 
-- [ ] With a fake searcher: the answer text with the limit line, and the no-hit text.
-- [ ] No searcher: MISSING_SEARCHER.
-- [ ] `archived`, `limit` (the cap at 50), `folder`.
-- [ ] `@<slug>` through the resolver, and an ambiguous one.
-- [ ] The preferred folder is the caller folder.
-- [ ] A wrong date in the query gives the corrective. #sessions #search
+- [x] With a fake searcher: the answer text with the limit line, and the no-hit text.
+- [x] No searcher: MISSING_SEARCHER.
+- [x] `archived`, `limit` (the cap at 50), `folder`.
+- [x] `@<slug>` through the resolver, and an ambiguous one.
+- [x] The preferred folder is the caller folder.
+- [x] A wrong date in the query gives the corrective. #sessions #search

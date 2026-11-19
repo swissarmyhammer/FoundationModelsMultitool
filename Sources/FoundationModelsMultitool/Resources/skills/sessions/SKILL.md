@@ -127,6 +127,7 @@ Run the API tests again.
 | Unarchive a session | `{"op": "unarchive session", "id": "@build-fix"}` |
 | Fork your session from here | `{"op": "fork session", "message": "try the other approach"}` |
 | Export a session as a Markdown file | `{"op": "export session", "id": "v2w4abc", "format": "markdown", "thoughts": false, "path": "notes/api-tests.md", "replace": true}` |
+| Search the transcripts of the sessions | `{"op": "search sessions", "query": "\"retry budget\" folder:.", "limit": 10}` |
 
 - The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
 - The `parent` and `startedBy` filters of `list sessions` take a full id only.

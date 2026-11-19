@@ -1,6 +1,6 @@
 // `SessionsTool` — the `sessions` tool: the operations that find, check,
-// read, message, start, tag, rename, archive, fork and export the sessions of
-// the server
+// read, message, start, tag, rename, archive, fork, export and search the
+// sessions of the server
 // through a `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
 //
 // The tool has the shape of the `agents` tool of FoundationModelsAgents: a
@@ -18,17 +18,19 @@ import Operations
 /// read the messages that other sessions sent to the caller session, send a
 /// message and reply to one, start a new session, tag, untag, rename, pin
 /// and unpin a session, archive and unarchive a session, fork a session from
-/// here, and export a session as Markdown.
+/// here, export a session as Markdown, and search the transcripts of the
+/// sessions.
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
 /// `untag session`, `rename session`, `pin session`, `unpin session`,
-/// `archive session`, `unarchive session`, `fork session` and
-/// `export session`. In code mode each one is a verb of `tools.sessions`:
-/// `listSessions`, `checkSession`, `readInbox`, `sendMessage`,
-/// `replyMessage`, `startSession`, `tagSession`, `untagSession`,
-/// `renameSession`, `pinSession`, `unpinSession`, `archiveSession`,
-/// `unarchiveSession`, `forkSession` and `exportSession`. Each answer is
+/// `archive session`, `unarchive session`, `fork session`,
+/// `export session` and `search sessions`. In code mode each one is a verb
+/// of `tools.sessions`: `listSessions`, `checkSession`, `readInbox`,
+/// `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
+/// `untagSession`, `renameSession`, `pinSession`, `unpinSession`,
+/// `archiveSession`, `unarchiveSession`, `forkSession`, `exportSession` and
+/// `searchSessions`. Each answer is
 /// plain text, and each error is a corrective text the model reads in the
 /// same turn, never a thrown error.
 ///
@@ -39,10 +41,11 @@ import Operations
 ///
 /// **The tool is a value type, and a host copies it** (EXTRAS-9 rule 1): to
 /// the top-level tools of a session, to the registry of `runCode`, and to a
-/// forked session. Each copy shares the directory and the exporter that
-/// ``init(directory:exporter:)`` gets, and the record of the messages that
-/// `read inbox` gave, which ``init(directory:exporter:)`` makes one time and
-/// `reply message` reads.
+/// forked session. Each copy shares the directory, the exporter and the
+/// searcher that ``init(directory:exporter:searcher:)`` gets, and the record
+/// of the messages that `read inbox` gave, which
+/// ``init(directory:exporter:searcher:)`` makes one time and `reply message`
+/// reads.
 ///
 /// The tool is also a `GraphQLEndpointTool`: its `graphQLEndpoints` is one
 /// endpoint, ``SessionsGraph``, over the same directory (D75). The endpoint
@@ -67,10 +70,11 @@ public struct SessionsTool: Tool, OperationDescribing {
 
     /// Makes the `sessions` tool over `directory`.
     ///
-    /// The tool keeps `exporter` with the one endpoint of the directory
-    /// (``SessionsGraph/endpoint(of:exporter:)``). With no exporter, the tool
-    /// uses the exporter that an earlier tool over the same directory gave,
-    /// if the endpoint is still alive.
+    /// The tool keeps `exporter` and `searcher` with the one endpoint of the
+    /// directory (``SessionsGraph/endpoint(of:exporter:searcher:)``). With no
+    /// exporter, the tool uses the exporter that an earlier tool over the
+    /// same directory gave, if the endpoint is still alive. The searcher
+    /// follows the same rule.
     ///
     /// - Parameters:
     ///   - directory: The session directory that each operation reads. The
@@ -78,14 +82,20 @@ public struct SessionsTool: Tool, OperationDescribing {
     ///     `InMemorySessionDirectory`.
     ///   - exporter: The exporter of the transcripts, for `export session`,
     ///     or `nil` when the host cannot export.
+    ///   - searcher: The searcher of the transcripts, for `search sessions`,
+    ///     or `nil` when the host cannot search.
     /// - Throws: The error of `OperationTool.init` when the schema of the
     ///   operations cannot be fused.
-    public init(directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil) throws {
-        endpoint = SessionsGraph.endpoint(of: directory, exporter: exporter)
+    public init(
+        directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
+        searcher: (any SessionTranscriptSearcher)? = nil
+    ) throws {
+        endpoint = SessionsGraph.endpoint(of: directory, exporter: exporter, searcher: searcher)
         operationTool = try OperationTool(
             name: Self.toolName,
             description: SessionsToolText.toolDescription,
-            context: SessionsToolContext(directory: directory, exporter: endpoint.exporter),
+            context: SessionsToolContext(
+                directory: directory, exporter: endpoint.exporter, searcher: endpoint.searcher),
             operations: [
                 AnyOperation(ListSessions.self),
                 AnyOperation(CheckSession.self),
@@ -102,6 +112,7 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(UnarchiveSession.self),
                 AnyOperation(ForkSession.self),
                 AnyOperation(ExportSession.self),
+                AnyOperation(SearchSessions.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))
     }
@@ -109,11 +120,14 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// The verb aliases of the tool over the default aliases of the
     /// resolver: `read` stays `read`. The default table makes `read` the
     /// verb `get`, and then `read inbox` names no operation. `save` is
-    /// `export`, and `branch` is `fork` (D86).
+    /// `export`, `branch` is `fork`, and `find` and `grep` are `search`
+    /// (D86).
     static let verbAliases: [String: String] = [
         ReadInbox.verb: ReadInbox.verb,
         "save": ExportSession.verb,
         "branch": ForkSession.verb,
+        "find": SearchSessions.verb,
+        "grep": SearchSessions.verb,
     ]
 
     /// The model-facing name of the tool: `sessions`.

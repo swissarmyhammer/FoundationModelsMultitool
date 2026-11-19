@@ -14,6 +14,11 @@ import ULID
 
 /// Searches the transcripts of the sessions that this server records.
 ///
+/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:)`` and
+/// to ``SessionsGraph/endpoint(of:exporter:searcher:)``. With no searcher, the
+/// `search sessions` operation gives a corrective that names the UI command
+/// Search (⌘F).
+///
 /// The searcher gives the intent of the query (``SessionSearchQuery/rankingText``)
 /// to its `MetadataSearcher`, and then applies the phrases, the exclusions and
 /// the tokens of the query to the matches, in their order (D207 (c), (e)). A

@@ -68,7 +68,7 @@ import Synchronization
 /// and the sessions that they started, to any depth. A mutation on a session
 /// that the viewer cannot see gives the `NOT_FOUND` of the toolkit.
 ///
-/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:)`` gives
+/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:searcher:)`` gives
 /// the same instance for each call over the same directory, thus each copy of
 /// ``SessionsTool``, of each session and each fork, gives the same endpoint,
 /// with one change log and one cursor.
@@ -130,11 +130,14 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// feed from the moment the endpoint is made.
     private let changes: SessionsGraphChangeFeed
 
-    /// The exporter that ``endpoint(of:exporter:)`` keeps, or `nil`.
+    /// The exporter that ``endpoint(of:exporter:searcher:)`` keeps, or `nil`.
     private let storedExporter = Mutex<(any SessionTranscriptExporter)?>(nil)
 
+    /// The searcher that ``endpoint(of:exporter:searcher:)`` keeps, or `nil`.
+    private let storedSearcher = Mutex<(any SessionTranscriptSearcher)?>(nil)
+
     /// Makes the endpoint over a directory, and starts its change feed. A
-    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:)``,
+    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:searcher:)``,
     /// which makes one for each directory.
     ///
     /// - Parameter directory: The directory that the `sessions` tool also
@@ -145,7 +148,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// Gives the one endpoint of `directory` (EXTRAS-9 rule 1), and keeps
-    /// `exporter` with it.
+    /// `exporter` and `searcher` with it.
     ///
     /// The first call for a directory makes the endpoint, and each later call
     /// gives the same instance while a caller holds it. A directory with no
@@ -155,20 +158,27 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// A call with an exporter puts it on the endpoint in place of the
     /// exporter that an earlier call gave. A call with no exporter keeps the
     /// exporter of the endpoint. Thus a tool that a host makes with no
-    /// exporter does not remove the exporter of the directory.
+    /// exporter does not remove the exporter of the directory. The searcher
+    /// follows the same rule.
     ///
     /// - Parameters:
     ///   - directory: The session directory, for example the one of the
     ///     Router, or an `InMemorySessionDirectory` in a test.
     ///   - exporter: The exporter of the transcripts of the sessions, or
     ///     `nil` to keep the exporter of the endpoint.
+    ///   - searcher: The searcher of the transcripts of the sessions, or
+    ///     `nil` to keep the searcher of the endpoint.
     /// - Returns: The endpoint.
     public static func endpoint(
-        of directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil
+        of directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
+        searcher: (any SessionTranscriptSearcher)? = nil
     ) -> SessionsGraph {
         let endpoint = sharedEndpoint(of: directory)
         if let exporter {
             endpoint.storedExporter.withLock { $0 = exporter }
+        }
+        if let searcher {
+            endpoint.storedSearcher.withLock { $0 = searcher }
         }
         return endpoint
     }
@@ -199,6 +209,13 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// the `export` field of a session read it (D202 (g)).
     var exporter: (any SessionTranscriptExporter)? {
         storedExporter.withLock { $0 }
+    }
+
+    /// The searcher that a host gave for the directory, or `nil` when no host
+    /// gave one: the `search sessions` operation of the `sessions` tool reads
+    /// it (D207 (g)).
+    var searcher: (any SessionTranscriptSearcher)? {
+        storedSearcher.withLock { $0 }
     }
 
     /// The schema of the endpoint in SDL. The schema is built once for each

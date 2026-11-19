@@ -100,7 +100,7 @@ extension SessionsToolText {
     /// - Returns: The corrective.
     static func ambiguousReference(_ reference: String, matches: [SessionSummary], outcome: String) -> String {
         let lines = matches.map { match in
-            "- \(match.id.ulidString): name \"\(match.title ?? match.slug)\", folder \(match.workingDirectory.path)"
+            "- \(match.id.ulidString): name \"\(name(of: match))\", folder \(match.workingDirectory.path)"
         }
         let heading = """
             "\(reference)" names more than one session. \(outcome) \
