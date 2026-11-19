@@ -1,11 +1,11 @@
 ---
 name: sessions
-description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive or unarchive sessions.
+description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive, unarchive or share sessions.
 license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Sessions
@@ -172,6 +172,12 @@ Run the API tests again.
   - `from:<kind>`: only the hits of one kind: `user`, `agent`, `message`, `tool`, `plan` or `thought`. With no `from:`, the search does not include the thoughts.
   - `is:archived`: also the archived sessions.
 - `search sessions` gives one line for each session, with its `@<short id>`, name, folder, date and number of hits, and at most three snippets.
+- Share a session only when the user asks.
+- `share session` gives the transcript of the session to other people as a read-only link. With `anyoneWithLink`, anyone with the link can read it. Else only the people that the user invites can read it.
+- `thoughts` and `toolOutput` choose what the shared copy holds. `keepUpdated` keeps the shared copy current: it updates at the end of each turn. Else the shared copy does not change until `update share`.
+- When the session has a share already, `share session` changes nothing. `update share` updates the shared copy with the session now, and changes `keepUpdated`. The link does not change.
+- `stop sharing` removes the link: it then opens nothing. Copies that people saved stay.
+- The answer of `share session` and `update share` gives the link and the state of the share, not the content.
 - `share session` takes these parameters, and each is optional:
   - `id`: the session. With no `id`, it shares your session.
   - `thoughts`: `true` to put the thoughts of the agent in the share. The default is `true`.
@@ -192,4 +198,4 @@ Run the API tests again.
   - `source`: the source id that `list imports` gives, or the path of the source file. It is necessary.
   - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the folder of the source session.
   - `name`: the name of the new session. The default is the title of the source session, else `<agent>-import`.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, and so on.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, and so on.

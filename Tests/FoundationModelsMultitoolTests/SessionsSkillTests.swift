@@ -3,8 +3,11 @@
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the parameter list of `export
 // session`, of `fork session`, of `search sessions`, of `share session`, of
-// `update share`, of `stop sharing`, of `list imports` and of `import session` in the skill names each parameter, the skill tells the limit of `search sessions` (D207 (d)), each
-// code-mode verb of the skill is a verb of the tool, and the skill names each
+// `update share`, of `stop sharing`, of `list imports` and of `import session`
+// in the skill names each parameter, the skill tells the limit of `search
+// sessions` (D207 (d)), the skill says to share a session only when the user
+// asks (D208 (k)), each code-mode verb of the skill is a verb of the tool,
+// and the skill names each
 // form of a session reference, each receipt word of the tool and the note
 // `archived` of a `sent` receipt (D204), and the recap of a session with its
 // line forms in `check session` and `list sessions` (D206 (h)).
@@ -276,6 +279,34 @@ import Testing
     @Test("the skill tells the limit of search sessions")
     func theSkillTellsTheSearchLimit() throws {
         #expect(Self.tellsTheSearchLimit(try Self.skillText()))
+    }
+
+    /// The sentence of the skill that tells when to share a session (D208
+    /// (k)): only when the user asks.
+    private static let shareWhenAskedRule = "Share a session only when the user asks."
+
+    /// A small skill text for the unit test of ``tellsWhenToShare(_:)``: it
+    /// names `share session` and its link, but not when to share.
+    private static let shareWithoutWhen = """
+        - `share session` gives the transcript of a session to other people as a read-only link.
+        """
+
+    /// Whether a text tells when to share a session.
+    ///
+    /// - Parameter text: The skill text.
+    /// - Returns: True when `text` contains ``shareWhenAskedRule``.
+    private static func tellsWhenToShare(_ text: String) -> Bool {
+        text.contains(shareWhenAskedRule)
+    }
+
+    @Test("a text with no share rule does not tell when to share")
+    func aTextWithNoShareRuleDoesNotTellWhenToShare() {
+        #expect(!Self.tellsWhenToShare(Self.shareWithoutWhen))
+    }
+
+    @Test("the skill says to share a session only when the user asks")
+    func theSkillSaysToShareOnlyWhenTheUserAsks() throws {
+        #expect(Self.tellsWhenToShare(try Self.skillText()))
     }
 
     @Test("the skill names a code-mode verb")
