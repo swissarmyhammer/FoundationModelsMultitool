@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Sessions
@@ -149,4 +149,22 @@ Run the API tests again.
 - `fork session` takes these parameters, and each is optional:
   - `id`: the session to fork. With no `id`, it forks your session from here. With an `id`, it forks that session at its last completed turn.
   - `message`: the first prompt of the fork. With no `message`, the fork waits for a message.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, and so on.
+- To find an earlier session by its content or by its meaning, use `search sessions`. Then read it with `export session` and the file tools. Do not read the transcript files.
+- The search covers only the sessions of this server, not the sessions of other agents.
+- `search sessions` takes these parameters:
+  - `query`: the search text. It is necessary.
+  - `folder`: the absolute path of the folder of the sessions, or `.` for the folder of your session. It is optional.
+  - `archived`: `true` to also search the archived sessions. The default is `false`.
+  - `limit`: the most sessions to give, from 1 to 50. The default is 20.
+- The `query` takes words and these tokens:
+  - `"a phrase"`: a hit must have the phrase.
+  - `-word`: a hit must not have the word.
+  - `@<session>`: only that session.
+  - `#<tag>`: only the sessions with the tag.
+  - `folder:<path>`: only the sessions of the folder. `folder:.` is your folder.
+  - `agent:<name>`: only the sessions of the agent.
+  - `after:YYYY-MM-DD` and `before:YYYY-MM-DD`: only the hits in the dates.
+  - `from:<kind>`: only the hits of one kind: `user`, `agent`, `message`, `tool`, `plan` or `thought`. With no `from:`, the search does not include the thoughts.
+  - `is:archived`: also the archived sessions.
+- `search sessions` gives one line for each session, with its `@<short id>`, name, folder, date and number of hits, and at most three snippets.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, and so on.

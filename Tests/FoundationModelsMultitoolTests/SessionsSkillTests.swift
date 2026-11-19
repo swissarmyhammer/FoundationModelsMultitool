@@ -2,7 +2,8 @@
 // `sessions` skill against the `sessions` tool (D200): each `{"op": ...}`
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the parameter list of `export
-// session` and of `fork session` in the skill names each parameter, each
+// session`, of `fork session` and of `search sessions` in the skill names each
+// parameter, the skill tells the limit of `search sessions` (D207 (d)), each
 // code-mode verb of the skill is a verb of the tool, and the skill names each
 // form of a session reference, each receipt word of the tool and the note
 // `archived` of a `sent` receipt (D204), and the recap of a session with its
@@ -235,14 +236,43 @@ import Testing
         #expect(unnamed == ["id"])
     }
 
-    @Test("the skill names each parameter of export session")
-    func theSkillNamesEachExportParameter() throws {
-        #expect(try Self.unnamedParameters(of: ExportSession.opString) == [])
+    /// The operations whose parameter list the skill must give in full.
+    static let listedOperations = [ExportSession.opString, ForkSession.opString, SearchSessions.opString]
+
+    @Test("the skill names each parameter of the operation", arguments: listedOperations)
+    func theSkillNamesEachParameter(of op: String) throws {
+        #expect(try Self.unnamedParameters(of: op) == [])
     }
 
-    @Test("the skill names each parameter of fork session")
-    func theSkillNamesEachForkParameter() throws {
-        #expect(try Self.unnamedParameters(of: ForkSession.opString) == [])
+    /// The sentence of the skill that tells the limit of `search sessions`
+    /// (D207 (d)). The tool tells the same limit in
+    /// ``SessionsToolText/searchLimitSentence``.
+    private static let searchLimitRule =
+        "The search covers only the sessions of this server, not the sessions of other agents."
+
+    /// A small skill text for the unit test of ``tellsTheSearchLimit(_:)``: it
+    /// names `search sessions` and its scope, but not its limit.
+    private static let searchWithoutLimit = """
+        - To find an earlier session by its content or by its meaning, use `search sessions`.
+        - The search covers the sessions of this server.
+        """
+
+    /// Whether a text tells the limit of `search sessions`.
+    ///
+    /// - Parameter text: The skill text.
+    /// - Returns: True when `text` contains ``searchLimitRule``.
+    private static func tellsTheSearchLimit(_ text: String) -> Bool {
+        text.contains(searchLimitRule)
+    }
+
+    @Test("a text with no limit sentence does not tell the limit of the search")
+    func aTextWithNoLimitSentenceDoesNotTellTheLimit() {
+        #expect(!Self.tellsTheSearchLimit(Self.searchWithoutLimit))
+    }
+
+    @Test("the skill tells the limit of search sessions")
+    func theSkillTellsTheSearchLimit() throws {
+        #expect(Self.tellsTheSearchLimit(try Self.skillText()))
     }
 
     @Test("the skill names a code-mode verb")
