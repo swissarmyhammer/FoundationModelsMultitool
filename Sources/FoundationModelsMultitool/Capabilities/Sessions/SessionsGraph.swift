@@ -48,9 +48,12 @@ import Synchronization
 /// Its mutations (EXTRAS-9 rule 7) have the names of the code-mode verbs of
 /// the tool ops, and share their work and their correctives:
 /// `startSession`, `tagSession`, `untagSession`, `renameSession`,
-/// `archiveSession`, `unarchiveSession`, `forkSession`, `sendMessage` and
-/// `replyMessage`,
-/// each with one `input`.
+/// `archiveSession`, `unarchiveSession`, `forkSession`, `sendMessage`,
+/// `replyMessage`, and `shareSession`, `updateSessionShare` and
+/// `stopSharingSession` for the tool ops `share session`, `update share` and
+/// `stop sharing` (D208 (k)), each with one `input`. A `Session` gives its
+/// `share` from the sharer of the endpoint; with no sharer, the field and the
+/// share mutations give `SHARING_UNAVAILABLE`.
 /// A client acts as its user, and a call with no viewer acts as the caller
 /// session. A start from a client opens a tab only on that client (section
 /// 11.5, D90).
@@ -59,7 +62,10 @@ import Synchronization
 /// the newest change, and `Subscription.changes(after:)` gives each change
 /// after a cursor, one `SessionChange` for each event of the directory. A
 /// started session, a new root session and a fork among them, is `added`; a change of
-/// its facts, its state or its inbox, and its archive, is `changed`. A
+/// its facts, its state or its inbox, and its archive, is `changed`. A change
+/// of its share is `changed` too: each share, update and stop that a tool op
+/// or a mutation makes through the sharer of the endpoint, and each id that
+/// the `shareChanges()` stream of that sharer gives. A
 /// subscription gives a viewer only the changes of the sessions that it can
 /// see, and ends with `RESYNC_REQUIRED` when a change after its cursor is
 /// lost. The endpoint keeps the newest ``changeLogCapacity`` changes.
@@ -156,7 +162,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// The searcher that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
     private let storedSearcher = Mutex<(any SessionTranscriptSearcher)?>(nil)
 
-    /// The sharer that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
+    /// The sharer that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`: a
+    /// ``SessionsGraphRecordingSharer`` over the sharer of the host.
     private let storedSharer = Mutex<(any SessionSharer)?>(nil)
 
     /// The importer that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
@@ -187,6 +194,12 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// exporter does not remove the exporter of the directory. The searcher,
     /// the sharer and the importer follow the same rule.
     ///
+    /// The endpoint keeps the sharer inside a recorder, which puts each share
+    /// change into the change feed, and reads the `shareChanges()` stream of
+    /// the first sharer that a call gives into the change feed too. A later
+    /// call starts no second read of a stream. The read ends when the last
+    /// caller releases the endpoint.
+    ///
     /// - Parameters:
     ///   - directory: The session directory, for example the one of the
     ///     Router, or an `InMemorySessionDirectory` in a test.
@@ -207,7 +220,7 @@ public final class SessionsGraph: GraphQLEndpoint {
         let endpoint = sharedEndpoint(of: directory)
         storeIfPresent(exporter, in: endpoint.storedExporter)
         storeIfPresent(searcher, in: endpoint.storedSearcher)
-        storeIfPresent(sharer, in: endpoint.storedSharer)
+        endpoint.keep(sharer)
         storeIfPresent(importer, in: endpoint.storedImporter)
         return endpoint
     }
@@ -223,6 +236,20 @@ public final class SessionsGraph: GraphQLEndpoint {
             return
         }
         store.withLock { $0 = value }
+    }
+
+    /// Keeps a sharer of the host inside a recorder of the change feed, and
+    /// starts the read of its share changes when the feed reads none yet. A
+    /// call with no sharer keeps the sharer of the endpoint.
+    ///
+    /// - Parameter sharer: The sharer of the host, or `nil`.
+    private func keep(_ sharer: (any SessionSharer)?) {
+        guard let sharer else {
+            return
+        }
+        changes.followShareChanges(of: sharer)
+        let recording: any SessionSharer = SessionsGraphRecordingSharer(base: sharer, recorder: changes.recorder)
+        Self.storeIfPresent(recording, in: storedSharer)
     }
 
     /// Reads the value of a store of the endpoint.
@@ -268,9 +295,10 @@ public final class SessionsGraph: GraphQLEndpoint {
         Self.read(storedSearcher)
     }
 
-    /// The sharer that a host gave for the directory, or `nil` when no host
-    /// gave one: the share operations of the `sessions` tool read it
-    /// (D208 (k)).
+    /// The sharer that a host gave for the directory, inside the recorder of
+    /// the change feed, or `nil` when no host gave one: the share operations
+    /// of the `sessions` tool, the `share` field of a session and the share
+    /// mutations read it (D208 (k)).
     var sharer: (any SessionSharer)? {
         Self.read(storedSharer)
     }
@@ -334,7 +362,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The context of one call: the directory, read with the visibility of
-    /// the viewer, and the change feed of the endpoint.
+    /// the viewer, the change feed, and the exporter, the searcher and the
+    /// sharer of the endpoint.
     ///
     /// - Parameter viewer: The client that makes the call, or `nil` for the
     ///   agent.
@@ -342,7 +371,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
         SessionsGraphContext(
             sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter,
-            searcher: searcher)
+            searcher: searcher, sharer: sharer)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

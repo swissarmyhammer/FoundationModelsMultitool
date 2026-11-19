@@ -459,6 +459,22 @@ struct SessionsGraphMutationTests {
                 "mutation { replyMessage(input: {sessionId: \"\(scene.caller.ulidString)\", inReplyTo: \"\(notAnID)\", "
                     + "message: \"\(replyText)\"}) { outcome } }"
             }),
+        RefusalCase(
+            code: "SHARING_UNAVAILABLE", fault: "a share on a server with no sharer",
+            payload: { scene in Fixtures.payload("share session", [("id", scene.target.ulidString)]) },
+            mutation: { scene in "mutation { shareSession(input: {id: \"\(scene.target.ulidString)\"}) { id } }" }),
+        RefusalCase(
+            code: "SHARING_UNAVAILABLE", fault: "an update of a share on a server with no sharer",
+            payload: { scene in Fixtures.payload("update share", [("id", scene.target.ulidString)]) },
+            mutation: { scene in
+                "mutation { updateSessionShare(input: {id: \"\(scene.target.ulidString)\"}) { id } }"
+            }),
+        RefusalCase(
+            code: "SHARING_UNAVAILABLE", fault: "a stop of a share on a server with no sharer",
+            payload: { scene in Fixtures.payload("stop sharing", [("id", scene.target.ulidString)]) },
+            mutation: { scene in
+                "mutation { stopSharingSession(input: {id: \"\(scene.target.ulidString)\"}) { id } }"
+            }),
     ]
 
     /// The mutation refuses what the tool op refuses, with the corrective of

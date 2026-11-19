@@ -1,10 +1,14 @@
 // The mutations of the `sessions` GraphQL endpoint (MT-10, EXTRAS-9 rule 7):
 // `startSession`, `tagSession`, `untagSession`, `renameSession`,
 // `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
-// `forkSession`, `sendMessage` and `replyMessage`.
+// `forkSession`, `sendMessage` and `replyMessage`. The share mutations
+// `shareSession`, `updateSessionShare` and `stopSharingSession` are in
+// `SessionsGraphShare.swift`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
-// `sessions` tool, and calls the work of that op in ``SessionsToolContext``:
+// `sessions` tool, or a name that tells its session when that verb does not
+// (`updateSessionShare` for `updateShare`), and calls the work of that op in
+// ``SessionsToolContext``:
 // the op and the mutation change the directory the same way, and refuse a
 // call with the same corrective (session.md section 11.4). The `id` of each
 // change of one session reads `<id>`, `@<id>`, `<short id>`, `@<short id>`
@@ -16,8 +20,8 @@
 // call with no viewer acts as the agent of the caller session, as the tool
 // does. An external client archives and unarchives only the sessions that it
 // can see; it
-// tags, untags, renames, pins, unpins, forks, sends and replies only to the
-// sessions that it owns;
+// tags, untags, renames, pins, unpins, forks, shares, sends and replies only
+// to the sessions that it owns;
 // and it cannot start a session.
 
 import Foundation
@@ -32,9 +36,11 @@ import ULID
 /// One mutation of the endpoint, and the tool op whose rules it shares.
 ///
 /// The name of the mutation is the code-mode verb of the op
-/// (`tools.sessions.startSession` and `startSession`). The alias tables take
-/// the bare verb of the op for the mutation, and the names of the parameters
-/// of the op, and their aliases, for the fields of its input object.
+/// (`tools.sessions.startSession` and `startSession`), or a name of the form
+/// `verbNoun` that a mutation gives in its place. The alias tables take the
+/// bare verb of the op for the mutation, the code-mode verb of the op for a
+/// mutation of a different name, and the names of the parameters of the op,
+/// and their aliases, for the fields of its input object.
 struct SessionsGraphMutation: Sendable {
     /// The end of the name of the input object of a mutation.
     private static let inputSuffix = "Input"
@@ -76,12 +82,40 @@ struct SessionsGraphMutation: Sendable {
     /// `replyMessage`.
     static let reply = Self(ReplyMessage.self)
 
+    /// The name of the parameter of a session in each share op.
+    private static let sessionParameter = "id"
+
+    /// `shareSession` (D208 (k)): its input has the session and the
+    /// options object, whose fields are the other parameters of the op.
+    static let share = Self(ShareSession.self, keeping: { $0 == sessionParameter })
+
+    /// `updateSessionShare` (D208 (k)), the mutation of `updateShare`.
+    static let updateShare = Self(UpdateShare.self, named: "updateSessionShare")
+
+    /// `stopSharingSession` (D208 (k)), the mutation of `stopSharing`.
+    static let stopSharing = Self(StopSharing.self, named: "stopSharingSession")
+
     /// Each mutation of the endpoint.
-    static let all = [start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply]
+    static let all = [
+        start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply, share, updateShare, stopSharing,
+    ]
+
+    /// The name of the input object of the options of `shareSession`.
+    static let shareOptionsInputName = "SessionShareOptionsInput"
+
+    /// The aliases of the fields of ``shareOptionsInputName``: the names of
+    /// the option parameters of `share session`, and their aliases.
+    static let shareOptionsAliases = inputAliases(
+        of: ShareSession.self, renaming: ["thoughts": "includeThoughts", "toolOutput": "includeToolOutput"],
+        keeping: { $0 != sessionParameter })
 
     /// The tool op of the mutation. The module name tells it from the
     /// `OperationDefinition` of GraphQL.
     let operation: any Operations.OperationDefinition.Type
+
+    /// The name of the mutation: the code-mode verb of the op, or the name
+    /// that the mutation gives in its place.
+    let name: String
 
     /// The aliases of the fields of the input object, by the field name.
     let inputAliases: [String: [String]]
@@ -90,26 +124,53 @@ struct SessionsGraphMutation: Sendable {
     ///
     /// - Parameters:
     ///   - operation: The tool op.
+    ///   - name: The name of the mutation, or `nil` for the code-mode verb of
+    ///     the op.
     ///   - renaming: The input field of each parameter of the op whose
     ///     name differs; the name of the parameter becomes an alias.
     ///   - adding: The aliases of the input object that the op does not have.
+    ///   - keeping: Tells if the input object has the field of a parameter.
+    ///     The default keeps each parameter.
     private init(
         _ operation: any Operations.OperationDefinition.Type,
+        named name: String? = nil,
         renaming: [String: String] = [:],
-        adding: [String: [String]] = [:]
+        adding: [String: [String]] = [:],
+        keeping: (String) -> Bool = { _ in true }
     ) {
         self.operation = operation
+        self.name = name ?? OperationVerbTool.verbName(for: operation.opString)
+        inputAliases = Self.inputAliases(of: operation, renaming: renaming, keeping: keeping)
+            .merging(adding, uniquingKeysWith: +)
+    }
+
+    /// The aliases of the fields of an input object whose fields are
+    /// parameters of a tool op: the name of each parameter and its aliases,
+    /// less the name of the field.
+    ///
+    /// - Parameters:
+    ///   - operation: The tool op.
+    ///   - renaming: The input field of each parameter of the op whose name
+    ///     differs.
+    ///   - keeping: Tells if the input object has the field of a parameter.
+    /// - Returns: The aliases, by the field name.
+    private static func inputAliases(
+        of operation: any Operations.OperationDefinition.Type, renaming: [String: String],
+        keeping: (String) -> Bool
+    ) -> [String: [String]] {
         let parameterAliases = operation.parameterMetadata.map { parameter in
             let field = renaming[parameter.name] ?? parameter.name
             return (field, ([parameter.name] + parameter.aliases).filter { $0 != field })
         }
-        inputAliases = Dictionary(parameterAliases.filter { !$0.1.isEmpty }, uniquingKeysWith: +)
-            .merging(adding, uniquingKeysWith: +)
+        return Dictionary(
+            parameterAliases.filter { keeping($0.0) && !$0.1.isEmpty }, uniquingKeysWith: +)
     }
 
-    /// The name of the mutation: the code-mode verb of the op.
-    var name: String {
-        OperationVerbTool.verbName(for: operation.opString)
+    /// The other names of the mutation: the bare verb of the op, and the
+    /// code-mode verb of the op when the mutation has a different name.
+    var nameAliases: [String] {
+        let verb = OperationVerbTool.verbName(for: operation.opString)
+        return [operation.verb] + (verb == name ? [] : [verb])
     }
 
     /// The name of the input object of the mutation, for example
@@ -119,11 +180,13 @@ struct SessionsGraphMutation: Sendable {
     }
 
     /// The alias tables of the mutations, by the GraphQL name of the type:
-    /// the bare verb of each mutation, and the fields of each input object.
+    /// the other names of each mutation, and the fields of each input
+    /// object and of the options input of `shareSession`.
     static var aliasTables: [String: [String: [String]]] {
-        let verbs = Dictionary(uniqueKeysWithValues: all.map { ($0.name, [$0.operation.verb]) })
+        let verbs = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0.nameAliases) })
         let inputs = all.map { ($0.inputName, $0.inputAliases) }
-        return Dictionary(uniqueKeysWithValues: inputs + [("Mutation", verbs)])
+        return Dictionary(
+            uniqueKeysWithValues: inputs + [("Mutation", verbs), (shareOptionsInputName, shareOptionsAliases)])
     }
 }
 
@@ -667,7 +730,7 @@ extension SessionsGraphResolver {
     /// - Parameter work: The work.
     /// - Returns: What `work` gave.
     /// - Throws: The coded error, or each other error of `work`.
-    private static func coding<Result>(_ work: () async throws -> Result) async throws -> Result {
+    static func coding<Result>(_ work: () async throws -> Result) async throws -> Result {
         do {
             return try await work()
         } catch let error as SessionDirectoryError {
@@ -995,7 +1058,7 @@ extension SessionsGraphAPI {
                 input: "The session that got the message, the message and the text.",
                 description: "Replies to a message that a session got, from you. \(receiptsDescription) "
                     + ownedTargetRule),
-        ]
+        ] + shareMutationFields()
     }
 
     /// The field of one mutation: its name, its resolver, and its one
@@ -1007,7 +1070,7 @@ extension SessionsGraphAPI {
     ///   - input: The description of the `input` argument.
     ///   - description: The description of the field.
     /// - Returns: The field.
-    private static func mutationField<Input: Codable & Sendable, Output: Sendable>(
+    static func mutationField<Input: Codable & Sendable, Output: Sendable>(
         _ mutation: SessionsGraphMutation,
         at resolve:
             @escaping AsyncResolve<

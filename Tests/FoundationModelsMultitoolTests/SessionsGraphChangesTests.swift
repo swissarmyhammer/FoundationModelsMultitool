@@ -29,10 +29,10 @@ struct SessionsGraphChangesTests {
     private typealias Fixtures = SessionsToolFixtures
 
     /// The ID of a device of the user.
-    private static let deviceClientId = "client-device"
+    static let deviceClientId = "client-device"
 
     /// A device of the user, which owns no session.
-    private static let deviceViewer = GraphQLViewer(clientId: deviceClientId, trust: .userDevice)
+    static let deviceViewer = GraphQLViewer(clientId: deviceClientId, trust: .userDevice)
 
     /// The subscription of each case, with every field of a change.
     private static let changesDocument =
@@ -137,7 +137,7 @@ struct SessionsGraphChangesTests {
     ///   - document: The subscription document, with the variable `$after`.
     /// - Returns: The subscription.
     /// - Throws: What the endpoint throws.
-    private static func subscribe(
+    static func subscribe(
         to graph: SessionsGraph, after cursor: String, viewer: GraphQLViewer? = deviceViewer,
         document: String = changesDocument
     ) async throws -> Subscription {

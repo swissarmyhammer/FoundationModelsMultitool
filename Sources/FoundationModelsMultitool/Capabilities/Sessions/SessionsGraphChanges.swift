@@ -20,6 +20,7 @@ import Foundation
 import FoundationModelsExtras
 import GraphQL
 import Graphiti
+import Synchronization
 import ULID
 
 // MARK: - The change log
@@ -73,63 +74,39 @@ extension SessionDirectoryEvent {
     }
 }
 
-/// The change log of one `sessions` endpoint, and the task that feeds it with
-/// the events of the directory.
+/// Records one change of one session into the change log of the `sessions`
+/// endpoint, with the chain of anchors of the session.
 ///
-/// The feed reads each event that the directory sends after the feed is
-/// made: it asks the directory for its events before it returns. Each event
-/// is one change in the log, in the order of the events. The log has a random
-/// epoch, so a cursor of another feed, for example of an earlier run, gives
-/// `RESYNC_REQUIRED`.
-///
-/// The endpoint holds its feed, and the context of each call holds it too, so
-/// a running subscription keeps its feed. The task holds the log and the
-/// directory and never the feed, so the last release of the feed cancels the
-/// task, and the task then stops reading the events.
-final class SessionsGraphChangeFeed: Sendable {
+/// This is the one code path of each entry of the log: the events of the
+/// directory, the share changes from outside that the sharer of the host
+/// sends, and each share change that a share operation or a share mutation
+/// makes. Thus each entry has the same chain of anchors, and a subscription
+/// filters each entry with the same visibility rule.
+struct SessionsGraphChangeRecorder: Sendable {
     /// The change log: the cursor and the changes of the endpoint.
     let log: ChangeLog<SessionsGraphChangeEvent>
 
-    /// The task that reads the events of the directory into ``log``.
-    private let task: Task<Void, Never>
+    /// The directory, read with no viewer, for the chain of anchors of each
+    /// changed session.
+    let sessions: SessionsVisibility
 
-    /// Makes the feed of a directory, and starts to read its events.
+    /// Records one change of a session as one entry of the log.
     ///
     /// - Parameters:
-    ///   - directory: The session directory.
-    ///   - capacity: The number of the newest changes that the log holds,
-    ///     so that a subscription resumes after a cursor at most this many
-    ///     changes old.
-    init(directory: any SessionDirectory, capacity: Int) {
-        let log = ChangeLog<SessionsGraphChangeEvent>(capacity: capacity)
-        let events = directory.events()
-        let sessions = SessionsVisibility(directory: directory, viewer: nil)
-        self.log = log
-        task = Task { await Self.record(events, into: log, reading: sessions) }
+    ///   - kind: How the change touched the session.
+    ///   - sessionID: The session that changed.
+    func record(_ kind: SessionsGraphChangeEvent.Kind, of sessionID: ULID) async {
+        let chain = await anchorChain(of: sessionID)
+        await log.append(SessionsGraphChangeEvent(sessionID: sessionID, kind: kind, anchorChain: chain))
     }
 
-    /// Cancels the task, which then stops reading the events.
-    deinit {
-        task.cancel()
-    }
-
-    /// Records each event as one change, until the events end or the task is
-    /// cancelled.
+    /// Records each id of a stream as one `changed` entry, until the stream
+    /// ends or the task is cancelled.
     ///
-    /// - Parameters:
-    ///   - events: The events of the directory.
-    ///   - log: The change log.
-    ///   - sessions: The directory, read with no viewer, for the chain of
-    ///     anchors of each changed session.
-    private static func record(
-        _ events: AsyncStream<SessionDirectoryEvent>,
-        into log: ChangeLog<SessionsGraphChangeEvent>,
-        reading sessions: SessionsVisibility
-    ) async {
-        for await event in events {
-            let (sessionID, kind) = event.sessionChange
-            let chain = await anchorChain(of: sessionID, reading: sessions)
-            await log.append(SessionsGraphChangeEvent(sessionID: sessionID, kind: kind, anchorChain: chain))
+    /// - Parameter ids: The ids of the changed sessions.
+    func recordChanges(of ids: AsyncStream<ULID>) async {
+        for await id in ids {
+            await record(.changed, of: id)
         }
     }
 
@@ -140,18 +117,16 @@ final class SessionsGraphChangeFeed: Sendable {
     /// chain is then the session alone, which an external client sees only
     /// when it owns the session, and an error record tells of the failure.
     ///
-    /// - Parameters:
-    ///   - id: The session id.
-    ///   - sessions: The directory, read with no viewer.
+    /// - Parameter id: The session id.
     /// - Returns: The session and its anchors, the session first.
-    private static func anchorChain(of id: ULID, reading sessions: SessionsVisibility) async -> [ULID] {
+    private func anchorChain(of id: ULID) async -> [ULID] {
         do {
             guard let summary = try await sessions.directory.summary(of: id) else {
                 return [id]
             }
             return try await sessions.anchorChain(of: summary)
         } catch  where Task.isCancelled {
-            // The feed is gone: the loop of `record` ends, and no subscriber
+            // The feed is gone: the loop that records ends, and no subscriber
             // reads this change.
             return [id]
         } catch {
@@ -159,6 +134,90 @@ final class SessionsGraphChangeFeed: Sendable {
             MultitoolTelemetry.logger.log(
                 .sessionAnchorChainReadFailed, level: .error, metadata: MultitoolTelemetry.errorMetadata(of: error))
             return [id]
+        }
+    }
+}
+
+/// The change log of one `sessions` endpoint, the task that feeds it with
+/// the events of the directory, and the task that feeds it with the share
+/// changes from outside.
+///
+/// The feed reads each event that the directory sends after the feed is
+/// made: it asks the directory for its events before it returns. Each event
+/// is one change in the log, in the order of the events. The log has a random
+/// epoch, so a cursor of another feed, for example of an earlier run, gives
+/// `RESYNC_REQUIRED`.
+///
+/// The endpoint holds its feed, and the context of each call holds it too, so
+/// a running subscription keeps its feed. Each task holds the recorder, which
+/// holds the log and the directory and never the feed, so the last release of
+/// the feed cancels the tasks, and the tasks then stop reading.
+final class SessionsGraphChangeFeed: Sendable {
+    /// The one recorder of each entry of ``log``.
+    let recorder: SessionsGraphChangeRecorder
+
+    /// The task that reads the events of the directory into ``log``.
+    private let task: Task<Void, Never>
+
+    /// The task that reads the share changes from outside into ``log``, or
+    /// `nil` before ``followShareChanges(of:)`` starts it.
+    private let shareChangesTask = Mutex<Task<Void, Never>?>(nil)
+
+    /// Makes the feed of a directory, and starts to read its events.
+    ///
+    /// - Parameters:
+    ///   - directory: The session directory.
+    ///   - capacity: The number of the newest changes that the log holds,
+    ///     so that a subscription resumes after a cursor at most this many
+    ///     changes old.
+    init(directory: any SessionDirectory, capacity: Int) {
+        let recorder = SessionsGraphChangeRecorder(
+            log: ChangeLog<SessionsGraphChangeEvent>(capacity: capacity),
+            sessions: SessionsVisibility(directory: directory, viewer: nil))
+        let events = directory.events()
+        self.recorder = recorder
+        task = Task { await Self.record(events, with: recorder) }
+    }
+
+    /// Cancels the tasks, which then stop reading.
+    deinit {
+        task.cancel()
+        shareChangesTask.withLock { $0?.cancel() }
+    }
+
+    /// The change log: the cursor and the changes of the endpoint.
+    var log: ChangeLog<SessionsGraphChangeEvent> {
+        recorder.log
+    }
+
+    /// Starts to read the share changes from outside of `sharer`, one
+    /// `changed` entry for each id. The feed reads the changes of one sharer
+    /// only: a later call, with the same sharer or a different one, starts
+    /// no second read.
+    ///
+    /// - Parameter sharer: The sharer of the host.
+    func followShareChanges(of sharer: any SessionSharer) {
+        shareChangesTask.withLock { task in
+            guard task == nil else {
+                return
+            }
+            let changes = sharer.shareChanges()
+            task = Task { [recorder] in await recorder.recordChanges(of: changes) }
+        }
+    }
+
+    /// Records each event as one change, until the events end or the task is
+    /// cancelled.
+    ///
+    /// - Parameters:
+    ///   - events: The events of the directory.
+    ///   - recorder: The recorder of the log.
+    private static func record(
+        _ events: AsyncStream<SessionDirectoryEvent>, with recorder: SessionsGraphChangeRecorder
+    ) async {
+        for await event in events {
+            let (sessionID, kind) = event.sessionChange
+            await recorder.record(kind, of: sessionID)
         }
     }
 }

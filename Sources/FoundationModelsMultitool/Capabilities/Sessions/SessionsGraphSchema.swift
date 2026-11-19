@@ -32,6 +32,10 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// The searcher of the transcripts that the host gave the endpoint, or
     /// `nil` when no host gave one. `Query.searchSessions` reads it.
     let searcher: (any SessionTranscriptSearcher)?
+
+    /// The sharer that the endpoint keeps, or `nil` when no host gave one.
+    /// `Session.share` and the share mutations read it.
+    let sharer: (any SessionSharer)?
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -291,7 +295,9 @@ struct SessionsGraphAPI: API {
     typealias SchemaField = FieldComponent<SessionsGraphResolver, SessionsGraphContext>
 
     /// Builds the schema of the endpoint. The mutations and their types are
-    /// in `SessionsGraphMutations.swift`, the `sessionPage` query and its
+    /// in `SessionsGraphMutations.swift`, the `share` field of a session, the
+    /// share mutations and their types are in `SessionsGraphShare.swift`,
+    /// the `sessionPage` query and its
     /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
     /// its types are in `SessionsGraphSearch.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
@@ -330,6 +336,12 @@ struct SessionsGraphAPI: API {
                 forkInput()
                 sendInput()
                 replyInput()
+                shareOptionsType()
+                shareType()
+                shareOptionsInput()
+                shareInput()
+                updateShareInput()
+                stopSharingInput()
                 changeType()
             }
             .addQuery {
@@ -503,6 +515,10 @@ struct SessionsGraphAPI: API {
                 .description(
                     "True when a client owns the session now, your client or another one. False for a call with "
                         + "no client.")
+            Field("share", at: SessionsGraphSession.share)
+                .description(
+                    "The link and the state of the share of the session, or null when it has no share. "
+                        + "SHARING_UNAVAILABLE when this server cannot share a session.")
         }
         .description("One session on this server.")
     }

@@ -191,6 +191,11 @@ type Session {
   True when a client owns the session now, your client or another one. False for a call with no client.
   """
   hasOwner: Boolean!
+
+  """
+  The link and the state of the share of the session, or null when it has no share. SHARING_UNAVAILABLE when this server cannot share a session.
+  """
+  share: SessionShare
 }
 
 """The session or the user that sent a message."""
@@ -523,6 +528,95 @@ input ReplyMessageInput {
   message: String!
 }
 
+"""The content and the state of the share of a session."""
+type SessionShareOptions {
+  """True when the share has the thoughts."""
+  includeThoughts: Boolean!
+
+  """True when the share has the output of the tool calls."""
+  includeToolOutput: Boolean!
+
+  """True when the share was made for anyone with the link."""
+  anyoneWithLink: Boolean!
+
+  """True when the server updates the share at the end of each turn."""
+  keepUpdated: Boolean!
+}
+
+"""
+The link and the state of the share of a session over iCloud sharing, never its content.
+"""
+type SessionShare {
+  """The link of the share."""
+  url: String!
+
+  """
+  True when anyone with the link can open the share now. False when only the invited people can.
+  """
+  anyoneWithLink: Boolean!
+
+  """The options of the share."""
+  options: SessionShareOptions!
+
+  """The time of the snapshot of the share."""
+  updatedAt: DateTime!
+}
+
+"""
+The options of a new share. Each option that you do not give has its default.
+"""
+input SessionShareOptionsInput {
+  """True to put the thoughts of the agent in the share."""
+  includeThoughts: Boolean = true
+
+  """True to put the output of the tool calls in the share."""
+  includeToolOutput: Boolean = true
+
+  """
+  True when anyone with the link can open the share. False: only the invited people.
+  """
+  anyoneWithLink: Boolean = true
+
+  """
+  True to update the share at the end of each turn. False: the share does not change.
+  """
+  keepUpdated: Boolean = false
+}
+
+"""The session to share, and the options of a new share."""
+input ShareSessionInput {
+  """
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """The options of a new share. None: the defaults."""
+  options: SessionShareOptionsInput
+}
+
+"""
+The shared session to update, and the new value of its switch Keep Updated.
+"""
+input UpdateSessionShareInput {
+  """
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+
+  """
+  True to update the share at the end of each turn, false to stop that. None: no change.
+  """
+  keepUpdated: Boolean
+}
+
+"""The shared session whose share to stop."""
+input StopSharingSessionInput {
+  """
+  The session: its id in any letter case or its short id, with or without @, or @ and its slug. An id of a session that you cannot see, or a session that an external client does not own, is NOT_FOUND.
+  """
+  id: ID!
+}
+
 """One change of one session that you can see."""
 type SessionChange {
   """The cursor that resumes the subscription after this change."""
@@ -714,6 +808,30 @@ type Mutation {
     """The session that got the message, the message and the text."""
     input: ReplyMessageInput!
   ): [SendReceipt!]!
+
+  """
+  Shares a session as a read-only link over iCloud sharing. A session that has a share keeps it. Gives the session: its share gives the link and the state, not the content. SHARING_UNAVAILABLE when this server cannot share a session.
+  """
+  shareSession(
+    """The session and the options of a new share."""
+    input: ShareSessionInput!
+  ): Session!
+
+  """
+  Updates the share of a session with the session now. The link does not change. A session with no share gives NOT_SHARED. Gives the session. SHARING_UNAVAILABLE when this server cannot share a session.
+  """
+  updateSessionShare(
+    """The shared session and its switch Keep Updated."""
+    input: UpdateSessionShareInput!
+  ): Session!
+
+  """
+  Stops the share of a session: its link then opens nothing. Copies that people saved stay. A session with no share gives NOT_SHARED. Gives the session. SHARING_UNAVAILABLE when this server cannot share a session.
+  """
+  stopSharingSession(
+    """The shared session."""
+    input: StopSharingSessionInput!
+  ): Session!
 }
 
 type Subscription {

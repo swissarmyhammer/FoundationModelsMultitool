@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import ULID
 
 @testable import FoundationModelsMultitool
@@ -24,7 +25,9 @@ struct SessionSharerFailure: Error, CustomStringConvertible {
 
 /// A fake ``SessionSharer``: it keeps the shares in memory, records each
 /// call that changes a share, and yields the id of a session whose share a
-/// case changes "outside" through ``yieldChange(of:)``.
+/// case changes "outside" through ``yieldChange(of:)``. It counts the calls
+/// of ``shareChanges()``, and a case waits for the end of that stream with
+/// ``waitForTheEndOfTheShareChanges()``.
 ///
 /// The fake has the transcript text ``content``, as a real sharer has the
 /// snapshot. A case reads that no answer gives it.
@@ -47,6 +50,13 @@ actor RecordingSessionSharer: SessionSharer {
     /// The continuation of ``changes``.
     private let changeContinuation: AsyncStream<ULID>.Continuation
 
+    /// A stream that finishes when ``changes`` ends: when its reader stops
+    /// to read it.
+    private let changesEnd: AsyncStream<Void>
+
+    /// The count of the calls of ``shareChanges()``.
+    private let shareChangesCallCount = Mutex(0)
+
     /// Makes the sharer.
     ///
     /// - Parameter shares: The shares that exist before the case. The
@@ -54,6 +64,9 @@ actor RecordingSessionSharer: SessionSharer {
     init(shares: [ULID: SessionShare] = [:]) {
         self.shares = shares
         (changes, changeContinuation) = AsyncStream.makeStream(of: ULID.self)
+        let (end, endContinuation) = AsyncStream.makeStream(of: Void.self)
+        changesEnd = end
+        changeContinuation.onTermination = { _ in endContinuation.finish() }
     }
 
     /// The URL of the share of a session.
@@ -121,11 +134,24 @@ actor RecordingSessionSharer: SessionSharer {
         shares[session]
     }
 
-    /// The ids that ``yieldChange(of:)`` gives.
+    /// The ids that ``yieldChange(of:)`` gives, and one more call in
+    /// ``shareChangesCalls``.
     ///
     /// - Returns: The one stream of the fake. Give it to one reader only.
     nonisolated func shareChanges() -> AsyncStream<ULID> {
-        changes
+        shareChangesCallCount.withLock { $0 += 1 }
+        return changes
+    }
+
+    /// The count of the calls of ``shareChanges()``.
+    nonisolated var shareChangesCalls: Int {
+        shareChangesCallCount.withLock { $0 }
+    }
+
+    /// Returns when the stream of ``shareChanges()`` ended: its reader
+    /// stopped to read it.
+    nonisolated func waitForTheEndOfTheShareChanges() async {
+        for await _ in changesEnd {}
     }
 
     /// Yields a change of the share of a session that came from outside a
