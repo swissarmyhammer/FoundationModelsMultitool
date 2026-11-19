@@ -3,7 +3,8 @@
 // `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
 // `forkSession`, `sendMessage` and `replyMessage`. The share mutations
 // `shareSession`, `updateSessionShare` and `stopSharingSession` are in
-// `SessionsGraphShare.swift`.
+// `SessionsGraphShare.swift`, and the `importSession` mutation is in
+// `SessionsGraphImport.swift`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, or a name that tells its session when that verb does not
@@ -22,7 +23,7 @@
 // can see; it
 // tags, untags, renames, pins, unpins, forks, shares, sends and replies only
 // to the sessions that it owns;
-// and it cannot start a session.
+// and it cannot start or import a session.
 
 import Foundation
 import FoundationModelsExtras
@@ -95,9 +96,13 @@ struct SessionsGraphMutation: Sendable {
     /// `stopSharingSession` (D208 (k)), the mutation of `stopSharing`.
     static let stopSharing = Self(StopSharing.self, named: "stopSharingSession")
 
+    /// `importSession` (D209 (l)).
+    static let importSession = Self(ImportSession.self)
+
     /// Each mutation of the endpoint.
     static let all = [
         start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply, share, updateShare, stopSharing,
+        importSession,
     ]
 
     /// The name of the input object of the options of `shareSession`.
@@ -198,6 +203,13 @@ enum SessionsGraphText {
     /// The corrective of a start by an external client.
     static let externalStart = """
         An external client cannot start a session: only a device of the user starts one. \
+        Send a message to a session that you can see instead.
+        """
+
+    /// The corrective of an import by an external client: an import starts
+    /// a new session, as a start does.
+    static let externalImport = """
+        An external client cannot import a session: only a device of the user imports one. \
         Send a message to a session that you can see instead.
         """
 
@@ -1058,7 +1070,7 @@ extension SessionsGraphAPI {
                 input: "The session that got the message, the message and the text.",
                 description: "Replies to a message that a session got, from you. \(receiptsDescription) "
                     + ownedTargetRule),
-        ] + shareMutationFields()
+        ] + shareMutationFields() + [importMutationField()]
     }
 
     /// The field of one mutation: its name, its resolver, and its one

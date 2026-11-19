@@ -5,6 +5,7 @@
 // and an import of that source makes a new session (Q85).
 
 import Foundation
+import FoundationModelsExtras
 import ULID
 
 extension SessionsToolText {
@@ -108,15 +109,15 @@ extension SessionsToolText {
     /// The answer of `list imports`: one line for each session, one line for
     /// each agent with no access, and ``importAdvice``.
     ///
-    /// - Parameter outcome: The page, with the short id of each earlier
-    ///   import.
+    /// - Parameter outcome: The page, with the session of each earlier
+    ///   import that the viewer can see.
     /// - Returns: The answer.
     static func importList(_ outcome: ImportableSessionsOutcome) -> String {
         let page = outcome.page
         let sessionLines =
             page.sessions.isEmpty
             ? [noImportableSession]
-            : page.sessions.map { importableLine(of: $0, shortIDs: outcome.shortIDs) }
+            : page.sessions.map { importableLine(of: $0, summaries: outcome.summaries) }
         let moreLines = page.nextCursor == nil ? [] : [moreImportableSessions]
         let accessLines = page.unreadableSources.map(noSourceAccess)
         return (sessionLines + moreLines + accessLines + [importAdvice]).joined(separator: "\n")
@@ -144,15 +145,15 @@ extension SessionsToolText {
     ///
     /// - Parameters:
     ///   - session: The session to import.
-    ///   - shortIDs: The short id of each earlier import that the viewer can
-    ///     see. An earlier import with no short id shows its full id.
+    ///   - summaries: The session of each earlier import that the viewer can
+    ///     see. An earlier import with no session shows its full id.
     /// - Returns: The line.
-    private static func importableLine(of session: ImportableSession, shortIDs: [ULID: String]) -> String {
+    private static func importableLine(of session: ImportableSession, summaries: [ULID: SessionSummary]) -> String {
         let title = session.title.map { "\"\($0)\"" } ?? noTitleText
         let folder = session.folder.map { "(\($0.path))" } ?? noFolderText
         let date = session.lastDate.map { $0.formatted(.iso8601) } ?? noDateText
         let imports = session.previousImports.map { previous in
-            ", imported \(previous.importedAt.formatted(.iso8601)) as @\(shortIDs[previous.session] ?? previous.session.ulidString)"
+            ", imported \(previous.importedAt.formatted(.iso8601)) as @\(summaries[previous.session]?.shortID ?? previous.session.ulidString)"
         }
         return "\(session.agent) \(session.sourceID) \(title) \(folder) \(date) – \(session.turnCount) turns"
             + imports.joined()

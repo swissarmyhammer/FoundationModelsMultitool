@@ -637,6 +637,87 @@ type SessionChange {
   removed: [ID!]!
 }
 
+"""One session of another agent that this server can import."""
+type ImportableSession {
+  """The source agent, for example claude-code or codex."""
+  agent: String!
+
+  """
+  The id of the session in the store of the source agent. importSession takes it.
+  """
+  sourceId: String!
+
+  """The path of the file of the session."""
+  sourcePath: String!
+
+  """The title of the session, or null when the source has none."""
+  title: String
+
+  """
+  The absolute path of the working folder of the session, or null when the source has none.
+  """
+  folder: String
+
+  """
+  The time of the last record of the session, or null when the source gives no time.
+  """
+  lastDate: DateTime
+
+  """The number of turns of the session."""
+  turnCount: Int!
+
+  """
+  Each earlier import of the session whose session you can see. This is only information: an import makes a new session also when the session has earlier imports.
+  """
+  previousImports: [SessionPreviousImport!]!
+}
+
+"""An earlier import of a session of another agent."""
+type SessionPreviousImport {
+  """The session that the import made, with its facts now."""
+  session: Session!
+
+  """The time of the import."""
+  importedAt: DateTime!
+}
+
+"""One page of the sessions of other agents that this server can import."""
+type ImportableSessionPage {
+  """The sessions of the page."""
+  sessions: [ImportableSession!]!
+
+  """The cursor of the next page, or null when this page is the last."""
+  nextCursor: String
+
+  """
+  The source agents whose sessions this server cannot read: the user gave no access to their folder. Only the user can give access, with the command Import Sessions….
+  """
+  unreadableSources: [String!]!
+}
+
+"""
+The session of another agent to import, and the folder and the name of the new session.
+"""
+input ImportSessionInput {
+  """The source agent: claude-code or codex."""
+  agent: String!
+
+  """
+  The source session: its sourceId from importableSessions, or the path of its file.
+  """
+  source: String!
+
+  """
+  The absolute path of the folder of the new session. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: the folder of the source session.
+  """
+  folder: String
+
+  """
+  The name of the new session. None: the title of the source session, else <agent>-import.
+  """
+  name: String
+}
+
 type Query {
   """
   The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns or that its connection started, their subagents, and the sessions that they started.
@@ -722,6 +803,25 @@ type Query {
   The cursor of the newest change. Read the sessions, then subscribe to changes after this cursor.
   """
   cursor: String!
+
+  """
+  The sessions of other agents, such as Claude Code or Codex, that this server can import, the newest first, each with its earlier imports. For the agent, the sessions of the folder of its session come first. An import of a session makes a new session also when it has earlier imports. IMPORT_UNAVAILABLE when this server cannot import a session. IMPORT_FAILED when the list fails.
+  """
+  importableSessions(
+    """The source agent: claude-code or codex. None: each agent."""
+    agent: String
+
+    """
+    The absolute path of the folder of the source sessions. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: each folder.
+    """
+    folder: String
+
+    """The most sessions to give: 1 to 50."""
+    first: Int = 20
+
+    """The nextCursor of the page before, or no cursor for the first page."""
+    after: String
+  ): ImportableSessionPage!
 }
 
 type Mutation {
@@ -831,6 +931,14 @@ type Mutation {
   stopSharingSession(
     """The shared session."""
     input: StopSharingSessionInput!
+  ): Session!
+
+  """
+  Imports a session of another agent, such as Claude Code or Codex, as a new session. The import copies the session and does not change the source. Each call makes a new session, also when the source was imported before. Gives the new session. An external client cannot import a session. IMPORT_UNAVAILABLE when this server cannot import a session. NO_SOURCE_ACCESS when the user gave no access to the sessions of the agent, IMPORT_FOLDER_UNAVAILABLE when the folder does not exist or this server cannot write it, and IMPORT_FAILED when the import fails.
+  """
+  importSession(
+    """The source session, and the folder and the name of the new session."""
+    input: ImportSessionInput!
   ): Session!
 }
 

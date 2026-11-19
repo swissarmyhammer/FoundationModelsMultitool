@@ -5,7 +5,8 @@
 // The schema is in `SessionsGraphSchema.swift`, its mutations are in
 // `SessionsGraphMutations.swift`, its page query is in
 // `SessionsGraphPages.swift`, its search query is in
-// `SessionsGraphSearch.swift`, its object types are in
+// `SessionsGraphSearch.swift`, its import query and import mutation are in
+// `SessionsGraphImport.swift`, its object types are in
 // `SessionsGraphTypes.swift`, and its change feed and `changes` subscription
 // are in `SessionsGraphChanges.swift`. This file holds the endpoint, its name
 // rules, and the one endpoint of each directory.
@@ -41,6 +42,12 @@ import Synchronization
 ///   the folder of the tab of the client: its sessions come first, and the
 ///   `folder:.` token names it. With `session`, it gives each hit of that
 ///   session, up to `first`. With no searcher it gives `MISSING_SEARCHER`.
+/// - `Query.importableSessions(agent:folder:first:after:)` gives the
+///   sessions of other agents, such as Claude Code or Codex, that the
+///   importer of the endpoint can import, with each earlier import and the
+///   agents with no access (D209 (l)). An earlier import gives its `Session`
+///   only when the viewer can see that session; the page drops each other
+///   earlier import. With no importer it gives `IMPORT_UNAVAILABLE`.
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
@@ -51,7 +58,9 @@ import Synchronization
 /// `archiveSession`, `unarchiveSession`, `forkSession`, `sendMessage`,
 /// `replyMessage`, and `shareSession`, `updateSessionShare` and
 /// `stopSharingSession` for the tool ops `share session`, `update share` and
-/// `stop sharing` (D208 (k)), each with one `input`. A `Session` gives its
+/// `stop sharing` (D208 (k)), and `importSession` (D209 (l)), each with one
+/// `input`. Each `importSession` makes a new session, and gives that
+/// `Session`; an external client cannot import a session. A `Session` gives its
 /// `share` from the sharer of the endpoint; with no sharer, the field and the
 /// share mutations give `SHARING_UNAVAILABLE`.
 /// A client acts as its user, and a call with no viewer acts as the caller
@@ -113,7 +122,16 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `cwd` for `folder`, `includeArchived` for `archived`, `limit` for
     /// `first`), `sessionId` for `session` and `cursor` for `after`; `items`,
     /// `nodes` and `sessions` for the `results` of a search page, `endCursor`
-    /// for its `nextCursor`, and `date` for the `at` of a hit; the bare verb of each
+    /// for its `nextCursor`, and `date` for the `at` of a hit; `listImports`
+    /// for `importableSessions`, and for its arguments the names of the
+    /// arguments of the `list imports` op (`from` and `sourceAgent` for
+    /// `agent`, `cwd` for `folder`, `limit` for `first`) and `cursor` for
+    /// `after`; `items` and `nodes` for the `sessions` of an import page and
+    /// `endCursor` for its `nextCursor`; `sourceID` and `source` for the
+    /// `sourceId` of a session to import, `cwd` for its `folder`, `date` for
+    /// its `lastDate`, `turns` for its `turnCount` and `imports` for its
+    /// `previousImports`; `date` for the `importedAt` of an earlier import;
+    /// the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
     /// of its input.
     static let rules = GraphQLNameRules(
@@ -128,7 +146,15 @@ public final class SessionsGraph: GraphQLEndpoint {
                     "results": ["items", "nodes", "sessions"], "nextCursor": ["endCursor"],
                 ],
                 "SessionSearchHit": ["at": ["date"]],
-                "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
+                "ImportableSessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
+                "ImportableSession": [
+                    "sourceId": ["sourceID", "source"], "folder": ["cwd"], "lastDate": ["date"],
+                    "turnCount": ["turns"], "previousImports": ["imports"],
+                ],
+                "SessionPreviousImport": ["importedAt": ["date"]],
+                "Query": [
+                    "sessionPage": ["sessionsPage", "pagedSessions"], "importableSessions": ["listImports"],
+                ],
                 "Subscription": ["changes": ["sessionChanges"]],
             ]) { mutation, _ in mutation },
             byField: [
@@ -137,6 +163,9 @@ public final class SessionsGraph: GraphQLEndpoint {
                 "Query.searchSessions": [
                     "query": ["text", "q"], "folder": ["cwd"], "session": ["sessionId"],
                     "archived": ["includeArchived"], "first": ["limit"], "after": ["cursor"],
+                ],
+                "Query.importableSessions": [
+                    "agent": ["from", "sourceAgent"], "folder": ["cwd"], "first": ["limit"], "after": ["cursor"],
                 ],
             ]))
 
@@ -304,7 +333,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The importer that a host gave for the directory, or `nil` when no
-    /// host gave one: the import operations of the `sessions` tool read it
+    /// host gave one: the import operations of the `sessions` tool, the
+    /// `importableSessions` query and the `importSession` mutation read it
     /// (D209 (l)).
     var importer: (any SessionImporter)? {
         Self.read(storedImporter)
@@ -362,8 +392,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// The context of one call: the directory, read with the visibility of
-    /// the viewer, the change feed, and the exporter, the searcher and the
-    /// sharer of the endpoint.
+    /// the viewer, the change feed, and the exporter, the searcher, the
+    /// sharer and the importer of the endpoint.
     ///
     /// - Parameter viewer: The client that makes the call, or `nil` for the
     ///   agent.
@@ -371,7 +401,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
         SessionsGraphContext(
             sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter,
-            searcher: searcher, sharer: sharer)
+            searcher: searcher, sharer: sharer, importer: importer)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

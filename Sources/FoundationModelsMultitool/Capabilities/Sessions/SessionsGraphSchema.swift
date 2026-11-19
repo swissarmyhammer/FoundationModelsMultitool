@@ -36,6 +36,11 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// The sharer that the endpoint keeps, or `nil` when no host gave one.
     /// `Session.share` and the share mutations read it.
     let sharer: (any SessionSharer)?
+
+    /// The importer of the sessions of other agents that the host gave the
+    /// endpoint, or `nil` when no host gave one. `Query.importableSessions`
+    /// and `Mutation.importSession` read it.
+    let importer: (any SessionImporter)?
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -299,7 +304,9 @@ struct SessionsGraphAPI: API {
     /// share mutations and their types are in `SessionsGraphShare.swift`,
     /// the `sessionPage` query and its
     /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
-    /// its types are in `SessionsGraphSearch.swift`, and the `cursor` query, the
+    /// its types are in `SessionsGraphSearch.swift`, the `importableSessions`
+    /// query, the `importSession` mutation and their types are in
+    /// `SessionsGraphImport.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
@@ -343,6 +350,10 @@ struct SessionsGraphAPI: API {
                 updateShareInput()
                 stopSharingInput()
                 changeType()
+                importableSessionType()
+                previousImportType()
+                importableSessionPageType()
+                importInput()
             }
             .addQuery {
                 sessionsField()
@@ -353,6 +364,7 @@ struct SessionsGraphAPI: API {
                 pinnedSessionsField()
                 recentSessionsField()
                 cursorField()
+                importableSessionsField()
             }
             .addMutation(mutationFields)
             .addSubscription {

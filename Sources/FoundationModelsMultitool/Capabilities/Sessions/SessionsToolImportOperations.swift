@@ -66,9 +66,10 @@ struct ImportableSessionsOutcome: Sendable {
     /// The page of the importer.
     let page: ImportableSessionsPage
 
-    /// The short id of the session of each earlier import that the viewer
-    /// can see.
-    let shortIDs: [ULID: String]
+    /// The session of each earlier import that the viewer can see, by its
+    /// id. An earlier import whose session the viewer cannot see has no
+    /// entry.
+    let summaries: [ULID: SessionSummary]
 }
 
 /// The new session of one import, as the directory gives it after the
@@ -208,7 +209,7 @@ extension SessionsVisibility {
     ///   - arguments: What the list asks for.
     ///   - importer: The importer of the host, or `nil` when the host gave
     ///     none.
-    /// - Returns: The page of the importer, with the short id of each earlier
+    /// - Returns: The page of the importer, with the session of each earlier
     ///   import that the viewer can see.
     /// - Throws: ``SessionsRefusal`` for a server with no importer, a
     ///   relative folder, and an importer that fails; each error of the
@@ -221,7 +222,7 @@ extension SessionsVisibility {
         let page = try await SessionsToolContext.importerResult(failure: SessionsToolText.importListFailed) {
             try await importer.importable(request)
         }
-        return ImportableSessionsOutcome(page: page, shortIDs: try await shortIDs(ofImportsIn: page))
+        return ImportableSessionsOutcome(page: page, summaries: try await summaries(ofImportsIn: page))
     }
 
     /// Imports a session of another agent: the one import step of
@@ -307,19 +308,19 @@ extension SessionsVisibility {
         return try requestFolder(path, callerFolder: callerFolder, outcome: outcome)
     }
 
-    /// The short id of the session of each earlier import of a page whose
-    /// session the viewer can see.
+    /// The session of each earlier import of a page whose session the
+    /// viewer can see.
     ///
     /// - Parameter page: The page of the importer.
-    /// - Returns: The short id of each visible session, by its id.
+    /// - Returns: The summary of each visible session, by its id.
     /// - Throws: Each error of the directory.
-    private func shortIDs(ofImportsIn page: ImportableSessionsPage) async throws -> [ULID: String] {
-        var shortIDs: [ULID: String] = [:]
+    private func summaries(ofImportsIn page: ImportableSessionsPage) async throws -> [ULID: SessionSummary] {
+        var summaries: [ULID: SessionSummary] = [:]
         // A loop and not a `map`: each lookup awaits the directory.
         for previous in page.sessions.flatMap(\.previousImports) {
-            shortIDs[previous.session] = try await summary(of: previous.session)?.shortID
+            summaries[previous.session] = try await summary(of: previous.session)
         }
-        return shortIDs
+        return summaries
     }
 }
 
