@@ -1,10 +1,29 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m7tzqvtrr73mjwh7m2tarrek
+  text: |-
+    Research done. Findings:
+    - The share task (7c2f6355) gives the pattern: a protocol file, an operations file with static shared steps on SessionsToolContext, a text file, a fixture fake. SessionsGraph keeps each host value in a Mutex with storeIfPresent/read.
+    - Extras 4f3afb5: InMemorySessionDirectory.importSession(_:transcript:) makes a recorded root session with origin import and the next free name. The fake importer in the tests calls it, so the tool reads the real name and short id back from the directory.
+    - The brief gives no error type for "no grant" and "folder has no grant" in import session. The importer must tell these cases to the tool, so this task adds the public enum SessionImportError (sourceUnreadable(agent:), folderUnavailable(URL)). ACPAgent must throw these cases.
+    - folder "." uses the caller folder. The search reader has the private helper searchFolder and the constant noCallerFolder (text says "The search did not run."). This task makes the helper internal with an outcome sentence, so list imports and import session reuse it.
+    - ACPAgent origin/main calls SessionsTool(directory:exporter:searcher:) and SessionsGraph.endpoint(of:); a trailing defaulted importer parameter keeps these calls valid.
+  timestamp: 2026-11-19T22:44:51.160253+00:00
+- actor: claude-code
+  id: 01m7v09vybcf54x985nnshzctc
+  text: |-
+    ### implement — changed
+    - evidence: new files Sources/.../Sessions/SessionImporter.swift, SessionsToolImportOperations.swift, SessionsToolText+Import.swift, Tests/.../SessionsToolImportTests.swift, Tests/.../Fixtures/SessionImporterFixtures.swift. Changed: SessionsTool.swift, SessionsGraph.swift, SessionsToolContext.swift, SessionsRefusal.swift, SessionSearchRequestReader.swift, SessionsToolText.swift, SessionsToolText+Search.swift, SessionSharer.swift, SessionTranscriptExporter.swift, SessionTranscriptSearcher.swift (doc links), SKILL.md, SessionsSkillTests.swift. Extras updated to cdc6179 (Package.resolved is git-ignored). swift build: green. swift test --filter SessionsToolImportTests: 27 passed. Full swift test: 3287 tests in 284 suites passed, 0 failures; the one warning is the SPM build-system note on the mlx bundle, not from source.
+    - notes: new public enum SessionImportError (sourceUnreadable(agent:), folderUnavailable(URL)) — the brief gave no way for the importer to tell these two cases; ACPAgent must throw them. New codes: IMPORT_UNAVAILABLE, NO_SOURCE_ACCESS, IMPORT_FOLDER_UNAVAILABLE, IMPORT_FAILED; IMPORT_UNSUPPORTED stays the directory error. Shared steps for ^fr3tyrn: SessionsVisibility.importables(_:with:) and importSession(_:with:) (the second gives the SessionSummary of the directory), SessionsToolContext.requiredImporter/importerResult/refusal(for:). Verb alias copy -> import; parameter aliases from/sourceAgent, sourceId/path, cwd, title, first. import session needs a caller session (as start session). ACPAgent origin/main b319166 uses only SessionsTool(directory:exporter:searcher:) and SessionsGraph.endpoint(of:), so the defaulted importer keeps it compiling (static check). Not committed, not pushed: the sha messages to the peers follow the push.
+    - next: /review
+  timestamp: 2026-11-19T22:54:41.099524+00:00
 depends_on:
 - 01M7TXXYXSTM71VFGJAY8M7YVR
-position_column: todo
-position_ordinal: '8380'
+position_column: doing
+position_ordinal: '80'
 title: SessionImporter, and list imports and import session in the sessions tool (D209)
 ---
 Decision: D209 (l), (n) in TestudoApp/features/decisions.md (commit 56a8a59). Brief: /Users/wballard/github/swissarmyhammer/.briefs/import/mt-brief.md, items 1, 2, 3 and 5. Read the brief for the exact types.
@@ -24,6 +43,6 @@ Precondition: ^y8m7yvr (the share task changes the same host API and files; do t
 
 ## Tests
 
-- [ ] With a fake importer: the text of both answers, `previousImports`, `folder: .`.
-- [ ] A second import of the same source gives a second session.
-- [ ] No importer; no grant; a folder with no grant: the correctives. #sessions #import
+- [x] With a fake importer: the text of both answers, `previousImports`, `folder: .`.
+- [x] A second import of the same source gives a second session.
+- [x] No importer; no grant; a folder with no grant: the correctives. #sessions #import

@@ -131,6 +131,8 @@ Run the API tests again.
 | Share a session as a read-only link | `{"op": "share session", "id": "v2w4abc", "thoughts": true, "toolOutput": true, "anyoneWithLink": true, "keepUpdated": false}` |
 | Update the share of a session | `{"op": "update share", "id": "v2w4abc", "keepUpdated": true}` |
 | Stop the share of a session | `{"op": "stop sharing", "id": "v2w4abc"}` |
+| List the sessions of other agents to import | `{"op": "list imports", "agent": "claude-code", "folder": ".", "limit": 20}` |
+| Import a session of another agent as a new session | `{"op": "import session", "agent": "claude-code", "source": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "folder": ".", "name": "parser-fix"}` |
 
 - The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
 - The `parent` and `startedBy` filters of `list sessions` take a full id only.
@@ -181,4 +183,13 @@ Run the API tests again.
   - `keepUpdated`: `true` or `false` to change the switch Keep Updated. With no `keepUpdated`, the switch does not change.
 - `stop sharing` takes these parameters, and each is optional:
   - `id`: the shared session. With no `id`, it stops the share of your session.
+- `list imports` takes these parameters, and each is optional:
+  - `agent`: the source agent, `claude-code` or `codex`. The default is each agent.
+  - `folder`: the absolute path of the folder of the source sessions, or `.` for the folder of your session. The default is each folder.
+  - `limit`: the most sessions to give, from 1 to 50. The default is 20.
+- `import session` takes these parameters:
+  - `agent`: the source agent, `claude-code` or `codex`. It is necessary.
+  - `source`: the source id that `list imports` gives, or the path of the source file. It is necessary.
+  - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the folder of the source session.
+  - `name`: the name of the new session. The default is the title of the source session, else `<agent>-import`.
 - In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, and so on.

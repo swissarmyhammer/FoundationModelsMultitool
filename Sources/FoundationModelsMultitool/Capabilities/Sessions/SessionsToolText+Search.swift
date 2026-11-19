@@ -84,10 +84,15 @@ extension SessionsToolText {
         """
 
     /// The corrective of the folder `.` in a call with no caller session.
-    static let noCallerFolder = """
-        The folder . is the folder of your session, and this call runs in no session. \(searchNotRunSentence) Give \
-        the absolute path of a folder.
+    ///
+    /// - Parameter outcome: The sentence that tells what the call did not do.
+    /// - Returns: The corrective.
+    static func noCallerFolder(_ outcome: String) -> String {
         """
+        The folder . is the folder of your session, and this call runs in no session. \(outcome) Give the absolute \
+        path of a folder.
+        """
+    }
 
     /// The corrective of a searcher that could not search.
     ///

@@ -14,8 +14,8 @@ import ULID
 
 /// Searches the transcripts of the sessions that this server records.
 ///
-/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:sharer:)``
-/// and to ``SessionsGraph/endpoint(of:exporter:searcher:sharer:)``. With no searcher, the
+/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:sharer:importer:)``
+/// and to ``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:)``. With no searcher, the
 /// `search sessions` operation gives a corrective that names the UI command
 /// Search (⌘F).
 ///

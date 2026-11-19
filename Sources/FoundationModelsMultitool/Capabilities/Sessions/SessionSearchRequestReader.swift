@@ -112,7 +112,19 @@ extension SessionsVisibility {
     /// - Parameter requested: The limit of the call, or `nil`.
     /// - Returns: The limit.
     static func searchLimit(_ requested: Int?) -> Int {
-        min(max(requested ?? defaultSearchLimit, 1), maximumSearchLimit)
+        pageLimit(requested, defaultLimit: defaultSearchLimit, maximumLimit: maximumSearchLimit)
+    }
+
+    /// The limit of one page: `requested` brought into `1...maximumLimit`,
+    /// or `defaultLimit` for no limit.
+    ///
+    /// - Parameters:
+    ///   - requested: The limit of the call, or `nil`.
+    ///   - defaultLimit: The limit of a call with no limit.
+    ///   - maximumLimit: The most items of one page.
+    /// - Returns: The limit.
+    static func pageLimit(_ requested: Int?, defaultLimit: Int, maximumLimit: Int) -> Int {
+        min(max(requested ?? defaultLimit, 1), maximumLimit)
     }
 
     /// The sessions that the tokens of a query keep, among the sessions that
@@ -133,7 +145,8 @@ extension SessionsVisibility {
             tags: query.tags,
             agents: query.agents,
             folders: try folderPaths.map { path throws(SessionsRefusal) in
-                try Self.searchFolder(path, callerFolder: arguments.callerFolder)
+                try Self.requestFolder(
+                    path, callerFolder: arguments.callerFolder, outcome: SessionsToolText.searchNotRunSentence)
             })
         guard !filter.keepsEachSession else {
             return nil
@@ -164,21 +177,24 @@ extension SessionsVisibility {
         return ids
     }
 
-    /// The folder of a `folder:` token or of the `folder` argument.
+    /// The folder of a `folder:` token or of a `folder` argument: the one
+    /// reader of the folder of the search and of the import operations.
     ///
     /// - Parameters:
     ///   - path: The path as written: ``callerFolderPath``, an absolute path,
     ///     or a path that starts with `~`.
     ///   - callerFolder: The folder of the caller, or `nil`.
+    ///   - outcome: The sentence of the corrective that tells what the call
+    ///     did not do.
     /// - Returns: The folder.
     /// - Throws: ``SessionsRefusal`` for ``callerFolderPath`` in a call with
     ///   no caller folder, and for a relative path.
-    private static func searchFolder(_ path: String, callerFolder: URL?) throws(SessionsRefusal) -> URL {
+    static func requestFolder(_ path: String, callerFolder: URL?, outcome: String) throws(SessionsRefusal) -> URL {
         guard path.trimmingCharacters(in: .whitespacesAndNewlines) == callerFolderPath else {
             return try SessionsToolInput.absoluteFolder(path)
         }
         guard let callerFolder else {
-            throw SessionsRefusal(.invalidFolder, SessionsToolText.noCallerFolder)
+            throw SessionsRefusal(.invalidFolder, SessionsToolText.noCallerFolder(outcome))
         }
         return callerFolder
     }
