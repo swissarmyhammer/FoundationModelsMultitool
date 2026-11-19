@@ -34,6 +34,19 @@ struct SessionSearchScanner {
         let isExcluded: Bool
     }
 
+    /// What the scanner reads now. Each state holds only its own text.
+    private enum ScanState {
+        /// The scanner is out of a term: at the start, or after space or a
+        /// closing quote.
+        case idle
+
+        /// The scanner reads a word. The text has one or more characters.
+        case word(String)
+
+        /// The scanner reads a phrase whose closing quote it did not read yet.
+        case phrase(OpenPhrase)
+    }
+
     /// The character that starts and ends a phrase.
     private static let quote: Character = "\""
 
@@ -43,11 +56,8 @@ struct SessionSearchScanner {
     /// The terms that the scanner made.
     private var terms: [SessionSearchTerm] = []
 
-    /// The characters of the word that the scanner reads now.
-    private var pendingWord = ""
-
-    /// The phrase that the scanner reads now, or `nil` out of a phrase.
-    private var openPhrase: OpenPhrase?
+    /// What the scanner reads now.
+    private var state = ScanState.idle
 
     /// The terms of `text`, in their order.
     ///
@@ -66,73 +76,103 @@ struct SessionSearchScanner {
     ///
     /// - Parameter character: The character.
     private mutating func read(_ character: Character) {
-        if openPhrase != nil {
-            readInPhrase(character)
-        } else if character == Self.quote {
-            startPhrase()
-        } else if character.isWhitespace {
-            endWord()
-        } else {
-            pendingWord.append(character)
+        switch state {
+        case .phrase(let phrase):
+            readInPhrase(character, phrase: phrase)
+        case .idle, .word:
+            readOutOfPhrase(character)
         }
     }
 
     /// Reads one character in a phrase.
     ///
-    /// - Parameter character: The character.
-    private mutating func readInPhrase(_ character: Character) {
+    /// - Parameters:
+    ///   - character: The character.
+    ///   - phrase: The open phrase.
+    private mutating func readInPhrase(_ character: Character, phrase: OpenPhrase) {
         guard character != Self.quote else {
-            endPhrase()
+            endTerm()
             return
         }
-        openPhrase?.text.append(character)
+        var longer = phrase
+        longer.text.append(character)
+        state = .phrase(longer)
+    }
+
+    /// Reads one character out of a phrase.
+    ///
+    /// - Parameter character: The character.
+    private mutating func readOutOfPhrase(_ character: Character) {
+        if character == Self.quote {
+            startPhrase()
+        } else if character.isWhitespace {
+            endTerm()
+        } else {
+            appendToWord(character)
+        }
+    }
+
+    /// Adds one character to the word, or starts a word with it.
+    ///
+    /// - Parameter character: The character.
+    private mutating func appendToWord(_ character: Character) {
+        switch state {
+        case .word(let text):
+            state = .word(text + String(character))
+        case .idle, .phrase:
+            state = .word(String(character))
+        }
     }
 
     /// Starts a phrase at a quote. A pending `-` excludes the phrase; other
     /// pending characters end as a word.
     private mutating func startPhrase() {
-        let isExcluded = pendingWord == Self.exclusionMark
-        if isExcluded {
-            pendingWord = ""
+        let isExcluded: Bool
+        if case .word(let text) = state, text == Self.exclusionMark {
+            isExcluded = true
         } else {
-            endWord()
+            isExcluded = false
+            endTerm()
         }
-        openPhrase = OpenPhrase(isExcluded: isExcluded)
+        state = .phrase(OpenPhrase(isExcluded: isExcluded))
     }
 
-    /// Ends the pending word, if it has text.
-    private mutating func endWord() {
-        defer { pendingWord = "" }
-        let isExcluded = pendingWord.hasPrefix(Self.exclusionMark)
-        let text = isExcluded ? String(pendingWord.dropFirst()) : pendingWord
+    /// Ends the term that the scanner reads now, if it has text, and goes
+    /// back to ``ScanState/idle``.
+    private mutating func endTerm() {
+        switch state {
+        case .idle:
+            break
+        case .word(let text):
+            addWord(text)
+        case .phrase(let phrase):
+            addPhrase(phrase)
+        }
+        state = .idle
+    }
+
+    /// Adds a word as a term, if it has text after its `-`.
+    ///
+    /// - Parameter word: The characters of the word.
+    private mutating func addWord(_ word: String) {
+        let isExcluded = word.hasPrefix(Self.exclusionMark)
+        let text = isExcluded ? String(word.dropFirst()) : word
         guard !text.isEmpty else {
             return
         }
         terms.append(SessionSearchTerm(text: text, isPhrase: false, isExcluded: isExcluded))
     }
 
-    /// Ends the open phrase, if it has text. Each run of space in the phrase
-    /// becomes one space.
-    private mutating func endPhrase() {
-        defer { openPhrase = nil }
-        guard let phrase = openPhrase else {
-            return
-        }
+    /// Adds a phrase as a term, if it has text. Each run of space in the
+    /// phrase becomes one space.
+    ///
+    /// - Parameter phrase: The phrase.
+    private mutating func addPhrase(_ phrase: OpenPhrase) {
         let text = phrase.text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !text.isEmpty else {
             return
         }
         terms.append(SessionSearchTerm(text: text, isPhrase: true, isExcluded: phrase.isExcluded))
-    }
-
-    /// Ends the term at the end of the text: the open phrase, or the pending
-    /// word.
-    private mutating func endTerm() {
-        if openPhrase != nil {
-            endPhrase()
-        } else {
-            endWord()
-        }
     }
 }
 

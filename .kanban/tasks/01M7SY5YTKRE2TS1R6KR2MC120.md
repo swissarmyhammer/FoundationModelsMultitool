@@ -30,6 +30,35 @@ comments:
     - evidence: 6 files — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionTranscriptSearcher.swift (new), SessionSearchQuery.swift (new), SessionSearchQueryParser.swift (new), SessionsToolText+Search.swift (new), SessionsRefusal.swift (INVALID_QUERY), Tests/FoundationModelsMultitoolTests/SessionSearchQueryTests.swift (new). `swift build`: complete, no compiler warning. `swift test --filter SessionSearchQueryTests`: 45 tests in 1 suite passed. Full `swift test`: 3186 tests in 279 suites passed, exit 0. The one warning in the log is the build system note "missing creator for mutated node ... mlx-swift_Cmlx.bundle", which is not from this change.
     - next: review
   timestamp: 2026-11-19T13:07:38.717385+00:00
+- actor: claude-code
+  id: 01m7sz05sr08e57mmybhbc8sdz
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 7c209658); 1 finding (1 confirmed, 0 refuted): Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionSearchQueryParser.swift:47 swift/state-modeling
+    - next: implement the finding (model the scanner state as one enum), then commit and review again
+  timestamp: 2026-11-19T13:12:40.504476+00:00
+- actor: claude-code
+  id: 01m7sz0j7qtdfw6xzkxz2rpf4x
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionTranscriptSearcher.swift, SessionSearchQuery.swift, SessionSearchQueryParser.swift, SessionsToolText+Search.swift (new); SessionsRefusal.swift (INVALID_QUERY); SessionSearchQueryTests.swift (new, 45)
+    - test: green — swift test, 3186 passed (run in the implement step)
+    - commit: 7c209658
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionSearchQueryParser.swift:47
+  timestamp: 2026-11-19T13:12:53.239834+00:00
+- actor: claude-code
+  id: 01m7sz43rm68td4r6m5vzdgxf0
+  text: |-
+    Finding swift/state-modeling done. `SessionSearchScanner` now has one `private enum ScanState { case idle, word(String), phrase(OpenPhrase) }` in place of `pendingWord` and `openPhrase`. One `endTerm()` ends the term of the current state (word or phrase) and goes back to `idle`; the space, the closing quote and the end of the text all use it. `endWord`/`endPhrase` became `addWord(_:)`/`addPhrase(_:)`, which take the text of their state. Behavior did not change.
+    I checked the parser and query files for other pairs that must not be set together: `SessionSearchTerm.isPhrase` and `isExcluded` can both be true (`-"two words"`), and `SessionSearchQuery.after`/`before` are independent. Thus no other enum was necessary.
+  timestamp: 2026-11-19T13:14:49.492023+00:00
+- actor: claude-code
+  id: 01m7sz45nscxvkaq80994w08hk
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionSearchQueryParser.swift (formatted with swift format). `swift test --filter SessionSearchQueryTests`: 45 tests in 1 suite passed, no compiler warning.
+    - next: test, commit, review
+  timestamp: 2026-11-19T13:14:51.449168+00:00
 position_column: doing
 position_ordinal: '80'
 title: SessionTranscriptSearcher, its value types, and the parse of a session search query (D207)
@@ -57,3 +86,9 @@ No precondition. FoundationModelsACPAgent waits on the protocol of this task: pu
 - [x] A wrong date gives a corrective with the token; an unknown `key:` token is a plain word.
 - [x] `rankingText` for a query with words, phrases, exclusions and tokens.
 - [x] A query with only tokens. #sessions #search
+
+## Review Findings (2026-11-19 07:08)
+
+> Scope: `review sha HEAD~1..HEAD` — the review examined only the lines that this change added or changed. 6 files were reviewed. 10 files in `.kanban/` were not reviewed (ignore rule in `.reviewignore`).
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionSearchQueryParser.swift:47` `swift/state-modeling` — The scanner keeps the word that it reads in `pendingWord` (a String that is empty when it is not in use), next to the optional `openPhrase`. These two must not hold text at the same time: while `openPhrase` is set, `read(_:)` sends each character to `readInPhrase`, and `startPhrase()` clears `pendingWord` before it opens a phrase. But the types do not prevent the incorrect state where the two hold text at the same time. Thus a later change can break this rule, and the compiler does not find the error. Model the scanner state as one enum, for example `enum ScanState { case idle, word(String), phrase(OpenPhrase) }`, so that each state holds only its own text.
