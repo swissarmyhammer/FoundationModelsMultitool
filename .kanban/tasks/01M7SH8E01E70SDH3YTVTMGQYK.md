@@ -44,8 +44,24 @@ comments:
     ### decision on the code-mode blocker — (a)
     The brief assumed that code mode builds a session object for `listSessions` and `checkSession`. It does not: `OperationVerbTool.call(arguments:)` gives the snippet the same text as the tool. Decision: (a). Code mode gets the recap in that text ("Recap:" line, `recap "..."` on the list line), and `recapAt` only through the `Session` type of the endpoint, as the other times (`pinnedAt`, `archivedAt`) are. No text form changes. A JSON object for code mode (c) is a separate change, and no brief asks for it now. The blocker is resolved; the task is ready for review.
   timestamp: 2026-11-19T09:25:32.715600+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m7sj4tjb12bhzbvfpk7qrcvw
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (4de8719a): 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. The golden schema Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql has no validator.
+    - next: none. The task is in done.
+  timestamp: 2026-11-19T09:28:01.355779+00:00
+- actor: claude-code
+  id: 01m7sj56bwd5rw8c90xyv4gf7p
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraph, SessionsGraphSchema, SessionsGraphTypes, SessionsToolText, SessionsToolOperations; SessionsRecapTests (new), SessionsGraphChangesTests; golden (+8/-0); local pin Extras f99b111
+    - test: green — swift test, 3139 passed (run in the implement step)
+    - commit: 4de8719a
+    - review: clean — 0 findings; the code-mode decision (a) is recorded above
+  timestamp: 2026-11-19T09:28:13.436141+00:00
+position_column: done
+position_ordinal: ffffffff9c80
 title: Session.recap and recapAt in the endpoint, and the recap in check session and list sessions (D206)
 ---
 Decision: D206 (g) and (h) in TestudoApp/features/decisions.md (commit da60a90). Brief: /Users/wballard/github/swissarmyhammer/.briefs/recap/mt-brief.md, items 1 to 4 and 6.
