@@ -174,13 +174,30 @@ public final class SessionsGraph: GraphQLEndpoint {
         searcher: (any SessionTranscriptSearcher)? = nil
     ) -> SessionsGraph {
         let endpoint = sharedEndpoint(of: directory)
-        if let exporter {
-            endpoint.storedExporter.withLock { $0 = exporter }
-        }
-        if let searcher {
-            endpoint.storedSearcher.withLock { $0 = searcher }
-        }
+        storeIfPresent(exporter, in: endpoint.storedExporter)
+        storeIfPresent(searcher, in: endpoint.storedSearcher)
         return endpoint
+    }
+
+    /// Puts a value in a store of the endpoint. A call with no value keeps
+    /// the value of the store: this is the one place of that rule.
+    ///
+    /// - Parameters:
+    ///   - value: The value to keep, or `nil` to keep the stored value.
+    ///   - store: The store of the endpoint.
+    private static func storeIfPresent<Value: Sendable>(_ value: Value?, in store: borrowing Mutex<Value?>) {
+        guard let value else {
+            return
+        }
+        store.withLock { $0 = value }
+    }
+
+    /// Reads the value of a store of the endpoint.
+    ///
+    /// - Parameter store: The store of the endpoint.
+    /// - Returns: The stored value, or `nil` when no host gave one.
+    private static func read<Value: Sendable>(_ store: borrowing Mutex<Value?>) -> Value? {
+        store.withLock { $0 }
     }
 
     /// The one endpoint of `directory`: the endpoint that a caller holds now,
@@ -208,14 +225,14 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// gave one: the `export session` operation of the `sessions` tool and
     /// the `export` field of a session read it (D202 (g)).
     var exporter: (any SessionTranscriptExporter)? {
-        storedExporter.withLock { $0 }
+        Self.read(storedExporter)
     }
 
     /// The searcher that a host gave for the directory, or `nil` when no host
     /// gave one: the `search sessions` operation of the `sessions` tool reads
     /// it (D207 (g)).
     var searcher: (any SessionTranscriptSearcher)? {
-        storedSearcher.withLock { $0 }
+        Self.read(storedSearcher)
     }
 
     /// The schema of the endpoint in SDL. The schema is built once for each

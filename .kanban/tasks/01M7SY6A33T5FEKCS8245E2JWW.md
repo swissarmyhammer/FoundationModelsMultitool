@@ -25,6 +25,29 @@ comments:
     - notes: a suite that calls `SessionsToolFixtures.asCaller` needs the `.ownsTemporaryDirectories` trait; the first full run failed 20 tests for that cause only. Verb aliases `find` and `grep` go to `search`; parameter aliases `text`/`q`, `cwd`, `includeArchived`, `first`. A result whose session the caller cannot see now is not in the answer. The date of a line is the day of the best hit (or the last change of the session) in the server time zone. ACPAgent origin/main calls only `SessionsTool(directory:exporter:)` and `SessionsGraph.endpoint(of:)`, so it still compiles.
     - next: /review
   timestamp: 2026-11-19T13:28:45.396979+00:00
+- actor: claude-code
+  id: 01m7t0646dgjjkj831egzzg749
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (da39530b); 2 findings, 2 confirmed, 0 refuted — Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift:180, Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift:217 (duplication/duplication)
+    - next: implement the 2 open items in the "Review Findings (2026-11-19 07:29)" section. Use one private helper for the store of the exporter and the searcher, and one for the read. The task stays in review.
+  timestamp: 2026-11-19T13:33:24.045629+00:00
+- actor: claude-code
+  id: 01m7t06jm2s1p48k5e952mb92a
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SessionSearchRequestReader.swift, SessionsToolSearchOperation.swift (new); SessionsTool, SessionsGraph, SessionsToolContext, SessionsRefusal, SessionsAddressReader, SessionsToolInput, SessionsToolText(+Search, +Messages); SKILL.md (one row); SessionsToolSearchTests (20), fake searcher fixture
+    - test: green — swift test, 3206 passed (run in the implement step)
+    - commit: da39530b
+    - review: findings — SessionsGraph.swift:180, SessionsGraph.swift:217
+  timestamp: 2026-11-19T13:33:38.818431+00:00
+- actor: claude-code
+  id: 01m7t0bnjvnp6mgvm6v0c8w95c
+  text: |-
+    ### implement — changed
+    - evidence: SessionsGraph.swift only. Two new private static generic helpers: `storeIfPresent(_:in:)` (the one place of the nil rule: a call with no value keeps the stored value) and `read(_:)`. Both take a `borrowing Mutex<Value?>` with `Value: Sendable`. `endpoint(of:exporter:searcher:)` calls `storeIfPresent` once for each value; the `exporter` and `searcher` accessors call `Self.read`. SessionsToolContext.swift has only two stored `let` values and an init that sets them, so it has no pair to merge. `swift test --filter "SessionsToolSearch|SessionsToolExport|SessionsGraph"`: 179 tests in 8 suites passed. `swift build --build-tests`: no code warning (one build-system warning about the mlx bundle, not from this code).
+    - next: /review
+  timestamp: 2026-11-19T13:36:25.691870+00:00
 depends_on:
 - 01M7SY5YTKRE2TS1R6KR2MC120
 position_column: doing
@@ -53,3 +76,16 @@ Precondition: ^r2mc120 (the protocol and the parse).
 - [x] `@<slug>` through the resolver, and an ambiguous one.
 - [x] The preferred folder is the caller folder.
 - [x] A wrong date in the query gives the corrective. #sessions #search
+
+## Review Findings (2026-11-19 07:29)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 15 file(s) reviewed, 3 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `Sources/FoundationModelsMultitool/Resources/skills/sessions/SKILL.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift:180` `duplication/duplication` — The `searcher` store block repeats the `exporter` store block directly above it. Both are an `if let` that writes the value into a `Mutex` store under `withLock`, and they differ only by the names `exporter` and `storedExporter` versus `searcher` and `storedSearcher`. A later change to one copy, such as how a nil value is treated, can drift from the other. Extract one private helper that takes an optional value and a `Mutex` store, for example `storeIfPresent(_:in:)`. Call it once for the exporter and once for the searcher. Keep the nil rule (a call with no value keeps the stored value) in the helper only.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Sessions/SessionsGraph.swift:217` `duplication/duplication` — The `searcher` read accessor repeats the `exporter` read accessor directly above it. Both are a computed property whose body is `storedX.withLock { $0 }`, and they differ only by the names. Any later change to how the stored value is read must be made in both copies. Read both values through one private generic helper that takes the `Mutex` store, for example `read(_ store:)`. Use the same helper that the store block at SessionsGraph.swift:177-182 uses, so the read and the write share one definition of the store.
