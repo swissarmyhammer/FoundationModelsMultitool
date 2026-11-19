@@ -20,10 +20,26 @@ comments:
     - note: the `folder` argument is the folder of the tab (preferred folder, and the folder of `folder:.`), not a filter; unavailableFolders keeps only the folders of the visible results.
     - next: /review
   timestamp: 2026-11-19T13:48:28.335473+00:00
+- actor: claude-code
+  id: 01m7t18mph5w6vc7d1be7yn7pg
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (28aeb04e); 0 findings, 0 confirmed, 0 refuted; 7 attempted, 0 failed. Not reviewed: .kanban/ files (ignore rule) and Tests/FoundationModelsMultitoolTests/Goldens/sessions.graphql (no validator matches).
+    - next: none; the task is in done.
+  timestamp: 2026-11-19T13:52:15.057718+00:00
+- actor: claude-code
+  id: 01m7t190t2tr2m0wfhg7p5esfr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — SessionsGraphSearch.swift (new), SessionsGraph, SessionsGraphSchema, SessionsToolSearchOperation (shared search method); golden (+125/-0); SessionsGraphSearchTests (new, 30)
+    - test: green — swift test, 3231 passed (run in the implement step)
+    - commit: 28aeb04e
+    - review: clean — 0 findings; decisions: `folder` sorts first and names `folder:.` (not a filter); `unavailableFolders` only of visible results
+  timestamp: 2026-11-19T13:52:27.458740+00:00
 depends_on:
 - 01M7SY6A33T5FEKCS8245E2JWW
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffffffa080
 title: The searchSessions field of the sessions endpoint (D207)
 ---
 Decision: D207 (d), (h) in TestudoApp/features/decisions.md (commit ba585e0). Brief: /Users/wballard/github/swissarmyhammer/.briefs/search/mt-brief.md, item 4.
