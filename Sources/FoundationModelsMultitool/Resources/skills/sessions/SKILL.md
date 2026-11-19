@@ -1,11 +1,11 @@
 ---
 name: sessions
-description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive, unarchive or share sessions.
+description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive, unarchive, share or import sessions, or to continue a session of Claude Code or Codex.
 license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Sessions
@@ -189,6 +189,9 @@ Run the API tests again.
   - `keepUpdated`: `true` or `false` to change the switch Keep Updated. With no `keepUpdated`, the switch does not change.
 - `stop sharing` takes these parameters, and each is optional:
   - `id`: the shared session. With no `id`, it stops the share of your session.
+- To continue a session of Claude Code or Codex, use `list imports` and then `import session`. The import copies the session; it does not change the source. Do not read the files of other agents.
+- Each import makes a new session, also for a source that was imported before. `list imports` shows an earlier import as `imported <date> as @<short id>`. This is only information.
+- When the answer tells that there is no access to the sessions of an agent, ask the user to run the command Import Sessions… of the File menu. An agent cannot give access to a folder.
 - `list imports` takes these parameters, and each is optional:
   - `agent`: the source agent, `claude-code` or `codex`. The default is each agent.
   - `folder`: the absolute path of the folder of the source sessions, or `.` for the folder of your session. The default is each folder.
@@ -198,4 +201,4 @@ Run the API tests again.
   - `source`: the source id that `list imports` gives, or the path of the source file. It is necessary.
   - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the folder of the source session.
   - `name`: the name of the new session. The default is the title of the source session, else `<agent>-import`.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, and so on.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, `tools.sessions.listImports({...})`, `tools.sessions.importSession({...})`, and so on.

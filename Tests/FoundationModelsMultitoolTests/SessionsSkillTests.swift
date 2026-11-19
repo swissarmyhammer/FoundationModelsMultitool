@@ -6,7 +6,8 @@
 // `update share`, of `stop sharing`, of `list imports` and of `import session`
 // in the skill names each parameter, the skill tells the limit of `search
 // sessions` (D207 (d)), the skill says to share a session only when the user
-// asks (D208 (k)), each code-mode verb of the skill is a verb of the tool,
+// asks (D208 (k)), the skill says not to read the files of other agents
+// (D209 (l)), each code-mode verb of the skill is a verb of the tool,
 // and the skill names each
 // form of a session reference, each receipt word of the tool and the note
 // `archived` of a `sent` receipt (D204), and the recap of a session with its
@@ -267,8 +268,8 @@ import Testing
     /// Whether a text tells one rule sentence of the skill.
     ///
     /// - Parameters:
-    ///   - rule: The rule sentence, for example ``searchLimitRule`` or
-    ///     ``shareWhenAskedRule``.
+    ///   - rule: The rule sentence, for example ``searchLimitRule``,
+    ///     ``shareWhenAskedRule`` or ``foreignFilesRule``.
     ///   - text: The skill text.
     /// - Returns: True when `text` contains `rule`.
     private static func tells(_ rule: String, in text: String) -> Bool {
@@ -304,6 +305,29 @@ import Testing
     @Test("the skill says to share a session only when the user asks")
     func theSkillSaysToShareOnlyWhenTheUserAsks() throws {
         #expect(Self.tells(Self.shareWhenAskedRule, in: try Self.skillText()))
+    }
+
+    /// The sentence of the skill that tells the agent not to read the session
+    /// files of other agents (D209 (l)): to continue such a session, the
+    /// agent uses `list imports` and `import session`.
+    private static let foreignFilesRule = "Do not read the files of other agents."
+
+    /// A small skill text for the unit test of ``tells(_:in:)`` with
+    /// ``foreignFilesRule``: it names the two import operations and the copy,
+    /// but not the rule about the files of other agents.
+    private static let importWithoutFilesRule = """
+        - To continue a session of Claude Code or Codex, use `list imports` and then `import session`.
+        - The import copies the session; it does not change the source.
+        """
+
+    @Test("a text with no files rule does not tell to keep out of the files of other agents")
+    func aTextWithNoFilesRuleDoesNotTellIt() {
+        #expect(!Self.tells(Self.foreignFilesRule, in: Self.importWithoutFilesRule))
+    }
+
+    @Test("the skill says not to read the files of other agents")
+    func theSkillSaysNotToReadTheFilesOfOtherAgents() throws {
+        #expect(Self.tells(Self.foreignFilesRule, in: try Self.skillText()))
     }
 
     @Test("the skill names a code-mode verb")
