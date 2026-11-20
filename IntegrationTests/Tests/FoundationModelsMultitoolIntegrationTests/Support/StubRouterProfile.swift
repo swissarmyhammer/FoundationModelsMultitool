@@ -132,10 +132,14 @@ struct StubModelLoader: ModelLoader {
     /// The progress each load reports: the whole of a one-byte download.
     private static let completeDownload = DownloadProgress(bytesDownloaded: 1, bytesTotal: 1)
 
+    /// Gives a ``StubLLMContainer`` for each model. The stub ignores `context`
+    /// and `kvCache`: one container serves each context and each KV cache
+    /// setting.
     func loadLLM(
         ref: ModelRef,
         slot: ModelSlot,
         context: Int,
+        kvCache: KVCacheQuantization?,
         reporting: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> any LoadedLLMContainer {
         reporting(Self.completeDownload)
