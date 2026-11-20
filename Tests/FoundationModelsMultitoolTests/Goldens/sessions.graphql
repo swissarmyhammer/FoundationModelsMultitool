@@ -169,6 +169,11 @@ type Session {
   archivedAt: DateTime
 
   """
+  Where the session came from when an import made it, or null when no import made it.
+  """
+  importedFrom: SessionImportProvenance
+
+  """
   The transcript of the session as text. It writes no file: save the text on your own disk. MISSING_EXPORTER when this server cannot export a session.
   """
   export(
@@ -679,6 +684,33 @@ type SessionPreviousImport {
 
   """The time of the import."""
   importedAt: DateTime!
+}
+
+"""
+Where an imported session came from. It stays when the file of the source session is no longer there.
+"""
+type SessionImportProvenance {
+  """The agent that recorded the source session, for example codex."""
+  agent: String!
+
+  """The id of the source session in the store of that agent."""
+  sourceId: String!
+
+  """The path of the file of the source session."""
+  sourcePath: String!
+
+  """
+  The time of the last record of the source session, or null when the source gives no time.
+  """
+  sourceLastDate: DateTime
+
+  """The time of the import."""
+  importedAt: DateTime!
+
+  """
+  The number of records of the source session that the import did not read.
+  """
+  skippedRecordCount: Int!
 }
 
 """One page of the sessions of other agents that this server can import."""

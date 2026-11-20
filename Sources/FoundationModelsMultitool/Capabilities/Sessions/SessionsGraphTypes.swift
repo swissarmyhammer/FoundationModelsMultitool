@@ -203,6 +203,10 @@ struct SessionsGraphSession: Sendable {
     /// The Archived list is in the order of this time, the newest first.
     let archivedAt: DateTime?
 
+    /// Where the session came from when an import made it, or `nil` when no
+    /// import made it (D209).
+    let importedFrom: SessionsGraphImportProvenance?
+
     /// The session id, as the directory reads it.
     let sessionID: ULID
 
@@ -240,6 +244,7 @@ struct SessionsGraphSession: Sendable {
         pinnedAt = summary.pinnedAt.map(DateTime.init)
         lastUsedAt = summary.lastUsedAt.map(DateTime.init)
         archivedAt = summary.archivedAt.map(DateTime.init)
+        importedFrom = summary.importedFrom.map(SessionsGraphImportProvenance.init)
     }
 }
 

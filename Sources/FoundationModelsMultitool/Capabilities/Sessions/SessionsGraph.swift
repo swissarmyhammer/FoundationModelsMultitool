@@ -131,7 +131,11 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `sourceId` of a session to import, `cwd` for its `folder`, `date` for
     /// its `lastDate`, `turns` for its `turnCount` and `imports` for its
     /// `previousImports`; `date` for the `importedAt` of an earlier import;
-    /// the bare verb of each
+    /// `imported_from` and `provenance` for the `importedFrom` of a session,
+    /// and the snake-case names (`source_id`, `source_path`,
+    /// `source_last_date`, `imported_at`, `skipped_record_count`), `sourceID`
+    /// for `sourceId` and `skipped` for `skippedRecordCount` of its
+    /// provenance; the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
     /// of its input.
     static let rules = GraphQLNameRules(
@@ -140,6 +144,12 @@ public final class SessionsGraph: GraphQLEndpoint {
                 "Session": [
                     "agentId": ["agent"], "cwd": ["folder"], "shortId": ["short_id", "shortID"],
                     "export": ["exportSession"], "recap": ["sessionRecap"], "recapAt": ["recapTime"],
+                    "importedFrom": ["imported_from", "provenance"],
+                ],
+                "SessionImportProvenance": [
+                    "sourceId": ["source_id", "sourceID"], "sourcePath": ["source_path"],
+                    "sourceLastDate": ["source_last_date"], "importedAt": ["imported_at"],
+                    "skippedRecordCount": ["skipped_record_count", "skipped"],
                 ],
                 "SessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
                 "SessionSearchConnection": [

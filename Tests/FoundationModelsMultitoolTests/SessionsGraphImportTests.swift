@@ -87,6 +87,31 @@ struct SessionsGraphImportTests {
         mutation { importSession(input: {agent: "claude-code", source: "a1b2c3"}) { id title cwd } }
         """
 
+    /// The fields of the `importedFrom` of a session, each field of
+    /// `SessionImportProvenance`.
+    private static let provenanceSelection = """
+        importedFrom { agent sourceId sourcePath sourceLastDate importedAt skippedRecordCount }
+        """
+
+    /// The `importSession` mutation of ``titledSource``, with the
+    /// `importedFrom` of the new session.
+    private static let importWithProvenanceMutation = """
+        mutation { importSession(input: {agent: "claude-code", source: "a1b2c3"}) { \(provenanceSelection) } }
+        """
+
+    /// The `sessions` query of each session, live or not, with the id and
+    /// the `importedFrom` of each session.
+    private static let sessionsWithProvenanceQuery = """
+        { sessions(filter: {includeRecorded: true}) { id \(provenanceSelection) } }
+        """
+
+    /// Each field of the `importedFrom` of an import of ``titledSource``, in
+    /// the order of ``provenanceSelection``, as text.
+    private static let titledProvenanceTexts = [
+        claudeCode, titledSource.sourceID, titledSource.sourcePath, DateTime(Fixtures.fixedDate).rfc3339,
+        importedAtText, String(RecordingSessionImporter.skippedRecordCount),
+    ]
+
     /// The op string of `list imports`.
     private static let listOp = "list imports"
 
@@ -235,6 +260,29 @@ struct SessionsGraphImportTests {
     private static func previousImports(in reply: GraphQLReply) throws -> [[String: Any]] {
         let first = try #require(try sessions(of: reply).first)
         return try #require(first["previousImports"] as? [[String: Any]])
+    }
+
+    /// Each field of an `importedFrom` object, in the order of
+    /// ``provenanceSelection``, as text.
+    ///
+    /// - Parameter session: A `Session` object of a response.
+    /// - Returns: The text of each field.
+    /// - Throws: An error when the session has no `importedFrom` object.
+    private static func provenanceTexts(of session: [String: Any]) throws -> [String] {
+        let provenance = try #require(session["importedFrom"] as? [String: Any])
+        return ["agent", "sourceId", "sourcePath", "sourceLastDate", "importedAt", "skippedRecordCount"]
+            .map { "\(provenance[$0] ?? "nil")" }
+    }
+
+    /// The `Session` object of the session `id` in a `sessions` response.
+    ///
+    /// - Parameters:
+    ///   - id: The session id.
+    ///   - reply: The response.
+    /// - Returns: The session.
+    /// - Throws: An error when the response has no session with that id.
+    private static func session(_ id: ULID, in reply: GraphQLReply) throws -> [String: Any] {
+        try #require(try reply.list("sessions").first { $0["id"] as? String == id.ulidString })
     }
 
     // MARK: - importableSessions
@@ -481,6 +529,65 @@ struct SessionsGraphImportTests {
         #expect(await setup.importer.orders == [])
     }
 
+    // MARK: - importedFrom
+
+    /// The answer of `importSession` gives where the new session came from:
+    /// each field of the provenance of the import.
+    @Test("importSession gives each field of the importedFrom of the new session")
+    func importSessionGivesTheImportedFrom() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(Self.importWithProvenanceMutation)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(try Self.provenanceTexts(of: try reply.object("importSession")) == Self.titledProvenanceTexts)
+    }
+
+    /// `sessions` gives each field of the `importedFrom` of an imported
+    /// session.
+    @Test("sessions gives each field of the importedFrom of an imported session")
+    func sessionsGivesTheImportedFrom() async throws {
+        let setup = Setup()
+        let copy = try await setup.importTitledSource()
+
+        let reply = try await setup.run(Self.sessionsWithProvenanceQuery)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(try Self.provenanceTexts(of: try Self.session(copy, in: reply)) == Self.titledProvenanceTexts)
+    }
+
+    /// A session that was not imported gives `null` as its `importedFrom`.
+    @Test("sessions gives null as the importedFrom of a session that was not imported")
+    func sessionsGivesNullForASessionThatWasNotImported() async throws {
+        let setup = Setup()
+        let session = Fixtures.summary()
+        setup.directory.register(session)
+
+        let reply = try await setup.run(Self.sessionsWithProvenanceQuery)
+
+        #expect(try Self.session(session.id, in: reply)["importedFrom"] is NSNull)
+    }
+
+    /// `sessions` takes the snake-case aliases of `importedFrom` and of the
+    /// fields of `SessionImportProvenance`, gives each value at the name of
+    /// the call, and reports the rewrite.
+    @Test("sessions takes imported_from and the snake-case names of the fields of the provenance")
+    func sessionsTakesTheProvenanceAliases() async throws {
+        let setup = Setup()
+        let copy = try await setup.importTitledSource()
+
+        let reply = try await setup.run(
+            "{ sessions(filter: {includeRecorded: true}) { id imported_from { source_id source_path } } }")
+        let provenance = try #require(try Self.session(copy, in: reply)["imported_from"] as? [String: Any])
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(reply.rewrote("imported_from", to: "importedFrom"))
+        #expect(
+            [provenance["source_id"], provenance["source_path"]].map { $0 as? String } == [
+                Self.titledSource.sourceID, Self.titledSource.sourcePath,
+            ])
+    }
+
     // MARK: - The refusals of the tool
 
     /// The query with no importer gives `IMPORT_UNAVAILABLE` with the
@@ -615,7 +722,22 @@ struct SessionsGraphImportTests {
     /// The names of the types that the import fields add to the schema.
     static let importTypeNames = [
         "ImportableSession", "SessionPreviousImport", "ImportableSessionPage", "ImportSessionInput",
+        "SessionImportProvenance",
     ]
+
+    /// The SDL of the endpoint has the nullable field `importedFrom` of a
+    /// session, of the type `SessionImportProvenance`. A non-null type is a
+    /// `GraphQLNonNull` wrapper, not an object type.
+    @Test("the SDL has the nullable field importedFrom of a Session")
+    func theSchemaHasTheImportedFromField() throws {
+        let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())
+
+        let schema = try buildSchema(source: graph.schema)
+        let session = try #require(schema.getType(name: "Session") as? GraphQLObjectType)
+        let field = try #require(try session.fields()["importedFrom"])
+
+        #expect((field.type as? GraphQLObjectType)?.name == "SessionImportProvenance")
+    }
 
     /// The SDL of the endpoint has each type of the import fields.
     @Test("the SDL has each type of the import fields", arguments: importTypeNames)

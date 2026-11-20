@@ -352,6 +352,7 @@ struct SessionsGraphAPI: API {
                 changeType()
                 importableSessionType()
                 previousImportType()
+                importProvenanceType()
                 importableSessionPageType()
                 importInput()
             }
@@ -508,6 +509,8 @@ struct SessionsGraphAPI: API {
                 .description("The last time that a client opened the session on this server, or null.")
             Field("archivedAt", at: \.archivedAt)
                 .description("The time of the archive, or null when the session is not archived.")
+            Field("importedFrom", at: \.importedFrom)
+                .description("Where the session came from when an import made it, or null when no import made it.")
             Field("export", at: SessionsGraphSession.export) {
                 Argument("format", at: \.format)
                     .defaultValue(.markdown)
