@@ -22,6 +22,13 @@
 // caller session, so `.` gives `INVALID_FOLDER` with the corrective of the
 // tool for a call in no session, and no folder comes first.
 //
+// The `preferredFolder` of the query does not filter: the sessions of that
+// folder come first, then the others, as the `folder` of `searchSessions`.
+// It replaces the folder of the caller session as the folder that comes
+// first. `~` expands, and a path that is not absolute (also `.`) gives
+// `INVALID_FOLDER`. Thus a client, which has no caller session, can give the
+// folder of its tab.
+//
 // Who acts: a device of the user and the agent import, as for a start. An
 // external client cannot import a session, as it cannot start one: an import
 // starts a new session that the external client does not own.
@@ -42,6 +49,10 @@ struct SessionsGraphImportableArguments: Codable, Sendable {
     /// folder.
     let folder: String?
 
+    /// The folder whose sessions come first as written, or `nil` for the
+    /// folder of the caller session.
+    let preferredFolder: String?
+
     /// The most sessions of the page, or `nil` for the default.
     let first: Int?
 
@@ -53,8 +64,12 @@ struct SessionsGraphImportableArguments: Codable, Sendable {
     /// - Parameter callerFolder: The folder of the caller session, or `nil`
     ///   for a call with no caller session.
     /// - Returns: The arguments.
-    func listArguments(callerFolder: URL?) -> ImportListArguments {
-        ImportListArguments(agent: agent, folder: folder, limit: first, callerFolder: callerFolder, cursor: after)
+    /// - Throws: ``SessionsRefusal`` for a `preferredFolder` that is not
+    ///   absolute.
+    func listArguments(callerFolder: URL?) throws(SessionsRefusal) -> ImportListArguments {
+        ImportListArguments(
+            agent: agent, folder: folder, limit: first, callerFolder: callerFolder,
+            preferredFolder: try SessionsToolInput.folder(preferredFolder), cursor: after)
     }
 }
 
@@ -226,17 +241,18 @@ extension SessionsGraphResolver {
     /// - Parameters:
     ///   - context: The context of the call, which gives the visibility and
     ///     the importer.
-    ///   - arguments: The agent, the folder and the page.
+    ///   - arguments: The agent, the folder, the preferred folder and the
+    ///     page.
     /// - Returns: The page.
     /// - Throws: ``SessionsRefusal`` with the code `IMPORT_UNAVAILABLE` when
-    ///   the endpoint has no importer, `INVALID_FOLDER` for a folder that the
-    ///   step cannot read, and `IMPORT_FAILED` when the importer fails; the
+    ///   the endpoint has no importer, `INVALID_FOLDER` for a folder or a
+    ///   preferred folder that the step cannot read, and `IMPORT_FAILED` when the importer fails; the
     ///   coded error of each error of the directory.
     func importableSessions(
         context: SessionsGraphContext, arguments: SessionsGraphImportableArguments
     ) async throws -> SessionsGraphImportableSessionPage {
         try await Self.coding {
-            let listArguments = arguments.listArguments(callerFolder: try await context.importCallerFolder())
+            let listArguments = try arguments.listArguments(callerFolder: try await context.importCallerFolder())
             return SessionsGraphImportableSessionPage(
                 try await context.sessions.importables(listArguments, with: context.importer))
         }
@@ -288,6 +304,11 @@ extension SessionsGraphAPI {
                 .description(
                     "The absolute path of the folder of the source sessions. ~ expands. \(dotFolderRule) None: each "
                         + "folder.")
+            Argument("preferredFolder", at: \.preferredFolder)
+                .description(
+                    "The absolute path of a folder, for example the folder of your tab. Its sessions come first, then "
+                        + "the others: it does not filter. ~ expands. None: for the agent, the folder of its session; "
+                        + "for a client, no folder.")
             Argument("first", at: \.first)
                 .defaultValue(SessionsVisibility.defaultImportLimit)
                 .description("The most sessions to give: 1 to \(SessionsVisibility.maximumImportLimit).")
@@ -296,8 +317,8 @@ extension SessionsGraphAPI {
         }
         .description(
             "The sessions of other agents, such as Claude Code or Codex, that this server can import, the newest "
-                + "first, each with its earlier imports. For the agent, the sessions of the folder of its session "
-                + "come first. An import of a session makes a new session also when it has earlier imports. "
+                + "first, each with its earlier imports. The sessions of preferredFolder come first; with no "
+                + "preferredFolder, for the agent, the sessions of the folder of its session come first. An import of a session makes a new session also when it has earlier imports. "
                 + "\(noImporterRule) IMPORT_FAILED when the list fails.")
     }
 

@@ -837,7 +837,7 @@ type Query {
   cursor: String!
 
   """
-  The sessions of other agents, such as Claude Code or Codex, that this server can import, the newest first, each with its earlier imports. For the agent, the sessions of the folder of its session come first. An import of a session makes a new session also when it has earlier imports. IMPORT_UNAVAILABLE when this server cannot import a session. IMPORT_FAILED when the list fails.
+  The sessions of other agents, such as Claude Code or Codex, that this server can import, the newest first, each with its earlier imports. The sessions of preferredFolder come first; with no preferredFolder, for the agent, the sessions of the folder of its session come first. An import of a session makes a new session also when it has earlier imports. IMPORT_UNAVAILABLE when this server cannot import a session. IMPORT_FAILED when the list fails.
   """
   importableSessions(
     """The source agent: claude-code or codex. None: each agent."""
@@ -847,6 +847,11 @@ type Query {
     The absolute path of the folder of the source sessions. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: each folder.
     """
     folder: String
+
+    """
+    The absolute path of a folder, for example the folder of your tab. Its sessions come first, then the others: it does not filter. ~ expands. None: for the agent, the folder of its session; for a client, no folder.
+    """
+    preferredFolder: String
 
     """The most sessions to give: 1 to 50."""
     first: Int = 20

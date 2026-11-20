@@ -81,6 +81,14 @@ struct SessionsGraphImportTests {
     /// The `importableSessions` query of the sessions of the folder `.`.
     private static let dotFolderQuery = "{ importableSessions(folder: \".\") { sessions { sourceId } } }"
 
+    /// The `importableSessions` query with ``otherFolder`` as the folder
+    /// whose sessions come first.
+    private static let preferredFolderQuery =
+        "{ importableSessions(preferredFolder: \"\(otherFolder.path)\") { sessions { sourceId } } }"
+
+    /// A `preferredFolder` that is not absolute.
+    private static let relativeFolder = "work/other"
+
     /// The `importSession` mutation of ``titledSource``, with the id, the
     /// title and the folder of the new session.
     private static let importTitledMutation = """
@@ -411,6 +419,66 @@ struct SessionsGraphImportTests {
             ])
     }
 
+    /// The `preferredFolder` of a client goes to the importer as the folder
+    /// whose sessions come first. It does not filter, so the request has no
+    /// `folder`.
+    @Test("importableSessions with preferredFolder from a client gives that folder first and no filter")
+    func importableSessionsGivesThePreferredFolderOfAClient() async throws {
+        let setup = Setup()
+
+        _ = try await setup.run(Self.preferredFolderQuery)
+
+        #expect(
+            await setup.importer.requests.map { [$0.folder, $0.preferredFolder] } == [
+                [nil, Self.otherFolderAsDirectory]
+            ])
+    }
+
+    /// A client with no `preferredFolder` has no folder that comes first.
+    @Test("importableSessions with no preferredFolder from a client gives no folder first")
+    func importableSessionsGivesNoPreferredFolderForAClient() async throws {
+        let setup = Setup()
+
+        _ = try await setup.run(Self.importablesQuery)
+
+        #expect(await setup.importer.requests.map(\.preferredFolder) == [nil])
+    }
+
+    /// The agent with no `preferredFolder` gets the sessions of the folder of
+    /// its caller session first.
+    @Test("importableSessions with no preferredFolder from the agent gives the folder of the caller session first")
+    func importableSessionsGivesTheCallerFolderFirstForTheAgent() async throws {
+        let setup = Setup()
+
+        _ = try await setup.runAsCaller(Self.importablesQuery)
+
+        #expect(await setup.importer.requests.map(\.preferredFolder) == [Fixtures.workingFolder])
+    }
+
+    /// The `preferredFolder` of the agent replaces the folder of its caller
+    /// session.
+    @Test("importableSessions with preferredFolder from the agent gives that folder first")
+    func importableSessionsGivesThePreferredFolderOfTheAgent() async throws {
+        let setup = Setup()
+
+        _ = try await setup.runAsCaller(Self.preferredFolderQuery)
+
+        #expect(await setup.importer.requests.map(\.preferredFolder) == [Self.otherFolderAsDirectory])
+    }
+
+    /// A `preferredFolder` that is not absolute gives `INVALID_FOLDER` and
+    /// asks the importer nothing.
+    @Test("importableSessions with a relative preferredFolder gives INVALID_FOLDER and asks the importer nothing")
+    func importableSessionsWithARelativePreferredFolderIsRefused() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(
+            "{ importableSessions(preferredFolder: \"\(Self.relativeFolder)\") { sessions { sourceId } } }")
+
+        #expect(reply.codes == ["INVALID_FOLDER"])
+        #expect(await setup.importer.requests == [])
+    }
+
     /// An external client does not see an earlier import whose session it
     /// cannot see: the page drops it, so the page does not tell that the
     /// session exists.
@@ -698,6 +766,19 @@ struct SessionsGraphImportTests {
         #expect(await setup.importer.requests.map { [$0.agent ?? "", String($0.limit)] } == [[Self.codex, "5"]])
     }
 
+    /// The query takes `preferred_folder` for `preferredFolder`, and reports
+    /// the rewrite.
+    @Test("importableSessions takes preferred_folder for preferredFolder")
+    func importableSessionsTakesThePreferredFolderAlias() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(
+            "{ importableSessions(preferred_folder: \"\(Self.otherFolder.path)\") { sessions { sourceId } } }")
+
+        #expect(reply.rewrote("preferred_folder", to: "preferredFolder"))
+        #expect(await setup.importer.requests.map(\.preferredFolder) == [Self.otherFolderAsDirectory])
+    }
+
     /// The mutation takes the bare verb of `import session` and the aliases
     /// of the parameters of the op for the fields of its input.
     @Test("importSession takes import and the aliases of the parameters of import session")
@@ -761,5 +842,17 @@ struct SessionsGraphImportTests {
                 try schema.queryType?.fields()["importableSessions"] != nil,
                 try schema.mutationType?.fields()["importSession"] != nil,
             ] == [true, true])
+    }
+
+    /// The SDL of the endpoint has the optional argument `preferredFolder`
+    /// of `importableSessions`, of the type `String`.
+    @Test("the SDL has the optional argument preferredFolder of importableSessions")
+    func theSchemaHasThePreferredFolderArgument() throws {
+        let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())
+
+        let schema = try buildSchema(source: graph.schema)
+        let field = try #require(try schema.queryType?.fields()["importableSessions"])
+
+        #expect((field.args["preferredFolder"]?.type as? GraphQLScalarType)?.name == "String")
     }
 }

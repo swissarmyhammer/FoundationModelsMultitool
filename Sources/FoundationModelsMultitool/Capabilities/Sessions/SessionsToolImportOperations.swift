@@ -33,8 +33,13 @@ struct ImportListArguments: Sendable {
     var limit: Int? = nil
 
     /// The folder of the tab or of the caller session, or `nil` when the call
-    /// has none. Its sessions come first.
+    /// has none. Its sessions come first when ``preferredFolder`` is `nil`.
     var callerFolder: URL? = nil
+
+    /// The folder whose sessions come first, as the call gives it, or `nil`.
+    /// It replaces ``callerFolder`` as the folder that comes first, and it
+    /// does not filter.
+    var preferredFolder: URL? = nil
 
     /// The cursor of the page, or `nil` for the first page.
     var cursor: String? = nil
@@ -268,7 +273,7 @@ extension SessionsVisibility {
             folder: try importFolder(
                 arguments.folder, callerFolder: arguments.callerFolder,
                 outcome: SessionsToolText.importListNotRunSentence),
-            preferredFolder: arguments.callerFolder,
+            preferredFolder: arguments.preferredFolder ?? arguments.callerFolder,
             limit: pageLimit(arguments.limit, defaultLimit: defaultImportLimit, maximumLimit: maximumImportLimit),
             cursor: arguments.cursor)
     }

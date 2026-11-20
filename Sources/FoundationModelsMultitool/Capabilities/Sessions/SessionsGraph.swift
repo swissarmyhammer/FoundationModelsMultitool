@@ -42,10 +42,13 @@ import Synchronization
 ///   the folder of the tab of the client: its sessions come first, and the
 ///   `folder:.` token names it. With `session`, it gives each hit of that
 ///   session, up to `first`. With no searcher it gives `MISSING_SEARCHER`.
-/// - `Query.importableSessions(agent:folder:first:after:)` gives the
-///   sessions of other agents, such as Claude Code or Codex, that the
-///   importer of the endpoint can import, with each earlier import and the
-///   agents with no access (D209 (l)). An earlier import gives its `Session`
+/// - `Query.importableSessions(agent:folder:preferredFolder:first:after:)`
+///   gives the sessions of other agents, such as Claude Code or Codex, that
+///   the importer of the endpoint can import, with each earlier import and
+///   the agents with no access (D209 (l)). The sessions of `preferredFolder`
+///   come first, then the others: it does not filter, as the `folder` of
+///   `searchSessions`. With no `preferredFolder`, the folder of the caller
+///   session of the agent comes first. An earlier import gives its `Session`
 ///   only when the viewer can see that session; the page drops each other
 ///   earlier import. With no importer it gives `IMPORT_UNAVAILABLE`.
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
@@ -125,8 +128,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// for its `nextCursor`, and `date` for the `at` of a hit; `listImports`
     /// for `importableSessions`, and for its arguments the names of the
     /// arguments of the `list imports` op (`from` and `sourceAgent` for
-    /// `agent`, `cwd` for `folder`, `limit` for `first`) and `cursor` for
-    /// `after`; `items` and `nodes` for the `sessions` of an import page and
+    /// `agent`, `cwd` for `folder`, `limit` for `first`), `cursor` for
+    /// `after` and `preferred_folder` for `preferredFolder`; `items` and `nodes` for the `sessions` of an import page and
     /// `endCursor` for its `nextCursor`; `sourceID` and `source` for the
     /// `sourceId` of a session to import, `cwd` for its `folder`, `date` for
     /// its `lastDate`, `turns` for its `turnCount` and `imports` for its
@@ -176,6 +179,7 @@ public final class SessionsGraph: GraphQLEndpoint {
                 ],
                 "Query.importableSessions": [
                     "agent": ["from", "sourceAgent"], "folder": ["cwd"], "first": ["limit"], "after": ["cursor"],
+                    "preferredFolder": ["preferred_folder"],
                 ],
             ]))
 
