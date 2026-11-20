@@ -502,7 +502,7 @@ input ForkSessionInput {
 """A message and its address."""
 input SendMessageInput {
   """
-  The address: a session id, @agent, @agent:/path, an absolute folder path, or #tag. An external client gives a session id. A session that you cannot see is NOT_FOUND. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
+  The address: a session id, a short id, @<slug>, @<agent name>, or #tag. An external client gives a session id. A session that you cannot see is NOT_FOUND. An external client sends only to a session that it owns: a session that it sees but does not own gives a REFUSED receipt.
   """
   to: String!
 

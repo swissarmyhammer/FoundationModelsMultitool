@@ -1096,7 +1096,7 @@ struct SessionsGraphMutationTests {
         #expect(try await Self.facts(of: directory, known: known) == staged)
     }
 
-    // MARK: - The aliases of an address (D199, D86)
+    // MARK: - The removed address forms (D199 (e))
 
     /// The name of the agent and of the slug of the `@agent:/path` case.
     private static let travelName = "travel"
@@ -1104,81 +1104,47 @@ struct SessionsGraphMutationTests {
     /// The folder of the `@agent:/path` case.
     private static let tripsFolder = URL(fileURLWithPath: "/work/trips")
 
-    /// One alias of a message address: `@agent:/path`, or a folder path
-    /// alone.
-    struct AddressAliasCase: Sendable, CustomTestStringConvertible {
-        /// The alias, as the call writes it.
-        let alias: String
+    /// One address in a form that is not a message address: `@agent:/path`,
+    /// or a folder path alone.
+    struct RemovedAddressCase: Sendable, CustomTestStringConvertible {
+        /// The address, as the call writes it.
+        let address: String
 
-        /// The canonical form of the alias, as the answer of `send message`
-        /// of the tool tells it.
-        let canonical: String
+        /// The code of the refusal of the address.
+        let code: String
 
-        /// Registers the sessions of the case in a directory, and gives the
-        /// id of the session that the alias names.
-        let stage: @Sendable (InMemorySessionDirectory) -> ULID
+        /// Registers the session that the old form named in a directory.
+        let stage: @Sendable (InMemorySessionDirectory) -> Void
 
         /// The name of the case in the test report.
-        var testDescription: String { alias }
+        var testDescription: String { address }
     }
 
-    /// One case for each alias form that `send message` of the tool reports
-    /// as a rewrite.
-    static let addressAliasCases: [AddressAliasCase] = [
-        AddressAliasCase(
-            alias: "@\(travelName):\(tripsFolder.path)",
-            canonical: "\"@\(travelName)\", with the lookup in \(tripsFolder.path) first"
-        ) { directory in
-            let inTrips = Fixtures.summary(title: travelName, folder: tripsFolder)
-            directory.register(Fixtures.summary(title: travelName))
-            directory.register(inTrips)
-            return inTrips.id
+    /// One case for each removed form: `@agent:/path` names no session and
+    /// no agent, and a folder path alone is in no form.
+    static let removedAddressCases: [RemovedAddressCase] = [
+        RemovedAddressCase(address: "@\(travelName):\(tripsFolder.path)", code: "UNKNOWN_AGENT") { directory in
+            directory.register(Fixtures.summary(title: travelName, folder: tripsFolder))
         },
-        AddressAliasCase(alias: namedFolder.path, canonical: "the newest root session in \(namedFolder.path)") {
-            directory in
-            let inFolder = Fixtures.summary(folder: namedFolder)
-            directory.register(inFolder)
-            return inFolder.id
+        RemovedAddressCase(address: namedFolder.path, code: "INVALID_ADDRESS") { directory in
+            directory.register(Fixtures.summary(folder: namedFolder))
         },
     ]
 
-    /// The path of the `to` field of the input of `sendMessage`.
-    private static let sendAddressPath = ["sendMessage", "input", "to"]
-
-    /// `sendMessage` to an alias delivers to the session that the alias
-    /// names, and reports the rewrite of the alias in `extensions.rewrites`
-    /// with the canonical form that `send message` of the tool tells.
-    @Test("sendMessage to an alias delivers and shows the rewrite in extensions.rewrites", arguments: addressAliasCases)
-    func aSendToAnAliasGivesARewriteReport(_ aliasCase: AddressAliasCase) async throws {
+    /// `sendMessage` to an address in a removed form gives the refusal that
+    /// the tool gives as its corrective, and sends nothing.
+    @Test("sendMessage to a removed address form gives the refusal and sends nothing", arguments: removedAddressCases)
+    func aSendToARemovedAddressFormIsRefused(_ addressCase: RemovedAddressCase) async throws {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
-        let target = aliasCase.stage(directory)
+        addressCase.stage(directory)
+        let staged = try await Self.facts(of: directory, known: [])
 
         let reply = try await GraphQLReply.run(
-            "mutation { sendMessage(input: {to: \"\(aliasCase.alias)\", message: \"\(Self.messageText)\"}) "
-                + "{ outcome reason target { id } } }", viewer: Self.deviceViewer,
-            on: SessionsGraph.endpoint(of: directory))
-
-        let receipts = try reply.list("sendMessage")
-        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
-        #expect(receipts.map { ($0["target"] as? [String: Any])?["id"] as? String } == [target.ulidString])
-        #expect(
-            reply.rewrote(aliasCase.alias, to: aliasCase.canonical, at: Self.sendAddressPath),
-            "rewrites: \(reply.rewrites)")
-    }
-
-    /// `sendMessage` to `@<slug>` reads no alias, thus the response has no
-    /// rewrite in `extensions.rewrites`.
-    @Test("sendMessage to @<slug> shows no rewrite in extensions.rewrites")
-    func aSendToASlugGivesNoRewriteReport() async throws {
-        let directory = Fixtures.directoryWithLauncher()
-        directory.register(Fixtures.summary(title: Self.fixTitle))
-
-        let reply = try await GraphQLReply.run(
-            "mutation { sendMessage(input: {to: \"@\(Self.fixSlug)\", message: \"\(Self.messageText)\"}) "
+            "mutation { sendMessage(input: {to: \"\(addressCase.address)\", message: \"\(Self.messageText)\"}) "
                 + "{ outcome } }", viewer: Self.deviceViewer, on: SessionsGraph.endpoint(of: directory))
 
-        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
-        #expect(reply.rewrites.isEmpty, "rewrites: \(reply.rewrites)")
+        #expect(reply.codes == [addressCase.code], "errors: \(reply.messages)")
+        #expect(try await Self.facts(of: directory, known: []) == staged)
     }
 
     // MARK: - The source session of a send (D199 (f))

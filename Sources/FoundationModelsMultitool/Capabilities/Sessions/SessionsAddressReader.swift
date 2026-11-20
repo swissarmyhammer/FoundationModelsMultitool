@@ -17,10 +17,8 @@
 // with `SessionDirectoryError.unknownAgent`, and the send gives the corrective
 // that no session and no agent has the name.
 //
-// `@agent:/path` and a folder path alone are aliases, in the style of D86:
-// the reader reads `@agent:/path` as `@agent` with the lookup in `/path`
-// first, reads a folder path as the newest root session in the folder, and
-// reports each rewrite. `#tag` names a group of sessions, not one target.
+// A target is only an id, a short id or a slug (D199 (e)). `#tag` names a
+// group of sessions, not one target. A folder path is not an address.
 //
 // An archived session matches only its full id, with one exception: the `id`
 // of `unarchive session` reads a short id and a slug only among the archived
@@ -30,59 +28,6 @@
 import Foundation
 import FoundationModelsExtras
 import ULID
-
-/// A message address after the reader: the target, and the report of the
-/// rewrite of an alias.
-struct SessionsAddressReading: Sendable, Equatable {
-    /// The target of the message.
-    let address: SessionAddress
-
-    /// The rewrite of an alias, or `nil` for an address that is not an
-    /// alias.
-    let rewrite: SessionsAddressRewrite?
-}
-
-/// The rewrite of a message address that is an alias (D199 (e), in the style
-/// of D86): the alias as written, its canonical form, and the report that the
-/// answer of `send message` of the tool gives. The `sendMessage` mutation
-/// gives the alias and the canonical form in `extensions.rewrites`.
-struct SessionsAddressRewrite: Sendable, Equatable {
-    /// The alias, as the caller wrote it, with no space around it.
-    let alias: String
-
-    /// The canonical form of the alias, as the report tells it.
-    let canonical: String
-
-    /// The report of the rewrite in the answer of the tool.
-    let report: String
-
-    /// The rewrite of the alias `@agent:/path`: `@agent` with the lookup in
-    /// the folder of the alias first.
-    ///
-    /// - Parameters:
-    ///   - alias: The address as written.
-    ///   - name: The name after the `@`.
-    ///   - folder: The folder of the alias.
-    /// - Returns: The rewrite.
-    static func agentAlias(_ alias: String, name: String, folder: URL) -> SessionsAddressRewrite {
-        SessionsAddressRewrite(
-            alias: alias, canonical: SessionsToolText.agentAliasCanonical(name: name, folder: folder),
-            report: SessionsToolText.agentAliasRewrite(alias, name: name, folder: folder))
-    }
-
-    /// The rewrite of the alias of a folder path alone: the newest root
-    /// session in the folder.
-    ///
-    /// - Parameters:
-    ///   - alias: The address as written.
-    ///   - folder: The folder.
-    /// - Returns: The rewrite.
-    static func folderAlias(_ alias: String, folder: URL) -> SessionsAddressRewrite {
-        SessionsAddressRewrite(
-            alias: alias, canonical: SessionsToolText.folderAliasCanonical(folder: folder),
-            report: SessionsToolText.folderAliasRewrite(alias, folder: folder))
-    }
-}
 
 /// The sessions among which a short id and a slug of a session reference
 /// look (D199 (d), D204 (c)). A full id names its session in each scope.
@@ -175,45 +120,33 @@ extension SessionsVisibility {
     /// Reads a message address from `sender` (D199 (c) to (e)).
     ///
     /// The lookup folder of a short id and of a slug is `sourceFolder`, else
-    /// the working folder of the sending session, or the folder of an
-    /// `@agent:/path` alias. A sender that is the user, with no source
-    /// folder, has no lookup folder: the lookup is in all the sessions that
-    /// the viewer can see.
+    /// the working folder of the sending session. A sender that is the user,
+    /// with no source folder, has no lookup folder: the lookup is in all the
+    /// sessions that the viewer can see.
     ///
     /// - Parameters:
     ///   - text: The address, with any space around it.
     ///   - sender: The session or the user that sends the message.
     ///   - sourceFolder: The working folder of the session in which the user
     ///     wrote the message (D199 (f)), or `nil`. The default is `nil`.
-    /// - Returns: The target, and the report of the rewrite of an alias.
-    /// - Throws: ``SessionsRefusal`` for a text in no form, for a reference
-    ///   that names more than one session, and for an alias with a relative
-    ///   folder; each error of the directory.
+    /// - Returns: The target.
+    /// - Throws: ``SessionsRefusal`` for a text in no form and for a
+    ///   reference that names more than one session; each error of the
+    ///   directory.
     func messageAddress(
         _ text: String, from sender: SessionMessageSender, sourceFolder: URL? = nil
-    ) async throws -> SessionsAddressReading {
-        let written = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    ) async throws -> SessionAddress {
         switch try SessionsToolInput.addressForm(text) {
-        case .folder(let folder):
-            return SessionsAddressReading(
-                address: .folder(folder), rewrite: .folderAlias(written, folder: folder))
         case .tag(let tag):
-            return SessionsAddressReading(address: .tag(tag), rewrite: nil)
-        case .agentAlias(let name, let folder):
-            return SessionsAddressReading(
-                address: try await address(ofName: name, lookupFolder: folder),
-                rewrite: .agentAlias(written, name: name, folder: folder))
+            return .tag(tag)
         case .id(let id):
-            return SessionsAddressReading(address: .session(id), rewrite: nil)
+            return .session(id)
         case .name(let name):
             let lookupFolder = try await lookupFolder(of: sender, sourceFolder: sourceFolder)
-            return SessionsAddressReading(
-                address: try await address(ofName: name, lookupFolder: lookupFolder), rewrite: nil)
+            return try await address(ofName: name, lookupFolder: lookupFolder)
         case .shortID(let shortID):
             let lookupFolder = try await lookupFolder(of: sender, sourceFolder: sourceFolder)
-            return SessionsAddressReading(
-                address: try await address(ofShortID: shortID, written: text, lookupFolder: lookupFolder),
-                rewrite: nil)
+            return try await address(ofShortID: shortID, written: text, lookupFolder: lookupFolder)
         }
     }
 

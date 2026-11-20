@@ -33,7 +33,7 @@ import ULID
         Send a message to another session. Name one session with @<id>, @<short id> or @<slug>; the slug is \
         made from the name of the session. An agent is a session: @<agent name> reaches the session with that \
         slug, and starts a new session of the agent when no session has it. #tag reaches each live session with \
-        the tag. @agent:/path and a folder path are aliases. Gives what happened at each target.
+        the tag. Gives what happened at each target.
         """)
 struct SendMessage {
     /// The address of the message.
@@ -41,8 +41,7 @@ struct SendMessage {
         description: """
             The address. One session: @<id>, <id>, @<short id>, <short id> or @<slug> (a short id or a slug \
             looks in the folder of your session first). @<agent name> with no session of that slug starts that \
-            agent. #tag: each live session with the tag, but not yours. Aliases: @agent:/path (the lookup is in \
-            that folder first) and an absolute folder path (/path or ~/path).
+            agent. #tag: each live session with the tag, but not yours.
             """)
     @OperationParam(aliases: ["address", "target", "recipient"])
     var to: String
@@ -63,9 +62,8 @@ extension SendMessage {
     func execute(in context: SessionsToolContext) async throws -> String {
         await context.answer(asCallerOf: Self.opString) { callerID in
             let sender = SessionMessageSender.session(callerID)
-            let reading = try await context.sessions.messageAddress(to, from: sender)
-            let receipts = try await context.send(text: message, to: reading.address, from: sender)
-            return SessionsToolText.receipts(receipts, rewrite: reading.rewrite?.report)
+            let address = try await context.sessions.messageAddress(to, from: sender)
+            return SessionsToolText.receipts(try await context.send(text: message, to: address, from: sender))
         }
     }
 }

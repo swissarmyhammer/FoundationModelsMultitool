@@ -267,28 +267,6 @@ struct SessionsToolMessageTests {
         #expect(try await Self.unread(to: elsewhere.id, in: directory).isEmpty)
     }
 
-    @Test("send message to @agent:/path starts a new root session in that folder, also next to a live one")
-    func sendMessageToAnAgentInAFolderStartsANewSessionThere() async throws {
-        let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
-        let live = Fixtures.summary(agent: Self.reviewerAgent, folder: Self.otherFolder)
-        let nearby = Fixtures.summary(agent: Self.reviewerAgent)
-        directory.register(live)
-        directory.register(nearby)
-        let tool = try SessionsTool(directory: directory)
-
-        let (output, started) = try await Self.sendAsCaller(
-            to: "@\(Self.reviewerAgent):\(Self.otherFolder.path)", in: directory, with: tool)
-
-        let session = try #require(started.first)
-        #expect(started.count == 1)
-        #expect(![live.id, nearby.id].contains(session.id))
-        #expect(session.workingDirectory.path == Self.otherFolder.path)
-        #expect(session.origin == .message)
-        #expect(output.contains(Self.startedWord), "output was: \(output)")
-        #expect(try await Self.unread(to: live.id, in: directory).isEmpty)
-        #expect(try await Self.unread(to: nearby.id, in: directory).isEmpty)
-    }
-
     @Test("send message to @agent with no live session starts one, and gives its id")
     func sendMessageToAnAgentWithNoSessionStartsOne() async throws {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.reviewerAgent])
@@ -302,48 +280,6 @@ struct SessionsToolMessageTests {
         #expect(session.origin == .message)
         #expect(output.contains(Self.startedWord), "output was: \(output)")
         #expect(output.contains(session.id.ulidString), "output was: \(output)")
-    }
-
-    @Test("send message to an absolute folder reaches the live root session in that folder")
-    func sendMessageToAFolderReachesItsSession() async throws {
-        let directory = InMemorySessionDirectory()
-        let target = Fixtures.summary(agent: Self.reviewerAgent, folder: Self.otherFolder)
-        directory.register(target)
-        let tool = try SessionsTool(directory: directory)
-
-        _ = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: Self.otherFolder.path, with: tool)
-        }
-
-        #expect(try await Self.unread(to: target.id, in: directory).count == 1)
-    }
-
-    @Test("send message to a ~/path folder expands the home folder and reaches the session there")
-    func sendMessageToAHomeFolderExpandsTheTilde() async throws {
-        let directory = InMemorySessionDirectory()
-        let homeFolder = FileManager.default.homeDirectoryForCurrentUser.appending(path: Self.homeRelativePath)
-        let target = Fixtures.summary(folder: homeFolder)
-        directory.register(target)
-        let tool = try SessionsTool(directory: directory)
-
-        _ = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: "~/\(Self.homeRelativePath)", with: tool)
-        }
-
-        #expect(try await Self.unread(to: target.id, in: directory).count == 1)
-    }
-
-    @Test("send message to a folder with no live session gives a corrective with the hint to name an agent")
-    func sendMessageToAnEmptyFolderNamesTheAgentForm() async throws {
-        let directory = InMemorySessionDirectory()
-        let tool = try SessionsTool(directory: directory)
-
-        let output = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: Self.otherFolder.path, with: tool)
-        }
-
-        #expect(output.contains(Self.notSentSentence), "output was: \(output)")
-        #expect(output.contains(Refusal.noSessionInTheFolder.rawValue), "output was: \(output)")
     }
 
     @Test("send message to #tag reaches each live session with the tag, but not the caller")
@@ -470,42 +406,39 @@ struct SessionsToolMessageTests {
         #expect(output.contains(Self.startedWord), "output was: \(output)")
     }
 
-    @Test("send message to @travel:~/trips looks in ~/trips first and reports the rewrite of the alias")
-    func sendMessageToAnAgentAliasLooksInItsFolderFirst() async throws {
+    @Test("send message to @travel:~/trips gives the unknown-name corrective, and sends nothing")
+    func sendMessageToAnAgentWithAFolderIsACorrective() async throws {
         let directory = Fixtures.directoryWithLauncher(agentIDs: [Self.travelName])
         let trips = FileManager.default.homeDirectoryForCurrentUser.appending(path: Self.tripsRelativePath)
-        let local = Fixtures.summary(title: Self.travelName)
         let inTrips = Fixtures.summary(title: Self.travelName, folder: trips)
-        directory.register(local)
         directory.register(inTrips)
         let tool = try SessionsTool(directory: directory)
-        let alias = "@\(Self.travelName):~/\(Self.tripsRelativePath)"
 
-        let output = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: alias, with: tool)
-        }
+        let (output, started) = try await Self.sendAsCaller(
+            to: "@\(Self.travelName):~/\(Self.tripsRelativePath)", in: directory, with: tool)
 
-        #expect(try await Self.unread(to: inTrips.id, in: directory).count == 1)
-        #expect(try await Self.unread(to: local.id, in: directory).isEmpty)
-        #expect(
-            output.contains(SessionsToolText.agentAliasRewrite(alias, name: Self.travelName, folder: trips)),
-            "output was: \(output)")
+        #expect(output.contains(Self.noSessionOrAgentWords), "output was: \(output)")
+        #expect(started.isEmpty)
+        #expect(try await Self.unread(to: inTrips.id, in: directory).isEmpty)
     }
 
-    @Test("send message to a folder path reports the rewrite of the alias")
-    func sendMessageToAFolderReportsTheRewrite() async throws {
+    /// A folder path alone is not a message address: the corrective tells
+    /// so, and the session in the folder gets no message.
+    @Test(
+        "send message to a folder path gives the not-an-address corrective, and sends nothing",
+        arguments: [otherFolder.path, "~/\(homeRelativePath)"])
+    func sendMessageToAFolderPathIsACorrective(_ path: String) async throws {
         let directory = InMemorySessionDirectory()
-        let target = Fixtures.summary(folder: Self.otherFolder)
+        let target = Fixtures.summary(folder: try SessionsToolInput.absoluteFolder(path))
         directory.register(target)
         let tool = try SessionsTool(directory: directory)
 
         let output = try await Fixtures.asCaller(in: directory) { _ in
-            try await Self.sendMessage(to: Self.otherFolder.path, with: tool)
+            try await Self.sendMessage(to: path, with: tool)
         }
 
-        #expect(
-            output.contains(SessionsToolText.folderAliasRewrite(Self.otherFolder.path, folder: Self.otherFolder)),
-            "output was: \(output)")
+        #expect(output.contains(SessionsToolText.notAnAddress(path)), "output was: \(output)")
+        #expect(try await Self.unread(to: target.id, in: directory).isEmpty)
     }
 
     @Test("send message to @nobody gives the corrective that no session and no agent has the name")
@@ -588,7 +521,7 @@ struct SessionsToolMessageTests {
         }
 
         #expect(output.contains(Self.formlessAddress), "output was: \(output)")
-        #expect(output.contains("@agent"), "output was: \(output)")
+        #expect(output.contains("@<slug>"), "output was: \(output)")
         #expect(output.contains("#tag"), "output was: \(output)")
     }
 

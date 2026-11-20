@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.8.0"
+  version: "1.9.0"
 ---
 
 # Sessions
@@ -58,7 +58,7 @@ Use `send message` when you write `@<session>` yourself, or when the user asks f
 
 - `to` takes one session in a form above. `@<agent name>` starts a new session of that agent when no session has that slug.
 - `#<tag>` sends to each live session with the tag, but not to you.
-- Two aliases: `@<agent>:/path` looks for `@<agent>` in that folder first, and a folder path alone (`/path` or `~/path`) names the newest root session in that folder. The answer then starts with a `Rewrite:` line that tells the form that the tool used.
+- A target is only an id, a short id or a slug. A folder path is not a target. To reach a session in a folder, find it with `list sessions` and give its id.
 - The target sees only `message`. Put all the facts in it: the goal, the files, and what to send back.
 - When you do not know the target, find it first (below). Do not guess a slug.
 - The recap of a session tells what the session did and where it stands now. Before you send a message to a session that you do not know, read its recap: `check session` shows it on the `Recap:` line, and `list sessions` shows it as `recap "<text>"` at the end of the line of the session.
@@ -134,7 +134,7 @@ Run the API tests again.
 | List the sessions of other agents to import | `{"op": "list imports", "agent": "claude-code", "folder": ".", "limit": 20}` |
 | Import a session of another agent as a new session | `{"op": "import session", "agent": "claude-code", "source": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "folder": ".", "name": "parser-fix"}` |
 
-- The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>` and no alias.
+- The `id` of these calls takes the same forms as `to`: `<id>`, `@<id>`, `<short id>`, `@<short id>` or `@<slug>`. It never starts an agent, and it takes no `#<tag>`.
 - The `parent` and `startedBy` filters of `list sessions` take a full id only.
 - With no `id`, `rename session`, `pin session`, `unpin session`, `tag session` and `untag session` act on your session.
 - A rename changes the slug. Old `@<slug>` mentions then can name no session. The id and the short id do not change.

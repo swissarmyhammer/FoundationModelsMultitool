@@ -37,8 +37,7 @@ extension SessionsToolText {
     /// form.
     static let addressForms = """
         one session as @<id>, <id>, @<short id>, <short id> or @<slug> (an agent name that no session has \
-        starts a new session of that agent), #tag for each live session with the tag, or the aliases @agent:/path \
-        and an absolute folder path that starts with / or ~
+        starts a new session of that agent), or #tag for each live session with the tag
         """
 
     /// The code-mode verb of `read inbox`, which each corrective about a
@@ -74,17 +73,6 @@ extension SessionsToolText {
             return lines.joined(separator: "\n")
         }
         return ([notSentSentence] + lines).joined(separator: "\n")
-    }
-
-    /// The answer of `send message`: the report of the rewrite of an alias
-    /// when the address is one, then the lines of ``receipts(_:)``.
-    ///
-    /// - Parameters:
-    ///   - receipts: The receipts of the send.
-    ///   - rewrite: The report of the rewrite of an alias, or `nil`.
-    /// - Returns: The answer.
-    static func receipts(_ receipts: [SessionSendReceipt], rewrite: String?) -> String {
-        ([rewrite].compactMap { $0 } + [self.receipts(receipts)]).joined(separator: "\n")
     }
 
     /// The corrective of a reference that names more than one session (D199
@@ -129,59 +117,6 @@ extension SessionsToolText {
     /// - Returns: The corrective, which names each form.
     static func notAnAddress(_ text: String) -> String {
         "\"\(text)\" is not a message address. Give \(addressForms). \(findSessionSentence)"
-    }
-
-    /// The report of the rewrite of the alias `@agent:/path` (D199 (e), in
-    /// the style of D86): the reader reads it as `@agent`, with the lookup in
-    /// the folder of the alias first.
-    ///
-    /// - Parameters:
-    ///   - alias: The address as written.
-    ///   - name: The name after the `@`.
-    ///   - folder: The folder of the alias.
-    /// - Returns: The report.
-    static func agentAliasRewrite(_ alias: String, name: String, folder: URL) -> String {
-        """
-        Rewrite: "\(alias)" is an alias of \(agentAliasCanonical(name: name, folder: folder)), \
-        in place of the folder of your session.
-        """
-    }
-
-    /// The canonical form of the alias `@agent:/path`, as
-    /// ``agentAliasRewrite(_:name:folder:)`` tells it: `@agent` with the
-    /// lookup in the folder of the alias first.
-    ///
-    /// - Parameters:
-    ///   - name: The name after the `@`.
-    ///   - folder: The folder of the alias.
-    /// - Returns: The canonical form.
-    static func agentAliasCanonical(name: String, folder: URL) -> String {
-        "\"@\(name)\", with the lookup in \(folder.path) first"
-    }
-
-    /// The report of the rewrite of the alias of a folder path alone (D199
-    /// (e), in the style of D86): the path names the newest root session in
-    /// the folder.
-    ///
-    /// - Parameters:
-    ///   - alias: The address as written.
-    ///   - folder: The folder.
-    /// - Returns: The report.
-    static func folderAliasRewrite(_ alias: String, folder: URL) -> String {
-        """
-        Rewrite: "\(alias)" is an alias of \(folderAliasCanonical(folder: folder)). \
-        To name one session, give @<id>, @<short id> or @<slug>.
-        """
-    }
-
-    /// The canonical form of the alias of a folder path alone, as
-    /// ``folderAliasRewrite(_:folder:)`` tells it: the newest root session
-    /// in the folder.
-    ///
-    /// - Parameter folder: The folder.
-    /// - Returns: The canonical form.
-    static func folderAliasCanonical(folder: URL) -> String {
-        "the newest root session in \(folder.path)"
     }
 
     /// The corrective of a text that is not a message id.
