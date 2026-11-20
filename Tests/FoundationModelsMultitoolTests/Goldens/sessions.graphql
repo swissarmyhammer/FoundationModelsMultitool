@@ -700,6 +700,11 @@ type SessionImportProvenance {
   sourcePath: String!
 
   """
+  The title of the source session that the import found, for example from a summary record or from the first prompt, or null when the import found no title.
+  """
+  sourceTitle: String
+
+  """
   The time of the last record of the source session, or null when the source gives no time.
   """
   sourceLastDate: DateTime

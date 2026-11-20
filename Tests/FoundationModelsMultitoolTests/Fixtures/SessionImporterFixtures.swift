@@ -140,13 +140,15 @@ actor RecordingSessionImporter: SessionImporter {
     ///   - source: The source session.
     ///   - folder: The working folder of the new session.
     ///   - name: The name of the order, or `nil`.
-    /// - Returns: The request, with the provenance of the source.
+    /// - Returns: The request, with the provenance of the source. The title
+    ///   of the source is the source title of the provenance.
     private static func request(for source: ImportableSession, folder: URL, name: String?) -> SessionImportRequest {
         SessionImportRequest(
             workingDirectory: folder, title: name ?? source.title ?? "\(source.agent)-import",
             provenance: SessionImportProvenance(
                 agent: source.agent, sourceID: source.sourceID, sourcePath: source.sourcePath,
-                sourceLastDate: source.lastDate, importedAt: importedAt, skippedRecordCount: skippedRecordCount))
+                sourceTitle: source.title, sourceLastDate: source.lastDate, importedAt: importedAt,
+                skippedRecordCount: skippedRecordCount))
     }
 
     /// A source with each import of it among the sessions of the directory.

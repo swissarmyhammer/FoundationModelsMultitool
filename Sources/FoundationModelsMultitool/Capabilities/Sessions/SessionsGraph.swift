@@ -135,7 +135,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// its `lastDate`, `turns` for its `turnCount` and `imports` for its
     /// `previousImports`; `date` for the `importedAt` of an earlier import;
     /// `imported_from` and `provenance` for the `importedFrom` of a session,
-    /// and the snake-case names (`source_id`, `source_path`,
+    /// and the snake-case names (`source_id`, `source_path`, `source_title`,
     /// `source_last_date`, `imported_at`, `skipped_record_count`), `sourceID`
     /// for `sourceId` and `skipped` for `skippedRecordCount` of its
     /// provenance; the bare verb of each
@@ -151,6 +151,7 @@ public final class SessionsGraph: GraphQLEndpoint {
                 ],
                 "SessionImportProvenance": [
                     "sourceId": ["source_id", "sourceID"], "sourcePath": ["source_path"],
+                    "sourceTitle": ["source_title"],
                     "sourceLastDate": ["source_last_date"], "importedAt": ["imported_at"],
                     "skippedRecordCount": ["skipped_record_count", "skipped"],
                 ],

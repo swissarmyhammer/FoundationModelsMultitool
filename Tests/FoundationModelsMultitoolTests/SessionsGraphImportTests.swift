@@ -113,6 +113,18 @@ struct SessionsGraphImportTests {
         { sessions(filter: {includeRecorded: true}) { id \(provenanceSelection) } }
         """
 
+    /// The `sessions` query of each session, live or not, with the id and
+    /// the `sourceTitle` of the `importedFrom` of each session.
+    private static let sessionsWithSourceTitleQuery = """
+        { sessions(filter: {includeRecorded: true}) { id importedFrom { sourceTitle } } }
+        """
+
+    /// ``sessionsWithSourceTitleQuery`` with the alias `source_title` for
+    /// `sourceTitle`.
+    private static let sessionsWithSourceTitleAliasQuery = """
+        { sessions(filter: {includeRecorded: true}) { id importedFrom { source_title } } }
+        """
+
     /// Each field of the `importedFrom` of an import of ``titledSource``, in
     /// the order of ``provenanceSelection``, as text.
     private static let titledProvenanceTexts = [
@@ -209,8 +221,17 @@ struct SessionsGraphImportTests {
         /// - Returns: The id of the new session.
         /// - Throws: What the importer throws.
         func importTitledSource() async throws -> ULID {
-            let order = SessionImportOrder(
-                agent: claudeCode, source: titledSource.sourceID, folder: nil, name: nil)
+            try await importSource(titledSource)
+        }
+
+        /// Imports one source one time with the importer, not with the
+        /// endpoint.
+        ///
+        /// - Parameter source: The source session.
+        /// - Returns: The id of the new session.
+        /// - Throws: What the importer throws.
+        func importSource(_ source: ImportableSession) async throws -> ULID {
+            let order = SessionImportOrder(agent: source.agent, source: source.sourceID, folder: nil, name: nil)
             return try await importer.importSession(order).session
         }
     }
@@ -280,6 +301,21 @@ struct SessionsGraphImportTests {
         let provenance = try #require(session["importedFrom"] as? [String: Any])
         return ["agent", "sourceId", "sourcePath", "sourceLastDate", "importedAt", "skippedRecordCount"]
             .map { "\(provenance[$0] ?? "nil")" }
+    }
+
+    /// The `sourceTitle` of the `importedFrom` of the session `id` in a
+    /// `sessions` response.
+    ///
+    /// - Parameters:
+    ///   - id: The session id.
+    ///   - reply: The response.
+    /// - Returns: The value of `sourceTitle`: a string, or `NSNull` for
+    ///   `null`, or `nil` when the object has no `sourceTitle`.
+    /// - Throws: An error when the response has no session with that id or
+    ///   the session has no `importedFrom` object.
+    private static func sourceTitle(of id: ULID, in reply: GraphQLReply) throws -> Any? {
+        let provenance = try #require(try session(id, in: reply)["importedFrom"] as? [String: Any])
+        return provenance["sourceTitle"]
     }
 
     /// The `Session` object of the session `id` in a `sessions` response.
@@ -656,6 +692,54 @@ struct SessionsGraphImportTests {
             ])
     }
 
+    /// `sessions` gives the title of the source session as the
+    /// `sourceTitle` of the `importedFrom` of an imported session.
+    @Test("sessions gives the sourceTitle of the importedFrom of an imported session with a source title")
+    func sessionsGivesTheSourceTitle() async throws {
+        let setup = Setup()
+        let copy = try await setup.importSource(Self.titledSource)
+
+        let reply = try await setup.run(Self.sessionsWithSourceTitleQuery)
+
+        #expect(try Self.sourceTitle(of: copy, in: reply) as? String == Self.titledSource.title)
+    }
+
+    /// A provenance with no source title gives `null` as its
+    /// `sourceTitle`.
+    @Test("sessions gives null as the sourceTitle of a provenance with no source title")
+    func sessionsGivesNullForNoSourceTitle() async throws {
+        let setup = Setup()
+        let copy = try await setup.importSource(Self.untitledSource)
+
+        let reply = try await setup.run(Self.sessionsWithSourceTitleQuery)
+
+        #expect(try Self.sourceTitle(of: copy, in: reply) is NSNull)
+    }
+
+    /// `sessions` takes `source_title` for the `sourceTitle` of the
+    /// provenance, and gives the value at the name of the call.
+    @Test("sessions takes source_title and gives the sourceTitle at the name of the call")
+    func sessionsTakesTheSourceTitleAlias() async throws {
+        let setup = Setup()
+        let copy = try await setup.importSource(Self.titledSource)
+
+        let reply = try await setup.run(Self.sessionsWithSourceTitleAliasQuery)
+        let provenance = try #require(try Self.session(copy, in: reply)["importedFrom"] as? [String: Any])
+
+        #expect(provenance["source_title"] as? String == Self.titledSource.title)
+    }
+
+    /// `sessions` reports the rewrite of `source_title` to `sourceTitle`.
+    @Test("sessions reports the rewrite of source_title to sourceTitle")
+    func sessionsReportsTheSourceTitleRewrite() async throws {
+        let setup = Setup()
+        _ = try await setup.importSource(Self.titledSource)
+
+        let reply = try await setup.run(Self.sessionsWithSourceTitleAliasQuery)
+
+        #expect(reply.rewrote("source_title", to: "sourceTitle"))
+    }
+
     // MARK: - The refusals of the tool
 
     /// The query with no importer gives `IMPORT_UNAVAILABLE` with the
@@ -818,6 +902,20 @@ struct SessionsGraphImportTests {
         let field = try #require(try session.fields()["importedFrom"])
 
         #expect((field.type as? GraphQLObjectType)?.name == "SessionImportProvenance")
+    }
+
+    /// The SDL of the endpoint has the nullable field `sourceTitle` of a
+    /// `SessionImportProvenance`, of the type `String`. A non-null type is a
+    /// `GraphQLNonNull` wrapper, not a scalar type.
+    @Test("the SDL has the nullable field sourceTitle of a SessionImportProvenance")
+    func theSchemaHasTheSourceTitleField() throws {
+        let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())
+
+        let schema = try buildSchema(source: graph.schema)
+        let provenance = try #require(schema.getType(name: "SessionImportProvenance") as? GraphQLObjectType)
+        let field = try #require(try provenance.fields()["sourceTitle"])
+
+        #expect((field.type as? GraphQLScalarType)?.name == "String")
     }
 
     /// The SDL of the endpoint has each type of the import fields.
