@@ -19,8 +19,7 @@
 // events, so the stream of the host stops when the client stops the
 // subscription.
 //
-// The `folder` of each field follows the import fields: a call with no
-// viewer is the agent of the caller session, so `.` is the folder of that
+// The `folder` of each field: a call with no viewer is the agent of the caller session, so `.` is the folder of that
 // session. A client has no caller session, so `.` gives `INVALID_FOLDER`.
 //
 // Who acts: a device of the user and the agent continue a session, as for a
@@ -341,6 +340,21 @@ struct SessionsGraphExternalSessionUpdateBatch: Sendable {
 
 // MARK: - The resolvers
 
+extension SessionsGraphContext {
+    /// The folder of the caller session for the folder `.` of an external
+    /// session field: the folder of the caller session for a call of the
+    /// agent, and `nil` for a client, which has no caller session.
+    ///
+    /// - Returns: The folder, or `nil`.
+    /// - Throws: Each error of the directory.
+    func callerFolderOfDot() async throws -> URL? {
+        guard sessions.viewer == nil else {
+            return nil
+        }
+        return try await actions.callerFolder()
+    }
+}
+
 extension SessionsGraphResolver {
     /// Resolves `Query.externalSessions`: one page of the external sessions
     /// of the index of the host. The host runs in the task of this
@@ -361,7 +375,7 @@ extension SessionsGraphResolver {
         context: SessionsGraphContext, arguments: SessionsGraphExternalSessionsArguments
     ) async throws -> SessionsGraphExternalSessionPage {
         try await Self.coding {
-            let listArguments = arguments.listArguments(callerFolder: try await context.importCallerFolder())
+            let listArguments = arguments.listArguments(callerFolder: try await context.callerFolderOfDot())
             return SessionsGraphExternalSessionPage(
                 try await SessionsToolContext.externalSessions(listArguments, with: context.externalSessionHost))
         }
@@ -384,7 +398,7 @@ extension SessionsGraphResolver {
     ) async throws -> AsyncStream<ExternalSessionChange> {
         try await Self.coding {
             try SessionsToolContext.externalSessionChanges(
-                folder: arguments.folder, callerFolder: try await context.importCallerFolder(),
+                folder: arguments.folder, callerFolder: try await context.callerFolderOfDot(),
                 with: context.externalSessionHost)
         }
     }
@@ -431,7 +445,7 @@ extension SessionsGraphResolver {
             }
             _ = try context.actor(of: .continueExternalSession)
             let continueArguments = arguments.input.continueArguments(
-                callerFolder: try await context.importCallerFolder())
+                callerFolder: try await context.callerFolderOfDot())
             return SessionsGraphSession(
                 try await SessionsToolContext.continueExternalSession(
                     continueArguments, with: context.externalSessionHost

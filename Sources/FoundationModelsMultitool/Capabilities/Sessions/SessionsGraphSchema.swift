@@ -37,11 +37,6 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// `Session.share` and the share mutations read it.
     let sharer: (any SessionSharer)?
 
-    /// The importer of the sessions of other agents that the host gave the
-    /// endpoint, or `nil` when no host gave one. `Query.importableSessions`
-    /// and `Mutation.importSession` read it.
-    let importer: (any SessionImporter)?
-
     /// The host of the external sessions that the host gave the endpoint, or
     /// `nil` when no host gave one. `Query.externalSessions`,
     /// `Subscription.externalSessionChanges`,
@@ -311,9 +306,9 @@ struct SessionsGraphAPI: API {
     /// share mutations and their types are in `SessionsGraphShare.swift`,
     /// the `sessionPage` query and its
     /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
-    /// its types are in `SessionsGraphSearch.swift`, the `importableSessions`
-    /// query, the `importSession` mutation and their types are in
-    /// `SessionsGraphImport.swift`, the `externalSessions` query, the
+    /// its types are in `SessionsGraphSearch.swift`, the
+    /// `SessionImportProvenance` type of the `importedFrom` field of a session
+    /// is in `SessionsGraphProvenance.swift`, the `externalSessions` query, the
     /// `externalSessionChanges` and `externalSessionUpdates` subscriptions,
     /// the `continueExternalSession` mutation and their types are in
     /// `SessionsGraphExternal.swift`, and the `cursor` query, the
@@ -360,11 +355,7 @@ struct SessionsGraphAPI: API {
                 updateShareInput()
                 stopSharingInput()
                 changeType()
-                importableSessionType()
-                previousImportType()
                 importProvenanceType()
-                importableSessionPageType()
-                importInput()
                 externalSessionStateEnum()
                 externalSessionType()
                 externalSessionKeyType()
@@ -384,7 +375,6 @@ struct SessionsGraphAPI: API {
                 pinnedSessionsField()
                 recentSessionsField()
                 cursorField()
-                importableSessionsField()
                 externalSessionsField()
             }
             .addMutation(mutationFields)

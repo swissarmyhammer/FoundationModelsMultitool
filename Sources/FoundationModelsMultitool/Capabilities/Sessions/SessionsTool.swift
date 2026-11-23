@@ -20,24 +20,24 @@ import Operations
 /// message and reply to one, start a new session, tag, untag, rename, pin
 /// and unpin a session, archive and unarchive a session, fork a session from
 /// here, export a session as Markdown, search the transcripts of the
-/// sessions, share a session as a link, import a session of another
-/// agent, such as Claude Code or Codex, and list, read and continue the
-/// external sessions of the index of the host (D212).
+/// sessions, share a session as a link, and list, read and continue the
+/// external sessions of the index of the host: the sessions of other agents,
+/// such as Claude Code or Codex (D212).
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
 /// `untag session`, `rename session`, `pin session`, `unpin session`,
 /// `archive session`, `unarchive session`, `fork session`,
 /// `export session`, `search sessions`, `share session`, `update share`,
-/// `stop sharing`, `list imports`, `import session`, `list external sessions`,
-/// `read external session` and `continue external session`. In code mode each one is a verb
+/// `stop sharing`, `list external sessions`, `read external session` and
+/// `continue external session`. In code mode each one is a verb
 /// of `tools.sessions`: `listSessions`, `checkSession`, `readInbox`,
 /// `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
 /// `untagSession`, `renameSession`, `pinSession`, `unpinSession`,
 /// `archiveSession`, `unarchiveSession`, `forkSession`, `exportSession`,
 /// `searchSessions`, `shareSession`, `updateShare`, `stopSharing`,
-/// `listImports`, `importSession`, `listExternalSessions`,
-/// `readExternalSession` and `continueExternalSession`. Each
+/// `listExternalSessions`, `readExternalSession` and
+/// `continueExternalSession`. Each
 /// answer is
 /// plain text, and each error is a corrective text the model reads in the
 /// same turn, never a thrown error.
@@ -50,10 +50,10 @@ import Operations
 /// **The tool is a value type, and a host copies it** (EXTRAS-9 rule 1): to
 /// the top-level tools of a session, to the registry of `runCode`, and to a
 /// forked session. Each copy shares the directory, the exporter, the
-/// searcher, the sharer, the importer and the external session host that
-/// ``init(directory:exporter:searcher:sharer:importer:externalSessionHost:)``
+/// searcher, the sharer and the external session host that
+/// ``init(directory:exporter:searcher:sharer:externalSessionHost:)``
 /// gets, and the record of the messages that `read inbox` gave, which
-/// ``init(directory:exporter:searcher:sharer:importer:externalSessionHost:)`` makes one time and `reply message`
+/// ``init(directory:exporter:searcher:sharer:externalSessionHost:)`` makes one time and `reply message`
 /// reads.
 ///
 /// The tool is also a `GraphQLEndpointTool`: its `graphQLEndpoints` is one
@@ -79,13 +79,12 @@ public struct SessionsTool: Tool, OperationDescribing {
 
     /// Makes the `sessions` tool over `directory`.
     ///
-    /// The tool keeps `exporter`, `searcher`, `sharer`, `importer` and
+    /// The tool keeps `exporter`, `searcher`, `sharer` and
     /// `externalSessionHost` with the one endpoint of the directory
-    /// (``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)``).
+    /// (``SessionsGraph/endpoint(of:exporter:searcher:sharer:externalSessionHost:)``).
     /// With no exporter, the tool uses the exporter that an earlier tool over
     /// the same directory gave, if the endpoint is still alive. The searcher,
-    /// the sharer, the importer and the external session host follow the
-    /// same rule.
+    /// the sharer and the external session host follow the same rule.
     ///
     /// - Parameters:
     ///   - directory: The session directory that each operation reads. The
@@ -98,9 +97,6 @@ public struct SessionsTool: Tool, OperationDescribing {
     ///   - sharer: The sharer of the sessions, for `share session`,
     ///     `update share` and `stop sharing`, or `nil` when the host cannot
     ///     share.
-    ///   - importer: The importer of the sessions of other agents, for
-    ///     `list imports` and `import session`, or `nil` when the host cannot
-    ///     import.
     ///   - externalSessionHost: The host of the sessions of other agents in
     ///     its index, for `list external sessions`, `read external session`
     ///     and `continue external session`, or `nil` when the host has no
@@ -110,17 +106,17 @@ public struct SessionsTool: Tool, OperationDescribing {
     public init(
         directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
         searcher: (any SessionTranscriptSearcher)? = nil, sharer: (any SessionSharer)? = nil,
-        importer: (any SessionImporter)? = nil, externalSessionHost: (any ExternalSessionHost)? = nil
+        externalSessionHost: (any ExternalSessionHost)? = nil
     ) throws {
         endpoint = SessionsGraph.endpoint(
-            of: directory, exporter: exporter, searcher: searcher, sharer: sharer, importer: importer,
+            of: directory, exporter: exporter, searcher: searcher, sharer: sharer,
             externalSessionHost: externalSessionHost)
         operationTool = try OperationTool(
             name: Self.toolName,
             description: SessionsToolText.toolDescription,
             context: SessionsToolContext(
                 directory: directory, exporter: endpoint.exporter, searcher: endpoint.searcher,
-                sharer: endpoint.sharer, importer: endpoint.importer,
+                sharer: endpoint.sharer,
                 externalSessionHost: endpoint.externalSessionHost),
             operations: [
                 AnyOperation(ListSessions.self),
@@ -142,8 +138,6 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(ShareSession.self),
                 AnyOperation(UpdateShare.self),
                 AnyOperation(StopSharing.self),
-                AnyOperation(ListImports.self),
-                AnyOperation(ImportSession.self),
                 AnyOperation(ListExternalSessions.self),
                 AnyOperation(ReadExternalSession.self),
                 AnyOperation(ContinueExternalSession.self),
@@ -155,8 +149,7 @@ public struct SessionsTool: Tool, OperationDescribing {
     /// resolver: `read` stays `read`. The default table makes `read` the
     /// verb `get`, and then `read inbox` names no operation. `save` is
     /// `export`, `branch` is `fork`, `find` and `grep` are `search`,
-    /// `publish` is `share`, `refresh` is `update`, and `copy` is `import`
-    /// (D86).
+    /// `publish` is `share`, and `refresh` is `update` (D86).
     static let verbAliases: [String: String] = [
         ReadInbox.verb: ReadInbox.verb,
         "save": ExportSession.verb,
@@ -165,7 +158,6 @@ public struct SessionsTool: Tool, OperationDescribing {
         "grep": SearchSessions.verb,
         "publish": ShareSession.verb,
         "refresh": UpdateShare.verb,
-        "copy": ImportSession.verb,
     ]
 
     /// The model-facing name of the tool: `sessions`.

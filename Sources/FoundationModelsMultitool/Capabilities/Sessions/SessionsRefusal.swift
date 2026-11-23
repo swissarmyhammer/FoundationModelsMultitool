@@ -125,21 +125,9 @@ struct SessionsRefusal: CodedError {
         /// The sharer could not read, make, update or stop a share.
         case shareFailed = "SHARE_FAILED"
 
-        /// The server has no importer, so it cannot import a session of
-        /// another agent (D209 (l)).
-        case importUnavailable = "IMPORT_UNAVAILABLE"
-
         /// The host cannot read the sessions of the source agent: the user
         /// gave no access to their folder.
         case noSourceAccess = "NO_SOURCE_ACCESS"
-
-        /// The working folder of an imported session does not exist, or the
-        /// host cannot write it.
-        case importFolderUnavailable = "IMPORT_FOLDER_UNAVAILABLE"
-
-        /// The importer could not list or import the sessions of another
-        /// agent.
-        case importFailed = "IMPORT_FAILED"
 
         /// The server has no external session host, so it cannot read or
         /// continue the sessions of other agents (D212).

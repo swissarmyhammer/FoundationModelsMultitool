@@ -3,8 +3,8 @@
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the parameter list of `export
 // session`, of `fork session`, of `search sessions`, of `share session`, of
-// `update share`, of `stop sharing`, of `list imports`, of `import session`,
-// of `list external sessions`, of `read external session` and of
+// `update share`, of `stop sharing`, of `list external sessions`, of
+// `read external session` and of
 // `continue external session` (D212) in the skill names each parameter, the skill tells the limit of `search
 // sessions` (D207 (d)), the skill says to share a session only when the user
 // asks (D208 (k)), the skill says not to read the files of other agents
@@ -244,7 +244,7 @@ import Testing
     /// The operations whose parameter list the skill must give in full.
     static let listedOperations = [
         ExportSession.opString, ForkSession.opString, SearchSessions.opString, ShareSession.opString,
-        UpdateShare.opString, StopSharing.opString, ListImports.opString, ImportSession.opString,
+        UpdateShare.opString, StopSharing.opString,
         ListExternalSessions.opString, ReadExternalSession.opString, ContinueExternalSession.opString,
     ]
 
@@ -310,21 +310,22 @@ import Testing
     }
 
     /// The sentence of the skill that tells the agent not to read the session
-    /// files of other agents (D209 (l)): to continue such a session, the
-    /// agent uses `list imports` and `import session`.
+    /// files of other agents (D209 (l), D212): to continue such a session,
+    /// the agent uses the external session operations.
     private static let foreignFilesRule = "Do not read the files of other agents."
 
     /// A small skill text for the unit test of ``tells(_:in:)`` with
-    /// ``foreignFilesRule``: it names the two import operations and the copy,
-    /// but not the rule about the files of other agents.
-    private static let importWithoutFilesRule = """
-        - To continue a session of Claude Code or Codex, use `list imports` and then `import session`.
-        - The import copies the session; it does not change the source.
+    /// ``foreignFilesRule``: it names the external session operations and the
+    /// copy, but not the rule about the files of other agents.
+    private static let continueWithoutFilesRule = """
+        - To continue a session of Claude Code or Codex, use `list external sessions` and then \
+        `continue external session`.
+        - The continue copies the session; it does not change the source.
         """
 
     @Test("a text with no files rule does not tell to keep out of the files of other agents")
     func aTextWithNoFilesRuleDoesNotTellIt() {
-        #expect(!Self.tells(Self.foreignFilesRule, in: Self.importWithoutFilesRule))
+        #expect(!Self.tells(Self.foreignFilesRule, in: Self.continueWithoutFilesRule))
     }
 
     @Test("the skill says not to read the files of other agents")

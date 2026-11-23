@@ -1,11 +1,11 @@
 ---
 name: sessions
-description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive, unarchive, share or import sessions, or to find, read or continue a session of Claude Code or Codex.
+description: Send messages to other sessions and manage sessions with the `sessions` tool. Use when a prompt has an `@<session>` mention, when the user asks you to ask, tell or start another session or agent, when a message from another session comes in, or when the user asks to list, find, rename, pin, tag, archive, unarchive or share sessions, or to find, read or continue a session of Claude Code or Codex.
 license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.10.0"
+  version: "1.11.0"
 ---
 
 # Sessions
@@ -131,8 +131,6 @@ Run the API tests again.
 | Share a session as a read-only link | `{"op": "share session", "id": "v2w4abc", "thoughts": true, "toolOutput": true, "anyoneWithLink": true, "keepUpdated": false}` |
 | Update the share of a session | `{"op": "update share", "id": "v2w4abc", "keepUpdated": true}` |
 | Stop the share of a session | `{"op": "stop sharing", "id": "v2w4abc"}` |
-| List the sessions of other agents to import | `{"op": "list imports", "agent": "claude-code", "folder": ".", "limit": 20}` |
-| Import a session of another agent as a new session | `{"op": "import session", "agent": "claude-code", "source": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "folder": ".", "name": "parser-fix"}` |
 | List the sessions of other agents in a folder | `{"op": "list external sessions", "source": "claude-code", "folder": ".", "automated": false, "limit": 20}` |
 | Read the turns of a session of another agent | `{"op": "read external session", "source": "claude-code", "id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "fromTurn": 1, "turns": 10}` |
 | Continue a session of another agent in a new session | `{"op": "continue external session", "source": "claude-code", "id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "folder": ".", "name": "parser-fix"}` |
@@ -213,16 +211,4 @@ Run the API tests again.
   - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the working folder of the source session.
   - `name`: the name of the new session. The default is the name that the server gives. When a session of the folder has the name, the new session gets the next free number.
 - When an answer tells that there is no access to the sessions of a source, ask the user to run the command Allow Access to Claude Code Sessions… or Allow Access to Codex Sessions… of the File menu. An agent cannot give access to a folder.
-- `list imports` and `import session` are the older form of the same copy. Use them only when the external session operations tell that this server has no index of the sessions of other agents. The import copies the session; it does not change the source.
-- Each import makes a new session, also for a source that was imported before. `list imports` shows an earlier import as `imported <date> as @<short id>`. This is only information.
-- When the answer tells that there is no access to the sessions of an agent, ask the user to run the command Import Sessions… of the File menu. An agent cannot give access to a folder.
-- `list imports` takes these parameters, and each is optional:
-  - `agent`: the source agent, `claude-code` or `codex`. The default is each agent.
-  - `folder`: the absolute path of the folder of the source sessions, or `.` for the folder of your session. The default is each folder.
-  - `limit`: the most sessions to give, from 1 to 50. The default is 20.
-- `import session` takes these parameters:
-  - `agent`: the source agent, `claude-code` or `codex`. It is necessary.
-  - `source`: the source id that `list imports` gives, or the path of the source file. It is necessary.
-  - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the folder of the source session.
-  - `name`: the name of the new session. The default is the title of the source session, else `<agent>-import`.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, `tools.sessions.listImports({...})`, `tools.sessions.importSession({...})`, `tools.sessions.listExternalSessions({...})`, `tools.sessions.readExternalSession({...})`, `tools.sessions.continueExternalSession({...})`, and so on.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, `tools.sessions.listExternalSessions({...})`, `tools.sessions.readExternalSession({...})`, `tools.sessions.continueExternalSession({...})`, and so on.

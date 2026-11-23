@@ -73,12 +73,6 @@ struct SessionsGraphMutationTests {
     /// A relative folder.
     private static let relativeFolder = "work/other"
 
-    /// The source agent of the import refusal case.
-    private static let importAgent = "claude-code"
-
-    /// The source session of the import refusal case.
-    private static let importSource = "a1b2c3"
-
     /// The code of the toolkit for a session or a message that the endpoint
     /// does not hold, or that the viewer cannot see.
     private static let notFound = "NOT_FOUND"
@@ -480,12 +474,6 @@ struct SessionsGraphMutationTests {
             payload: { scene in Fixtures.payload("stop sharing", [("id", scene.target.ulidString)]) },
             mutation: { scene in
                 "mutation { stopSharingSession(input: {id: \"\(scene.target.ulidString)\"}) { id } }"
-            }),
-        RefusalCase(
-            code: "IMPORT_UNAVAILABLE", fault: "an import on a server with no importer",
-            payload: { _ in Fixtures.payload("import session", [("agent", importAgent), ("source", importSource)]) },
-            mutation: { _ in
-                "mutation { importSession(input: {agent: \"\(importAgent)\", source: \"\(importSource)\"}) { id } }"
             }),
     ]
 
