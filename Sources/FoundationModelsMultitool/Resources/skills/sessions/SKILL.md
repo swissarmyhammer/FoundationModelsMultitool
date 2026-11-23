@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.11.0"
+  version: "1.12.0"
 ---
 
 # Sessions
@@ -156,7 +156,7 @@ Run the API tests again.
   - `id`: the session to fork. With no `id`, it forks your session from here. With an `id`, it forks that session at its last completed turn.
   - `message`: the first prompt of the fork. With no `message`, the fork waits for a message.
 - To find an earlier session by its content or by its meaning, use `search sessions`. Then read it with `export session` and the file tools. Do not read the transcript files.
-- The search covers only the sessions of this server, not the sessions of other agents.
+- The search covers the transcripts of the sessions of this server. For the sessions of other agents, it covers only the title, the first and last prompts, the folder and the branch.
 - `search sessions` takes these parameters:
   - `query`: the search text. It is necessary.
   - `folder`: the absolute path of the folder of the sessions, or `.` for the folder of your session. It is optional.
@@ -173,6 +173,7 @@ Run the API tests again.
   - `from:<kind>`: only the hits of one kind: `user`, `agent`, `message`, `tool`, `plan` or `thought`. With no `from:`, the search does not include the thoughts.
   - `is:archived`: also the archived sessions.
 - `search sessions` gives one line for each session, with its `@<short id>`, name, folder, date and number of hits, and at most three snippets.
+- After the sessions of this server, `search sessions` gives one line for each session of another agent that matches, as `list external sessions` gives it: its source, its id, its text and its folder. To read one, use `read external session` with its source and its id. A query with a `@<session>`, `#<tag>`, `folder:` or `agent:` token, or with the `folder` parameter, gives no session of another agent.
 - Share a session only when the user asks.
 - `share session` gives the transcript of the session to other people as a read-only link. With `anyoneWithLink`, anyone with the link can read it. Else only the people that the user invites can read it.
 - `thoughts` and `toolOutput` choose what the shared copy holds. `keepUpdated` keeps the shared copy current: it updates at the end of each turn. Else the shared copy does not change until `update share`.

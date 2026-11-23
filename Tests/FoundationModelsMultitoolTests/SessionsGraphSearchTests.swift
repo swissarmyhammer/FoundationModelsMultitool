@@ -68,6 +68,24 @@ struct SessionsGraphSearchTests {
     /// The limit of a call that names `first`.
     private static let firstLimit = 5
 
+    /// The score of the external session of the page.
+    private static let externalScore = 0.5
+
+    /// The external session of the page of the fake searcher.
+    private static let externalSession = ExternalSessionSummary(
+        source: "claude-code", sourceID: "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", path: "project/3f2a9c1e.jsonl",
+        size: 1_024, modified: Fixtures.fixedDate, cwd: URL(fileURLWithPath: "/work/project"), gitBranch: "main",
+        title: "Retry budget of the parser", state: .read)
+
+    /// The document that reads the external sessions of the page.
+    private static let externalQuery = """
+        query($query: String!) {
+          searchSessions(query: $query) {
+            externalSessions { score field session { source sourceId title cwd gitBranch } }
+          }
+        }
+        """
+
     /// The full document of the field: each field of each new type.
     private static let fullQuery = """
         query($query: String!) {
@@ -153,7 +171,12 @@ struct SessionsGraphSearchTests {
                     SessionsGraphSearchTests.result(of: found.id), SessionsGraphSearchTests.result(of: other.id),
                 ],
                 nextCursor: SessionsGraphSearchTests.nextCursor,
-                unavailableFolders: [SessionsGraphSearchTests.unavailableFolder])
+                unavailableFolders: [SessionsGraphSearchTests.unavailableFolder],
+                externalSessions: [
+                    ExternalSessionSearchResult(
+                        session: SessionsGraphSearchTests.externalSession,
+                        score: SessionsGraphSearchTests.externalScore, field: ExternalSessionSearchResult.titleField)
+                ])
             searcher = hasSearcher ? RecordingTranscriptSearcher(page: page) : nil
             graph = SessionsGraph.endpoint(of: directory, searcher: searcher)
         }
@@ -333,6 +356,30 @@ struct SessionsGraphSearchTests {
             try reply.object("searchSessions")["unavailableFolders"] as? [String] == [Self.unavailableFolder.path])
     }
 
+    // MARK: - The external sessions
+
+    @Test("searchSessions gives the score, the field and the session of each external result")
+    func searchSessionsGivesTheExternalResults() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(Self.externalQuery)
+
+        let results = try #require(
+            try reply.object("searchSessions")["externalSessions"] as? [[String: Any]], "errors: \(reply.messages)")
+        let result = try #require(results.first)
+        let session = try #require(result["session"] as? [String: Any])
+        #expect(results.count == 1)
+        #expect(result["score"] as? Double == Self.externalScore)
+        #expect(result["field"] as? String == "title")
+        #expect(
+            [session["source"], session["sourceId"], session["title"], session["cwd"], session["gitBranch"]]
+                as? [String]
+                == [
+                    Self.externalSession.source, Self.externalSession.sourceID, "Retry budget of the parser",
+                    "/work/project", "main",
+                ])
+    }
+
     // MARK: - The session of a result
 
     @Test("the session of a result gives the facts of the directory")
@@ -501,7 +548,8 @@ struct SessionsGraphSearchTests {
         "the SDL has the searchSessions field and its types",
         arguments: [
             "searchSessions(", "type SessionSearchConnection", "type SessionSearchResult", "type SessionSearchHit",
-            "type TextRange", "enum SessionSearchHitKind",
+            "type TextRange", "enum SessionSearchHitKind", "type ExternalSessionSearchResult",
+            "externalSessions: [ExternalSessionSearchResult!]!",
         ])
     func theSchemaHasTheSearchTypes(part: String) {
         let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory())

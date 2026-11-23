@@ -383,6 +383,24 @@ type SessionSearchResult {
   hits: [SessionSearchHit!]!
 }
 
+"""
+One session of another agent, such as Claude Code or Codex, whose index fields match a search. The search matches only the title, the prompts, the folder and the branch, not the text of the turns. Read the session with externalSessionUpdates.
+"""
+type ExternalSessionSearchResult {
+  """The session of the other agent, as the index gives it."""
+  session: ExternalSession!
+
+  """
+  The score from 0 to 1 of the match, on the scale of the score of SessionSearchResult.
+  """
+  score: Float!
+
+  """
+  The index field of the best match: title, firstPrompt, lastPrompt, cwd or gitBranch. Null for a match by meaning only.
+  """
+  field: String
+}
+
 """One page of the sessions that match a search."""
 type SessionSearchConnection {
   """
@@ -397,6 +415,11 @@ type SessionSearchConnection {
   The paths of the folders of the results that this server cannot read now.
   """
   unavailableFolders: [String!]!
+
+  """
+  The sessions of other agents whose title, prompts, folder or branch match, the best score first. Only the first page gives them, at most 20. A query with a @<session>, #<tag>, agent: or folder: token, or with the session argument, gives none.
+  """
+  externalSessions: [ExternalSessionSearchResult!]!
 }
 
 """A new root session of an agent, with its first message."""

@@ -4,7 +4,8 @@
 // The operation searches the transcripts of the sessions that this server
 // records, and answers plain text: for each session one line with its short
 // id, its name, its folder, the date and the number of hits, then at most
-// three snippets, and at the end the limit of the search. It never gives a
+// three snippets, then one line for each session of another agent whose
+// index fields match, and at the end the limit of the search. It never gives a
 // full transcript: the model reads more with `export session` and the file
 // tools. The host gives the search through a ``SessionTranscriptSearcher``.
 // With no searcher, the operation gives a corrective that names the UI
@@ -47,7 +48,8 @@ struct SessionSearchOutcome: Sendable {
     description: """
         Search the transcripts of the sessions on this server by their words or by their meaning. Gives for each \
         session its @<short id>, its name, its folder, the date and the number of hits, and at most three snippets. \
-        To read more, export the session with export session and read the file.
+        To read more, export the session with export session and read the file. Then gives the sessions of other \
+        agents, such as Claude Code or Codex, whose title, prompts, folder or branch match.
         """)
 struct SearchSessions {
     /// The text of the query.
@@ -120,7 +122,9 @@ extension SessionsToolContext {
     /// - Throws: Each error of ``SessionsVisibility/search(_:with:)``.
     func search(_ arguments: SessionSearchArguments) async throws -> String {
         let outcome = try await sessions.search(arguments, with: searcher)
-        return SessionsToolText.searchAnswer(outcome.matches, query: arguments.text, timeZone: arguments.timeZone)
+        return SessionsToolText.searchAnswer(
+            outcome.matches, externalSessions: outcome.page.externalSessions, query: arguments.text,
+            timeZone: arguments.timeZone)
     }
 
     /// The searcher of the host, for a search.

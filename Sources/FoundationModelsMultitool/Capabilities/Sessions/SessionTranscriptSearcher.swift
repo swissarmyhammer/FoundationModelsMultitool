@@ -8,8 +8,15 @@
 // `sessions` tool and the `searchSessions` field of the `sessions` endpoint
 // call it. This package parses the query (``SessionSearchQuery``), so that
 // the tool and the endpoint have one rule.
+//
+// The searcher also finds the sessions of other agents, such as Claude Code
+// or Codex, in the index of the host (D212, design section 5.2). It matches
+// only the index fields of these sessions, not the text of their turns, and
+// it gives them in ``SessionSearchPage/externalSessions``, apart from the
+// sessions of this server, because they have no ULID.
 
 import Foundation
+import FoundationModelsExtras
 import ULID
 
 /// Searches the transcripts of the sessions that this server records.
@@ -106,16 +113,108 @@ public struct SessionSearchPage: Sendable, Equatable, Codable {
     /// (D207 (b) (7)). Their results show the note "Folder not available".
     public var unavailableFolders: [URL]
 
+    /// The sessions of other agents whose index fields match, the best score
+    /// first (D212, design section 5.2).
+    ///
+    /// Only the first page of a search gives them, at most
+    /// ``ExternalSessionSearchResult/maximumCount``. A page that a cursor
+    /// names gives none. A search with a session filter
+    /// (``SessionSearchRequest/sessions`` or ``SessionSearchRequest/session``)
+    /// gives none, because the filter names sessions of this server: the
+    /// `@<session>`, `#tag`, `agent:` and `folder:` tokens make a filter.
+    public var externalSessions: [ExternalSessionSearchResult]
+
     /// Makes a page.
     ///
     /// - Parameters:
     ///   - sessions: The sessions that match.
     ///   - nextCursor: The cursor of the next page, or `nil`.
     ///   - unavailableFolders: The folders that the server cannot read now.
-    public init(sessions: [SessionSearchResult], nextCursor: String?, unavailableFolders: [URL]) {
+    ///   - externalSessions: The sessions of other agents that match. The
+    ///     default is none.
+    public init(
+        sessions: [SessionSearchResult],
+        nextCursor: String?,
+        unavailableFolders: [URL],
+        externalSessions: [ExternalSessionSearchResult] = []
+    ) {
         self.sessions = sessions
         self.nextCursor = nextCursor
         self.unavailableFolders = unavailableFolders
+        self.externalSessions = externalSessions
+    }
+
+    /// The keys of the coded page.
+    private enum CodingKeys: String, CodingKey {
+        case sessions
+        case nextCursor
+        case unavailableFolders
+        case externalSessions
+    }
+
+    /// Decodes a page. A page with no `externalSessions` key, as an older
+    /// server writes it, has no external session.
+    ///
+    /// - Parameter decoder: The decoder.
+    /// - Throws: Each error of the decoder.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try container.decode([SessionSearchResult].self, forKey: .sessions)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        unavailableFolders = try container.decode([URL].self, forKey: .unavailableFolders)
+        externalSessions =
+            try container.decodeIfPresent([ExternalSessionSearchResult].self, forKey: .externalSessions) ?? []
+    }
+}
+
+/// One session of another agent whose index fields match a search (D212,
+/// design section 5.2).
+///
+/// The searcher matches only the index fields of the session: the title, the
+/// first prompt, the last prompt, the folder and the branch. It does not
+/// search the text of the turns. To read the session, a client uses
+/// `read external session` or `externalSessionUpdates`.
+public struct ExternalSessionSearchResult: Sendable, Equatable, Codable {
+    /// The most external sessions that one search gives.
+    public static let maximumCount = 20
+
+    /// The index field of the title.
+    public static let titleField = "title"
+
+    /// The index field of the first prompt.
+    public static let firstPromptField = "firstPrompt"
+
+    /// The index field of the last prompt.
+    public static let lastPromptField = "lastPrompt"
+
+    /// The index field of the folder.
+    public static let folderField = "cwd"
+
+    /// The index field of the git branch.
+    public static let branchField = "gitBranch"
+
+    /// The session, as the index of the host gives it.
+    public var session: ExternalSessionSummary
+
+    /// The score in `[0, 1]` of the match in the `MetadataSearcher`, on the
+    /// same scale as ``SessionSearchResult/score``.
+    public var score: Double
+
+    /// The index field of the best match: ``titleField``,
+    /// ``firstPromptField``, ``lastPromptField``, ``folderField`` or
+    /// ``branchField``. `nil` for a match with only the cosine signal.
+    public var field: String?
+
+    /// Makes a result.
+    ///
+    /// - Parameters:
+    ///   - session: The session, as the index gives it.
+    ///   - score: The score in `[0, 1]` of the match.
+    ///   - field: The index field of the best match, or `nil`.
+    public init(session: ExternalSessionSummary, score: Double, field: String?) {
+        self.session = session
+        self.score = score
+        self.field = field
     }
 }
 

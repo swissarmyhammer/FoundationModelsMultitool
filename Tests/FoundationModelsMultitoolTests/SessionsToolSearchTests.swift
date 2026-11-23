@@ -33,9 +33,21 @@ struct SessionsToolSearchTests {
 
     /// The last line of each answer: the limit of the search (D207 (d)).
     private static let limitLine = """
-        The search covers only the sessions that this server records, not the sessions of other agents such as \
-        Claude Code or Codex.
+        The search covers the transcripts of the sessions that this server records. For the sessions of other \
+        agents such as Claude Code or Codex, it covers only the title, the first and last prompts, the folder and \
+        the branch.
         """
+
+    /// The line after the sessions of other agents in an answer.
+    private static let externalAdviceLine = """
+        To read a session of another agent, use read external session with its source and its id.
+        """
+
+    /// The session of another agent of the external answer cases.
+    private static let externalSession = ExternalSessionSummary(
+        source: "codex", sourceID: "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b", path: "2026/11/rollout.jsonl", size: 2_048,
+        modified: Fixtures.fixedDate, cwd: URL(fileURLWithPath: "/work/codex"), title: "Retry budget in Codex",
+        state: .read)
 
     /// The words of the corrective of a server with no searcher.
     private static let noSearcherWords = "Search (⌘F)"
@@ -176,6 +188,67 @@ struct SessionsToolSearchTests {
             \(Self.limitLine)
             """
         #expect(output == expected)
+    }
+
+    @Test("search sessions gives one line for each external session after the sessions, and the advice to read it")
+    func theAnswerListsTheExternalSessionsAfterTheSessions() async throws {
+        let directory = InMemorySessionDirectory()
+        let found = Fixtures.summary(title: Self.foundTitle)
+        directory.register(found)
+        var page = Self.page(of: found.id, hits: [])
+        page.externalSessions = [
+            ExternalSessionSearchResult(
+                session: Self.externalSession, score: 0.5, field: ExternalSessionSearchResult.titleField)
+        ]
+        let searcher = RecordingTranscriptSearcher(page: page)
+
+        let output = try await Self.callAsCaller([("query", Self.queryText)], searcher: searcher, in: directory)
+
+        let expected = """
+            @\(found.shortID) \(Self.foundTitle) (\(Fixtures.workingFolder.path)) \(Self.day(of: found.updatedAt)) \
+            – \(Self.hitCount) hits
+            codex \(Self.externalSession.sourceID) "Retry budget in Codex" (/work/codex) \
+            \(Fixtures.fixedDate.formatted(.iso8601))
+            \(Self.externalAdviceLine)
+            \(Self.limitLine)
+            """
+        #expect(output == expected)
+    }
+
+    @Test("search sessions with only external sessions gives their lines, not the line that no session matches")
+    func onlyExternalSessionsAreNotNoMatch() async throws {
+        let page = SessionSearchPage(
+            sessions: [], nextCursor: nil, unavailableFolders: [],
+            externalSessions: [ExternalSessionSearchResult(session: Self.externalSession, score: 0.5, field: nil)])
+
+        let output = try await Self.callAsCaller(
+            [("query", Self.queryText)], searcher: RecordingTranscriptSearcher(page: page))
+
+        #expect(!output.contains("No session matches"), "output was: \(output)")
+        #expect(output.contains("codex \(Self.externalSession.sourceID) "), "output was: \(output)")
+    }
+
+    @Test("a coded page with no externalSessions key decodes with no external session")
+    func aPageWithNoExternalKeyDecodesAsEmpty() throws {
+        let data = Data(#"{"sessions":[],"unavailableFolders":[]}"#.utf8)
+
+        let page = try JSONDecoder().decode(SessionSearchPage.self, from: data)
+
+        #expect(page.externalSessions == [])
+    }
+
+    @Test("a coded page keeps its external sessions")
+    func aPageKeepsItsExternalSessionsInCode() throws {
+        let page = SessionSearchPage(
+            sessions: [], nextCursor: nil, unavailableFolders: [],
+            externalSessions: [
+                ExternalSessionSearchResult(
+                    session: Self.externalSession, score: 0.5, field: ExternalSessionSearchResult.titleField)
+            ])
+
+        let decoded = try JSONDecoder().decode(SessionSearchPage.self, from: try JSONEncoder().encode(page))
+
+        #expect(decoded == page)
     }
 
     @Test("a hit with no author gives the kind of its entry in place of the author")

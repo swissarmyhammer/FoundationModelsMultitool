@@ -257,7 +257,10 @@ import Testing
     /// (D207 (d)). The tool tells the same limit in
     /// ``SessionsToolText/searchLimitSentence``.
     private static let searchLimitRule =
-        "The search covers only the sessions of this server, not the sessions of other agents."
+        """
+        The search covers the transcripts of the sessions of this server. For the sessions of other agents, it \
+        covers only the title, the first and last prompts, the folder and the branch.
+        """
 
     /// A small skill text for the unit test of ``tells(_:in:)`` with
     /// ``searchLimitRule``: it names `search sessions` and its scope, but not

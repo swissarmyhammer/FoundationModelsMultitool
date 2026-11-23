@@ -174,6 +174,28 @@ struct SessionsGraphSearchResult: Sendable {
     }
 }
 
+/// The `ExternalSessionSearchResult` type: one session of another agent
+/// whose index fields match a search.
+struct SessionsGraphExternalSearchResult: Sendable {
+    /// The session, as the index of the host gives it.
+    let session: SessionsGraphExternalSession
+
+    /// The score in `[0, 1]` of the match.
+    let score: Double
+
+    /// The index field of the best match, or `nil`.
+    let field: String?
+
+    /// Makes the object of one external result of the searcher.
+    ///
+    /// - Parameter result: The result.
+    init(_ result: ExternalSessionSearchResult) {
+        session = SessionsGraphExternalSession(result.session)
+        score = result.score
+        field = result.field
+    }
+}
+
 /// The `SessionSearchConnection` type: one page of the sessions that match a
 /// search.
 struct SessionsGraphSearchConnection: Sendable {
@@ -187,6 +209,10 @@ struct SessionsGraphSearchConnection: Sendable {
     /// now.
     let unavailableFolders: [String]
 
+    /// The sessions of other agents whose index fields match, the best score
+    /// first. Only the first page gives them.
+    let externalSessions: [SessionsGraphExternalSearchResult]
+
     /// Makes the page of one search.
     ///
     /// A folder of a session that the viewer cannot see is not in
@@ -199,6 +225,7 @@ struct SessionsGraphSearchConnection: Sendable {
         results = outcome.matches.map(SessionsGraphSearchResult.init)
         nextCursor = outcome.page.nextCursor
         unavailableFolders = outcome.page.unavailableFolders.map(Self.path(of:)).filter(visibleFolders.contains)
+        externalSessions = outcome.page.externalSessions.map(SessionsGraphExternalSearchResult.init)
     }
 
     /// The path of a folder, in one form for each spelling of the folder.
@@ -334,6 +361,25 @@ extension SessionsGraphAPI {
         .description("One session that matches a search, with its hits.")
     }
 
+    /// The `ExternalSessionSearchResult` type.
+    ///
+    /// - Returns: The type.
+    static func externalSearchResultType() -> SchemaType {
+        Type(SessionsGraphExternalSearchResult.self, as: "ExternalSessionSearchResult") {
+            Field("session", at: \.session).description("The session of the other agent, as the index gives it.")
+            Field("score", at: \.score)
+                .description("The score from 0 to 1 of the match, on the scale of the score of SessionSearchResult.")
+            Field("field", at: \.field)
+                .description(
+                    "The index field of the best match: title, firstPrompt, lastPrompt, cwd or gitBranch. Null for "
+                        + "a match by meaning only.")
+        }
+        .description(
+            "One session of another agent, such as Claude Code or Codex, whose index fields match a search. The "
+                + "search matches only the title, the prompts, the folder and the branch, not the text of the turns. "
+                + "Read the session with externalSessionUpdates.")
+    }
+
     /// The `SessionSearchConnection` type.
     ///
     /// - Returns: The type.
@@ -345,6 +391,12 @@ extension SessionsGraphAPI {
                 .description("The cursor of the next page, or null when this page is the last.")
             Field("unavailableFolders", at: \.unavailableFolders)
                 .description("The paths of the folders of the results that this server cannot read now.")
+            Field("externalSessions", at: \.externalSessions)
+                .description(
+                    "The sessions of other agents whose title, prompts, folder or branch match, the best score "
+                        + "first. Only the first page gives them, at most \(ExternalSessionSearchResult.maximumCount). "
+                        + "A query with a @<session>, #<tag>, agent: or folder: token, or with the session argument, "
+                        + "gives none.")
         }
         .description("One page of the sessions that match a search.")
     }

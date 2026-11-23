@@ -336,6 +336,7 @@ struct SessionsGraphAPI: API {
                 textRangeType()
                 searchHitType()
                 searchResultType()
+                externalSearchResultType()
                 searchConnectionType()
                 startInput()
                 tagInput()

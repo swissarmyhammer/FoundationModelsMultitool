@@ -65,8 +65,14 @@ extension SessionsToolText {
 
     /// The last line of each answer: the limit of the search (D207 (d)).
     static let searchLimitSentence = """
-        The search covers only the sessions that this server records, not the sessions of other agents such as \
-        Claude Code or Codex.
+        The search covers the transcripts of the sessions that this server records. For the sessions of other \
+        agents such as Claude Code or Codex, it covers only the title, the first and last prompts, the folder and \
+        the branch.
+        """
+
+    /// The line after the sessions of other agents in an answer.
+    static let externalSearchAdvice = """
+        To read a session of another agent, use \(ReadExternalSession.opString) with its source and its id.
         """
 
     /// The sentence of a corrective that tells that the search did not run.
@@ -103,19 +109,28 @@ extension SessionsToolText {
     }
 
     /// The answer of `search sessions`: one line for each session, each with
-    /// at most ``maximumShownHits`` hits, then ``searchLimitSentence``. With
-    /// no session, the line that no session matches the query.
+    /// at most ``maximumShownHits`` hits, then one line for each session of
+    /// another agent and ``externalSearchAdvice``, then
+    /// ``searchLimitSentence``. With no session of either kind, the line that
+    /// no session matches the query.
     ///
     /// - Parameters:
     ///   - matches: The sessions of the page, in the order of the search.
+    ///   - externalSessions: The sessions of other agents that match, the
+    ///     best first.
     ///   - query: The query, as written.
     ///   - timeZone: The time zone of the day of each line.
     /// - Returns: The answer.
-    static func searchAnswer(_ matches: [SessionSearchMatch], query: String, timeZone: TimeZone) -> String {
+    static func searchAnswer(
+        _ matches: [SessionSearchMatch], externalSessions: [ExternalSessionSearchResult], query: String,
+        timeZone: TimeZone
+    ) -> String {
+        let sessionLines = matches.flatMap { searchLines(of: $0, timeZone: timeZone) }
+        let externalLines =
+            externalSessions.isEmpty
+            ? [] : externalSessions.map { externalSessionLine($0.session) } + [externalSearchAdvice]
         let lines =
-            matches.isEmpty
-            ? [noSearchMatch(query)]
-            : matches.flatMap { searchLines(of: $0, timeZone: timeZone) }
+            sessionLines.isEmpty && externalLines.isEmpty ? [noSearchMatch(query)] : sessionLines + externalLines
         return (lines + [searchLimitSentence]).joined(separator: "\n")
     }
 
