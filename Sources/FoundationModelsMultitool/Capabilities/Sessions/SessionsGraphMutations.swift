@@ -3,8 +3,9 @@
 // `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
 // `forkSession`, `sendMessage` and `replyMessage`. The share mutations
 // `shareSession`, `updateSessionShare` and `stopSharingSession` are in
-// `SessionsGraphShare.swift`, and the `importSession` mutation is in
-// `SessionsGraphImport.swift`.
+// `SessionsGraphShare.swift`, the `importSession` mutation is in
+// `SessionsGraphImport.swift`, and the `continueExternalSession` mutation is
+// in `SessionsGraphExternal.swift`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, or a name that tells its session when that verb does not
@@ -23,7 +24,7 @@
 // can see; it
 // tags, untags, renames, pins, unpins, forks, shares, sends and replies only
 // to the sessions that it owns;
-// and it cannot start or import a session.
+// and it cannot start, import or continue a session.
 
 import Foundation
 import FoundationModelsExtras
@@ -99,10 +100,13 @@ struct SessionsGraphMutation: Sendable {
     /// `importSession` (D209 (l)).
     static let importSession = Self(ImportSession.self)
 
+    /// `continueExternalSession` (D212).
+    static let continueExternalSession = Self(ContinueExternalSession.self)
+
     /// Each mutation of the endpoint.
     static let all = [
         start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply, share, updateShare, stopSharing,
-        importSession,
+        importSession, continueExternalSession,
     ]
 
     /// The name of the input object of the options of `shareSession`.
@@ -210,6 +214,13 @@ enum SessionsGraphText {
     /// a new session, as a start does.
     static let externalImport = """
         An external client cannot import a session: only a device of the user imports one. \
+        Send a message to a session that you can see instead.
+        """
+
+    /// The corrective of a continue of an external session by an external
+    /// client: a continue starts a new session, as a start does.
+    static let externalContinue = """
+        An external client cannot continue a session of another agent: only a device of the user continues one. \
         Send a message to a session that you can see instead.
         """
 
@@ -1050,7 +1061,7 @@ extension SessionsGraphAPI {
                 input: "The session that got the message, the message and the text.",
                 description: "Replies to a message that a session got, from you. \(receiptsDescription) "
                     + ownedTargetRule),
-        ] + shareMutationFields() + [importMutationField()]
+        ] + shareMutationFields() + [importMutationField(), continueExternalMutationField()]
     }
 
     /// The field of one mutation: its name, its resolver, and its one

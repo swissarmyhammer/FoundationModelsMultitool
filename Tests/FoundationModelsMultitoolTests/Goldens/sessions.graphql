@@ -755,6 +755,173 @@ input ImportSessionInput {
   name: String
 }
 
+"""How much of the file of an external session the index has read."""
+enum ExternalSessionState {
+  """The index found the file, and has not read it yet."""
+  FOUND
+
+  """The index read the metadata of the file."""
+  READ
+
+  """The index cannot read the file."""
+  UNREADABLE
+}
+
+"""
+One session of another agent in the index of this server. It is not a session of this server.
+"""
+type ExternalSession {
+  """The source agent, for example claude-code or codex."""
+  source: String!
+
+  """
+  The id of the session in the store of the source agent. continueExternalSession and externalSessionUpdates take it as id.
+  """
+  sourceId: String!
+
+  """The path of the file of the session, relative to the source root."""
+  path: String!
+
+  """
+  The name of the project folder of the file, or null when the source has none.
+  """
+  projectKey: String
+
+  """The size of the file, in bytes."""
+  size: Float!
+
+  """The time of the last change of the file."""
+  modified: DateTime!
+
+  """
+  The absolute path of the working folder of the session, or null when it is not known.
+  """
+  cwd: String
+
+  """The git branch of the session, or null."""
+  gitBranch: String
+
+  """
+  True when a program started the session. False for a session that a person typed.
+  """
+  isAutomated: Boolean!
+
+  """The title of the session, or null."""
+  title: String
+
+  """The first prompt, cut short, or null."""
+  firstPrompt: String
+
+  """The last prompt, cut short, or null."""
+  lastPrompt: String
+
+  """The time of the first record, or null."""
+  firstDate: DateTime
+
+  """The time of the last record, or null."""
+  lastDate: DateTime
+
+  """How much of the file the index has read."""
+  state: ExternalSessionState!
+
+  """
+  The text of the name of a row: the title, else the first prompt, else the last prompt. Null when the session has none: then the name of the row is displayDate.
+  """
+  displayText: String
+
+  """The date of a row: lastDate, else modified."""
+  displayDate: DateTime!
+}
+
+"""The identity of one session of another agent."""
+type ExternalSessionKey {
+  """The source agent."""
+  source: String!
+
+  """The id of the session in the store of the source agent."""
+  sourceId: String!
+}
+
+"""The progress of the index of the sessions of other agents."""
+type ExternalSessionIndexState {
+  """The number of session files that the index found."""
+  filesFound: Int!
+
+  """The number of session files that the index read, or cannot read."""
+  filesRead: Int!
+
+  """True when the index read each file that it found."""
+  isComplete: Boolean!
+}
+
+"""One page of the sessions of other agents."""
+type ExternalSessionPage {
+  """The sessions of the page, the newest first."""
+  sessions: [ExternalSession!]!
+
+  """The progress of the index when the page was made."""
+  indexState: ExternalSessionIndexState!
+
+  """The cursor of the next page, or null when this page is the last."""
+  nextCursor: String
+
+  """
+  The source agents whose sessions this server cannot read: the user gave no access to their folder. Only the user can give access, with the command Allow Access.
+  """
+  unreadableSources: [String!]!
+}
+
+"""One change of the index of the sessions of other agents."""
+type ExternalSessionChange {
+  """The sessions that the index added or changed."""
+  changed: [ExternalSession!]!
+
+  """The sessions whose files are gone."""
+  removed: [ExternalSessionKey!]!
+
+  """The progress of the index after the change."""
+  indexState: ExternalSessionIndexState!
+}
+
+"""One entry of the history of a session of another agent."""
+type ExternalSessionEntry {
+  """The kind of the entry, for example user_message_chunk or tool_call."""
+  kind: String!
+
+  """The time of the entry."""
+  timestamp: DateTime!
+
+  """The content of the entry."""
+  payload: JSON!
+}
+
+"""One batch of the history of a session of another agent."""
+type ExternalSessionUpdateBatch {
+  """The entries of the batch, oldest first."""
+  entries: [ExternalSessionEntry!]!
+}
+
+"""
+The session of another agent to continue, and the folder and the name of the new session.
+"""
+input ContinueExternalSessionInput {
+  """The source agent: claude-code or codex."""
+  source: String!
+
+  """The sourceId of the session, from externalSessions."""
+  id: String!
+
+  """
+  The absolute path of the folder of the new session. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: the working folder of the source session.
+  """
+  folder: String
+
+  """
+  The name of the new session. None: the default name. A name that a session of the folder has gets the next free number.
+  """
+  name: String
+}
+
 type Query {
   """
   The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns or that its connection started, their subagents, and the sessions that they started.
@@ -864,6 +1031,30 @@ type Query {
     """The nextCursor of the page before, or no cursor for the first page."""
     after: String
   ): ImportableSessionPage!
+
+  """
+  The sessions of other agents, such as Claude Code or Codex, from the index of this server, the newest first. The query reads the index and never waits for it: the page has the sessions that the index has now and its indexState. With a folder, the index reads the files of that folder first, and externalSessionChanges gives the other sessions later. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents. EXTERNAL_SESSION_FAILED when the list fails.
+  """
+  externalSessions(
+    """The source agent: claude-code or codex. None: each source."""
+    source: String
+
+    """
+    The absolute path of the working folder of the sessions. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: each folder.
+    """
+    folder: String
+
+    """
+    True to also give the sessions that a program started. False: only the typed sessions.
+    """
+    automated: Boolean = false
+
+    """The most sessions to give: 1 to 50."""
+    first: Int = 20
+
+    """The nextCursor of the page before, or no cursor for the first page."""
+    after: String
+  ): ExternalSessionPage!
 }
 
 type Mutation {
@@ -982,6 +1173,14 @@ type Mutation {
     """The source session, and the folder and the name of the new session."""
     input: ImportSessionInput!
   ): Session!
+
+  """
+  Continues a session of another agent, such as Claude Code or Codex, in a new session with its full history. The source does not change. Each call makes a new session, also when the source was continued before. Gives the new session. An external client cannot continue a session. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents. NO_SOURCE_ACCESS when the user gave no access to the sessions of the source: only the user can give access, with the command Allow Access. UNKNOWN_EXTERNAL_SESSION when the index has no such session, FOLDER_UNAVAILABLE when the folder does not exist or this server cannot write it, and EXTERNAL_SESSION_FAILED when the copy fails.
+  """
+  continueExternalSession(
+    """The source session, and the folder and the name of the new session."""
+    input: ContinueExternalSessionInput!
+  ): Session!
 }
 
 type Subscription {
@@ -994,4 +1193,25 @@ type Subscription {
     """
     after: String
   ): SessionChange!
+
+  """
+  The changes of the index of the sessions of other agents: the sessions that the index added or changed, the sessions whose files are gone, and the progress of the index. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents.
+  """
+  externalSessionChanges(
+    """
+    The absolute path of the working folder to follow. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: each folder.
+    """
+    folder: String
+  ): ExternalSessionChange!
+
+  """
+  The history of one session of another agent, in batches, oldest first, for a read-only view. The first batches come while the read of the file continues, and the subscription ends after the last batch. Nothing is written. Stop the subscription to stop the read. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents. NO_SOURCE_ACCESS when the user gave no access to the sessions of the source: only the user can give access, with the command Allow Access. UNKNOWN_EXTERNAL_SESSION when the index has no such session, and EXTERNAL_SESSION_FAILED when the read fails.
+  """
+  externalSessionUpdates(
+    """The source agent: claude-code or codex."""
+    source: String!
+
+    """The sourceId of the session, from externalSessions."""
+    id: String!
+  ): ExternalSessionUpdateBatch!
 }

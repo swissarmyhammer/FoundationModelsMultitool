@@ -3,8 +3,9 @@
 // example names an operation of the tool and only its parameters, each
 // operation of the tool has an example, the parameter list of `export
 // session`, of `fork session`, of `search sessions`, of `share session`, of
-// `update share`, of `stop sharing`, of `list imports` and of `import session`
-// in the skill names each parameter, the skill tells the limit of `search
+// `update share`, of `stop sharing`, of `list imports`, of `import session`,
+// of `list external sessions`, of `read external session` and of
+// `continue external session` (D212) in the skill names each parameter, the skill tells the limit of `search
 // sessions` (D207 (d)), the skill says to share a session only when the user
 // asks (D208 (k)), the skill says not to read the files of other agents
 // (D209 (l)), each code-mode verb of the skill is a verb of the tool,
@@ -244,6 +245,7 @@ import Testing
     static let listedOperations = [
         ExportSession.opString, ForkSession.opString, SearchSessions.opString, ShareSession.opString,
         UpdateShare.opString, StopSharing.opString, ListImports.opString, ImportSession.opString,
+        ListExternalSessions.opString, ReadExternalSession.opString, ContinueExternalSession.opString,
     ]
 
     @Test("the skill names each parameter of the operation", arguments: listedOperations)

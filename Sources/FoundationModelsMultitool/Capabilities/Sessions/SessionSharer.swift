@@ -13,8 +13,8 @@ import ULID
 /// Shares a session as a read-only link, updates the snapshot of the share,
 /// and stops the share.
 ///
-/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:sharer:importer:)``
-/// and to ``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:)``. With no
+/// A host gives one to ``SessionsTool/init(directory:exporter:searcher:sharer:importer:externalSessionHost:)``
+/// and to ``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)``. With no
 /// sharer, the share operations give the corrective of the code
 /// `SHARING_UNAVAILABLE`.
 ///

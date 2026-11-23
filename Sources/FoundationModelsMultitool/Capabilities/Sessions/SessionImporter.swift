@@ -15,8 +15,8 @@ import ULID
 /// one of them as a new session.
 ///
 /// A host gives one to
-/// ``SessionsTool/init(directory:exporter:searcher:sharer:importer:)`` and to
-/// ``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:)``. With no
+/// ``SessionsTool/init(directory:exporter:searcher:sharer:importer:externalSessionHost:)`` and to
+/// ``SessionsGraph/endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)``. With no
 /// importer, the import operations give the corrective of the code
 /// `IMPORT_UNAVAILABLE`.
 ///

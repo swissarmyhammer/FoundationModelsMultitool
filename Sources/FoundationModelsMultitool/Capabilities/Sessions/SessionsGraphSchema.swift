@@ -41,6 +41,13 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// endpoint, or `nil` when no host gave one. `Query.importableSessions`
     /// and `Mutation.importSession` read it.
     let importer: (any SessionImporter)?
+
+    /// The host of the external sessions that the host gave the endpoint, or
+    /// `nil` when no host gave one. `Query.externalSessions`,
+    /// `Subscription.externalSessionChanges`,
+    /// `Subscription.externalSessionUpdates` and
+    /// `Mutation.continueExternalSession` read it (D212).
+    let externalSessionHost: (any ExternalSessionHost)?
 }
 
 /// The root resolver of the `sessions` endpoint. It holds no state: each
@@ -306,7 +313,10 @@ struct SessionsGraphAPI: API {
     /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
     /// its types are in `SessionsGraphSearch.swift`, the `importableSessions`
     /// query, the `importSession` mutation and their types are in
-    /// `SessionsGraphImport.swift`, and the `cursor` query, the
+    /// `SessionsGraphImport.swift`, the `externalSessions` query, the
+    /// `externalSessionChanges` and `externalSessionUpdates` subscriptions,
+    /// the `continueExternalSession` mutation and their types are in
+    /// `SessionsGraphExternal.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
     /// - Returns: The schema.
@@ -355,6 +365,15 @@ struct SessionsGraphAPI: API {
                 importProvenanceType()
                 importableSessionPageType()
                 importInput()
+                externalSessionStateEnum()
+                externalSessionType()
+                externalSessionKeyType()
+                externalIndexStateType()
+                externalSessionPageType()
+                externalSessionChangeType()
+                externalSessionEntryType()
+                externalSessionUpdateBatchType()
+                continueExternalInput()
             }
             .addQuery {
                 sessionsField()
@@ -366,10 +385,13 @@ struct SessionsGraphAPI: API {
                 recentSessionsField()
                 cursorField()
                 importableSessionsField()
+                externalSessionsField()
             }
             .addMutation(mutationFields)
             .addSubscription {
                 changesField()
+                externalSessionChangesField()
+                externalSessionUpdatesField()
             }
             .build()
     }

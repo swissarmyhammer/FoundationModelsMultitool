@@ -29,6 +29,11 @@ struct SessionsToolContext: Sendable {
     /// gave none: the import operations then give a corrective (D209 (l)).
     let importer: (any SessionImporter)?
 
+    /// The host of the external sessions: the sessions of other agents in
+    /// the index of the host, or `nil` when the host gave none. The
+    /// external session operations then give a corrective (D212).
+    let externalSessionHost: (any ExternalSessionHost)?
+
     /// Makes the context.
     ///
     /// - Parameters:
@@ -45,16 +50,20 @@ struct SessionsToolContext: Sendable {
     ///   - importer: The importer of the sessions of other agents, or `nil`
     ///     for none. The mutations of the `sessions` endpoint that import
     ///     nothing give none.
+    ///   - externalSessionHost: The host of the external sessions, or `nil`
+    ///     for none. The mutations of the `sessions` endpoint that continue
+    ///     no external session give none.
     init(
         directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
         searcher: (any SessionTranscriptSearcher)? = nil, sharer: (any SessionSharer)? = nil,
-        importer: (any SessionImporter)? = nil
+        importer: (any SessionImporter)? = nil, externalSessionHost: (any ExternalSessionHost)? = nil
     ) {
         self.directory = directory
         self.exporter = exporter
         self.searcher = searcher
         self.sharer = sharer
         self.importer = importer
+        self.externalSessionHost = externalSessionHost
     }
 
     /// The sessions of the directory as the tool sees them: through the

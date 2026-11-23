@@ -6,7 +6,8 @@
 // `SessionsGraphMutations.swift`, its page query is in
 // `SessionsGraphPages.swift`, its search query is in
 // `SessionsGraphSearch.swift`, its import query and import mutation are in
-// `SessionsGraphImport.swift`, its object types are in
+// `SessionsGraphImport.swift`, its external session query, subscriptions and
+// mutation are in `SessionsGraphExternal.swift`, its object types are in
 // `SessionsGraphTypes.swift`, and its change feed and `changes` subscription
 // are in `SessionsGraphChanges.swift`. This file holds the endpoint, its name
 // rules, and the one endpoint of each directory.
@@ -51,6 +52,12 @@ import Synchronization
 ///   session of the agent comes first. An earlier import gives its `Session`
 ///   only when the viewer can see that session; the page drops each other
 ///   earlier import. With no importer it gives `IMPORT_UNAVAILABLE`.
+/// - `Query.externalSessions(source:folder:automated:first:after:)` gives one
+///   page of the external sessions of the index of the host (D212): the
+///   sessions of other agents, such as Claude Code or Codex, the newest
+///   first, with the `indexState` of the index and the sources with no
+///   access. It reads the index and never waits for the build of the index.
+///   With no external session host it gives `EXTERNAL_SESSIONS_UNAVAILABLE`.
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
@@ -62,8 +69,9 @@ import Synchronization
 /// `replyMessage`, and `shareSession`, `updateSessionShare` and
 /// `stopSharingSession` for the tool ops `share session`, `update share` and
 /// `stop sharing` (D208 (k)), and `importSession` (D209 (l)), each with one
-/// `input`. Each `importSession` makes a new session, and gives that
-/// `Session`; an external client cannot import a session. A `Session` gives its
+/// `input`, and `continueExternalSession` (D212). Each `importSession` and
+/// each `continueExternalSession` makes a new session, and gives that
+/// `Session`; an external client cannot import or continue a session. A `Session` gives its
 /// `share` from the sharer of the endpoint; with no sharer, the field and the
 /// share mutations give `SHARING_UNAVAILABLE`.
 /// A client acts as its user, and a call with no viewer acts as the caller
@@ -82,6 +90,13 @@ import Synchronization
 /// see, and ends with `RESYNC_REQUIRED` when a change after its cursor is
 /// lost. The endpoint keeps the newest ``changeLogCapacity`` changes.
 ///
+/// Two more subscriptions follow the external sessions (D212):
+/// `Subscription.externalSessionChanges(folder:)` gives each change of the
+/// index of the host for a folder, and
+/// `Subscription.externalSessionUpdates(source:id:)` gives the history of one
+/// external session in batches, for a read-only view. Each stops the stream of
+/// the host when the client stops the subscription.
+///
 /// An id argument reads a session id in any letter case, as the tool does,
 /// and a text that is not a session id gives `INVALID_SESSION_ID` with the
 /// corrective of the tool. Each refusal is a ``SessionsRefusal``.
@@ -93,7 +108,7 @@ import Synchronization
 /// and the sessions that they started, to any depth. A mutation on a session
 /// that the viewer cannot see gives the `NOT_FOUND` of the toolkit.
 ///
-/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:searcher:sharer:importer:)`` gives
+/// One directory has one endpoint (EXTRAS-9 rule 1): ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` gives
 /// the same instance for each call over the same directory, thus each copy of
 /// ``SessionsTool``, of each session and each fork, gives the same endpoint,
 /// with one change log and one cursor.
@@ -138,7 +153,16 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// and the snake-case names (`source_id`, `source_path`, `source_title`,
     /// `source_last_date`, `imported_at`, `skipped_record_count`), `sourceID`
     /// for `sourceId` and `skipped` for `skippedRecordCount` of its
-    /// provenance; the bare verb of each
+    /// provenance; for the arguments of `externalSessions` the names of the
+    /// arguments of the `list external sessions` op (`agent` and `from` for
+    /// `source`, `cwd` for `folder`, `includeAutomated` for `automated`,
+    /// `limit` for `first`) and `cursor` for `after`; `items` and `nodes`
+    /// for the `sessions` of an external session page and `endCursor` for its
+    /// `nextCursor`; `sourceID` and `source_id` for the `sourceId` of an
+    /// external session and of its key, and `folder` for the `cwd` of an
+    /// external session; `cwd` for the `folder` of `externalSessionChanges`,
+    /// and `agent` and `from` for the `source`, and `sourceId` and
+    /// `sourceID` for the `id`, of `externalSessionUpdates`; the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
     /// of its input.
     static let rules = GraphQLNameRules(
@@ -166,6 +190,9 @@ public final class SessionsGraph: GraphQLEndpoint {
                     "turnCount": ["turns"], "previousImports": ["imports"],
                 ],
                 "SessionPreviousImport": ["importedAt": ["date"]],
+                "ExternalSessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
+                "ExternalSession": ["sourceId": ["sourceID", "source_id"], "cwd": ["folder"]],
+                "ExternalSessionKey": ["sourceId": ["sourceID", "source_id"]],
                 "Query": [
                     "sessionPage": ["sessionsPage", "pagedSessions"], "importableSessions": ["listImports"],
                 ],
@@ -182,6 +209,12 @@ public final class SessionsGraph: GraphQLEndpoint {
                     "agent": ["from", "sourceAgent"], "folder": ["cwd"], "first": ["limit"], "after": ["cursor"],
                     "preferredFolder": ["preferred_folder"],
                 ],
+                "Query.externalSessions": [
+                    "source": ["agent", "from"], "folder": ["cwd"], "automated": ["includeAutomated"],
+                    "first": ["limit"], "after": ["cursor"],
+                ],
+                "Subscription.externalSessionChanges": ["folder": ["cwd"]],
+                "Subscription.externalSessionUpdates": ["source": ["agent", "from"], "id": ["sourceId", "sourceID"]],
             ]))
 
     /// The name of the endpoint.
@@ -200,21 +233,25 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// feed from the moment the endpoint is made.
     private let changes: SessionsGraphChangeFeed
 
-    /// The exporter that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
+    /// The exporter that ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` keeps, or `nil`.
     private let storedExporter = Mutex<(any SessionTranscriptExporter)?>(nil)
 
-    /// The searcher that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
+    /// The searcher that ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` keeps, or `nil`.
     private let storedSearcher = Mutex<(any SessionTranscriptSearcher)?>(nil)
 
-    /// The sharer that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`: a
+    /// The sharer that ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` keeps, or `nil`: a
     /// ``SessionsGraphRecordingSharer`` over the sharer of the host.
     private let storedSharer = Mutex<(any SessionSharer)?>(nil)
 
-    /// The importer that ``endpoint(of:exporter:searcher:sharer:importer:)`` keeps, or `nil`.
+    /// The importer that ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` keeps, or `nil`.
     private let storedImporter = Mutex<(any SessionImporter)?>(nil)
 
+    /// The external session host that
+    /// ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)`` keeps, or `nil`.
+    private let storedExternalSessionHost = Mutex<(any ExternalSessionHost)?>(nil)
+
     /// Makes the endpoint over a directory, and starts its change feed. A
-    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:searcher:sharer:importer:)``,
+    /// caller outside this type gets the endpoint with ``endpoint(of:exporter:searcher:sharer:importer:externalSessionHost:)``,
     /// which makes one for each directory.
     ///
     /// - Parameter directory: The directory that the `sessions` tool also
@@ -225,7 +262,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     }
 
     /// Gives the one endpoint of `directory` (EXTRAS-9 rule 1), and keeps
-    /// `exporter`, `searcher`, `sharer` and `importer` with it.
+    /// `exporter`, `searcher`, `sharer`, `importer` and `externalSessionHost`
+    /// with it.
     ///
     /// The first call for a directory makes the endpoint, and each later call
     /// gives the same instance while a caller holds it. A directory with no
@@ -236,7 +274,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// exporter that an earlier call gave. A call with no exporter keeps the
     /// exporter of the endpoint. Thus a tool that a host makes with no
     /// exporter does not remove the exporter of the directory. The searcher,
-    /// the sharer and the importer follow the same rule.
+    /// the sharer, the importer and the external session host follow the
+    /// same rule.
     ///
     /// The endpoint keeps the sharer inside a recorder, which puts each share
     /// change into the change feed, and reads the `shareChanges()` stream of
@@ -255,17 +294,20 @@ public final class SessionsGraph: GraphQLEndpoint {
     ///     of the endpoint.
     ///   - importer: The importer of the sessions of other agents, or `nil`
     ///     to keep the importer of the endpoint.
+    ///   - externalSessionHost: The host of the sessions of other agents in
+    ///     its index (D212), or `nil` to keep the host of the endpoint.
     /// - Returns: The endpoint.
     public static func endpoint(
         of directory: any SessionDirectory, exporter: (any SessionTranscriptExporter)? = nil,
         searcher: (any SessionTranscriptSearcher)? = nil, sharer: (any SessionSharer)? = nil,
-        importer: (any SessionImporter)? = nil
+        importer: (any SessionImporter)? = nil, externalSessionHost: (any ExternalSessionHost)? = nil
     ) -> SessionsGraph {
         let endpoint = sharedEndpoint(of: directory)
         storeIfPresent(exporter, in: endpoint.storedExporter)
         storeIfPresent(searcher, in: endpoint.storedSearcher)
         endpoint.keep(sharer)
         storeIfPresent(importer, in: endpoint.storedImporter)
+        storeIfPresent(externalSessionHost, in: endpoint.storedExternalSessionHost)
         return endpoint
     }
 
@@ -355,6 +397,15 @@ public final class SessionsGraph: GraphQLEndpoint {
         Self.read(storedImporter)
     }
 
+    /// The external session host that a host gave for the directory, or
+    /// `nil` when no host gave one: the external session operations of the
+    /// `sessions` tool, the `externalSessions` query, the
+    /// `externalSessionChanges` and `externalSessionUpdates` subscriptions
+    /// and the `continueExternalSession` mutation read it (D212).
+    var externalSessionHost: (any ExternalSessionHost)? {
+        Self.read(storedExternalSessionHost)
+    }
+
     /// The schema of the endpoint in SDL. The schema is built once for each
     /// process; when that build fails, the text is empty and each call throws
     /// the error of the build.
@@ -408,7 +459,7 @@ public final class SessionsGraph: GraphQLEndpoint {
 
     /// The context of one call: the directory, read with the visibility of
     /// the viewer, the change feed, and the exporter, the searcher, the
-    /// sharer and the importer of the endpoint.
+    /// sharer, the importer and the external session host of the endpoint.
     ///
     /// - Parameter viewer: The client that makes the call, or `nil` for the
     ///   agent.
@@ -416,7 +467,7 @@ public final class SessionsGraph: GraphQLEndpoint {
     private func context(of viewer: GraphQLViewer?) -> SessionsGraphContext {
         SessionsGraphContext(
             sessions: SessionsVisibility(directory: directory, viewer: viewer), changes: changes, exporter: exporter,
-            searcher: searcher, sharer: sharer, importer: importer)
+            searcher: searcher, sharer: sharer, importer: importer, externalSessionHost: externalSessionHost)
     }
 
     /// The Graphiti engine of a call: the schema of the process.

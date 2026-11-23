@@ -140,6 +140,22 @@ struct SessionsRefusal: CodedError {
         /// The importer could not list or import the sessions of another
         /// agent.
         case importFailed = "IMPORT_FAILED"
+
+        /// The server has no external session host, so it cannot read or
+        /// continue the sessions of other agents (D212).
+        case externalSessionsUnavailable = "EXTERNAL_SESSIONS_UNAVAILABLE"
+
+        /// The index of the external sessions has no session with the source
+        /// and the id of the call.
+        case unknownExternalSession = "UNKNOWN_EXTERNAL_SESSION"
+
+        /// The working folder of the new session of a continue does not
+        /// exist, or the host cannot write it.
+        case folderUnavailable = "FOLDER_UNAVAILABLE"
+
+        /// The external session host could not list, read or continue an
+        /// external session.
+        case externalSessionFailed = "EXTERNAL_SESSION_FAILED"
     }
 
     /// The code of each kind, for the conformance check of EXTRAS-9 rule 8.
