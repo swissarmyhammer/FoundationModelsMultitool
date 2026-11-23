@@ -83,6 +83,14 @@ final class FakeExternalSessionHost: ExternalSessionHost {
     /// The folders in which the fake cannot make a session.
     let unavailableFolders: [URL]
 
+    /// The progress of the folder of a query with a folder. A query with no
+    /// folder gets none.
+    let folderIndexState: ExternalSessionIndexState?
+
+    /// The cursor that the fake refuses with
+    /// ``ExternalSessionError/invalidCursor(_:)``, or `nil`.
+    let invalidCursor: String?
+
     /// The calls and the streams of the fake.
     private let state = Mutex(State())
 
@@ -134,11 +142,16 @@ final class FakeExternalSessionHost: ExternalSessionHost {
     ///     task is cancelled. The default is false.
     ///   - unavailableFolders: The folders in which the fake cannot make a
     ///     session. The default is none.
+    ///   - folderIndexState: The progress of the folder of a query with a
+    ///     folder. The default is none.
+    ///   - invalidCursor: The cursor that the fake refuses. The default is
+    ///     none.
     init(
         sessions: [ExternalSessionSummary] = [typedSession, automatedSession],
         indexState: ExternalSessionIndexState = completeIndex, nextCursor: String? = nil,
         unreadableSources: [String] = [], batches: [ExternalSessionUpdateBatch] = [], finishesUpdates: Bool = true,
-        blocksCalls: Bool = false, unavailableFolders: [URL] = []
+        blocksCalls: Bool = false, unavailableFolders: [URL] = [],
+        folderIndexState: ExternalSessionIndexState? = nil, invalidCursor: String? = nil
     ) {
         self.sessions = sessions
         self.indexState = indexState
@@ -148,6 +161,8 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         self.finishesUpdates = finishesUpdates
         self.blocksCalls = blocksCalls
         self.unavailableFolders = unavailableFolders
+        self.folderIndexState = folderIndexState
+        self.invalidCursor = invalidCursor
         (queryStarts, queryStart) = AsyncStream.makeStream()
         (queryCancellations, queryCancellation) = AsyncStream.makeStream()
         (continueStarts, continueStart) = AsyncStream.makeStream()
@@ -237,10 +252,15 @@ final class FakeExternalSessionHost: ExternalSessionHost {
     /// - Parameters:
     ///   - session: The session that the index adds.
     ///   - indexState: The progress of the index after the change.
-    func add(_ session: ExternalSessionSummary, indexState: ExternalSessionIndexState) {
+    func add(
+        _ session: ExternalSessionSummary, indexState: ExternalSessionIndexState,
+        folderIndexState: ExternalSessionIndexState? = nil
+    ) {
         let followers = state.withLock { $0.followers }
         for follower in followers {
-            follower.yield(ExternalSessionChange(changed: [session], indexState: indexState))
+            follower.yield(
+                ExternalSessionChange(
+                    changed: [session], indexState: indexState, folderIndexState: folderIndexState))
         }
     }
 
@@ -258,6 +278,9 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         if blocksCalls {
             try await waitForCancellation(started: queryStart, cancelled: queryCancellation)
         }
+        if let cursor = query.cursor, cursor == invalidCursor {
+            throw ExternalSessionError.invalidCursor(cursor)
+        }
         let matching = sessions.filter { session in
             (query.source ?? session.source) == session.source
                 && (query.folder.map { $0.path == session.cwd?.path } ?? true)
@@ -265,7 +288,7 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         }
         return ExternalSessionPage(
             sessions: Array(matching.prefix(query.limit)), indexState: indexState, nextCursor: nextCursor,
-            unreadableSources: unreadableSources)
+            unreadableSources: unreadableSources, folderIndexState: query.folder == nil ? nil : folderIndexState)
     }
 
     /// Records the folder, and gives a stream that ``add(_:indexState:)``

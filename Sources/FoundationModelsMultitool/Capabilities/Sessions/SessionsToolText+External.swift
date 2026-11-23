@@ -86,6 +86,15 @@ extension SessionsToolText {
         "Allow Access to \(sourceNames[source] ?? source) Sessions…"
     }
 
+    /// The corrective of a cursor that is not a cursor of a page of the
+    /// list.
+    ///
+    /// - Parameter cursor: The cursor of the request.
+    /// - Returns: The text.
+    static func externalInvalidCursor(_ cursor: String) -> String {
+        "The cursor \(cursor) is not a cursor of a page of this list. Use the next cursor of the last page, or no cursor."
+    }
+
     /// The corrective of a source whose sessions the host cannot read, and
     /// the line of `list external sessions` for that source.
     ///
@@ -176,7 +185,9 @@ extension SessionsToolText {
         let sessionLines = page.sessions.isEmpty ? [noExternalSession] : page.sessions.map(externalSessionLine)
         let moreLines = page.nextCursor == nil ? [] : [moreExternalSessions]
         let accessLines = page.unreadableSources.map(noExternalSourceAccess)
-        let indexLines = page.indexState.isComplete ? [] : [incompleteIndexLine(page.indexState)]
+        // A list of one folder gives the progress of that folder, else the progress of each root.
+        let state = page.folderIndexState ?? page.indexState
+        let indexLines = state.isComplete ? [] : [incompleteIndexLine(state)]
         return (sessionLines + moreLines + accessLines + indexLines + [externalListAdvice]).joined(separator: "\n")
     }
 

@@ -252,6 +252,33 @@ struct SessionsGraphExternalTests {
             ])
     }
 
+    @Test("externalSessions of a folder gives the progress of the folder, and with no folder gives none")
+    func theQueryGivesTheFolderIndexState() async throws {
+        let folder = ExternalSessionIndexState(filesFound: 12, filesRead: 5, isComplete: false)
+        let setup = Setup(host: FakeExternalSessionHost(folderIndexState: folder))
+        let selection = "{ folderIndexState { filesFound filesRead isComplete } }"
+
+        let withFolder = try await setup.run("{ externalSessions(folder: \"/work/project\") \(selection) }")
+        let withNoFolder = try await setup.run("{ externalSessions \(selection) }")
+
+        #expect(withFolder.codes.isEmpty, "errors: \(withFolder.messages)")
+        let state = try #require(try withFolder.object("externalSessions")["folderIndexState"] as? [String: Any])
+        #expect(state["filesFound"] as? Int == 12)
+        #expect(state["filesRead"] as? Int == 5)
+        #expect(state["isComplete"] as? Bool == false)
+        #expect(try withNoFolder.object("externalSessions")["folderIndexState"] is NSNull)
+    }
+
+    @Test("externalSessions with a cursor that the host refuses gives the code INVALID_CURSOR")
+    func theQueryWithABadCursorGivesTheCode() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(invalidCursor: "bad"))
+
+        let reply = try await setup.run("{ externalSessions(after: \"bad\") { nextCursor } }")
+
+        #expect(reply.codes == [SessionsRefusal.Kind.invalidCursor.rawValue])
+        #expect(reply.messages == [SessionsToolText.externalInvalidCursor("bad")])
+    }
+
     @Test("externalSessions with no automated argument gives only the typed sessions")
     func theQueryWithNoAutomatedArgumentGivesTheTypedSessions() async throws {
         let setup = Setup()
@@ -348,6 +375,25 @@ struct SessionsGraphExternalTests {
         #expect(state["filesFound"] as? Int == 4)
         #expect(state["isComplete"] as? Bool == true)
         #expect(setup.host.changeFolders.map { $0?.path } == [Fixtures.workingFolder.path])
+    }
+
+    @Test("the externalSessionChanges subscription of a folder gives the progress of the folder")
+    func theChangesSubscriptionGivesTheFolderIndexState() async throws {
+        let setup = Setup()
+        let index = ExternalSessionIndexState(filesFound: 400, filesRead: 120, isComplete: false)
+        let folder = ExternalSessionIndexState(filesFound: 12, filesRead: 5, isComplete: false)
+        let responses = try await setup.subscribe(
+            "subscription { externalSessionChanges(folder: \"/work/project\") { folderIndexState { filesFound "
+                + "filesRead isComplete } } }")
+
+        setup.host.add(Host.addedSession, indexState: index, folderIndexState: folder)
+        let reply = try await Self.firstReply(of: responses)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let state = try #require(try reply.object("externalSessionChanges")["folderIndexState"] as? [String: Any])
+        #expect(state["filesFound"] as? Int == 12)
+        #expect(state["filesRead"] as? Int == 5)
+        #expect(state["isComplete"] as? Bool == false)
     }
 
     // MARK: - externalSessionUpdates

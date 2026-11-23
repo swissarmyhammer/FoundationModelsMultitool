@@ -169,6 +169,18 @@ struct SessionsToolExternalTests {
         #expect(SessionsToolText.incompleteIndexLine(index).contains("it read 120 of 400 session files"))
     }
 
+    @Test("list external sessions of a folder gives the progress of that folder, not of each root")
+    func theListOfAFolderGivesTheFolderIndexState() async throws {
+        let index = ExternalSessionIndexState(filesFound: 400, filesRead: 120, isComplete: false)
+        let folder = ExternalSessionIndexState(filesFound: 12, filesRead: 5, isComplete: false)
+
+        let output = try await Self.callAsCaller(
+            Self.listOp, [("folder", ".")], host: Host(indexState: index, folderIndexState: folder))
+
+        #expect(output.contains(SessionsToolText.incompleteIndexLine(folder)), "\(output)")
+        #expect(!output.contains(SessionsToolText.incompleteIndexLine(index)), "\(output)")
+    }
+
     @Test("list external sessions gives the Allow Access corrective for each source with no access")
     func theListGivesTheAccessLineOfEachUnreadableSource() async throws {
         let output = try await Self.callAsCaller(Self.listOp, host: Host(unreadableSources: [Host.claudeCode]))

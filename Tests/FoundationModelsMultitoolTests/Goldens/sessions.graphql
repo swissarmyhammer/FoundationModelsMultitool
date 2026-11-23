@@ -859,8 +859,13 @@ type ExternalSessionPage {
   """The sessions of the page, the newest first."""
   sessions: [ExternalSession!]!
 
-  """The progress of the index when the page was made."""
+  """The progress of the index of each root when the page was made."""
   indexState: ExternalSessionIndexState!
+
+  """
+  The progress of the index for the files of the folder of the query when the page was made, or null for a query with no folder.
+  """
+  folderIndexState: ExternalSessionIndexState
 
   """The cursor of the next page, or null when this page is the last."""
   nextCursor: String
@@ -879,8 +884,13 @@ type ExternalSessionChange {
   """The sessions whose files are gone."""
   removed: [ExternalSessionKey!]!
 
-  """The progress of the index after the change."""
+  """The progress of the index of each root after the change."""
   indexState: ExternalSessionIndexState!
+
+  """
+  The progress of the index for the files of the followed folder after the change, or null for a stream of each folder.
+  """
+  folderIndexState: ExternalSessionIndexState
 }
 
 """One entry of the history of a session of another agent."""

@@ -259,6 +259,10 @@ struct SessionsGraphExternalSessionPage: Sendable {
     /// The sources whose sessions the host cannot read.
     let unreadableSources: [String]
 
+    /// The progress of the index for the folder of the query, or `nil` for a query with no
+    /// folder.
+    let folderIndexState: SessionsGraphExternalIndexState?
+
     /// Makes the object of a page of the host.
     ///
     /// - Parameter page: The page.
@@ -267,6 +271,7 @@ struct SessionsGraphExternalSessionPage: Sendable {
         indexState = SessionsGraphExternalIndexState(page.indexState)
         nextCursor = page.nextCursor
         unreadableSources = page.unreadableSources
+        folderIndexState = page.folderIndexState.map(SessionsGraphExternalIndexState.init)
     }
 }
 
@@ -281,6 +286,10 @@ struct SessionsGraphExternalSessionChange: Sendable {
     /// The progress of the index after the change.
     let indexState: SessionsGraphExternalIndexState
 
+    /// The progress of the index for the followed folder after the change, or `nil` for a
+    /// stream of each folder.
+    let folderIndexState: SessionsGraphExternalIndexState?
+
     /// Makes the object of a change of the host.
     ///
     /// - Parameter change: The change.
@@ -288,6 +297,7 @@ struct SessionsGraphExternalSessionChange: Sendable {
         changed = change.changed.map(SessionsGraphExternalSession.init)
         removed = change.removed.map(SessionsGraphExternalSessionKey.init)
         indexState = SessionsGraphExternalIndexState(change.indexState)
+        folderIndexState = change.folderIndexState.map(SessionsGraphExternalIndexState.init)
     }
 }
 
@@ -600,7 +610,12 @@ extension SessionsGraphAPI {
     static func externalSessionPageType() -> SchemaType {
         Type(SessionsGraphExternalSessionPage.self, as: "ExternalSessionPage") {
             Field("sessions", at: \.sessions).description("The sessions of the page, the newest first.")
-            Field("indexState", at: \.indexState).description("The progress of the index when the page was made.")
+            Field("indexState", at: \.indexState)
+                .description("The progress of the index of each root when the page was made.")
+            Field("folderIndexState", at: \.folderIndexState)
+                .description(
+                    "The progress of the index for the files of the folder of the query when the page was made, "
+                        + "or null for a query with no folder.")
             Field("nextCursor", at: \.nextCursor)
                 .description("The cursor of the next page, or null when this page is the last.")
             Field("unreadableSources", at: \.unreadableSources)
@@ -618,7 +633,12 @@ extension SessionsGraphAPI {
         Type(SessionsGraphExternalSessionChange.self, as: "ExternalSessionChange") {
             Field("changed", at: \.changed).description("The sessions that the index added or changed.")
             Field("removed", at: \.removed).description("The sessions whose files are gone.")
-            Field("indexState", at: \.indexState).description("The progress of the index after the change.")
+            Field("indexState", at: \.indexState)
+                .description("The progress of the index of each root after the change.")
+            Field("folderIndexState", at: \.folderIndexState)
+                .description(
+                    "The progress of the index for the files of the followed folder after the change, or null "
+                        + "for a stream of each folder.")
         }
         .description("One change of the index of the sessions of other agents.")
     }

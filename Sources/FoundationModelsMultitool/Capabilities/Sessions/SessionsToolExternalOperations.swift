@@ -658,6 +658,8 @@ extension SessionsToolContext {
             SessionsRefusal(.unknownExternalSession, SessionsToolText.unknownExternalSession(session))
         case .folderUnavailable(let folder):
             SessionsRefusal(.folderUnavailable, SessionsToolText.externalFolderUnavailable(folder))
+        case .invalidCursor(let cursor):
+            SessionsRefusal(.invalidCursor, SessionsToolText.externalInvalidCursor(cursor))
         }
     }
 }
