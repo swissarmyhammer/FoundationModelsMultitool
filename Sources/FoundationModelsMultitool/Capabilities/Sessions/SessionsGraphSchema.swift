@@ -382,6 +382,7 @@ struct SessionsGraphAPI: API {
                 inboxField()
                 pinnedSessionsField()
                 recentSessionsField()
+                unreadableFoldersField()
                 cursorField()
                 externalSessionsField()
                 externalSessionCountsField()

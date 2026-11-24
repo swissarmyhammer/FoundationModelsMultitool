@@ -1001,6 +1001,11 @@ type Query {
   ): [Session!]!
 
   """
+  The path of each session folder of this server that it cannot read, for example a folder of another app that the sandbox does not permit. Each list leaves out its sessions and gives the sessions of the other folders.
+  """
+  unreadableFolders: [String!]!
+
+  """
   The cursor of the newest change. Read the sessions, then subscribe to changes after this cursor.
   """
   cursor: String!

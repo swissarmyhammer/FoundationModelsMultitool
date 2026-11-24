@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModelsExtras
 import ULID
 
@@ -14,6 +15,16 @@ struct ForwardingSessionDirectory: SessionDirectory {
     /// `SessionDirectoryError.forkUnsupported`, as the default of the
     /// protocol does.
     var canFork = true
+
+    /// The roots that ``unreadableRecordingRoots()`` gives.
+    var unreadableRoots: [URL] = []
+
+    /// The roots that the directory cannot list: ``unreadableRoots``.
+    ///
+    /// - Returns: The roots.
+    func unreadableRecordingRoots() async -> [URL] {
+        unreadableRoots
+    }
 
     /// The summaries of the backing directory that match `query`.
     ///

@@ -44,6 +44,25 @@ extension SessionsGraphResolver {
         return try await context.sessions.sessions(matching: query).map(SessionsGraphSession.init)
     }
 
+    /// Resolves `Query.unreadableFolders`: the path of each recording root
+    /// that the directory cannot list, for example a folder of another app
+    /// that the sandbox does not permit (Testudo ^zzfv6c6). Each list passes
+    /// over such a root and gives the sessions of the other roots, so a host
+    /// can tell the user which folder it cannot read. Only the host (a call
+    /// with no viewer) gets the paths: a session viewer gets none, because a
+    /// folder of another session is not its fact.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call, which gives the directory.
+    ///   - arguments: No argument.
+    /// - Returns: The paths, in the order of the roots.
+    func unreadableFolders(
+        context: SessionsGraphContext, arguments _: NoArguments
+    ) async -> [String] {
+        guard context.sessions.viewer == nil else { return [] }
+        return await context.sessions.directory.unreadableRecordingRoots().map(\.path)
+    }
+
     /// Resolves `Query.recentSessions`: the sessions that a client opened on
     /// this server, the last one first, with no pinned session.
     ///
@@ -78,6 +97,17 @@ extension SessionsGraphAPI {
             .description(
                 "The Pinned list of this server: each pinned session that you can see, the first pin first. "
                     + "pinSession and unpinSession change it.")
+    }
+
+    /// The `Query.unreadableFolders` field.
+    ///
+    /// - Returns: The field.
+    static func unreadableFoldersField() -> SchemaField {
+        Field("unreadableFolders", at: SessionsGraphResolver.unreadableFolders)
+            .description(
+                "The path of each session folder of this server that it cannot read, for example a folder "
+                    + "of another app that the sandbox does not permit. Each list leaves out its sessions "
+                    + "and gives the sessions of the other folders.")
     }
 
     /// The `Query.recentSessions` field.

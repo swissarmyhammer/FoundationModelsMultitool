@@ -321,4 +321,28 @@ struct SessionsGraphUsageTests {
         #expect(notOwned.codes == ["NOT_FOUND"], "messages: \(notOwned.messages)")
         #expect(try await usage.directory.summary(of: usage.newest.id)?.isPinned == false)
     }
+    /// `unreadableFolders` gives the path of each recording root that the directory cannot list
+    /// (Testudo ^zzfv6c6), and the lists still give the other sessions.
+    @Test func theUnreadableFoldersAreNamed() async throws {
+        let backing = InMemorySessionDirectory(now: { Self.time(1_000) })
+        let pinned = Fixtures.summary(title: "Pinned", pinnedAt: Self.time(10))
+        backing.register(pinned)
+        let root = URL(fileURLWithPath: "/private/tmp/other-app/.testudo/transcripts", isDirectory: true)
+        let graph = SessionsGraph.endpoint(
+            of: ForwardingSessionDirectory(backing: backing, unreadableRoots: [root]))
+
+        let reply = try await GraphQLReply.run("{ unreadableFolders pinnedSessions { id } }", on: graph)
+
+        #expect(reply.data?["unreadableFolders"] as? [String] == [root.path])
+        #expect(try Self.ids("pinnedSessions", of: reply) == Self.ids([pinned]))
+    }
+
+    /// A directory that can list each root gives no unreadable folder.
+    @Test func aDirectoryWithNoUnreadableRootGivesNone() async throws {
+        let graph = SessionsGraph.endpoint(of: InMemorySessionDirectory(now: { Self.time(1_000) }))
+
+        let reply = try await GraphQLReply.run("{ unreadableFolders }", on: graph)
+
+        #expect(reply.data?["unreadableFolders"] as? [String] == [])
+    }
 }
