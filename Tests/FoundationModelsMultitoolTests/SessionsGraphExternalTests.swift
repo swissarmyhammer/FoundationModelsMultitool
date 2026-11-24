@@ -589,4 +589,29 @@ struct SessionsGraphExternalTests {
         let continued = try #require(sessions.first?["continuations"] as? [[String: Any]])
         #expect(continued.count == 2)
     }
+
+    // MARK: - filePath
+
+    @Test("an external session gives the absolute path of its file, and null when the index has none")
+    func theSessionGivesItsFilePath() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(sessions: [Host.filedSession, Host.automatedSession]))
+
+        let reply = try await setup.run("{ externalSessions(automated: true) { sessions { filePath } } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let sessions = try #require(try reply.object("externalSessions")["sessions"] as? [[String: Any]])
+        #expect(sessions.first?["filePath"] as? String == Host.sessionFile.path)
+        #expect(sessions.last?["filePath"] is NSNull)
+    }
+
+    @Test("filePath takes the alias file_path")
+    func theFilePathTakesItsAlias() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(sessions: [Host.filedSession]))
+
+        let reply = try await setup.run("{ externalSessions { sessions { file_path } } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let sessions = try #require(try reply.object("externalSessions")["sessions"] as? [[String: Any]])
+        #expect(sessions.first?["file_path"] as? String == Host.sessionFile.path)
+    }
 }

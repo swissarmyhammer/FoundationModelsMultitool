@@ -242,15 +242,18 @@ extension SessionsToolText {
     }
 
     /// The lines of the facts of the index in the answer of
-    /// `read external session`: one line for each session that a continue
-    /// made from the session.
+    /// `read external session`: the absolute path of the file when the index
+    /// gives it, and one line for each session that a continue made from the
+    /// session.
     ///
     /// - Parameter summary: The entry of the session in the index, or `nil`.
     /// - Returns: The lines, or none.
     static func externalSessionFactLines(_ summary: ExternalSessionSummary?) -> [String] {
-        (summary?.continuedSessions ?? []).map {
-            "Continued \($0.createdAt.formatted(.iso8601)) as the session \($0.sessionID.ulidString)."
-        }
+        let fileLines = (summary?.fileURL).map { ["The file of the session is \($0.path)."] } ?? []
+        return fileLines
+            + (summary?.continuedSessions ?? []).map {
+                "Continued \($0.createdAt.formatted(.iso8601)) as the session \($0.sessionID.ulidString)."
+            }
     }
 
     /// The answer of `read external session`: a header line, the facts of

@@ -184,6 +184,10 @@ struct SessionsGraphExternalSession: Sendable {
     /// The path of the file, relative to the root of the source.
     let path: String
 
+    /// The absolute path of the file, or `nil` when the file is not in the
+    /// root to which the user gave access.
+    let filePath: String?
+
     /// The name of the project folder of the file, or `nil`.
     let projectKey: String?
 
@@ -238,6 +242,7 @@ struct SessionsGraphExternalSession: Sendable {
         source = summary.source
         sourceId = summary.sourceID
         path = summary.path
+        filePath = summary.fileURL?.path
         projectKey = summary.projectKey
         size = Double(summary.size)
         modified = DateTime(summary.modified)
@@ -630,6 +635,10 @@ extension SessionsGraphAPI {
                     "The id of the session in the store of the source agent. continueExternalSession and "
                         + "externalSessionUpdates take it as id.")
             Field("path", at: \.path).description("The path of the file of the session, relative to the source root.")
+            Field("filePath", at: \.filePath)
+                .description(
+                    "The absolute path of the file of the session, with the symbolic links resolved. Null when the "
+                        + "file is not in the folder to which the user gave access.")
             Field("projectKey", at: \.projectKey)
                 .description("The name of the project folder of the file, or null when the source has none.")
             Field("size", at: \.size).description("The size of the file, in bytes.")

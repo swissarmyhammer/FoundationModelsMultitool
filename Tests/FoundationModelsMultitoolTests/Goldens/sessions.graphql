@@ -725,6 +725,11 @@ type ExternalSession {
   path: String!
 
   """
+  The absolute path of the file of the session, with the symbolic links resolved. Null when the file is not in the folder to which the user gave access.
+  """
+  filePath: String
+
+  """
   The name of the project folder of the file, or null when the source has none.
   """
   projectKey: String

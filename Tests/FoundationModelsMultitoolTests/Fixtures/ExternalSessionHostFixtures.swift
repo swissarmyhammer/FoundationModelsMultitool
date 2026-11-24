@@ -215,6 +215,16 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         return session
     }()
 
+    /// The absolute file of ``filedSession``.
+    static let sessionFile = URL(fileURLWithPath: "/Users/user/.claude/projects/-work-project/a1b2c3.jsonl")
+
+    /// ``typedSession`` with the absolute URL of its file.
+    static let filedSession: ExternalSessionSummary = {
+        var session = typedSession
+        session.fileURL = sessionFile
+        return session
+    }()
+
     /// An automated session of Codex with no text and no folder.
     static let automatedSession = ExternalSessionSummary(
         source: codex, sourceID: "rollout-42", path: "2027/01/15/rollout-42.jsonl", size: 8_000_000_000,

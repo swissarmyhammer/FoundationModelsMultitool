@@ -146,7 +146,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `nextCursor`; `sourceID` and `source_id` for the `sourceId` of an
     /// external session and of its key, `folder` for the `cwd` of an
     /// external session, `continued_sessions` and `continuations` for its
-    /// `continuedSessions`, and `sessionId` for the `id` and `created_at` for
+    /// `continuedSessions`, `file_path` and `absolutePath` for its
+    /// `filePath`, and `sessionId` for the `id` and `created_at` for
     /// the `createdAt` of a continuation; `cwd` for the `folder` of `externalSessionChanges`,
     /// and `agent` and `from` for the `source`, and `sourceId` and
     /// `sourceID` for the `id`, of `externalSessionUpdates`; the bare verb of each
@@ -175,6 +176,7 @@ public final class SessionsGraph: GraphQLEndpoint {
                 "ExternalSession": [
                     "sourceId": ["sourceID", "source_id"], "cwd": ["folder"],
                     "continuedSessions": ["continued_sessions", "continuations"],
+                    "filePath": ["file_path", "absolutePath"],
                 ],
                 "ExternalSessionContinuation": ["id": ["sessionId"], "createdAt": ["created_at"]],
                 "ExternalSessionKey": ["sourceId": ["sourceID", "source_id"]],

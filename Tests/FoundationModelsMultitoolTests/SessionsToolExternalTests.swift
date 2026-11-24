@@ -263,6 +263,20 @@ struct SessionsToolExternalTests {
         #expect(host.queries == [ExternalSessionQuery(source: Host.claudeCode, automated: true, limit: 50)])
     }
 
+    @Test("read external session gives the absolute path of the file after the first line")
+    func theReadGivesTheFilePath() async throws {
+        let output = try await Self.callAsCaller(
+            Self.readOp, Self.readFields(), host: Host(sessions: [Host.filedSession], batches: Host.turns(1)))
+
+        #expect(
+            output
+                == [
+                    "The session a1b2c3 of claude-code: turns 1 to 1.",
+                    "The file of the session is /Users/user/.claude/projects/-work-project/a1b2c3.jsonl.",
+                    Self.turnText(1), "This is the last turn of the session.",
+                ].joined(separator: "\n\n"))
+    }
+
     @Test("read external session after the last turn also gives the sessions that a continue made")
     func theReadAfterTheLastTurnGivesTheContinuedSessions() async throws {
         let output = try await Self.callAsCaller(

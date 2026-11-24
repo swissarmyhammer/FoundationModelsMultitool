@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.14.0"
+  version: "1.15.0"
 ---
 
 # Sessions
@@ -200,7 +200,7 @@ Run the API tests again.
   - `folder`: the absolute path of the working folder of the sessions, or `.` for the folder of your session. The default is each folder.
   - `automated`: `true` to also give the sessions that a program started. The default is `false`: only the sessions that a person typed.
   - `limit`: the most sessions to give, from 1 to 50. The default is 20.
-- `read external session` gives the prompts, the answers and the tool calls of a range of turns. It does not give the thoughts. After the first line, it gives one line for each session of this server that a continue made from the session. The text has a size limit: when the answer tells that more turns follow or that the text was cut, call it again with the `fromTurn` that the answer gives.
+- `read external session` gives the prompts, the answers and the tool calls of a range of turns. It does not give the thoughts. After the first line, it gives the absolute path of the file of the session when the index has it, and one line for each session of this server that a continue made from the session. Do not read that file: use `read external session`. The text has a size limit: when the answer tells that more turns follow or that the text was cut, call it again with the `fromTurn` that the answer gives.
 - `read external session` takes these parameters:
   - `source`: the source agent, `claude-code` or `codex`. It is necessary.
   - `id`: the id that `list external sessions` gives. It is necessary.
