@@ -523,6 +523,40 @@ struct ShellStateTests {
         #expect(FileManager.default.fileExists(atPath: state.logURL.path))
     }
 
+    @Test("The end of a state removes its temporary fallback store")
+    func theEndOfAStateRemovesItsTemporaryFallback() throws {
+        let temporary = try makeTempDirectory()
+        let readOnly = temporary.appendingPathComponent("read-only", isDirectory: true)
+        try FileManager.default.createDirectory(at: readOnly, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: Self.writableDirectoryMode], ofItemAtPath: readOnly.path)
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: Self.readOnlyDirectoryMode], ofItemAtPath: readOnly.path)
+
+        var state: ShellState? = try ShellState(
+            preferredDirectory: readOnly.appendingPathComponent(Self.shellStoreDirectoryName))
+        let fallback = try #require(state?.temporaryFallback)
+        defer { try? FileManager.default.removeItem(at: fallback) }
+        #expect(FileManager.default.fileExists(atPath: fallback.path))
+
+        state = nil
+
+        #expect(!FileManager.default.fileExists(atPath: fallback.path))
+    }
+
+    @Test("The end of a state keeps the store directory that it asked for")
+    func theEndOfAStateKeepsItsPreferredStore() throws {
+        let directory = try makeTempDirectory().appendingPathComponent(Self.shellStoreDirectoryName)
+        var state: ShellState? = try ShellState(preferredDirectory: directory)
+        #expect(state?.temporaryFallback == nil)
+
+        state = nil
+
+        #expect(FileManager.default.fileExists(atPath: directory.path))
+    }
+
     // MARK: - Process bookkeeping
 
     @Test("startCommand makes a running record under the token")

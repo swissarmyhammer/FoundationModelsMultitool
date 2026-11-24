@@ -175,6 +175,10 @@ actor ShellState {
     /// directory kills the leftovers of a host that crashed — see
     /// `ProcessLedger`.
     nonisolated let processLedger: ProcessLedger
+    /// The temporary fallback directory of this state, or `nil` when the state uses the
+    /// directory that it asked for. Its name holds the session id of this state, so no later
+    /// store reads it: the state removes it at its end (`deinit`).
+    nonisolated let temporaryFallback: URL?
 
     private var commands: [CommandRecord] = []
     /// The commands that run now: the completion token of each one, and the
@@ -298,11 +302,21 @@ actor ShellState {
     /// - Throws: When neither the preferred directory nor the fallback prepares.
     init(preferredDirectory: URL?) throws {
         let session = UUID().uuidString
-        let directory = try Self.resolveDirectory(preferred: preferredDirectory, sessionID: session)
+        let (directory, isFallback) = try Self.resolveDirectory(
+            preferred: preferredDirectory, sessionID: session)
         self.sessionID = session
+        self.temporaryFallback = isFallback ? directory : nil
         self.logURL = directory.appendingPathComponent(Self.logFilename)
         self.processLedger = ProcessLedger(
             directory: directory.appendingPathComponent(Self.processRecordsDirectoryName, isDirectory: true))
+    }
+
+    /// Removes the temporary fallback directory, if this state uses one. The last reference to
+    /// the state went, so no command of this state writes to it now.
+    deinit {
+        if let temporaryFallback {
+            try? FileManager.default.removeItem(at: temporaryFallback)
+        }
     }
 
     /// Kills the leftover children of hosts that crashed, and removes their
@@ -889,13 +903,13 @@ actor ShellState {
     ///   - preferred: The directory to try first, or `nil` to go directly to
     ///     the fallback.
     ///   - sessionID: The session id, which names the fallback directory.
-    /// - Returns: The prepared store directory.
+    /// - Returns: The prepared store directory, and `true` when it is the temporary fallback.
     /// - Throws: When the fallback does not prepare either.
-    private static func resolveDirectory(preferred: URL?, sessionID: String) throws -> URL {
+    private static func resolveDirectory(preferred: URL?, sessionID: String) throws -> (URL, Bool) {
         if let preferred {
             do {
                 try prepareDirectory(preferred)
-                return preferred
+                return (preferred, false)
             } catch {
                 // The preferred location is not usable — a read-only working
                 // directory, for example. Fall back.
@@ -904,7 +918,7 @@ actor ShellState {
         let fallback = FileManager.default.temporaryDirectory
             .appendingPathComponent(".shell-\(sessionID)", isDirectory: true)
         try prepareDirectory(fallback)
-        return fallback
+        return (fallback, true)
     }
 
     /// Makes `directory`, seeds its `.gitignore` when that file is absent, and
