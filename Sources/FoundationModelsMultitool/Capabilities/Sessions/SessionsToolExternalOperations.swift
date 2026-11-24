@@ -113,6 +113,10 @@ struct ExternalSessionReading: Sendable {
     /// The session.
     let session: ExternalSessionID
 
+    /// The entry of the session in the index, or `nil` when the pages of the
+    /// index of its source do not have it.
+    let summary: ExternalSessionSummary?
+
     /// The first turn that the call asked for.
     let fromTurn: Int
 
@@ -461,7 +465,9 @@ extension SessionsToolContext {
     /// turn after the range.
     ///
     /// A turn starts at the first entry, and at each user prompt that comes
-    /// after an entry that is not a part of a user prompt.
+    /// after an entry that is not a part of a user prompt. After the read,
+    /// the step finds the entry of the session in the index, for the facts
+    /// of the index that the answer gives.
     ///
     /// - Parameters:
     ///   - arguments: What the read asks for.
@@ -508,9 +514,41 @@ extension SessionsToolContext {
             }
         }
         let (kept, isCut) = cut(turns, toLength: maximumExternalReadLength)
+        let summary = try await externalSessionSummary(of: updates.session, with: try requiredExternalSessionHost(host))
         return ExternalSessionReading(
-            session: updates.session, fromTurn: fromTurn, turns: kept,
+            session: updates.session, summary: summary, fromTurn: fromTurn, turns: kept,
             lastTurnOfSession: readsToTheEnd && !isCut ? turnNumber : nil, isCut: isCut)
+    }
+
+    /// The entry of one external session in the index: the step reads the
+    /// pages of the index of its source, with the automated sessions, until
+    /// a page has the session. It stops at the last page, and at a cursor
+    /// that a page before gave, so a host whose cursor does not change
+    /// cannot keep the step in a loop.
+    ///
+    /// - Parameters:
+    ///   - session: The external session.
+    ///   - host: The external session host.
+    /// - Returns: The entry, or `nil` when no page has the session.
+    /// - Throws: ``SessionsRefusal`` for a host that fails, and
+    ///   `CancellationError` when the task of the call is cancelled.
+    static func externalSessionSummary(
+        of session: ExternalSessionID, with host: any ExternalSessionHost
+    ) async throws -> ExternalSessionSummary? {
+        var cursor: String?
+        var usedCursors: Set<String> = []
+        repeat {
+            let query = ExternalSessionQuery(
+                source: session.source, automated: true, limit: maximumExternalSessionLimit, cursor: cursor)
+            let page = try await externalHostResult(failure: { SessionsToolText.externalReadFailed(session, $0) }) {
+                try await host.externalSessions(query)
+            }
+            if let summary = page.sessions.first(where: { $0.id == session }) {
+                return summary
+            }
+            cursor = page.nextCursor
+        } while cursor.map { usedCursors.insert($0).inserted } ?? false
+        return nil
     }
 
     /// Copies an external session into a new session: the one continue step

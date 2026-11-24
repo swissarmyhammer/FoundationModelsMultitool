@@ -217,8 +217,9 @@ extension SessionsToolText {
     }
 
     /// The line of one external session: `<source> <id> "<text>"
-    /// (<folder>) <date>`, then the branch, `automated` and the state of the
-    /// index when the index has not read the file.
+    /// (<folder>) <date>`, then the branch, `automated`, the state of the
+    /// index when the index has not read the file, and `continued <date> as
+    /// <id>` for each session that a continue made from it.
     ///
     /// - Parameter session: The external session.
     /// - Returns: The line.
@@ -232,23 +233,42 @@ extension SessionsToolText {
                 session.state == .read ? nil : "\(session.state.rawValue)",
             ]
             .compactMap { $0 }
+            + session.continuedSessions.map {
+                "continued \($0.createdAt.formatted(.iso8601)) as \($0.sessionID.ulidString)"
+            }
         let tail = details.isEmpty ? "" : " – " + details.joined(separator: ", ")
         return "\(session.source) \(session.sourceID) \(text) \(folder) \(session.displayDate.formatted(.iso8601))"
             + tail
     }
 
-    /// The answer of `read external session`: a header line, the text of
-    /// each turn of the range, and the next turn to read.
+    /// The lines of the facts of the index in the answer of
+    /// `read external session`: one line for each session that a continue
+    /// made from the session.
+    ///
+    /// - Parameter summary: The entry of the session in the index, or `nil`.
+    /// - Returns: The lines, or none.
+    static func externalSessionFactLines(_ summary: ExternalSessionSummary?) -> [String] {
+        (summary?.continuedSessions ?? []).map {
+            "Continued \($0.createdAt.formatted(.iso8601)) as the session \($0.sessionID.ulidString)."
+        }
+    }
+
+    /// The answer of `read external session`: a header line, the facts of
+    /// the index, the text of each turn of the range, and the next turn to
+    /// read.
     ///
     /// - Parameter reading: The turns of the range.
     /// - Returns: The answer.
     static func externalSessionText(_ reading: ExternalSessionReading) -> String {
         let name = "The session \(reading.session.sourceID) of \(reading.session.source)"
+        let facts = externalSessionFactLines(reading.summary)
+        let factTexts = facts.isEmpty ? [] : [facts.joined(separator: "\n")]
         guard let first = reading.turns.first, let last = reading.turns.last else {
             guard let count = reading.lastTurnOfSession, count > 0 else {
-                return "\(name) has no turns."
+                return (["\(name) has no turns."] + factTexts).joined(separator: "\n\n")
             }
-            return "\(name) has \(count) turns. Give a fromTurn from 1 to \(count)."
+            return (["\(name) has \(count) turns. Give a fromTurn from 1 to \(count)."] + factTexts)
+                .joined(separator: "\n\n")
         }
         let header = "\(name): turns \(first.number) to \(last.number)."
         let turnTexts = reading.turns.map { turn in
@@ -261,7 +281,7 @@ extension SessionsToolText {
         } else {
             tail = ["This is the last turn of the session."]
         }
-        return ([header] + turnTexts + tail).joined(separator: "\n\n")
+        return ([header] + factTexts + turnTexts + tail).joined(separator: "\n\n")
     }
 
     /// The line of one entry of an external session in the text of a read,

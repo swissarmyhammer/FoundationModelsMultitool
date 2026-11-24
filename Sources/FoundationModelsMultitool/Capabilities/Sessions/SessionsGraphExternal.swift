@@ -155,6 +155,24 @@ struct SessionsGraphExternalSessionKey: Sendable {
     }
 }
 
+/// The `ExternalSessionContinuation` type: one session of this server that a
+/// continue made from an external session.
+struct SessionsGraphExternalSessionContinuation: Sendable {
+    /// The id of the session of this server, canonical: a ULID in upper case.
+    let id: ToolkitID
+
+    /// The time when the continue made the session.
+    let createdAt: DateTime
+
+    /// Makes the object of a continuation of the index.
+    ///
+    /// - Parameter continuation: The continuation.
+    init(_ continuation: ExternalSessionContinuation) {
+        id = ToolkitID(continuation.sessionID.ulidString)
+        createdAt = DateTime(continuation.createdAt)
+    }
+}
+
 /// The `ExternalSession` type: one entry of the index of external sessions.
 struct SessionsGraphExternalSession: Sendable {
     /// The source agent.
@@ -209,6 +227,10 @@ struct SessionsGraphExternalSession: Sendable {
     /// The date of a row.
     let displayDate: DateTime
 
+    /// The sessions of this server that a continue made from this session,
+    /// the oldest first.
+    let continuedSessions: [SessionsGraphExternalSessionContinuation]
+
     /// Makes the object of an entry of the index.
     ///
     /// - Parameter summary: The entry.
@@ -230,6 +252,7 @@ struct SessionsGraphExternalSession: Sendable {
         state = SessionsGraphExternalSessionState(summary.state)
         displayText = summary.displayText
         displayDate = DateTime(summary.displayDate)
+        continuedSessions = summary.continuedSessions.map(SessionsGraphExternalSessionContinuation.init)
     }
 }
 
@@ -628,8 +651,24 @@ extension SessionsGraphAPI {
                         + "the session has none: then the name of the row is displayDate.")
             Field("displayDate", at: \.displayDate)
                 .description("The date of a row: lastDate, else modified.")
+            Field("continuedSessions", at: \.continuedSessions)
+                .description(
+                    "The sessions of this server that continueExternalSession made from this session, the oldest "
+                        + "first. Empty when no continue made a session.")
         }
         .description("One session of another agent in the index of this server. It is not a session of this server.")
+    }
+
+    /// The `ExternalSessionContinuation` type.
+    ///
+    /// - Returns: The type.
+    static func externalSessionContinuationType() -> SchemaType {
+        Type(SessionsGraphExternalSessionContinuation.self, as: "ExternalSessionContinuation") {
+            Field("id", at: \.id)
+                .description("The id of the session of this server that the continue made. session(id:) gives it.")
+            Field("createdAt", at: \.createdAt).description("The time when the continue made the session.")
+        }
+        .description("One session of this server that a continue made from a session of another agent.")
     }
 
     /// The `ExternalSessionKey` type.

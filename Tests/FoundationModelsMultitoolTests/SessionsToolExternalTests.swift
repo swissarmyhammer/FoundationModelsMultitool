@@ -53,6 +53,9 @@ struct SessionsToolExternalTests {
     private static let typedLine =
         "claude-code a1b2c3 \"Fix the parser\" (/work/project) \(fixedDateText) – branch main"
 
+    /// The text of the second time of a continuation of the fake.
+    private static let laterDateText = "2027-01-15T09:00:00Z"
+
     /// The line of the automated session of the fake.
     private static let automatedLine = "codex rollout-42 (no text) (no folder) \(fixedDateText) – automated, found"
 
@@ -114,6 +117,19 @@ struct SessionsToolExternalTests {
         #expect(
             output == """
                 \(Self.typedLine)
+                \(SessionsToolText.externalListAdvice)
+                """)
+    }
+
+    @Test("list external sessions gives each session that a continue made from a session, the oldest first")
+    func theListGivesTheContinuedSessions() async throws {
+        let output = try await Self.callAsCaller(Self.listOp, host: Host(sessions: [Host.continuedSession]))
+
+        let first = Host.firstContinuation.sessionID.ulidString
+        let second = Host.secondContinuation.sessionID.ulidString
+        #expect(
+            output == """
+                \(Self.typedLine), continued \(Self.fixedDateText) as \(first), continued \(Self.laterDateText) as \(second)
                 \(SessionsToolText.externalListAdvice)
                 """)
     }
@@ -224,6 +240,48 @@ struct SessionsToolExternalTests {
                 ]).joined(separator: "\n\n"))
         #expect(stoppedByTheRead == true)
         #expect(host.updateSessions == [Host.typedSession.id])
+    }
+
+    @Test("read external session gives each session that a continue made from it, after the first line")
+    func theReadGivesTheContinuedSessions() async throws {
+        let host = Host(sessions: [Host.continuedSession], batches: Host.turns(1))
+
+        let output = try await Self.callAsCaller(Self.readOp, Self.readFields(), host: host)
+
+        let first = Host.firstContinuation.sessionID.ulidString
+        let second = Host.secondContinuation.sessionID.ulidString
+        #expect(
+            output
+                == [
+                    "The session a1b2c3 of claude-code: turns 1 to 1.",
+                    """
+                    Continued \(Self.fixedDateText) as the session \(first).
+                    Continued \(Self.laterDateText) as the session \(second).
+                    """,
+                    Self.turnText(1), "This is the last turn of the session.",
+                ].joined(separator: "\n\n"))
+        #expect(host.queries == [ExternalSessionQuery(source: Host.claudeCode, automated: true, limit: 50)])
+    }
+
+    @Test("read external session after the last turn also gives the sessions that a continue made")
+    func theReadAfterTheLastTurnGivesTheContinuedSessions() async throws {
+        let output = try await Self.callAsCaller(
+            Self.readOp, Self.readFields([("fromTurn", 9)]),
+            host: Host(sessions: [Host.continuedSession], batches: Host.turns(3)))
+
+        #expect(
+            output.hasPrefix(
+                "The session a1b2c3 of claude-code has 3 turns. Give a fromTurn from 1 to 3.\n\nContinued "))
+    }
+
+    @Test("read external session reads each page of the index one time, also when the cursor does not change")
+    func theReadStopsAtACursorThatRepeats() async throws {
+        let host = Host(sessions: [Host.typedSession], nextCursor: "page-2", batches: Host.turns(1))
+
+        let output = try await Self.callAsCaller(Self.readOp, Self.readFields(), host: host)
+
+        #expect(output.hasPrefix("The session a1b2c3 of claude-code: turns 1 to 1.\n\nTurn 1"))
+        #expect(host.queries.count == 1)
     }
 
     @Test("read external session gives the range of fromTurn and turns, and tells the last turn")

@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.13.0"
+  version: "1.14.0"
 ---
 
 # Sessions
@@ -194,13 +194,13 @@ Run the API tests again.
   - `id`: the shared session. With no `id`, it stops the share of your session.
 - A session of Claude Code or Codex is an external session: another agent owns it. To find one, use `list external sessions`. To read it with no copy, use `read external session`. To continue it, use `continue external session`. Do not read the files of other agents.
 - `list external sessions` reads the index of this server. It never reads a session file. When the index is not complete, the answer has one line with the progress: a later call can give more sessions.
-- `list external sessions` gives one line for each session: its source, its id, its text (the title, else a prompt), its folder and its date, then its branch, `automated` for a session that a program started, and the state of the index when the index has not read the file.
+- `list external sessions` gives one line for each session: its source, its id, its text (the title, else a prompt), its folder and its date, then its branch, `automated` for a session that a program started, the state of the index when the index has not read the file, and `continued <date> as <id>` for each session of this server that a continue made from it. To check that session, use `check session` with its id.
 - `list external sessions` takes these parameters, and each is optional:
   - `source`: the source agent, `claude-code` or `codex`. The default is each source.
   - `folder`: the absolute path of the working folder of the sessions, or `.` for the folder of your session. The default is each folder.
   - `automated`: `true` to also give the sessions that a program started. The default is `false`: only the sessions that a person typed.
   - `limit`: the most sessions to give, from 1 to 50. The default is 20.
-- `read external session` gives the prompts, the answers and the tool calls of a range of turns. It does not give the thoughts. The text has a size limit: when the answer tells that more turns follow or that the text was cut, call it again with the `fromTurn` that the answer gives.
+- `read external session` gives the prompts, the answers and the tool calls of a range of turns. It does not give the thoughts. After the first line, it gives one line for each session of this server that a continue made from the session. The text has a size limit: when the answer tells that more turns follow or that the text was cut, call it again with the `fromTurn` that the answer gives.
 - `read external session` takes these parameters:
   - `source`: the source agent, `claude-code` or `codex`. It is necessary.
   - `id`: the id that `list external sessions` gives. It is necessary.

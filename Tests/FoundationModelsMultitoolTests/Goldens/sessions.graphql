@@ -773,6 +773,24 @@ type ExternalSession {
 
   """The date of a row: lastDate, else modified."""
   displayDate: DateTime!
+
+  """
+  The sessions of this server that continueExternalSession made from this session, the oldest first. Empty when no continue made a session.
+  """
+  continuedSessions: [ExternalSessionContinuation!]!
+}
+
+"""
+One session of this server that a continue made from a session of another agent.
+"""
+type ExternalSessionContinuation {
+  """
+  The id of the session of this server that the continue made. session(id:) gives it.
+  """
+  id: ID!
+
+  """The time when the continue made the session."""
+  createdAt: DateTime!
 }
 
 """The identity of one session of another agent."""

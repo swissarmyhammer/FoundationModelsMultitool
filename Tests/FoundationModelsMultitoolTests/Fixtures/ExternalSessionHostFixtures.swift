@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModelsExtras
 import Synchronization
+import ULID
 
 @testable import FoundationModelsMultitool
 
@@ -197,6 +198,22 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         size: 4096, modified: SessionsToolFixtures.fixedDate, cwd: SessionsToolFixtures.workingFolder,
         gitBranch: "main", title: "Fix the parser", firstPrompt: "The parser fails", lastPrompt: "Run the tests",
         firstDate: SessionsToolFixtures.fixedDate, lastDate: SessionsToolFixtures.fixedDate, state: .read)
+
+    /// The first session that a continue made from ``continuedSession``.
+    static let firstContinuation = ExternalSessionContinuation(
+        sessionID: ULID(), createdAt: SessionsToolFixtures.fixedDate)
+
+    /// The second session that a continue made from ``continuedSession``,
+    /// one hour after the first.
+    static let secondContinuation = ExternalSessionContinuation(
+        sessionID: ULID(), createdAt: SessionsToolFixtures.fixedDate.addingTimeInterval(3600))
+
+    /// ``typedSession`` with the two sessions that a continue made from it.
+    static let continuedSession: ExternalSessionSummary = {
+        var session = typedSession
+        session.continuedSessions = [firstContinuation, secondContinuation]
+        return session
+    }()
 
     /// An automated session of Codex with no text and no folder.
     static let automatedSession = ExternalSessionSummary(

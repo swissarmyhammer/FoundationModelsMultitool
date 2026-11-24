@@ -361,6 +361,7 @@ struct SessionsGraphAPI: API {
                 importProvenanceType()
                 externalSessionStateEnum()
                 externalSessionType()
+                externalSessionContinuationType()
                 externalSessionKeyType()
                 externalIndexStateType()
                 externalSessionPageType()

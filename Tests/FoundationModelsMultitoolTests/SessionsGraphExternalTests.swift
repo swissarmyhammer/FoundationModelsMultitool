@@ -553,4 +553,40 @@ struct SessionsGraphExternalTests {
         #expect(reply.messages == [SessionsGraphText.externalRebuild])
         #expect(setup.host.rebuildSources.isEmpty)
     }
+
+    // MARK: - continuedSessions
+
+    @Test("an external session gives the sessions that a continue made from it, the oldest first")
+    func theSessionGivesTheContinuedSessions() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(sessions: [Host.continuedSession, Host.automatedSession]))
+
+        let reply = try await setup.run(
+            "{ externalSessions(automated: true) { sessions { continuedSessions { id createdAt } } } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let sessions = try #require(try reply.object("externalSessions")["sessions"] as? [[String: Any]])
+        let continued = try #require(sessions.first?["continuedSessions"] as? [[String: Any]])
+        #expect(
+            continued.map { $0["id"] as? String } == [
+                Host.firstContinuation.sessionID.ulidString, Host.secondContinuation.sessionID.ulidString,
+            ])
+        #expect(
+            continued.map { $0["createdAt"] as? String } == [
+                DateTime(Host.firstContinuation.createdAt).rfc3339,
+                DateTime(Host.secondContinuation.createdAt).rfc3339,
+            ])
+        #expect((sessions.last?["continuedSessions"] as? [Any])?.isEmpty == true)
+    }
+
+    @Test("continuedSessions takes the aliases continuations and sessionId")
+    func theContinuedSessionsTakeTheirAliases() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(sessions: [Host.continuedSession]))
+
+        let reply = try await setup.run("{ externalSessions { sessions { continuations { sessionId } } } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let sessions = try #require(try reply.object("externalSessions")["sessions"] as? [[String: Any]])
+        let continued = try #require(sessions.first?["continuations"] as? [[String: Any]])
+        #expect(continued.count == 2)
+    }
 }

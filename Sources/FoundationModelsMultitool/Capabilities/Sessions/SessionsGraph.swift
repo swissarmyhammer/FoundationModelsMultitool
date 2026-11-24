@@ -144,8 +144,10 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `limit` for `first`) and `cursor` for `after`; `items` and `nodes`
     /// for the `sessions` of an external session page and `endCursor` for its
     /// `nextCursor`; `sourceID` and `source_id` for the `sourceId` of an
-    /// external session and of its key, and `folder` for the `cwd` of an
-    /// external session; `cwd` for the `folder` of `externalSessionChanges`,
+    /// external session and of its key, `folder` for the `cwd` of an
+    /// external session, `continued_sessions` and `continuations` for its
+    /// `continuedSessions`, and `sessionId` for the `id` and `created_at` for
+    /// the `createdAt` of a continuation; `cwd` for the `folder` of `externalSessionChanges`,
     /// and `agent` and `from` for the `source`, and `sourceId` and
     /// `sourceID` for the `id`, of `externalSessionUpdates`; the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
@@ -170,7 +172,11 @@ public final class SessionsGraph: GraphQLEndpoint {
                 ],
                 "SessionSearchHit": ["at": ["date"]],
                 "ExternalSessionPage": ["sessions": ["items", "nodes"], "nextCursor": ["endCursor"]],
-                "ExternalSession": ["sourceId": ["sourceID", "source_id"], "cwd": ["folder"]],
+                "ExternalSession": [
+                    "sourceId": ["sourceID", "source_id"], "cwd": ["folder"],
+                    "continuedSessions": ["continued_sessions", "continuations"],
+                ],
+                "ExternalSessionContinuation": ["id": ["sessionId"], "createdAt": ["created_at"]],
                 "ExternalSessionKey": ["sourceId": ["sourceID", "source_id"]],
                 "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
                 "Subscription": ["changes": ["sessionChanges"]],
