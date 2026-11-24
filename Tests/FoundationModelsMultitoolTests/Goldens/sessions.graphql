@@ -841,6 +841,22 @@ type ExternalSessionPage {
   unreadableSources: [String!]!
 }
 
+"""
+The counts of the sessions of other agents that the index has now, for one scope.
+"""
+type ExternalSessionCounts {
+  """The number of the sessions that a person typed."""
+  typedCount: Int!
+
+  """The number of the sessions that a program started."""
+  automatedCount: Int!
+
+  """
+  The progress of the index for the scope of the counts. When isComplete is true, the counts are final.
+  """
+  indexState: ExternalSessionIndexState!
+}
+
 """One change of the index of the sessions of other agents."""
 type ExternalSessionChange {
   """The sessions that the index added or changed."""
@@ -1012,6 +1028,19 @@ type Query {
     """The nextCursor of the page before, or no cursor for the first page."""
     after: String
   ): ExternalSessionPage!
+
+  """
+  The numbers of the typed and the automated sessions of other agents in the index of this server, with no pages. The query reads the index and never waits for it: the counts include only the sessions that the index found, and indexState tells when they are final. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents. EXTERNAL_SESSION_FAILED when the count fails.
+  """
+  externalSessionCounts(
+    """The source agent: claude-code or codex. None: each source."""
+    source: String
+
+    """
+    The absolute path of the working folder of the sessions. ~ expands. For the agent, . is the folder of its session. A client has no session, so . gives INVALID_FOLDER. None: each folder.
+    """
+    folder: String
+  ): ExternalSessionCounts!
 }
 
 type Mutation {

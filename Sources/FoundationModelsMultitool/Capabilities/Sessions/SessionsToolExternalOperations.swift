@@ -1,6 +1,6 @@
-// The `list external sessions`, `read external session`,
-// `continue external session` and `rebuild external session index`
-// operations of the `sessions` tool (D212, design section 5.8; D100: the
+// The `list external sessions`, `count external sessions`,
+// `read external session`, `continue external session` and
+// `rebuild external session index` operations of the `sessions` tool (D212, design section 5.8; D100: the
 // agent can do what the UI can do).
 //
 // An external session is a session file of another agent, such as Claude
@@ -9,8 +9,9 @@
 // reads the index, `read external session` reads the text of a range of
 // turns of one session with no copy, and `continue external session` copies
 // one session into a new session of this server. Each continue makes a new
-// session (Q85). `rebuild external session index` makes the index of one
-// source again. With no host, each operation gives the corrective of the
+// session (Q85). `count external sessions` counts the typed and the
+// automated sessions of the index with no pages, and
+// `rebuild external session index` makes the index of one source again. With no host, each operation gives the corrective of the
 // code `EXTERNAL_SESSIONS_UNAVAILABLE`. With no access to a source, each
 // operation gives the corrective of the code `NO_SOURCE_ACCESS`, which tells
 // the agent to ask the user to run Allow Access: an agent cannot give access
@@ -53,6 +54,32 @@ struct ExternalSessionListArguments: Sendable {
 
     /// The cursor of the page, or `nil` for the first page.
     var cursor: String? = nil
+}
+
+/// What one `count external sessions` asks for, before the step reads the
+/// folder.
+struct ExternalSessionCountArguments: Sendable {
+    /// The source agent as written, or `nil` for each source.
+    var source: String? = nil
+
+    /// The `folder` argument as written, or `nil` for each folder. `.` is
+    /// the folder of the caller.
+    var folder: String? = nil
+
+    /// The folder of the caller session, or `nil` when the call has none.
+    var callerFolder: URL? = nil
+}
+
+/// The counts of one `count external sessions`, and their scope.
+struct ExternalSessionCountOutcome: Sendable {
+    /// The source agent that the host got, or `nil` for each source.
+    let source: String?
+
+    /// The folder that the host got, or `nil` for each folder.
+    let folder: URL?
+
+    /// The counts of the host.
+    let counts: ExternalSessionCounts
 }
 
 /// What one `read external session` asks for.
@@ -199,6 +226,50 @@ extension ListExternalSessions {
                 callerFolder: try await context.callerFolder())
             return SessionsToolText.externalSessionList(
                 try await SessionsToolContext.externalSessions(arguments, with: context.externalSessionHost))
+        } catch {
+            return SessionsToolText.corrective(for: error)
+        }
+    }
+}
+
+/// Counts the external sessions of the index (`count external sessions`).
+@Generable
+@Operation(
+    verb: "count", noun: "external sessions",
+    description: """
+        Count the sessions of other agents, such as Claude Code or Codex, in the index of this server: the sessions \
+        that a person typed and the sessions that a program started. It gives no list. When the index is not \
+        complete, it tells the progress, and a later call can give larger counts.
+        """)
+struct CountExternalSessions {
+    /// The source agent.
+    @Guide(description: "Optional. The source agent: claude-code or codex. The default is each source.")
+    @OperationParam(aliases: ["agent", "from"])
+    var source: String?
+
+    /// The working folder of the sessions.
+    @Guide(
+        description: """
+            Optional. The absolute path of the working folder of the sessions, or . for the folder of your session. \
+            ~ expands. The default is each folder.
+            """)
+    @OperationParam(aliases: ["cwd"])
+    var folder: String?
+}
+
+extension CountExternalSessions {
+    /// Counts the external sessions of the index.
+    ///
+    /// - Parameter context: The shared context of the tool.
+    /// - Returns: The line of the counts, and one line of the index state
+    ///   when the index is not complete. A corrective for a server with no
+    ///   host, a relative folder, and a host that fails.
+    func execute(in context: SessionsToolContext) async throws -> String {
+        do {
+            let arguments = ExternalSessionCountArguments(
+                source: source, folder: folder, callerFolder: try await context.callerFolder())
+            return SessionsToolText.externalSessionCounts(
+                try await SessionsToolContext.externalSessionCounts(arguments, with: context.externalSessionHost))
         } catch {
             return SessionsToolText.corrective(for: error)
         }
@@ -418,6 +489,30 @@ extension SessionsToolContext {
         return try await externalHostResult(failure: SessionsToolText.externalListFailed) {
             try await host.externalSessions(query)
         }
+    }
+
+    /// Counts the external sessions of the index: the one count step of
+    /// `count external sessions` and of the `externalSessionCounts` query.
+    ///
+    /// - Parameters:
+    ///   - arguments: What the count asks for.
+    ///   - host: The external session host, or `nil` when the host gave none.
+    /// - Returns: The counts of the host, and the source and the folder that
+    ///   the host got.
+    /// - Throws: ``SessionsRefusal`` for a server with no host, a relative
+    ///   folder, `.` in a call with no caller folder, and a host that fails;
+    ///   `CancellationError` when the task of the call is cancelled.
+    static func externalSessionCounts(
+        _ arguments: ExternalSessionCountArguments, with host: (any ExternalSessionHost)?
+    ) async throws -> ExternalSessionCountOutcome {
+        let host = try requiredExternalSessionHost(host)
+        let source = SessionsToolInput.nonBlank(arguments.source)
+        let folder = try externalFolder(
+            arguments.folder, callerFolder: arguments.callerFolder, outcome: SessionsToolText.externalNotCountedSentence)
+        let counts = try await externalHostResult(failure: SessionsToolText.externalCountFailed) {
+            try await host.externalSessionCounts(source: source, folder: folder)
+        }
+        return ExternalSessionCountOutcome(source: source, folder: folder, counts: counts)
     }
 
     /// The updates of one external session, with each error of the host as

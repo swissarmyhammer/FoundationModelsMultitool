@@ -1,5 +1,5 @@
 // `SessionsToolExternalTests` — the `list external sessions`,
-// `read external session`, `continue external session` and
+// `count external sessions`, `read external session`, `continue external session` and
 // `rebuild external session index` operations of the `sessions` tool (D212, design sections 5.8 and 7).
 //
 // Each case uses its own `InMemorySessionDirectory` and its own fake host
@@ -28,6 +28,9 @@ struct SessionsToolExternalTests {
 
     /// The op string of `list external sessions`.
     private static let listOp = "list external sessions"
+
+    /// The op string of `count external sessions`.
+    private static let countOp = "count external sessions"
 
     /// The op string of `read external session`.
     private static let readOp = "read external session"
@@ -221,6 +224,54 @@ struct SessionsToolExternalTests {
 
         #expect(output.contains("work/project"))
         #expect(host.queries.isEmpty)
+    }
+
+    // MARK: - count external sessions
+
+    @Test("count external sessions with no argument counts each source and each folder")
+    func theCountWithNoArgumentCountsEachScope() async throws {
+        let host = Host()
+
+        let output = try await Self.callAsCaller(Self.countOp, host: host)
+
+        #expect(output == "Sessions in the index: 1 typed, 1 automated.")
+        #expect(host.countScopes == [Host.CountScope(source: nil, folder: nil)])
+    }
+
+    @Test("count external sessions gives the source and the folder of the caller for folder .")
+    func theCountGivesTheSourceAndTheDotFolder() async throws {
+        let host = Host()
+
+        let output = try await Self.callAsCaller(
+            Self.countOp, [("agent", Host.claudeCode), ("folder", ".")], host: host)
+
+        #expect(output == "Sessions in the index of claude-code in /work/project: 1 typed, 0 automated.")
+        #expect(host.countScopes.map(\.source) == [Host.claudeCode])
+        #expect(host.countScopes.map(\.folder?.path) == [Fixtures.workingFolder.path])
+    }
+
+    @Test("count external sessions gives the progress of the scope when the index is not complete")
+    func theCountGivesTheProgressWhenTheIndexIsNotComplete() async throws {
+        let folder = ExternalSessionIndexState(filesFound: 12, filesRead: 5, isComplete: false)
+
+        let output = try await Self.callAsCaller(
+            Self.countOp, [("folder", ".")], host: Host(folderIndexState: folder))
+
+        #expect(
+            output == """
+                Sessions in the index in /work/project: 1 typed, 0 automated.
+                \(SessionsToolText.incompleteIndexLine(folder))
+                """)
+    }
+
+    @Test("count external sessions with a relative folder gives the corrective and asks the host nothing")
+    func theCountWithARelativeFolderGivesTheCorrective() async throws {
+        let host = Host()
+
+        let output = try await Self.callAsCaller(Self.countOp, [("folder", "work/project")], host: host)
+
+        #expect(output.contains("work/project"))
+        #expect(host.countScopes.isEmpty)
     }
 
     // MARK: - read external session
@@ -498,7 +549,7 @@ struct SessionsToolExternalTests {
 
     @Test(
         "with no host, each external session operation gives the corrective",
-        arguments: [listOp, readOp, continueOp, rebuildOp])
+        arguments: [listOp, countOp, readOp, continueOp, rebuildOp])
     func eachOperationWithNoHostGivesTheCorrective(op: String) async throws {
         let output = try await Self.callAsCaller(op, Self.typedSessionFields, host: nil)
 

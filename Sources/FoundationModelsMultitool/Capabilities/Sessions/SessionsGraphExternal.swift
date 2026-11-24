@@ -1,5 +1,6 @@
 // The external sessions in the `sessions` GraphQL endpoint (D212, design
-// sections 4.5, 5.3 and 5.4): the `externalSessions` query, the
+// sections 4.5, 5.3 and 5.4): the `externalSessions` and
+// `externalSessionCounts` queries, the
 // `externalSessionChanges` and `externalSessionUpdates` subscriptions, the
 // `continueExternalSession` and `rebuildExternalSessionIndex` mutations and
 // their types.
@@ -7,7 +8,8 @@
 // An external session is a session file of another agent, such as Claude
 // Code or Codex. The host gives the index of these files through an
 // ``ExternalSessionHost``. The fields call the shared steps of the
-// `list external sessions`, `read external session`,
+// `list external sessions`, `count external sessions`,
+// `read external session`,
 // `continue external session` and `rebuild external session index`
 // operations of the `sessions` tool, so the tool
 // ops and the endpoint share one rule, one corrective and the same codes:
@@ -64,6 +66,25 @@ struct SessionsGraphExternalSessionsArguments: Codable, Sendable {
         ExternalSessionListArguments(
             source: source, folder: folder, automated: automated, limit: first, callerFolder: callerFolder,
             cursor: after)
+    }
+}
+
+/// The arguments of `Query.externalSessionCounts`.
+struct SessionsGraphExternalCountsArguments: Codable, Sendable {
+    /// The source agent, or `nil` for each source.
+    let source: String?
+
+    /// The working folder of the sessions as written, or `nil` for each
+    /// folder.
+    let folder: String?
+
+    /// The arguments of the shared count step.
+    ///
+    /// - Parameter callerFolder: The folder of the caller session, or `nil`
+    ///   for a call with no caller session.
+    /// - Returns: The arguments.
+    func countArguments(callerFolder: URL?) -> ExternalSessionCountArguments {
+        ExternalSessionCountArguments(source: source, folder: folder, callerFolder: callerFolder)
     }
 }
 
@@ -312,6 +333,28 @@ struct SessionsGraphExternalSessionPage: Sendable {
     }
 }
 
+/// The `ExternalSessionCounts` type: the counts of the sessions that the
+/// index has now, for one scope.
+struct SessionsGraphExternalSessionCounts: Sendable {
+    /// The number of typed sessions.
+    let typedCount: Int
+
+    /// The number of automated sessions.
+    let automatedCount: Int
+
+    /// The progress of the index for the scope of the counts.
+    let indexState: SessionsGraphExternalIndexState
+
+    /// Makes the object of the counts of the host.
+    ///
+    /// - Parameter counts: The counts.
+    init(_ counts: ExternalSessionCounts) {
+        typedCount = counts.typedCount
+        automatedCount = counts.automatedCount
+        indexState = SessionsGraphExternalIndexState(counts.indexState)
+    }
+}
+
 /// The `ExternalSessionChange` type: one change of the index.
 struct SessionsGraphExternalSessionChange: Sendable {
     /// The sessions that the index added or changed.
@@ -416,6 +459,32 @@ extension SessionsGraphResolver {
             let listArguments = arguments.listArguments(callerFolder: try await context.callerFolderOfDot())
             return SessionsGraphExternalSessionPage(
                 try await SessionsToolContext.externalSessions(listArguments, with: context.externalSessionHost))
+        }
+    }
+
+    /// Resolves `Query.externalSessionCounts`: the counts of the external
+    /// sessions of the index of the host, with no pages. The host runs in the
+    /// task of this resolver, so the cancellation of the call arrives at the
+    /// host.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call, which gives the host.
+    ///   - arguments: The source and the folder.
+    /// - Returns: The counts.
+    /// - Throws: ``SessionsRefusal`` with the code
+    ///   `EXTERNAL_SESSIONS_UNAVAILABLE` when the endpoint has no host,
+    ///   `INVALID_FOLDER` for a folder that the step cannot read, and
+    ///   `EXTERNAL_SESSION_FAILED` for an error of the host;
+    ///   `CancellationError`; the coded error of each error of the directory.
+    func externalSessionCounts(
+        context: SessionsGraphContext, arguments: SessionsGraphExternalCountsArguments
+    ) async throws -> SessionsGraphExternalSessionCounts {
+        try await Self.coding {
+            let countArguments = arguments.countArguments(callerFolder: try await context.callerFolderOfDot())
+            return SessionsGraphExternalSessionCounts(
+                try await SessionsToolContext.externalSessionCounts(
+                    countArguments, with: context.externalSessionHost
+                ).counts)
         }
     }
 
@@ -561,6 +630,24 @@ extension SessionsGraphAPI {
                 + "index has now and its indexState. With a folder, the index reads the files of that folder first, "
                 + "and externalSessionChanges gives the other sessions later. \(noExternalHostRule) "
                 + "EXTERNAL_SESSION_FAILED when the list fails.")
+    }
+
+    /// The `Query.externalSessionCounts` field.
+    ///
+    /// - Returns: The field.
+    static func externalSessionCountsField() -> SchemaField {
+        Field("externalSessionCounts", at: SessionsGraphResolver.externalSessionCounts) {
+            Argument("source", at: \.source).description("The source agent: claude-code or codex. None: each source.")
+            Argument("folder", at: \.folder)
+                .description(
+                    "The absolute path of the working folder of the sessions. ~ expands. \(externalDotFolderRule) "
+                        + "None: each folder.")
+        }
+        .description(
+            "The numbers of the typed and the automated sessions of other agents in the index of this server, with "
+                + "no pages. The query reads the index and never waits for it: the counts include only the "
+                + "sessions that the index found, and indexState tells when they are final. \(noExternalHostRule) "
+                + "EXTERNAL_SESSION_FAILED when the count fails.")
     }
 
     /// The `Subscription.externalSessionChanges` field.
@@ -724,6 +811,22 @@ extension SessionsGraphAPI {
                         + "folder. Only the user can give access, with the command Allow Access.")
         }
         .description("One page of the sessions of other agents.")
+    }
+
+    /// The `ExternalSessionCounts` type.
+    ///
+    /// - Returns: The type.
+    static func externalSessionCountsType() -> SchemaType {
+        Type(SessionsGraphExternalSessionCounts.self, as: "ExternalSessionCounts") {
+            Field("typedCount", at: \.typedCount).description("The number of the sessions that a person typed.")
+            Field("automatedCount", at: \.automatedCount)
+                .description("The number of the sessions that a program started.")
+            Field("indexState", at: \.indexState)
+                .description(
+                    "The progress of the index for the scope of the counts. When isComplete is true, the counts are "
+                        + "final.")
+        }
+        .description("The counts of the sessions of other agents that the index has now, for one scope.")
     }
 
     /// The `ExternalSessionChange` type.

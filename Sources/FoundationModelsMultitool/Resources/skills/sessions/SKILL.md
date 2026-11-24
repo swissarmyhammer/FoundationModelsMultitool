@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires the `sessions` tool of FoundationModelsMultitool (a top-level tool, and `tools.sessions` in `runCode`).
 metadata:
   author: swissarmyhammer
-  version: "1.15.0"
+  version: "1.16.0"
 ---
 
 # Sessions
@@ -132,6 +132,7 @@ Run the API tests again.
 | Update the share of a session | `{"op": "update share", "id": "v2w4abc", "keepUpdated": true}` |
 | Stop the share of a session | `{"op": "stop sharing", "id": "v2w4abc"}` |
 | List the sessions of other agents in a folder | `{"op": "list external sessions", "source": "claude-code", "folder": ".", "automated": false, "limit": 20}` |
+| Count the sessions of other agents in a folder | `{"op": "count external sessions", "source": "claude-code", "folder": "."}` |
 | Read the turns of a session of another agent | `{"op": "read external session", "source": "claude-code", "id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "fromTurn": 1, "turns": 10}` |
 | Continue a session of another agent in a new session | `{"op": "continue external session", "source": "claude-code", "id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "folder": ".", "name": "parser-fix"}` |
 | Rebuild the index of the sessions of another agent | `{"op": "rebuild external session index", "source": "claude-code"}` |
@@ -200,6 +201,10 @@ Run the API tests again.
   - `folder`: the absolute path of the working folder of the sessions, or `.` for the folder of your session. The default is each folder.
   - `automated`: `true` to also give the sessions that a program started. The default is `false`: only the sessions that a person typed.
   - `limit`: the most sessions to give, from 1 to 50. The default is 20.
+- `count external sessions` gives the number of the typed sessions and the number of the automated sessions that the index has now, with no list. When the index is not complete, the answer has one line with the progress: a later call can give larger counts.
+- `count external sessions` takes these parameters, and each is optional:
+  - `source`: the source agent, `claude-code` or `codex`. The default is each source.
+  - `folder`: the absolute path of the working folder of the sessions, or `.` for the folder of your session. The default is each folder.
 - `read external session` gives the prompts, the answers and the tool calls of a range of turns. It does not give the thoughts. After the first line, it gives the absolute path of the file of the session when the index has it, and one line for each session of this server that a continue made from the session. Do not read that file: use `read external session`. The text has a size limit: when the answer tells that more turns follow or that the text was cut, call it again with the `fromTurn` that the answer gives.
 - `read external session` takes these parameters:
   - `source`: the source agent, `claude-code` or `codex`. It is necessary.
@@ -212,8 +217,8 @@ Run the API tests again.
   - `id`: the id that `list external sessions` gives. It is necessary.
   - `folder`: the absolute path of the folder of the new session, or `.` for the folder of your session. The default is the working folder of the source session.
   - `name`: the name of the new session. The default is the name that the server gives. When a session of the folder has the name, the new session gets the next free number.
-- `rebuild external session index` removes the index of the sessions of one source, and then finds and reads each file of the source again. The call returns when the new find starts: until the read ends, `list external sessions` gives fewer sessions of the source. Use it when the user asks, or when the index gives sessions that are wrong or old.
+- `rebuild external session index` removes the index of the sessions of one source, and then finds and reads each file of the source again. The call returns when the new find starts: until the read ends, `list external sessions` gives fewer sessions of the source. To see the progress, use `count external sessions`. Use it when the user asks, or when the index gives sessions that are wrong or old.
 - `rebuild external session index` takes these parameters:
   - `source`: the source agent, `claude-code` or `codex`. It is necessary.
 - When an answer tells that there is no access to the sessions of a source, ask the user to run the command Allow Access to Claude Code Sessions… or Allow Access to Codex Sessions… of the File menu. An agent cannot give access to a folder.
-- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, `tools.sessions.listExternalSessions({...})`, `tools.sessions.readExternalSession({...})`, `tools.sessions.continueExternalSession({...})`, `tools.sessions.rebuildExternalSessionIndex({...})`, and so on.
+- In `runCode`, the same calls are `tools.sessions.sendMessage({...})`, `tools.sessions.listSessions({...})`, `tools.sessions.checkSession({...})`, `tools.sessions.forkSession({...})`, `tools.sessions.exportSession({...})`, `tools.sessions.searchSessions({...})`, `tools.sessions.shareSession({...})`, `tools.sessions.updateShare({...})`, `tools.sessions.stopSharing({...})`, `tools.sessions.listExternalSessions({...})`, `tools.sessions.countExternalSessions({...})`, `tools.sessions.readExternalSession({...})`, `tools.sessions.continueExternalSession({...})`, `tools.sessions.rebuildExternalSessionIndex({...})`, and so on.

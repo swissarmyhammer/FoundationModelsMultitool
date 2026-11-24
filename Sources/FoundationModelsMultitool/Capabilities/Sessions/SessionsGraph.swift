@@ -49,6 +49,9 @@ import Synchronization
 ///   first, with the `indexState` of the index and the sources with no
 ///   access. It reads the index and never waits for the build of the index.
 ///   With no external session host it gives `EXTERNAL_SESSIONS_UNAVAILABLE`.
+/// - `Query.externalSessionCounts(source:folder:)` gives the numbers of the
+///   typed and the automated external sessions of the index, with no pages,
+///   and the `indexState` of the scope (D212).
 /// - `Query.inbox(sessionId:limit:)` gives the unread messages to a session,
 ///   the oldest first. It marks none read (D72): only the `read inbox` op of
 ///   the tool does.
@@ -148,7 +151,11 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// external session, `continued_sessions` and `continuations` for its
     /// `continuedSessions`, `file_path` and `absolutePath` for its
     /// `filePath`, and `sessionId` for the `id` and `created_at` for
-    /// the `createdAt` of a continuation; `cwd` for the `folder` of `externalSessionChanges`,
+    /// the `createdAt` of a continuation; `countExternalSessions` for
+    /// `externalSessionCounts`, `agent` and `from` for its `source`, `cwd`
+    /// for its `folder`, and `typed` and `automated` for the `typedCount`
+    /// and the `automatedCount` of its counts; `cwd` for the `folder` of
+    /// `externalSessionChanges`,
     /// and `agent` and `from` for the `source`, and `sourceId` and
     /// `sourceID` for the `id`, of `externalSessionUpdates`; the bare verb of each
     /// mutation, and the names of the tool op of each mutation for the fields
@@ -180,7 +187,11 @@ public final class SessionsGraph: GraphQLEndpoint {
                 ],
                 "ExternalSessionContinuation": ["id": ["sessionId"], "createdAt": ["created_at"]],
                 "ExternalSessionKey": ["sourceId": ["sourceID", "source_id"]],
-                "Query": ["sessionPage": ["sessionsPage", "pagedSessions"]],
+                "Query": [
+                    "sessionPage": ["sessionsPage", "pagedSessions"],
+                    "externalSessionCounts": ["countExternalSessions"],
+                ],
+                "ExternalSessionCounts": ["typedCount": ["typed"], "automatedCount": ["automated"]],
                 "Subscription": ["changes": ["sessionChanges"]],
             ]) { mutation, _ in mutation },
             byField: [
@@ -194,6 +205,7 @@ public final class SessionsGraph: GraphQLEndpoint {
                     "source": ["agent", "from"], "folder": ["cwd"], "automated": ["includeAutomated"],
                     "first": ["limit"], "after": ["cursor"],
                 ],
+                "Query.externalSessionCounts": ["source": ["agent", "from"], "folder": ["cwd"]],
                 "Subscription.externalSessionChanges": ["folder": ["cwd"]],
                 "Subscription.externalSessionUpdates": ["source": ["agent", "from"], "id": ["sourceId", "sourceID"]],
             ]))

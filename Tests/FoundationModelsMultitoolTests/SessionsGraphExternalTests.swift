@@ -1,6 +1,6 @@
 // `SessionsGraphExternalTests` — the external session fields of the
 // `sessions` GraphQL endpoint (D212, design section 7): the
-// `externalSessions` query, the `externalSessionChanges` and
+// `externalSessions` and `externalSessionCounts` queries, the `externalSessionChanges` and
 // `externalSessionUpdates` subscriptions and the `continueExternalSession`
 // and `rebuildExternalSessionIndex` mutations.
 //
@@ -54,6 +54,10 @@ struct SessionsGraphExternalTests {
         mutation { continueExternalSession(input: {source: "claude-code", id: "a1b2c3", folder: "/work/other", \
         name: "parser-fix"}) { title cwd } }
         """
+
+    /// The `externalSessionCounts` query of each source and each folder.
+    private static let countsQuery =
+        "{ externalSessionCounts { typedCount automatedCount indexState { filesFound filesRead isComplete } } }"
 
     /// The `rebuildExternalSessionIndex` mutation of the source Codex.
     private static let rebuildMutation = "mutation { rebuildExternalSessionIndex(input: {source: \"codex\"}) }"
@@ -176,6 +180,25 @@ struct SessionsGraphExternalTests {
 
         #expect(cancelled != nil)
         #expect(setup.host.queries.count == 1)
+    }
+
+    @Test("the cancellation of an externalSessionCounts call arrives at the host")
+    func theCancellationOfTheCountsQueryArrivesAtTheHost() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(blocksCalls: true))
+        var starts = setup.host.queryStarts.makeAsyncIterator()
+        var cancellations = setup.host.queryCancellations.makeAsyncIterator()
+        let graph = setup.graph
+        let call = Task {
+            try await graph.execute(query: Self.countsQuery, variables: [:], operationName: nil, viewer: Self.deviceViewer)
+        }
+
+        _ = await starts.next()
+        call.cancel()
+        let cancelled: Void? = await cancellations.next()
+        _ = try? await call.value
+
+        #expect(cancelled != nil)
+        #expect(setup.host.countScopes.count == 1)
     }
 
     @Test("the cancellation of a continueExternalSession call arrives at the host")
@@ -334,6 +357,7 @@ struct SessionsGraphExternalTests {
         let query = try await GraphQLReply.run(Self.idsQuery, viewer: Self.deviceViewer, on: graph)
         let mutation = try await GraphQLReply.run(Self.continueMutation, viewer: Self.deviceViewer, on: graph)
         let rebuild = try await GraphQLReply.run(Self.rebuildMutation, viewer: Self.deviceViewer, on: graph)
+        let counts = try await GraphQLReply.run(Self.countsQuery, viewer: Self.deviceViewer, on: graph)
         let changes = try await Self.firstReply(
             of: graph.subscribe(
                 query: Self.changesSubscription, variables: [:], operationName: nil, viewer: Self.deviceViewer))
@@ -341,7 +365,7 @@ struct SessionsGraphExternalTests {
             of: graph.subscribe(
                 query: Self.updatesSubscription, variables: [:], operationName: nil, viewer: Self.deviceViewer))
 
-        for reply in [query, mutation, rebuild, changes, updates] {
+        for reply in [query, mutation, rebuild, counts, changes, updates] {
             #expect(reply.codes == [code])
             #expect(reply.messages == [SessionsToolText.noExternalSessionHost])
         }
@@ -613,5 +637,58 @@ struct SessionsGraphExternalTests {
         #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
         let sessions = try #require(try reply.object("externalSessions")["sessions"] as? [[String: Any]])
         #expect(sessions.first?["file_path"] as? String == Host.sessionFile.path)
+    }
+
+    // MARK: - externalSessionCounts
+
+    @Test("externalSessionCounts gives the typed count, the automated count and the indexState")
+    func theCountsQueryGivesTheCounts() async throws {
+        let index = ExternalSessionIndexState(filesFound: 400, filesRead: 120, isComplete: false)
+        let setup = Setup(host: FakeExternalSessionHost(indexState: index))
+
+        let reply = try await setup.run(Self.countsQuery)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        let counts = try reply.object("externalSessionCounts")
+        #expect(counts["typedCount"] as? Int == 1)
+        #expect(counts["automatedCount"] as? Int == 1)
+        let state = try #require(counts["indexState"] as? [String: Any])
+        #expect(state["filesFound"] as? Int == 400)
+        #expect(state["filesRead"] as? Int == 120)
+        #expect(state["isComplete"] as? Bool == false)
+        #expect(setup.host.countScopes == [FakeExternalSessionHost.CountScope(source: nil, folder: nil)])
+    }
+
+    @Test("externalSessionCounts gives the host the source and the folder")
+    func theCountsQueryGivesTheScopeToTheHost() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(
+            "{ externalSessionCounts(source: \"codex\", folder: \"/work/other\") { typedCount } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(setup.host.countScopes.map(\.source) == [Host.codex])
+        #expect(setup.host.countScopes.map(\.folder?.path) == [Self.otherFolder.path])
+    }
+
+    @Test("externalSessionCounts with folder . from a client gives INVALID_FOLDER and asks the host nothing")
+    func theCountsQueryWithTheDotFolderOfAClientIsInvalid() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run("{ externalSessionCounts(folder: \".\") { typedCount } }")
+
+        #expect(reply.codes == [SessionsRefusal.Kind.invalidFolder.rawValue])
+        #expect(setup.host.countScopes.isEmpty)
+    }
+
+    @Test("externalSessionCounts takes the aliases countExternalSessions, agent and typed")
+    func theCountsQueryTakesItsAliases() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run("{ countExternalSessions(agent: \"claude-code\") { typed } }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(try reply.object("countExternalSessions")["typed"] as? Int == 1)
+        #expect(setup.host.countScopes.map(\.source) == [Host.claudeCode])
     }
 }

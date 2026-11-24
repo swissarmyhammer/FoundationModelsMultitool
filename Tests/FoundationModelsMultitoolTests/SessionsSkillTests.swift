@@ -4,6 +4,7 @@
 // operation of the tool has an example, the parameter list of `export
 // session`, of `fork session`, of `search sessions`, of `share session`, of
 // `update share`, of `stop sharing`, of `list external sessions`, of
+// `count external sessions`, of
 // `read external session`, of `continue external session` and of
 // `rebuild external session index` (D212) in the skill names each parameter, the skill tells the limit of `search
 // sessions` (D207 (d)), the skill says to share a session only when the user
@@ -245,7 +246,7 @@ import Testing
     static let listedOperations = [
         ExportSession.opString, ForkSession.opString, SearchSessions.opString, ShareSession.opString,
         UpdateShare.opString, StopSharing.opString,
-        ListExternalSessions.opString, ReadExternalSession.opString, ContinueExternalSession.opString,
+        ListExternalSessions.opString, CountExternalSessions.opString, ReadExternalSession.opString, ContinueExternalSession.opString,
         RebuildExternalSessionIndex.opString,
     ]
 

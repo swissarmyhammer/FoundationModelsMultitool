@@ -1,4 +1,5 @@
-// The text of the `list external sessions`, `read external session`,
+// The text of the `list external sessions`, `count external sessions`,
+// `read external session`,
 // `continue external session` and `rebuild external session index`
 // operations of the `sessions` tool: their answers and their correctives
 // (D212, design section 5.8).
@@ -20,6 +21,10 @@ extension SessionsToolText {
     /// The sentence of a corrective that tells that `list external sessions`
     /// did not list.
     static let externalNotListedSentence = "Nothing was listed."
+
+    /// The sentence of a corrective that tells that
+    /// `count external sessions` did not count.
+    static let externalNotCountedSentence = "Nothing was counted."
 
     /// The sentence of a corrective that tells that
     /// `continue external session` made no session.
@@ -165,6 +170,32 @@ extension SessionsToolText {
         """
     }
 
+    /// The corrective of a host that could not count the external sessions.
+    ///
+    /// - Parameter error: The error of the host.
+    /// - Returns: The corrective.
+    static func externalCountFailed(_ error: any Error) -> String {
+        "The count of the sessions of other agents failed: \(error). Try the call again."
+    }
+
+    /// The answer of `count external sessions`: the line of the counts,
+    /// `Sessions in the index of <source> in <folder>: <n> typed, <n>
+    /// automated.`, and
+    /// the line of the index state when the index is not complete for the
+    /// scope of the count.
+    ///
+    /// - Parameter outcome: The counts of the host and their scope.
+    /// - Returns: The answer.
+    static func externalSessionCounts(_ outcome: ExternalSessionCountOutcome) -> String {
+        let counts = outcome.counts
+        let source = outcome.source.map { " of \($0)" } ?? ""
+        let folder = outcome.folder.map { " in \($0.path)" } ?? ""
+        let countLine =
+            "Sessions in the index\(source)\(folder): \(counts.typedCount) typed, \(counts.automatedCount) automated."
+        let indexLines = counts.indexState.isComplete ? [] : [incompleteIndexLine(counts.indexState)]
+        return ([countLine] + indexLines).joined(separator: "\n")
+    }
+
     /// The corrective of a host that could not rebuild the index of a
     /// source.
     ///
@@ -185,7 +216,7 @@ extension SessionsToolText {
         """
         The rebuild of the index of the sessions of \(source) started. The index removed the sessions of \(source), \
         and now finds and reads each file of \(source) again. Until the read ends, \(ListExternalSessions.opString) \
-        gives fewer sessions of \(source), and its answer tells the progress.
+        gives fewer sessions of \(source). To see the progress, use \(CountExternalSessions.opString).
         """
     }
 

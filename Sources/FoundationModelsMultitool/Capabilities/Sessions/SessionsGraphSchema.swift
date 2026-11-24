@@ -39,6 +39,7 @@ struct SessionsGraphContext: GraphQLRunContext {
 
     /// The host of the external sessions that the host gave the endpoint, or
     /// `nil` when no host gave one. `Query.externalSessions`,
+    /// `Query.externalSessionCounts`,
     /// `Subscription.externalSessionChanges`,
     /// `Subscription.externalSessionUpdates`,
     /// `Mutation.continueExternalSession` and
@@ -309,7 +310,8 @@ struct SessionsGraphAPI: API {
     /// type are in `SessionsGraphPages.swift`, the `searchSessions` query and
     /// its types are in `SessionsGraphSearch.swift`, the
     /// `SessionImportProvenance` type of the `importedFrom` field of a session
-    /// is in `SessionsGraphProvenance.swift`, the `externalSessions` query, the
+    /// is in `SessionsGraphProvenance.swift`, the `externalSessions` and
+    /// `externalSessionCounts` queries, the
     /// `externalSessionChanges` and `externalSessionUpdates` subscriptions,
     /// the `continueExternalSession` and `rebuildExternalSessionIndex`
     /// mutations and their types are in
@@ -365,6 +367,7 @@ struct SessionsGraphAPI: API {
                 externalSessionKeyType()
                 externalIndexStateType()
                 externalSessionPageType()
+                externalSessionCountsType()
                 externalSessionChangeType()
                 externalSessionEntryType()
                 externalSessionUpdateBatchType()
@@ -381,6 +384,7 @@ struct SessionsGraphAPI: API {
                 recentSessionsField()
                 cursorField()
                 externalSessionsField()
+                externalSessionCountsField()
             }
             .addMutation(mutationFields)
             .addSubscription {
