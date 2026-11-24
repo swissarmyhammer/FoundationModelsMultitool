@@ -409,8 +409,26 @@ struct SessionsGraphShareTests {
             try await subscription.nextChange(),
         ]
 
-        #expect(changes.map(\.added) == [[callerID.ulidString], [], []])
-        #expect(changes.map(\.changed) == [[], [setup.session.id.ulidString], [setup.marker.id.ulidString]])
+        // The add of the caller and the change of the share come from two feeds, so their order
+        // is not fixed. The marker change comes after both.
+        let firstTwo = changes.prefix(2).map { ChangeEntries(added: $0.added, changed: $0.changed) }
+        #expect(
+            Set(firstTwo)
+                == [
+                    ChangeEntries(added: [callerID.ulidString], changed: []),
+                    ChangeEntries(added: [], changed: [setup.session.id.ulidString]),
+                ])
+        #expect(changes[2].added.isEmpty)
+        #expect(changes[2].changed == [setup.marker.id.ulidString])
+    }
+
+    /// The added and the changed entries of one change, with no cursor.
+    private struct ChangeEntries: Hashable {
+        /// The added entries.
+        let added: [String]
+
+        /// The changed entries.
+        let changed: [String]
     }
 
     @Test("a share change from outside gives one changed entry for its session")
