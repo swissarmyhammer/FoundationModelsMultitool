@@ -140,8 +140,8 @@ struct ExternalSessionReading: Sendable {
     /// The session.
     let session: ExternalSessionID
 
-    /// The entry of the session in the index, or `nil` when the pages of the
-    /// index of its source do not have it.
+    /// The entry of the session in the index, or `nil` when the index has no
+    /// such session.
     let summary: ExternalSessionSummary?
 
     /// The first turn that the call asked for.
@@ -615,35 +615,22 @@ extension SessionsToolContext {
             lastTurnOfSession: readsToTheEnd && !isCut ? turnNumber : nil, isCut: isCut)
     }
 
-    /// The entry of one external session in the index: the step reads the
-    /// pages of the index of its source, with the automated sessions, until
-    /// a page has the session. It stops at the last page, and at a cursor
-    /// that a page before gave, so a host whose cursor does not change
-    /// cannot keep the step in a loop.
+    /// The entry of one external session in the index: one lookup of the
+    /// host, which reads no page and no file.
     ///
     /// - Parameters:
     ///   - session: The external session.
     ///   - host: The external session host.
-    /// - Returns: The entry, or `nil` when no page has the session.
-    /// - Throws: ``SessionsRefusal`` for a host that fails, and
-    ///   `CancellationError` when the task of the call is cancelled.
+    /// - Returns: The entry, or `nil` when the index has no such session.
+    /// - Throws: ``SessionsRefusal`` with the code `NO_SOURCE_ACCESS` for a
+    ///   source with no access, and `EXTERNAL_SESSION_FAILED` for a host that
+    ///   fails; `CancellationError` when the task of the call is cancelled.
     static func externalSessionSummary(
         of session: ExternalSessionID, with host: any ExternalSessionHost
     ) async throws -> ExternalSessionSummary? {
-        var cursor: String?
-        var usedCursors: Set<String> = []
-        repeat {
-            let query = ExternalSessionQuery(
-                source: session.source, automated: true, limit: maximumExternalSessionLimit, cursor: cursor)
-            let page = try await externalHostResult(failure: { SessionsToolText.externalReadFailed(session, $0) }) {
-                try await host.externalSessions(query)
-            }
-            if let summary = page.sessions.first(where: { $0.id == session }) {
-                return summary
-            }
-            cursor = page.nextCursor
-        } while cursor.map { usedCursors.insert($0).inserted } ?? false
-        return nil
+        try await externalHostResult(failure: { SessionsToolText.externalReadFailed(session, $0) }) {
+            try await host.externalSession(session)
+        }
     }
 
     /// Copies an external session into a new session: the one continue step

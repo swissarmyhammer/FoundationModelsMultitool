@@ -311,13 +311,15 @@ struct SessionsToolExternalTests {
                     """,
                     Self.turnText(1), "This is the last turn of the session.",
                 ].joined(separator: "\n\n"))
-        #expect(host.queries == [ExternalSessionQuery(source: Host.claudeCode, automated: true, limit: 50)])
+        #expect(host.lookupSessions == [Host.typedSession.id])
+        #expect(host.queries.isEmpty)
     }
 
     @Test("read external session gives the absolute path of the file after the first line")
     func theReadGivesTheFilePath() async throws {
-        let output = try await Self.callAsCaller(
-            Self.readOp, Self.readFields(), host: Host(sessions: [Host.filedSession], batches: Host.turns(1)))
+        let host = Host(sessions: [Host.filedSession], batches: Host.turns(1))
+
+        let output = try await Self.callAsCaller(Self.readOp, Self.readFields(), host: host)
 
         #expect(
             output
@@ -326,6 +328,8 @@ struct SessionsToolExternalTests {
                     "The file of the session is /Users/user/.claude/projects/-work-project/a1b2c3.jsonl.",
                     Self.turnText(1), "This is the last turn of the session.",
                 ].joined(separator: "\n\n"))
+        #expect(host.lookupSessions == [Host.filedSession.id])
+        #expect(host.queries.isEmpty)
     }
 
     @Test("read external session after the last turn also gives the sessions that a continue made")
@@ -339,14 +343,15 @@ struct SessionsToolExternalTests {
                 "The session a1b2c3 of claude-code has 3 turns. Give a fromTurn from 1 to 3.\n\nContinued "))
     }
 
-    @Test("read external session reads each page of the index one time, also when the cursor does not change")
-    func theReadStopsAtACursorThatRepeats() async throws {
+    @Test("read external session finds its entry with one lookup of the host, and reads no page of the index")
+    func theReadFindsItsEntryWithOneLookup() async throws {
         let host = Host(sessions: [Host.typedSession], nextCursor: "page-2", batches: Host.turns(1))
 
         let output = try await Self.callAsCaller(Self.readOp, Self.readFields(), host: host)
 
         #expect(output.hasPrefix("The session a1b2c3 of claude-code: turns 1 to 1.\n\nTurn 1"))
-        #expect(host.queries.count == 1)
+        #expect(host.lookupSessions == [Host.typedSession.id])
+        #expect(host.queries.isEmpty)
     }
 
     @Test("read external session gives the range of fromTurn and turns, and tells the last turn")
