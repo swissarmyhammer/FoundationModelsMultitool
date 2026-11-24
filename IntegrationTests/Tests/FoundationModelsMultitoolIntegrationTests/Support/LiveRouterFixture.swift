@@ -11,6 +11,7 @@ import Testing
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
+import MultitoolTestSupport
 import TestConcurrency
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
@@ -858,16 +859,16 @@ struct LiveRouterFixture {
     /// directories alike, so a directory listing reads as one family.
     private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
 
-    /// Creates a unique temporary directory, for state that must NOT outlive
-    /// the test — a capability store a scenario configures for the surface it
-    /// mounts.
+    /// Creates a unique temporary directory in the folder of the test run
+    /// (`TestRunFolder.temporary`), for state that must NOT outlive the test
+    /// — a capability store a scenario configures for the surface it mounts.
     ///
     /// The test that runs now owns the directory before it exists, and the
     /// `ownsTemporaryDirectories` trait of its suite removes it when the test
     /// ends, also when the test throws (test rule T1). A test with no such
     /// trait records an issue, and its directory stays.
     static func makeTempDir() -> URL {
-        let dir = uniqueDirectory(under: FileManager.default.temporaryDirectory)
+        let dir = uniqueDirectory(under: TestRunFolder.temporary)
         currentScratchFolders().own(dir)
         return createdDirectory(dir)
     }

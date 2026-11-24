@@ -33,8 +33,9 @@ enum TestSupport {
 
     /// Create a fresh, empty temporary directory and return its URL.
     ///
-    /// The directory is created under the process temporary directory with a
-    /// unique name, thus concurrent tests never collide. The
+    /// The directory is created in the folder of the test run
+    /// (`TestRunFolder.temporary`) with a unique name, thus concurrent tests
+    /// never collide. The
     /// `TestScratch.current` of the test owns the directory, thus the
     /// `ownsTemporaryDirectories` trait removes it when the test ends, also
     /// when the test throws. A call from a test that no such trait holds

@@ -39,7 +39,7 @@ struct EmptyListResultTests {
     /// Runs `code` with the files group over a root that holds a
     /// `docs/ref/forms.txt` with no match, beside the stand-in `grepCode`.
     private static func run(_ code: String) async throws -> String {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = TestRunFolder.temporary.appendingPathComponent(UUID().uuidString)
         let url = root.appendingPathComponent("docs/ref/forms.txt")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("Forms\n=====\n".utf8).write(to: url)

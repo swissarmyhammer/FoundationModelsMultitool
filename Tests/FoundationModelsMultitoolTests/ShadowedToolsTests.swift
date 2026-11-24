@@ -35,7 +35,7 @@ struct ShadowedToolsTests {
 
     /// Runs `code` with the files group over a root with `Lib/` and `Tools/`.
     private static func run(_ code: String) async throws -> String {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = TestRunFolder.temporary.appendingPathComponent(UUID().uuidString)
         for file in ["Lib/a.py", "Tools/b.py"] {
             let url = root.appendingPathComponent(file)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

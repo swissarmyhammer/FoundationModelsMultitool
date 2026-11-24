@@ -260,7 +260,7 @@ enum NoProgramProbe {
     /// - Returns: The result of the list. It fails unless the list gives the
     ///   one checkpoint.
     private static func snapshotCheck(in repository: TemporaryGitRepository) async -> ProbeCheck {
-        let folder = FileManager.default.temporaryDirectory
+        let folder = TestRunFolder.temporary
             .appendingPathComponent("\(temporaryFolderPrefix)-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         return await check("snapshots.list") {

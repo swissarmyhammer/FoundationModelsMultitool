@@ -74,7 +74,7 @@ final class TemporaryGitRepository {
     /// - Throws: ``LibGit2Error`` when libgit2 cannot make the repository, or
     ///   the error of `FileManager` when the folder cannot be made.
     init() throws {
-        let workDirectory = FileManager.default.temporaryDirectory
+        let workDirectory = TestRunFolder.temporary
             .appendingPathComponent("\(Self.directoryNamePrefix)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
         do {

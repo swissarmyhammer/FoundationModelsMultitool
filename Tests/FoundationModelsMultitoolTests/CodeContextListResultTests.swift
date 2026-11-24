@@ -129,7 +129,7 @@ struct CodeContextListResultTests {
     /// Runs `code` with the files group over a root that holds the file of
     /// the run, beside the stand-in `code_context` verbs.
     private static func run(_ code: String) async throws -> String {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = TestRunFolder.temporary.appendingPathComponent(UUID().uuidString)
         let url = root.appendingPathComponent("django/contrib/admin/views/autocomplete.py")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let text = (1...100).map { "line \($0)" }.joined(separator: "\n") + "\n"

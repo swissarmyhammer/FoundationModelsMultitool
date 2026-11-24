@@ -4,6 +4,7 @@ import FoundationModelsExtras
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// A shell command holds a `.shellCommand` lease in the `WorkRegistry` of
 /// the session of its call, from its start until its process exited and its
@@ -141,7 +142,7 @@ struct ShellCommandLeaseTests {
         let session = LeasedSession()
         let state = try makeState()
         let recorder = WorkTransitionsRecorder(session.registry)
-        let missing = FileManager.default.temporaryDirectory
+        let missing = TestRunFolder.temporary
             .appendingPathComponent("worklease-missing-\(UUID().uuidString)").path
 
         let token = try await Self.startPending(

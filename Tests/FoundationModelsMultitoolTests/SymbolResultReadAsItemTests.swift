@@ -139,7 +139,7 @@ struct SymbolResultReadAsItemTests {
     /// Runs `code` with the files group beside the stand-in `code_context`
     /// verbs.
     private static func run(_ code: String) async throws -> String {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = TestRunFolder.temporary.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let registry = try MultiTool.Builder(mode: .open)
             .withFiles(root: root)

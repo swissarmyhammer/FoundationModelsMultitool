@@ -1,6 +1,8 @@
 import Foundation
 import Synchronization
 
+@testable import MultitoolTestSupport
+
 // MARK: - Shell scratch fixtures
 //
 // The shell capability writes to disk — an output buffer, a history file, the
@@ -56,15 +58,15 @@ final class TestScratch: Sendable {
         removeAll()
     }
 
-    /// A unique path under the process temporary directory, which nothing
-    /// made yet.
+    /// A unique path in the folder of the test run
+    /// (`TestRunFolder.temporary`), which nothing made yet.
     ///
     /// - Parameter prefix: A short name that states the role of the path.
     ///   Thus a leaked path is traceable to the suite that made it, and is not
     ///   anonymous in `$TMPDIR`.
     /// - Returns: The path, in the `/var` spelling of the temporary directory.
     static func uniqueTemporaryPath(prefix: String) -> URL {
-        FileManager.default.temporaryDirectory
+        TestRunFolder.temporary
             .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     }
 

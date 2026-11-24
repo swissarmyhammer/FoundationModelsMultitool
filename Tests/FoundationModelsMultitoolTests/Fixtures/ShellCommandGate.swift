@@ -10,6 +10,7 @@ import Foundation
 import Synchronization
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// A named pipe (FIFO) that holds a shell command until the test releases it.
 ///
@@ -50,11 +51,11 @@ final class ShellCommandGate: Sendable {
     /// wait (see the type), thus a second release throws.
     private let released = Mutex(false)
 
-    /// Makes a FIFO in the temporary directory.
+    /// Makes a FIFO in the folder of the test run (`TestRunFolder.temporary`).
     ///
     /// - Throws: ``Failure`` when `mkfifo` fails.
     init() throws {
-        let path = FileManager.default.temporaryDirectory
+        let path = TestRunFolder.temporary
             .appendingPathComponent("multitool-gate-\(UUID().uuidString).fifo").path
         guard mkfifo(path, Self.fifoMode) == 0 else {
             throw Failure(description: "mkfifo failed for \(path): errno \(errno)")
