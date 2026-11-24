@@ -1,6 +1,6 @@
 // `SessionsToolExternalTests` — the `list external sessions`,
-// `read external session` and `continue external session` operations of the
-// `sessions` tool (D212, design sections 5.8 and 7).
+// `read external session`, `continue external session` and
+// `rebuild external session index` operations of the `sessions` tool (D212, design sections 5.8 and 7).
 //
 // Each case uses its own `InMemorySessionDirectory` and its own fake host
 // from the fixtures. Each case reads the calls of the fake after the call of
@@ -34,6 +34,9 @@ struct SessionsToolExternalTests {
 
     /// The op string of `continue external session`.
     private static let continueOp = "continue external session"
+
+    /// The op string of `rebuild external session index`.
+    private static let rebuildOp = "rebuild external session index"
 
     /// The day and the time of ``Fixtures/fixedDate`` in the answers.
     private static let fixedDateText = "2027-01-15T08:00:00Z"
@@ -371,9 +374,59 @@ struct SessionsToolExternalTests {
         #expect(host.continueRequests.isEmpty)
     }
 
+    // MARK: - rebuild external session index
+
+    @Test("rebuild external session index calls the host one time with the source, and tells that the read continues")
+    func theRebuildCallsTheHostOneTime() async throws {
+        let host = Host()
+
+        let output = try await Self.callAsCaller(Self.rebuildOp, [("source", " \(Host.codex) ")], host: host)
+
+        #expect(host.rebuildSources == [Host.codex])
+        #expect(output == SessionsToolText.startedExternalIndexRebuild(Host.codex))
+        #expect(output.hasPrefix("The rebuild of the index of the sessions of codex started."))
+    }
+
+    @Test("rebuild external session index takes the alias agent for the source")
+    func theRebuildTakesTheAgentAlias() async throws {
+        let host = Host()
+
+        _ = try await Self.callAsCaller(Self.rebuildOp, [("agent", Host.claudeCode)], host: host)
+
+        #expect(host.rebuildSources == [Host.claudeCode])
+    }
+
+    @Test("rebuild external session index of a source with no access gives the Allow Access corrective")
+    func theRebuildOfASourceWithNoAccessGivesTheCorrective() async throws {
+        let output = try await Self.callAsCaller(
+            Self.rebuildOp, [("source", Host.claudeCode)], host: Host(unreadableSources: [Host.claudeCode]))
+
+        #expect(output == SessionsToolText.noExternalSourceAccess(Host.claudeCode))
+        #expect(output.contains(Self.allowAccessWords))
+    }
+
+    @Test("rebuild external session index of a source that the host does not know gives the access corrective")
+    func theRebuildOfAnUnknownSourceGivesTheCorrective() async throws {
+        let output = try await Self.callAsCaller(Self.rebuildOp, [("source", "gemini")], host: Host())
+
+        #expect(output == SessionsToolText.noExternalSourceAccess("gemini"))
+    }
+
+    @Test("rebuild external session index with a blank source gives the corrective and calls the host no time")
+    func theRebuildWithABlankSourceGivesTheCorrective() async throws {
+        let host = Host()
+
+        let output = try await Self.callAsCaller(Self.rebuildOp, [("source", "  ")], host: host)
+
+        #expect(output == SessionsToolText.blankText(SessionsToolText.externalSourceParameter))
+        #expect(host.rebuildSources.isEmpty)
+    }
+
     // MARK: - With no host
 
-    @Test("with no host, each external session operation gives the corrective", arguments: [listOp, readOp, continueOp])
+    @Test(
+        "with no host, each external session operation gives the corrective",
+        arguments: [listOp, readOp, continueOp, rebuildOp])
     func eachOperationWithNoHostGivesTheCorrective(op: String) async throws {
         let output = try await Self.callAsCaller(op, Self.typedSessionFields, host: nil)
 

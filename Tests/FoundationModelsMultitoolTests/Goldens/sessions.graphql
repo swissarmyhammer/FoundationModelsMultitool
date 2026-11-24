@@ -874,6 +874,12 @@ input ContinueExternalSessionInput {
   name: String
 }
 
+"""The source agent whose index of sessions to rebuild."""
+input RebuildExternalSessionIndexInput {
+  """The source agent: claude-code or codex."""
+  source: String!
+}
+
 type Query {
   """
   The sessions on this server that match the filter, the newest first. An external client sees only the sessions that it owns or that its connection started, their subagents, and the sessions that they started.
@@ -1101,6 +1107,14 @@ type Mutation {
     """The source session, and the folder and the name of the new session."""
     input: ContinueExternalSessionInput!
   ): Session!
+
+  """
+  Rebuilds the index of the sessions of one other agent. The index removes the sessions of the source, and then finds and reads each session file of the source again. The call returns true when the new find starts, not when the read ends: externalSessionChanges gives the removed sessions and then the new sessions. An external client cannot rebuild the index. EXTERNAL_SESSIONS_UNAVAILABLE when this server has no index of the sessions of other agents. NO_SOURCE_ACCESS when this server does not know the source or the user gave no access to its sessions: only the user can give access, with the command Allow Access. EXTERNAL_SESSION_FAILED when the rebuild fails.
+  """
+  rebuildExternalSessionIndex(
+    """The source whose index to rebuild."""
+    input: RebuildExternalSessionIndexInput!
+  ): Boolean!
 }
 
 type Subscription {

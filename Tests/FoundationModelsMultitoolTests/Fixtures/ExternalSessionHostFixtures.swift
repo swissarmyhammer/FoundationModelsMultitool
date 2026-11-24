@@ -13,13 +13,13 @@ struct ExternalSessionHostFailure: Error, CustomStringConvertible {
 /// A fake ``ExternalSessionHost``: a fixed index of external sessions and a
 /// fixed history for each session.
 ///
-/// The fake records each query, each followed folder, each read session and
-/// each continue request, so a case proves what the endpoint or the tool
+/// The fake records each query, each count, each rebuild, each followed
+/// folder, each read session and each continue request, so a case proves what the endpoint or the tool
 /// asked the host to do. It gives signals as streams, so a case waits for an
 /// event of the host and never for a time:
 ///
-/// - ``queryStarts`` and ``queryCancellations`` for a query that waits for
-///   its cancellation (``blocksCalls``), and ``continueStarts`` and
+/// - ``queryStarts`` and ``queryCancellations`` for a query or a count that
+///   waits for its cancellation (``blocksCalls``), and ``continueStarts`` and
 ///   ``continueCancellations`` for a continue that waits.
 /// - ``updateTerminations`` gives `true` when a reader stops an update
 ///   stream (a cancellation) and `false` when the stream finishes.
@@ -41,6 +41,12 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         /// Each continue request, the oldest first.
         var continueRequests: [ExternalSessionContinueRequest] = []
 
+        /// The scope of each count, the oldest first.
+        var countScopes: [CountScope] = []
+
+        /// The source of each rebuild, the oldest first.
+        var rebuildSources: [String] = []
+
         /// The continuation of each followed change stream.
         var followers: [AsyncStream<ExternalSessionChange>.Continuation] = []
 
@@ -48,6 +54,19 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         /// fake holds them, so that the streams end only at a cancellation.
         var waits: [AsyncStream<Void>.Continuation] = []
     }
+
+    /// The scope of one call of `externalSessionCounts(source:folder:)`.
+    struct CountScope: Equatable {
+        /// The source agent, or `nil` for each source.
+        let source: String?
+
+        /// The working folder, or `nil` for each folder.
+        let folder: URL?
+    }
+
+    /// The sources that the fake knows. A rebuild of a different source
+    /// gives ``ExternalSessionError/sourceUnreadable(source:)``.
+    static let knownSources = [claudeCode, codex]
 
     /// The source agent of the sessions of the fake that are not automated.
     static let claudeCode = "claude-code"
@@ -247,6 +266,16 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         state.withLock { $0.continueRequests }
     }
 
+    /// The scope of each count, the oldest first.
+    var countScopes: [CountScope] {
+        state.withLock { $0.countScopes }
+    }
+
+    /// The source of each rebuild, the oldest first.
+    var rebuildSources: [String] {
+        state.withLock { $0.rebuildSources }
+    }
+
     /// Adds a session to the index, and sends the change to each follower.
     ///
     /// - Parameters:
@@ -289,6 +318,42 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         return ExternalSessionPage(
             sessions: Array(matching.prefix(query.limit)), indexState: indexState, nextCursor: nextCursor,
             unreadableSources: unreadableSources, folderIndexState: query.folder == nil ? nil : folderIndexState)
+    }
+
+    /// Records the scope, and counts the typed and the automated sessions of
+    /// its source and its folder.
+    ///
+    /// - Parameters:
+    ///   - source: The source agent, or `nil` for each source.
+    ///   - folder: The working folder, or `nil` for each folder.
+    /// - Returns: The counts, with ``folderIndexState`` for a scope with a
+    ///   folder when the fake has one, else with ``indexState``.
+    /// - Throws: `CancellationError` after the cancellation of a waiting
+    ///   call.
+    func externalSessionCounts(source: String?, folder: URL?) async throws -> ExternalSessionCounts {
+        state.withLock { $0.countScopes.append(CountScope(source: source, folder: folder)) }
+        if blocksCalls {
+            try await waitForCancellation(started: queryStart, cancelled: queryCancellation)
+        }
+        let matching = sessions.filter { session in
+            (source ?? session.source) == session.source && (folder.map { $0.path == session.cwd?.path } ?? true)
+        }
+        let automatedCount = matching.filter(\.isAutomated).count
+        return ExternalSessionCounts(
+            typedCount: matching.count - automatedCount, automatedCount: automatedCount,
+            indexState: folder == nil ? indexState : folderIndexState ?? indexState)
+    }
+
+    /// Records the source of the rebuild.
+    ///
+    /// - Parameter source: The source agent.
+    /// - Throws: ``ExternalSessionError/sourceUnreadable(source:)`` for a
+    ///   source that the fake does not know or cannot read.
+    func rebuildExternalSessionIndex(source: String) async throws {
+        state.withLock { $0.rebuildSources.append(source) }
+        guard Self.knownSources.contains(source), !unreadableSources.contains(source) else {
+            throw ExternalSessionError.sourceUnreadable(source: source)
+        }
     }
 
     /// Records the folder, and gives a stream that ``add(_:indexState:)``

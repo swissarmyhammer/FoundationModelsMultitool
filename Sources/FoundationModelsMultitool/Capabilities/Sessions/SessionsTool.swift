@@ -1,7 +1,7 @@
 // `SessionsTool` — the `sessions` tool: the operations that find, check,
 // read, message, start, tag, rename, archive, fork, export, search, share
 // and import the sessions of the server, and that list, read and continue
-// the sessions of other agents
+// the sessions of other agents and rebuild their index
 // through a `SessionDirectory` (session.md sections 8 and 14, MT-2 and MT-9).
 //
 // The tool has the shape of the `agents` tool of FoundationModelsAgents: a
@@ -20,24 +20,25 @@ import Operations
 /// message and reply to one, start a new session, tag, untag, rename, pin
 /// and unpin a session, archive and unarchive a session, fork a session from
 /// here, export a session as Markdown, search the transcripts of the
-/// sessions, share a session as a link, and list, read and continue the
+/// sessions, share a session as a link, list, read and continue the
 /// external sessions of the index of the host: the sessions of other agents,
-/// such as Claude Code or Codex (D212).
+/// such as Claude Code or Codex, and rebuild the index of one source (D212).
 ///
 /// The operations are `list sessions`, `check session`, `read inbox`,
 /// `send message`, `reply message`, `start session`, `tag session`,
 /// `untag session`, `rename session`, `pin session`, `unpin session`,
 /// `archive session`, `unarchive session`, `fork session`,
 /// `export session`, `search sessions`, `share session`, `update share`,
-/// `stop sharing`, `list external sessions`, `read external session` and
-/// `continue external session`. In code mode each one is a verb
+/// `stop sharing`, `list external sessions`, `read external session`,
+/// `continue external session` and `rebuild external session index`. In
+/// code mode each one is a verb
 /// of `tools.sessions`: `listSessions`, `checkSession`, `readInbox`,
 /// `sendMessage`, `replyMessage`, `startSession`, `tagSession`,
 /// `untagSession`, `renameSession`, `pinSession`, `unpinSession`,
 /// `archiveSession`, `unarchiveSession`, `forkSession`, `exportSession`,
 /// `searchSessions`, `shareSession`, `updateShare`, `stopSharing`,
-/// `listExternalSessions`, `readExternalSession` and
-/// `continueExternalSession`. Each
+/// `listExternalSessions`, `readExternalSession`,
+/// `continueExternalSession` and `rebuildExternalSessionIndex`. Each
 /// answer is
 /// plain text, and each error is a corrective text the model reads in the
 /// same turn, never a thrown error.
@@ -141,6 +142,7 @@ public struct SessionsTool: Tool, OperationDescribing {
                 AnyOperation(ListExternalSessions.self),
                 AnyOperation(ReadExternalSession.self),
                 AnyOperation(ContinueExternalSession.self),
+                AnyOperation(RebuildExternalSessionIndex.self),
             ],
             resolver: OperationResolver(verbAliases: Self.verbAliases))
     }

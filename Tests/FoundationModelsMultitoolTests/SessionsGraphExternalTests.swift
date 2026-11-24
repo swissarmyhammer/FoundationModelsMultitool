@@ -2,7 +2,7 @@
 // `sessions` GraphQL endpoint (D212, design section 7): the
 // `externalSessions` query, the `externalSessionChanges` and
 // `externalSessionUpdates` subscriptions and the `continueExternalSession`
-// mutation.
+// and `rebuildExternalSessionIndex` mutations.
 //
 // Each case uses its own `InMemorySessionDirectory` and its own fake host
 // from the fixtures. A case that proves an order waits for a signal of the
@@ -54,6 +54,9 @@ struct SessionsGraphExternalTests {
         mutation { continueExternalSession(input: {source: "claude-code", id: "a1b2c3", folder: "/work/other", \
         name: "parser-fix"}) { title cwd } }
         """
+
+    /// The `rebuildExternalSessionIndex` mutation of the source Codex.
+    private static let rebuildMutation = "mutation { rebuildExternalSessionIndex(input: {source: \"codex\"}) }"
 
     /// The `externalSessionChanges` subscription of the working folder.
     private static let changesSubscription = """
@@ -330,6 +333,7 @@ struct SessionsGraphExternalTests {
 
         let query = try await GraphQLReply.run(Self.idsQuery, viewer: Self.deviceViewer, on: graph)
         let mutation = try await GraphQLReply.run(Self.continueMutation, viewer: Self.deviceViewer, on: graph)
+        let rebuild = try await GraphQLReply.run(Self.rebuildMutation, viewer: Self.deviceViewer, on: graph)
         let changes = try await Self.firstReply(
             of: graph.subscribe(
                 query: Self.changesSubscription, variables: [:], operationName: nil, viewer: Self.deviceViewer))
@@ -337,7 +341,7 @@ struct SessionsGraphExternalTests {
             of: graph.subscribe(
                 query: Self.updatesSubscription, variables: [:], operationName: nil, viewer: Self.deviceViewer))
 
-        for reply in [query, mutation, changes, updates] {
+        for reply in [query, mutation, rebuild, changes, updates] {
             #expect(reply.codes == [code])
             #expect(reply.messages == [SessionsToolText.noExternalSessionHost])
         }
@@ -504,5 +508,49 @@ struct SessionsGraphExternalTests {
             reply.messages == [
                 SessionsToolText.externalFolderUnavailable(URL(fileURLWithPath: Self.otherFolder.path, isDirectory: true))
             ])
+    }
+
+    // MARK: - rebuildExternalSessionIndex
+
+    @Test("rebuildExternalSessionIndex calls the host one time with the source, and gives true")
+    func theRebuildMutationCallsTheHostOneTime() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(Self.rebuildMutation)
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(reply.data?["rebuildExternalSessionIndex"] as? Bool == true)
+        #expect(setup.host.rebuildSources == [Host.codex])
+    }
+
+    @Test("rebuildExternalSessionIndex as the agent calls the host, and takes the aliases rebuild and agent")
+    func theRebuildMutationOfTheAgentTakesTheAliases() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.runAsCaller("mutation { rebuild(input: {agent: \"claude-code\"}) }")
+
+        #expect(reply.codes.isEmpty, "errors: \(reply.messages)")
+        #expect(setup.host.rebuildSources == [Host.claudeCode])
+    }
+
+    @Test("rebuildExternalSessionIndex of a source with no access gives NO_SOURCE_ACCESS with the corrective")
+    func theRebuildOfASourceWithNoAccessGivesTheCode() async throws {
+        let setup = Setup(host: FakeExternalSessionHost(unreadableSources: [Host.codex]))
+
+        let reply = try await setup.run(Self.rebuildMutation)
+
+        #expect(reply.codes == [SessionsRefusal.Kind.noSourceAccess.rawValue])
+        #expect(reply.messages == [SessionsToolText.noExternalSourceAccess(Host.codex)])
+    }
+
+    @Test("an external client cannot rebuild the index, and the host gets no call")
+    func anExternalClientCannotRebuild() async throws {
+        let setup = Setup()
+
+        let reply = try await setup.run(Self.rebuildMutation, viewer: .external())
+
+        #expect(reply.codes == [SessionsRefusal.Kind.untrustedClient.rawValue])
+        #expect(reply.messages == [SessionsGraphText.externalRebuild])
+        #expect(setup.host.rebuildSources.isEmpty)
     }
 }

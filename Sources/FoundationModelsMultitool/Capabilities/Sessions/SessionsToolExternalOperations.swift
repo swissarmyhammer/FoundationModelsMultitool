@@ -1,6 +1,7 @@
-// The `list external sessions`, `read external session` and
-// `continue external session` operations of the `sessions` tool (D212,
-// design section 5.8; D100: the agent can do what the UI can do).
+// The `list external sessions`, `read external session`,
+// `continue external session` and `rebuild external session index`
+// operations of the `sessions` tool (D212, design section 5.8; D100: the
+// agent can do what the UI can do).
 //
 // An external session is a session file of another agent, such as Claude
 // Code or Codex. The host gives the index of these files through an
@@ -8,7 +9,8 @@
 // reads the index, `read external session` reads the text of a range of
 // turns of one session with no copy, and `continue external session` copies
 // one session into a new session of this server. Each continue makes a new
-// session (Q85). With no host, each operation gives the corrective of the
+// session (Q85). `rebuild external session index` makes the index of one
+// source again. With no host, each operation gives the corrective of the
 // code `EXTERNAL_SESSIONS_UNAVAILABLE`. With no access to a source, each
 // operation gives the corrective of the code `NO_SOURCE_ACCESS`, which tells
 // the agent to ask the user to run Allow Access: an agent cannot give access
@@ -308,6 +310,41 @@ extension ContinueExternalSession {
     }
 }
 
+/// Makes the index of one source again (`rebuild external session index`).
+@Generable
+@Operation(
+    verb: "rebuild", noun: "external session index",
+    description: """
+        Rebuild the index of the sessions of one other agent, such as Claude Code or Codex. The index removes the \
+        sessions of the source, and then finds and reads each session file of the source again. The call returns when \
+        the new find starts, not when the read ends. Use it when the user asks, or when the index gives sessions that \
+        are wrong or old.
+        """)
+struct RebuildExternalSessionIndex {
+    /// The source agent.
+    @Guide(description: "The source agent: claude-code or codex.")
+    @OperationParam(aliases: ["agent", "from"])
+    var source: String
+}
+
+extension RebuildExternalSessionIndex {
+    /// Starts the rebuild of the index of the source.
+    ///
+    /// - Parameter context: The shared context of the tool.
+    /// - Returns: The line that tells that the rebuild started. A corrective
+    ///   for a server with no host, a blank source, a source that the host
+    ///   does not know or cannot read, and a host that fails.
+    func execute(in context: SessionsToolContext) async throws -> String {
+        do {
+            return SessionsToolText.startedExternalIndexRebuild(
+                try await SessionsToolContext.rebuildExternalSessionIndex(
+                    source: source, with: context.externalSessionHost))
+        } catch {
+            return SessionsToolText.corrective(for: error)
+        }
+    }
+}
+
 // MARK: - The shared steps
 
 extension SessionsToolContext {
@@ -502,6 +539,30 @@ extension SessionsToolContext {
             try await host.continueExternalSession(request)
         }
         return ExternalSessionContinueOutcome(request: request, summary: summary)
+    }
+
+    /// Makes the index of one source again: the one rebuild step of
+    /// `rebuild external session index` and of the
+    /// `rebuildExternalSessionIndex` mutation. The call returns when the
+    /// host starts the new find.
+    ///
+    /// - Parameters:
+    ///   - source: The source agent, as written.
+    ///   - host: The external session host, or `nil` when the host gave none.
+    /// - Returns: The source, with no space at the ends.
+    /// - Throws: ``SessionsRefusal`` for a server with no host, a blank
+    ///   source, a source that the host does not know or cannot read
+    ///   (`NO_SOURCE_ACCESS`), and a host that fails; `CancellationError`
+    ///   when the task of the call is cancelled.
+    static func rebuildExternalSessionIndex(
+        source: String, with host: (any ExternalSessionHost)?
+    ) async throws -> String {
+        let host = try requiredExternalSessionHost(host)
+        let source = try SessionsToolInput.requiredText(source, parameter: SessionsToolText.externalSourceParameter)
+        try await externalHostResult(failure: { SessionsToolText.externalRebuildFailed(source, $0) }) {
+            try await host.rebuildExternalSessionIndex(source: source)
+        }
+        return source
     }
 
     /// The query of one `list external sessions`.

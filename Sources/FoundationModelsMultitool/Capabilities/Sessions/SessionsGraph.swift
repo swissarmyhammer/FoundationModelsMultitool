@@ -62,7 +62,9 @@ import Synchronization
 /// `stop sharing` (D208 (k)), each with one `input`, and
 /// `continueExternalSession` (D212). Each `continueExternalSession` makes a
 /// new session, and gives that `Session`; an external client cannot continue
-/// a session. A `Session` gives its
+/// a session. `rebuildExternalSessionIndex(source:)` makes the index of one
+/// source again and gives true when the new find starts, with one `input`; an external client
+/// cannot rebuild the index. A `Session` gives its
 /// `share` from the sharer of the endpoint; with no sharer, the field and the
 /// share mutations give `SHARING_UNAVAILABLE`.
 /// A client acts as its user, and a call with no viewer acts as the caller
@@ -356,7 +358,8 @@ public final class SessionsGraph: GraphQLEndpoint {
     /// `nil` when no host gave one: the external session operations of the
     /// `sessions` tool, the `externalSessions` query, the
     /// `externalSessionChanges` and `externalSessionUpdates` subscriptions
-    /// and the `continueExternalSession` mutation read it (D212).
+    /// and the `continueExternalSession` and `rebuildExternalSessionIndex`
+    /// mutations read it (D212).
     var externalSessionHost: (any ExternalSessionHost)? {
         Self.read(storedExternalSessionHost)
     }

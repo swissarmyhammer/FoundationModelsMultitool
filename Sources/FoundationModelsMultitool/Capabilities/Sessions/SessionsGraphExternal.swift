@@ -1,13 +1,15 @@
 // The external sessions in the `sessions` GraphQL endpoint (D212, design
 // sections 4.5, 5.3 and 5.4): the `externalSessions` query, the
 // `externalSessionChanges` and `externalSessionUpdates` subscriptions, the
-// `continueExternalSession` mutation and their types.
+// `continueExternalSession` and `rebuildExternalSessionIndex` mutations and
+// their types.
 //
 // An external session is a session file of another agent, such as Claude
 // Code or Codex. The host gives the index of these files through an
 // ``ExternalSessionHost``. The fields call the shared steps of the
-// `list external sessions`, `read external session` and
-// `continue external session` operations of the `sessions` tool, so the tool
+// `list external sessions`, `read external session`,
+// `continue external session` and `rebuild external session index`
+// operations of the `sessions` tool, so the tool
 // ops and the endpoint share one rule, one corrective and the same codes:
 // `EXTERNAL_SESSIONS_UNAVAILABLE`, `NO_SOURCE_ACCESS`,
 // `UNKNOWN_EXTERNAL_SESSION`, `FOLDER_UNAVAILABLE` and
@@ -24,7 +26,9 @@
 //
 // Who acts: a device of the user and the agent continue a session, as for a
 // start. An external client cannot continue a session, as it cannot start
-// one.
+// one. A device of the user and the agent rebuild the index. An external
+// client cannot rebuild it, because a rebuild removes the rows of each
+// client.
 
 import Foundation
 import FoundationModelsExtras
@@ -102,6 +106,12 @@ struct SessionsGraphContinueExternalInput: Codable, Sendable {
         ExternalSessionContinueArguments(
             source: source, id: id, folder: folder, name: name, callerFolder: callerFolder)
     }
+}
+
+/// The input of `Mutation.rebuildExternalSessionIndex`.
+struct SessionsGraphRebuildExternalIndexInput: Codable, Sendable {
+    /// The source agent, as written.
+    let source: String
 }
 
 /// The `ExternalSessionState` enum: how much of an external session the
@@ -452,6 +462,34 @@ extension SessionsGraphResolver {
                 ).summary)
         }
     }
+
+    /// Resolves `Mutation.rebuildExternalSessionIndex`: makes the index of one
+    /// source again. An external client cannot rebuild the index. The host
+    /// runs in the task of this resolver, so the cancellation of the call
+    /// arrives at the host.
+    ///
+    /// - Parameters:
+    ///   - context: The context of the call, which gives the host.
+    ///   - arguments: The input object, with the source.
+    /// - Returns: True when the host started the rebuild.
+    /// - Throws: ``SessionsRefusal`` with the code `UNTRUSTED_CLIENT` for an
+    ///   external client, `EXTERNAL_SESSIONS_UNAVAILABLE` when the endpoint
+    ///   has no host, `BLANK_TEXT` for a blank source, `NO_SOURCE_ACCESS` for
+    ///   a source that the host does not know or cannot read, and
+    ///   `EXTERNAL_SESSION_FAILED` for a different error of the host;
+    ///   `CancellationError`.
+    func rebuildExternalSessionIndex(
+        context: SessionsGraphContext, arguments: SessionsGraphMutationArguments<SessionsGraphRebuildExternalIndexInput>
+    ) async throws -> Bool {
+        try await Self.coding {
+            guard !context.viewerIsExternal else {
+                throw SessionsRefusal(.untrustedClient, SessionsGraphText.externalRebuild)
+            }
+            _ = try await SessionsToolContext.rebuildExternalSessionIndex(
+                source: arguments.input.source, with: context.externalSessionHost)
+            return true
+        }
+    }
 }
 
 // MARK: - The schema
@@ -711,5 +749,31 @@ extension SessionsGraphAPI {
                 + "session. \(noExternalHostRule) \(noExternalAccessRule) UNKNOWN_EXTERNAL_SESSION when the index "
                 + "has no such session, FOLDER_UNAVAILABLE when the folder does not exist or this server cannot "
                 + "write it, and EXTERNAL_SESSION_FAILED when the copy fails.")
+    }
+
+    /// The field of the `rebuildExternalSessionIndex` mutation.
+    ///
+    /// - Returns: The field.
+    static func rebuildExternalIndexMutationField() -> SchemaField {
+        mutationField(
+            .rebuildExternalIndex, at: SessionsGraphResolver.rebuildExternalSessionIndex,
+            input: "The source whose index to rebuild.",
+            description: "Rebuilds the index of the sessions of one other agent. The index removes the sessions of "
+                + "the source, and then finds and reads each session file of the source again. The call returns true "
+                + "when the new find starts, not when the read ends: externalSessionChanges gives the removed "
+                + "sessions and then the new sessions. An external client cannot rebuild the index. "
+                + "\(noExternalHostRule) NO_SOURCE_ACCESS when this server does not know the source or the user gave "
+                + "no access to its sessions: only the user can give access, with the command Allow Access. "
+                + "EXTERNAL_SESSION_FAILED when the rebuild fails.")
+    }
+
+    /// The `RebuildExternalSessionIndexInput` input object.
+    ///
+    /// - Returns: The input object.
+    static func rebuildExternalIndexInput() -> SchemaType {
+        Input(SessionsGraphRebuildExternalIndexInput.self, as: SessionsGraphMutation.rebuildExternalIndex.inputName) {
+            InputField("source", at: \.source).description("The source agent: claude-code or codex.")
+        }
+        .description("The source agent whose index of sessions to rebuild.")
     }
 }

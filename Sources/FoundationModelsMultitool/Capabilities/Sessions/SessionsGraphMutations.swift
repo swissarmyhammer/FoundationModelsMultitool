@@ -3,8 +3,9 @@
 // `pinSession`, `unpinSession`, `archiveSession`, `unarchiveSession`,
 // `forkSession`, `sendMessage` and `replyMessage`. The share mutations
 // `shareSession`, `updateSessionShare` and `stopSharingSession` are in
-// `SessionsGraphShare.swift`, and the `continueExternalSession` mutation is
-// in `SessionsGraphExternal.swift`.
+// `SessionsGraphShare.swift`, and the `continueExternalSession` and
+// `rebuildExternalSessionIndex` mutations are in
+// `SessionsGraphExternal.swift`.
 //
 // Each mutation has the name of the code-mode verb of a tool op of the
 // `sessions` tool, or a name that tells its session when that verb does not
@@ -99,10 +100,13 @@ struct SessionsGraphMutation: Sendable {
     /// `continueExternalSession` (D212).
     static let continueExternalSession = Self(ContinueExternalSession.self)
 
+    /// `rebuildExternalSessionIndex` (D212).
+    static let rebuildExternalIndex = Self(RebuildExternalSessionIndex.self)
+
     /// Each mutation of the endpoint.
     static let all = [
         start, tag, untag, rename, pin, unpin, archive, unarchive, fork, send, reply, share, updateShare, stopSharing,
-        continueExternalSession,
+        continueExternalSession, rebuildExternalIndex,
     ]
 
     /// The name of the input object of the options of `shareSession`.
@@ -211,6 +215,13 @@ enum SessionsGraphText {
     static let externalContinue = """
         An external client cannot continue a session of another agent: only a device of the user continues one. \
         Send a message to a session that you can see instead.
+        """
+
+    /// The corrective of a rebuild of the index of the external sessions by
+    /// an external client: a rebuild removes the rows of each client.
+    static let externalRebuild = """
+        An external client cannot rebuild the index of the sessions of other agents: only a device of the user \
+        rebuilds it. Query externalSessions to read the index as it is.
         """
 
     /// The reason of the refused receipt of a message from an external client
@@ -1050,7 +1061,7 @@ extension SessionsGraphAPI {
                 input: "The session that got the message, the message and the text.",
                 description: "Replies to a message that a session got, from you. \(receiptsDescription) "
                     + ownedTargetRule),
-        ] + shareMutationFields() + [continueExternalMutationField()]
+        ] + shareMutationFields() + [continueExternalMutationField(), rebuildExternalIndexMutationField()]
     }
 
     /// The field of one mutation: its name, its resolver, and its one

@@ -1,6 +1,7 @@
-// The text of the `list external sessions`, `read external session` and
-// `continue external session` operations of the `sessions` tool: their
-// answers and their correctives (D212, design section 5.8).
+// The text of the `list external sessions`, `read external session`,
+// `continue external session` and `rebuild external session index`
+// operations of the `sessions` tool: their answers and their correctives
+// (D212, design section 5.8).
 //
 // Only the user can give access to the sessions of a source, with the
 // command Allow Access to <source> Sessions… of the File menu. Thus each
@@ -161,6 +162,30 @@ extension SessionsToolText {
         """
         The continue of the session \(request.session.sourceID) of \(request.session.source) failed: \(error). Use \
         \(ListExternalSessions.opString) to find the source and the id, and try the call again.
+        """
+    }
+
+    /// The corrective of a host that could not rebuild the index of a
+    /// source.
+    ///
+    /// - Parameters:
+    ///   - source: The source agent.
+    ///   - error: The error of the host.
+    /// - Returns: The corrective.
+    static func externalRebuildFailed(_ source: String, _ error: any Error) -> String {
+        "The rebuild of the index of the sessions of \(source) failed: \(error). Try the call again."
+    }
+
+    /// The answer of `rebuild external session index`.
+    ///
+    /// - Parameter source: The source agent.
+    /// - Returns: The answer, which tells that the read continues after the
+    ///   call.
+    static func startedExternalIndexRebuild(_ source: String) -> String {
+        """
+        The rebuild of the index of the sessions of \(source) started. The index removed the sessions of \(source), \
+        and now finds and reads each file of \(source) again. Until the read ends, \(ListExternalSessions.opString) \
+        gives fewer sessions of \(source), and its answer tells the progress.
         """
     }
 

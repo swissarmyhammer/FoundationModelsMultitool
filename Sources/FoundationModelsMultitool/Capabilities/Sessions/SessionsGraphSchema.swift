@@ -40,8 +40,9 @@ struct SessionsGraphContext: GraphQLRunContext {
     /// The host of the external sessions that the host gave the endpoint, or
     /// `nil` when no host gave one. `Query.externalSessions`,
     /// `Subscription.externalSessionChanges`,
-    /// `Subscription.externalSessionUpdates` and
-    /// `Mutation.continueExternalSession` read it (D212).
+    /// `Subscription.externalSessionUpdates`,
+    /// `Mutation.continueExternalSession` and
+    /// `Mutation.rebuildExternalSessionIndex` read it (D212).
     let externalSessionHost: (any ExternalSessionHost)?
 }
 
@@ -310,7 +311,8 @@ struct SessionsGraphAPI: API {
     /// `SessionImportProvenance` type of the `importedFrom` field of a session
     /// is in `SessionsGraphProvenance.swift`, the `externalSessions` query, the
     /// `externalSessionChanges` and `externalSessionUpdates` subscriptions,
-    /// the `continueExternalSession` mutation and their types are in
+    /// the `continueExternalSession` and `rebuildExternalSessionIndex`
+    /// mutations and their types are in
     /// `SessionsGraphExternal.swift`, and the `cursor` query, the
     /// `changes` subscription and its type are in `SessionsGraphChanges.swift`.
     ///
@@ -366,6 +368,7 @@ struct SessionsGraphAPI: API {
                 externalSessionEntryType()
                 externalSessionUpdateBatchType()
                 continueExternalInput()
+                rebuildExternalIndexInput()
             }
             .addQuery {
                 sessionsField()
