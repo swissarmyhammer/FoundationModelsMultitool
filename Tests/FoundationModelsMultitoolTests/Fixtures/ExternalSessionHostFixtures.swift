@@ -14,10 +14,11 @@ struct ExternalSessionHostFailure: Error, CustomStringConvertible {
 /// A fake ``ExternalSessionHost``: a fixed index of external sessions and a
 /// fixed history for each session.
 ///
-/// The fake records each query, each count, each rebuild, each followed
-/// folder, each read session and each continue request, so a case proves what the endpoint or the tool
-/// asked the host to do. It gives signals as streams, so a case waits for an
-/// event of the host and never for a time:
+/// The fake records each query, each count, each rebuild, each lookup, each
+/// followed folder, each read session and each continue request, so a case
+/// proves what the endpoint or the tool asked the host to do. It gives
+/// signals as streams, so a case waits for an event of the host and never
+/// for a time:
 ///
 /// - ``queryStarts`` and ``queryCancellations`` for a query or a count that
 ///   waits for its cancellation (``blocksCalls``), and ``continueStarts`` and
@@ -47,6 +48,9 @@ final class FakeExternalSessionHost: ExternalSessionHost {
 
         /// The source of each rebuild, the oldest first.
         var rebuildSources: [String] = []
+
+        /// The session of each lookup, the oldest first.
+        var lookupSessions: [ExternalSessionID] = []
 
         /// The continuation of each followed change stream.
         var followers: [AsyncStream<ExternalSessionChange>.Continuation] = []
@@ -303,6 +307,11 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         state.withLock { $0.rebuildSources }
     }
 
+    /// The session of each lookup, the oldest first.
+    var lookupSessions: [ExternalSessionID] {
+        state.withLock { $0.lookupSessions }
+    }
+
     /// Adds a session to the index, and sends the change to each follower.
     ///
     /// - Parameters:
@@ -369,6 +378,20 @@ final class FakeExternalSessionHost: ExternalSessionHost {
         return ExternalSessionCounts(
             typedCount: matching.count - automatedCount, automatedCount: automatedCount,
             indexState: folder == nil ? indexState : folderIndexState ?? indexState)
+    }
+
+    /// Records the session, and gives its entry in the index of the fake.
+    ///
+    /// - Parameter session: The external session.
+    /// - Returns: The entry, or `nil` when the fake has no such session.
+    /// - Throws: ``ExternalSessionError/sourceUnreadable(source:)`` for a
+    ///   source that the fake cannot read.
+    func externalSession(_ session: ExternalSessionID) async throws -> ExternalSessionSummary? {
+        state.withLock { $0.lookupSessions.append(session) }
+        if unreadableSources.contains(session.source) {
+            throw ExternalSessionError.sourceUnreadable(source: session.source)
+        }
+        return sessions.first { $0.id == session }
     }
 
     /// Records the source of the rebuild.
